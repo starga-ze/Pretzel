@@ -3,13 +3,15 @@
 #include "util/Logger.h"
 
 #include <cerrno>
-#include <unistd.h>
+
+#include <sys/epoll.h>
 
 namespace nf::ipcd
 {
 
 IpcServer::IpcServer(const nf::config::IpcConfig& cfg)
     : m_cfg(cfg),
+      m_handler(cfg),
       m_events(MAX_EVENTS)
 {
 }
@@ -61,9 +63,12 @@ void IpcServer::start()
 
     while (m_running)
     {
-        int n = m_epoll.wait(m_events, -1);
+        const int n = m_epoll.wait(m_events, -1);
         if (n < 0)
         {
+            if (errno == EINTR)
+                continue;
+
             LOG_WARN("IpcServer: epoll wait failed errno={}", errno);
             continue;
         }
@@ -71,7 +76,7 @@ void IpcServer::start()
         for (int i = 0; i < n; ++i)
         {
             const int fd = m_events[i].data.fd;
-            const uint32_t events = m_events[i].events;
+            const std::uint32_t events = m_events[i].events;
 
             handleEvent(fd, events);
         }
@@ -84,6 +89,29 @@ void IpcServer::stop()
 {
     m_running = false;
     m_epoll.wakeup();
+}
+
+bool IpcServer::sendTo(int fd, const std::uint8_t* data, std::size_t len)
+{
+    auto it = m_connections.find(fd);
+    if (it == m_connections.end())
+        return false;
+
+    auto& conn = *it->second;
+    if (!conn.enqueueTx(data, len))
+    {
+        LOG_WARN("IpcServer: tx buffer full fd={} len={}", fd, len);
+        return false;
+    }
+
+    if (!m_epoll.mod(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP))
+    {
+        LOG_ERROR("IpcServer: epoll mod add EPOLLOUT failed fd={}", fd);
+        closeConnection(fd);
+        return false;
+    }
+
+    return true;
 }
 
 bool IpcServer::initEpoll()
@@ -133,7 +161,7 @@ bool IpcServer::registerListenFd()
     return true;
 }
 
-void IpcServer::handleEvent(int fd, uint32_t events)
+void IpcServer::handleEvent(int fd, std::uint32_t events)
 {
     if (fd == m_epoll.getEventFd())
     {
@@ -143,83 +171,37 @@ void IpcServer::handleEvent(int fd, uint32_t events)
 
     if (m_listener && fd == m_listener->fd())
     {
-        handleListenEvent(events);
+        if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
+        {
+            LOG_ERROR("IpcServer: listen fd abnormal events=0x{:x}", events);
+            return;
+        }
+
+        if (events & EPOLLIN)
+            m_handler.handleAccept(*m_listener, m_connections, m_epoll);
+
         return;
     }
 
     auto it = m_connections.find(fd);
-    if (it != m_connections.end())
+    if (it == m_connections.end())
     {
-        if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
-        {
-            LOG_INFO("IpcServer: connection closed fd={} events=0x{:x}", fd, events);
-            closeConnection(fd);
-            return;
-        }
-
-        LOG_DEBUG("IpcServer: connection event fd={} events=0x{:x}", fd, events);
+        LOG_WARN("IpcServer: unknown fd event fd={} events=0x{:x}", fd, events);
         return;
     }
 
-    LOG_WARN("IpcServer: unknown fd event fd={} events=0x{:x}", fd, events);
-}
-
-void IpcServer::handleListenEvent(uint32_t events)
-{
     if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
     {
-        LOG_ERROR("IpcServer: listen fd abnormal events=0x{:x}", events);
+        LOG_INFO("IpcServer: connection close event fd={} events=0x{:x}", fd, events);
+        closeConnection(fd);
         return;
     }
 
     if (events & EPOLLIN)
-        acceptLoop();
-}
+        m_handler.handleReadable(fd, m_connections, m_epoll);
 
-void IpcServer::acceptLoop()
-{
-    while (true)
-    {
-        int fd = m_listener->accept();
-        if (fd < 0)
-        {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-                break;
-
-            LOG_ERROR("IpcServer: accept failed errno={}", errno);
-            break;
-        }
-
-        if (m_connections.size() >= static_cast<size_t>(m_cfg.maxConnections))
-        {
-            LOG_WARN("IpcServer: max connections reached max={} fd={}",
-                     m_cfg.maxConnections,
-                     fd);
-            ::close(fd);
-            continue;
-        }
-
-        auto conn = std::make_unique<IpcConnection>(fd);
-        if (!conn)
-        {
-            LOG_ERROR("IpcServer: connection allocation failed fd={}", fd);
-            ::close(fd);
-            continue;
-        }
-
-        if (!m_epoll.add(fd, EPOLLIN | EPOLLRDHUP))
-        {
-            LOG_ERROR("IpcServer: epoll add connection failed fd={}", fd);
-            ::close(fd);
-            continue;
-        }
-
-        m_connections.emplace(fd, std::move(conn));
-
-        LOG_INFO("IpcServer: accepted connection fd={} total={}",
-                 fd,
-                 m_connections.size());
-    }
+    if (events & EPOLLOUT)
+        m_handler.handleWritable(fd, m_connections, m_epoll);
 }
 
 void IpcServer::closeConnection(int fd)

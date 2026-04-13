@@ -2,10 +2,12 @@
 
 #include "config/ConfigTypes.h"
 #include "net/ipc/IpcConnection.h"
+#include "net/ipc/IpcHandler.h"
 #include "net/socket/UnixDomainSocket.h"
 #include "io/Epoll.h"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -28,15 +30,14 @@ public:
     void start();
     void stop();
 
+    bool sendTo(int fd, const std::uint8_t* data, std::size_t len);
+
 private:
     bool initEpoll();
     bool initListener();
     bool registerListenFd();
 
-    void handleEvent(int fd, uint32_t events);
-    void handleListenEvent(uint32_t events);
-    void acceptLoop();
-
+    void handleEvent(int fd, std::uint32_t events);
     void closeConnection(int fd);
 
 private:
@@ -45,6 +46,7 @@ private:
 private:
     nf::config::IpcConfig m_cfg;
     nf::io::Epoll m_epoll;
+    IpcHandler m_handler;
 
     std::unique_ptr<UnixDomainSocket> m_listener;
     std::unordered_map<int, std::unique_ptr<IpcConnection>> m_connections;
