@@ -12,8 +12,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <sys/epoll.h>
-
 namespace nf::ipcd
 {
 

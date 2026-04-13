@@ -4,10 +4,7 @@
 #include "io/Epoll.h"
 #include "util/Logger.h"
 
-#include <cerrno>
 #include <unistd.h>
-
-#include <sys/epoll.h>
 #include <sys/socket.h>
 
 namespace nf::ipcd

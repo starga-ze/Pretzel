@@ -1,10 +1,5 @@
 #include "net/ipc/IpcServer.h"
-
 #include "util/Logger.h"
-
-#include <cerrno>
-
-#include <sys/epoll.h>
 
 namespace nf::ipcd
 {
@@ -150,48 +145,51 @@ bool IpcServer::initListenSocket()
 
 void IpcServer::handleEvent(int fd, std::uint32_t events)
 {
+    const bool isClose = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
+    const bool isRead = (events & EPOLLIN) != 0;
+    const bool isWrite = (events & EPOLLOUT) != 0;
+
+    /* Event fd */
     if (fd == m_epoll.getEventFd())
     {
         m_epoll.drainWakeup();
         return;
     }
 
-    const bool isCloseEvent = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
-    const bool isReadable = (events & EPOLLIN) != 0;
-    const bool isWritable = (events & EPOLLOUT) != 0;
-
+    /* Listen fd */
     if (m_listener && fd == m_listener->fd())
     {
-        if (isCloseEvent)
+        if (isClose)
         {
-            LOG_ERROR("IpcServer: listen fd abnormal events=0x{:x}", events);
+            LOG_ERROR("Listen fd abnormal events=0x{:x}", events);
             return;
         }
 
-        if (isReadable)
+        if (isRead)
             m_handler.handleAccept(*m_listener, m_connections, m_epoll);
 
         return;
     }
 
+    /* Connection fd */
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
     {
-        LOG_WARN("IpcServer: unknown fd event fd={} events=0x{:x}", fd, events);
+        LOG_WARN("Unknown fd event fd={} events=0x{:x}", fd, events);
         return;
     }
 
-    if (isCloseEvent)
+    if (isClose)
     {
-        LOG_INFO("IpcServer: connection close event fd={} events=0x{:x}", fd, events);
+        LOG_INFO("Connection close event fd={} events=0x{:x}", fd, events);
         closeConnection(fd);
         return;
     }
 
-    if (isReadable)
+    if (isRead)
         m_handler.handleReadable(fd, m_connections, m_epoll);
 
-    if (isWritable)
+    if (isWrite)
         m_handler.handleWritable(fd, m_connections, m_epoll);
 }
 
