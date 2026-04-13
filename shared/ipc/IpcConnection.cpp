@@ -1,117 +1,110 @@
 #include "ipc/IpcConnection.h"
 
+#include <cerrno>
+#include <cstdint>
+
 #include <sys/socket.h>
 #include <unistd.h>
-#include <errno.h>
 
 namespace nf::ipc
 {
 
-IpcConnection::IpcConnection(int fd, size_t rxBuf, size_t txBuf)
-    : m_fd(fd), m_rx(rxBuf), m_tx(txBuf)
+IpcConnection::IpcConnection(int fd, std::size_t rxBuf, std::size_t txBuf)
+    : m_fd(fd),
+      m_rx(rxBuf),
+      m_tx(txBuf)
 {
 }
 
-bool IpcConnection::recvIntoRing(bool& outPeerClosed, int& outErrno)
+IoResult IpcConnection::recv(int& outErrno)
 {
-    outPeerClosed = false;
     outErrno = 0;
 
     while (true)
     {
-        uint8_t* wptr = m_rx.writePtr();
-        size_t wlen = m_rx.writeLen();
+        std::uint8_t* wptr = m_rx.writePtr();
+        const std::size_t wlen = m_rx.writeLen();
 
         if (wlen == 0)
-        {
-            outErrno = ENOBUFS;
-            return false;
-        }
+            return IoResult::BufferFull;
 
-        ssize_t r = ::recv(m_fd, wptr, wlen, 0);
+        const ssize_t n = ::recv(m_fd, wptr, wlen, 0);
 
-        if (r > 0)
+        if (n > 0)
         {
-            m_rx.produce(static_cast<size_t>(r));
+            m_rx.produce(static_cast<std::size_t>(n));
             continue;
         }
 
-        if (r == 0)
-        {
-            outPeerClosed = true;
-            return false;
-        }
+        if (n == 0)
+            return IoResult::PeerClosed;
 
         if (errno == EINTR)
             continue;
 
         if (errno == EAGAIN || errno == EWOULDBLOCK)
-            return true;
+            return IoResult::WouldBlock;
 
         outErrno = errno;
-        return false;
+        return IoResult::Error;
     }
 }
 
-bool IpcConnection::flushTx(bool& outPeerClosed, int& outErrno, bool& outWouldBlock)
+IoResult IpcConnection::send(int& outErrno)
 {
-    outPeerClosed = false;
     outErrno = 0;
-    outWouldBlock = false;
 
     while (m_tx.readable() > 0)
     {
-        const uint8_t* rptr = m_tx.readPtr();
-        size_t rlen = m_tx.readLen();
+        const std::uint8_t* rptr = m_tx.readPtr();
+        const std::size_t rlen = m_tx.readLen();
 
-        ssize_t sent = ::send(m_fd, rptr, rlen, MSG_NOSIGNAL);
+        const ssize_t n = ::send(m_fd, rptr, rlen, MSG_NOSIGNAL);
 
-        if (sent > 0)
+        if (n > 0)
         {
-            m_tx.consume(static_cast<size_t>(sent));
-            if (static_cast<size_t>(sent) < rlen)
-            {
-                outWouldBlock = true;
-                return true;
-            }
+            m_tx.consume(static_cast<std::size_t>(n));
+
+            if (static_cast<std::size_t>(n) < rlen)
+                return IoResult::WouldBlock;
+
             continue;
         }
 
-        if (sent == 0)
-        {
-            outPeerClosed = true;
-            return false;
-        }
+        if (n == 0)
+            return IoResult::PeerClosed;
 
         if (errno == EINTR)
             continue;
 
         if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            outWouldBlock = true;
-            return true;
-        }
+            return IoResult::WouldBlock;
 
         outErrno = errno;
-        return false;
+        return IoResult::Error;
     }
 
-    return true;
+    return IoResult::Ok;
 }
 
-bool IpcConnection::enqueueTx(const uint8_t* data, size_t len)
+bool IpcConnection::write(const std::uint8_t* data, std::size_t len)
 {
+    if (len == 0)
+        return true;
+
     if (m_tx.writable() < len)
         return false;
+
     m_tx.write(data, len);
     return true;
 }
 
-bool IpcConnection::enqueueTx(const std::vector<uint8_t>& data)
+bool IpcConnection::write(const std::vector<std::uint8_t>& data)
 {
     if (data.empty())
         return true;
-    return enqueueTx(data.data(), data.size());
+
+    return write(data.data(), data.size());
 }
 
 } // namespace nf::ipc
