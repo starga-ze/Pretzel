@@ -124,7 +124,7 @@ bool IpcServer::initEpoll()
 
 bool IpcServer::initListenSocket()
 {
-    m_listener = std::make_unique<UnixDomainSocket>(m_cfg.socketPath);
+    m_listener = std::make_unique<nf::socket::UnixDomainSocket>(m_cfg.socketPath);
     if (!m_listener)
     {
         LOG_ERROR("IpcServer: listener allocation failed");

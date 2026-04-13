@@ -47,7 +47,7 @@ private:
     nf::io::Epoll m_epoll;
     IpcHandler m_handler;
 
-    std::unique_ptr<UnixDomainSocket> m_listener;
+    std::unique_ptr<nf::socket::UnixDomainSocket> m_listener;
     std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>> m_connections;
     std::vector<epoll_event> m_events;
 

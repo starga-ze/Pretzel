@@ -1,6 +1,5 @@
 #include "ipc/IpcHandler.h"
 
-#include "socket/UnixDomainSocket.h"
 #include "util/Logger.h"
 
 #include <cerrno>
@@ -15,7 +14,7 @@ IpcHandler::IpcHandler(const nf::config::IpcConfig& cfg) : m_cfg(cfg)
 {
 }
 
-void IpcHandler::handleAccept(UnixDomainSocket& listener,
+void IpcHandler::handleAccept(nf::socket::UnixDomainSocket& listener,
         std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
         nf::io::Epoll& epoll)
 {

@@ -1,47 +1,26 @@
 #pragma once
 
 #include "config/ConfigTypes.h"
-#include "ipc/IpcConnection.h"
-#include "ipc/IpcFraming.h"
-#include "ipc/IpcProtocol.h"
 #include "io/Epoll.h"
+#include "ipc/IpcConnection.h"
+#include "ipc/IpcProtocol.h"
+#include "socket/UnixDomainSocket.h"
 
 #include <atomic>
-#include <queue>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <mutex>
 #include <vector>
+
+#include <sys/epoll.h>
 
 namespace nf::ipc
 {
 
-struct IpcMessage
-{
-    IpcHeader header;
-    std::vector<uint8_t> payload;
-};
-
 class IpcClient
 {
 public:
-
-    IpcClient(const nf::config::IpcConfig& cfg, IpcDaemon selfId);
-    ~IpcClient();
-
-    bool init();
-
-    void start();
-    void stop();
-
-    bool send(IpcDaemon dst, IpcCmd cmd, const uint8_t* payload, size_t len);
-    bool send(IpcDaemon dst, IpcCmd cmd, const std::vector<uint8_t>& payload);
-    bool sendString(IpcDaemon dst, IpcCmd cmd, const std::string& s);
-
-    bool pollMessage(IpcMessage& msg);
-
-    bool isConnected() const;
-
-private:
-
     enum class State
     {
         Disconnected,
@@ -49,36 +28,56 @@ private:
         Connected
     };
 
+public:
+    IpcClient(const nf::config::IpcConfig& cfg, IpcDaemon selfId);
+    ~IpcClient();
+
+    IpcClient(const IpcClient&) = delete;
+    IpcClient& operator=(const IpcClient&) = delete;
+
+    IpcClient(IpcClient&&) = delete;
+    IpcClient& operator=(IpcClient&&) = delete;
+
+    bool init();
+    void start();
+    void stop();
+
+    bool send(IpcDaemon dst, IpcCmd cmd, const std::uint8_t* payload, std::size_t len);
+
+    [[nodiscard]] State state() const;
+    [[nodiscard]] bool isConnected() const;
+    [[nodiscard]] int fd() const;
+
 private:
+    bool initEpoll();
+    bool initSocket();
+    bool connectServer();
 
-    bool tryConnect();
-    bool finishConnect();
+    void closeConnection();
 
-    bool setNonBlocking(int fd);
-
-    void handleReadable();
-    void handleWritable();
-
-    void cleanupConnection();
-    void handleDisconnect(const char* reason);
+    void handleEvent(int fd, std::uint32_t events);
+    void handleConnectEvent();
+    void handleRecv();
+    void handleSend();
 
 private:
+    static constexpr int MAX_EVENTS = 32;
 
+private:
     nf::config::IpcConfig m_cfg;
     IpcDaemon m_selfId;
-
-    std::atomic<bool> m_running{false};
-    std::atomic<State> m_state{State::Disconnected};
-
-    std::unique_ptr<IpcConnection> m_conn;
 
     nf::io::Epoll m_epoll;
     std::vector<epoll_event> m_events;
 
-    std::mutex m_txMutex;
+    std::unique_ptr<nf::socket::UnixDomainSocket> m_socket;
+    std::unique_ptr<IpcConnection> m_conn;
 
-    std::mutex m_rxMutex;
-    std::queue<IpcMessage> m_inbox;
+    std::atomic<bool> m_running {false};
+    bool m_initialized {false};
+    State m_state {State::Disconnected};
+
+    mutable std::mutex m_txMutex;
 };
 
-}
+} // namespace nf::ipc

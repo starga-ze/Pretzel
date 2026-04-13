@@ -3,6 +3,7 @@
 #include "config/ConfigTypes.h"
 #include "io/Epoll.h"
 #include "ipc/IpcConnection.h"
+#include "socket/UnixDomainSocket.h"
 
 #include <memory>
 #include <unordered_map>
@@ -18,7 +19,7 @@ public:
     explicit IpcHandler(const nf::config::IpcConfig& cfg);
 
     void handleAccept(
-            UnixDomainSocket& listener,
+            nf::socket::UnixDomainSocket& listener,
             std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
             nf::io::Epoll& epoll);
 

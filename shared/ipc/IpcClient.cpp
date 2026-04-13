@@ -2,16 +2,11 @@
 
 #include "util/Logger.h"
 
-#include <fcntl.h>
+#include <cerrno>
 #include <unistd.h>
-#include <errno.h>
-#include <cstring>
 
+#include <sys/epoll.h>
 #include <sys/socket.h>
-#include <sys/un.h>
-
-static constexpr int MAX_EVENTS = 16;
-static constexpr int RECONNECT_INTERVAL_MS = 1000;
 
 namespace nf::ipc
 {
@@ -26,9 +21,123 @@ IpcClient::IpcClient(const nf::config::IpcConfig& cfg, IpcDaemon selfId)
 IpcClient::~IpcClient()
 {
     stop();
+    closeConnection();
 }
 
 bool IpcClient::init()
+{
+    if (m_initialized)
+        return true;
+
+    if (!initEpoll())
+        return false;
+
+    if (!initSocket())
+        return false;
+
+    if (!connectServer())
+        return false;
+
+    m_initialized = true;
+
+    LOG_INFO("IpcClient initialized path={}", m_cfg.socketPath);
+    return true;
+}
+
+void IpcClient::start()
+{
+    if (!init())
+    {
+        LOG_ERROR("IpcClient: init failed");
+        return;
+    }
+
+    m_running = true;
+
+    LOG_INFO("IpcClient start");
+
+    while (m_running)
+    {
+        const int n = m_epoll.wait(m_events, -1);
+        if (n < 0)
+        {
+            if (errno == EINTR)
+                continue;
+
+            LOG_WARN("IpcClient: epoll wait failed errno={}", errno);
+            continue;
+        }
+
+        for (int i = 0; i < n; ++i)
+        {
+            const int fd = m_events[i].data.fd;
+            const std::uint32_t events = m_events[i].events;
+
+            handleEvent(fd, events);
+        }
+    }
+
+    LOG_INFO("IpcClient stopped");
+}
+
+void IpcClient::stop()
+{
+    m_running = false;
+    m_epoll.wakeup();
+}
+
+bool IpcClient::send(IpcDaemon dst, IpcCmd cmd, const std::uint8_t* payload, std::size_t len)
+{
+    if (!m_conn || !m_socket || m_state != State::Connected)
+    {
+        LOG_WARN("IpcClient: send rejected, not connected");
+        return false;
+    }
+
+    auto frame = buildFrame(m_selfId, dst, cmd, payload, len);
+
+    {
+        std::lock_guard<std::mutex> lock(m_txMutex);
+
+        auto& tx = m_conn->tx();
+        if (tx.writable() < frame.size())
+        {
+            LOG_WARN("IpcClient: tx buffer full writable={} need={}",
+                     tx.writable(),
+                     frame.size());
+            return false;
+        }
+
+        tx.write(frame.data(), frame.size());
+    }
+
+    if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP))
+    {
+        LOG_ERROR("IpcClient: epoll mod add EPOLLOUT failed fd={}", m_socket->fd());
+        closeConnection();
+        return false;
+    }
+
+    m_epoll.wakeup();
+    return true;
+}
+
+IpcClient::State IpcClient::state() const
+{
+    return m_state;
+}
+
+bool IpcClient::isConnected() const
+{
+    return m_state == State::Connected;
+}
+
+int IpcClient::fd() const
+{
+    return m_socket ? m_socket->fd() : -1;
+}
+
+bool IpcClient::initEpoll()
 {
     if (!m_epoll.init())
     {
@@ -39,306 +148,249 @@ bool IpcClient::init()
     return true;
 }
 
-void IpcClient::start()
+bool IpcClient::initSocket()
 {
-    if (!init())
-        return;
-
-    m_running = true;
-
-    LOG_INFO("IpcClient start daemon={}", daemonToStr((uint8_t)m_selfId));
-
-    while (m_running)
-    {
-        if (!m_conn)
-        {
-            tryConnect();
-        }
-
-        int n = m_epoll.wait(m_events, m_conn ? -1 : RECONNECT_INTERVAL_MS);
-
-        if (n <= 0)
-            continue;
-
-        for (int i = 0; i < n; ++i)
-        {
-            int fd = m_events[i].data.fd;
-            uint32_t ev = m_events[i].events;
-
-            if (fd == m_epoll.getEventFd())
-            {
-                m_epoll.drainWakeup();
-                continue;
-            }
-
-            if (!m_conn || fd != m_conn->fd())
-                continue;
-
-            if (ev & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
-            {
-                handleDisconnect("epoll hangup/error");
-                continue;
-            }
-
-            if (m_state == State::Connecting && (ev & EPOLLOUT))
-            {
-                if (!finishConnect())
-                {
-                    handleDisconnect("finishConnect failed");
-                    continue;
-                }
-            }
-
-            if (!m_conn)
-                continue;
-
-            if (ev & EPOLLIN)
-                handleReadable();
-
-            if (ev & EPOLLOUT)
-                handleWritable();
-        }
-    }
-
-    cleanupConnection();
-
-    LOG_INFO("IpcClient stopped daemon={}", daemonToStr((uint8_t)m_selfId));
-}
-
-void IpcClient::stop()
-{
-    m_running = false;
-    m_epoll.wakeup();
-}
-
-bool IpcClient::setNonBlocking(int fd)
-{
-    int flags = ::fcntl(fd, F_GETFL, 0);
-    if (flags < 0)
-        return false;
-
-    return ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
-}
-
-bool IpcClient::tryConnect()
-{
-    if (m_conn)
+    if (m_socket)
         return true;
 
-    int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0)
+    m_socket = std::make_unique<nf::socket::UnixDomainSocket>(m_cfg.socketPath);
+    if (!m_socket)
     {
-        LOG_ERROR("IpcClient: socket failed errno={}", errno);
+        LOG_ERROR("IpcClient: socket allocation failed");
         return false;
     }
-
-    setNonBlocking(fd);
-
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-
-    std::strncpy(addr.sun_path,
-                 m_cfg.socketPath.c_str(),
-                 sizeof(addr.sun_path)-1);
-
-    int rc = ::connect(fd, (sockaddr*)&addr, sizeof(addr));
-
-    if (rc == 0 || errno == EINPROGRESS)
-    {
-        m_conn = std::make_unique<IpcConnection>(
-            fd,
-            m_cfg.rxBufferSize,
-            m_cfg.txBufferSize);
-
-        m_state = rc == 0 ? State::Connected : State::Connecting;
-
-        m_epoll.add(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP);
-
-        LOG_INFO("IpcClient connecting path={}", m_cfg.socketPath);
-
-        return true;
-    }
-
-    ::close(fd);
-    return false;
-}
-
-bool IpcClient::finishConnect()
-{
-    int err = 0;
-    socklen_t len = sizeof(err);
-
-    if (::getsockopt(m_conn->fd(), SOL_SOCKET, SO_ERROR, &err, &len) != 0)
-        return false;
-
-    if (err != 0)
-        return false;
-
-    m_state = State::Connected;
-
-    m_epoll.mod(m_conn->fd(), EPOLLIN | EPOLLRDHUP);
-
-    LOG_INFO("IpcClient connected path={}", m_cfg.socketPath);
 
     return true;
 }
 
-void IpcClient::handleReadable()
+bool IpcClient::connectServer()
 {
-    auto& rx = m_conn->rx();
-
-    while (true)
+    const auto rc = m_socket->connect();
+    if (rc == nf::socket::UnixDomainSocket::ConnectResult::Failed)
     {
-        uint8_t* wptr = rx.writePtr();
-        size_t wlen = rx.writeLen();
-
-        ssize_t r = ::recv(m_conn->fd(), wptr, wlen, 0);
-
-        if (r <= 0)
-        {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-                return;
-
-            handleDisconnect("recv failed");
-            return;
-        }
-
-        rx.produce(r);
-
-        while (true)
-        {
-            size_t frameLen = 0;
-
-            auto fr = IpcFraming::tryExtractFrame(rx, frameLen);
-
-            if (fr == IpcFramingResult::NeedMoreData)
-                break;
-
-            if (fr != IpcFramingResult::Ok)
-            {
-                handleDisconnect("framing error");
-                return;
-            }
-
-            std::vector<uint8_t> frame(frameLen);
-            rx.read(frame.data(), frameLen);
-
-            IpcHeader header{};
-            const uint8_t* payload{};
-            size_t payloadLen{};
-
-            if (!parseFrame(frame, header, payload, payloadLen))
-                continue;
-
-            IpcMessage msg;
-            msg.header = header;
-            msg.payload.assign(payload, payload + payloadLen);
-
-            std::lock_guard lock(m_rxMutex);
-            m_inbox.push(std::move(msg));
-        }
-    }
-}
-
-void IpcClient::handleWritable()
-{
-    std::lock_guard lock(m_txMutex);
-
-    auto& tx = m_conn->tx();
-
-    while (tx.readable() > 0)
-    {
-        const uint8_t* rptr = tx.readPtr();
-        size_t rlen = tx.readLen();
-
-        ssize_t sent = ::send(m_conn->fd(), rptr, rlen, MSG_NOSIGNAL);
-
-        if (sent < 0)
-        {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-                return;
-
-            handleDisconnect("send failed");
-            return;
-        }
-
-        tx.consume(sent);
-    }
-
-    m_epoll.mod(m_conn->fd(), EPOLLIN | EPOLLRDHUP);
-}
-
-bool IpcClient::send(IpcDaemon dst, IpcCmd cmd, const uint8_t* payload, size_t len)
-{
-    if (!m_conn or m_state != State::Connected)
-    {
+        LOG_ERROR("IpcClient: connect failed path={}", m_cfg.socketPath);
         return false;
     }
 
-    auto frame = buildFrame(m_selfId, dst, cmd, payload, len);
+    m_conn = std::make_unique<IpcConnection>(
+        m_socket->fd(),
+        static_cast<std::size_t>(m_cfg.rxBufferSize),
+        static_cast<std::size_t>(m_cfg.txBufferSize));
 
-    std::lock_guard lock(m_txMutex);
-
-    auto& tx = m_conn->tx();
-
-    if (tx.writable() < frame.size())
-        return false;
-
-    tx.write(frame.data(), frame.size());
-
-    m_epoll.mod(m_conn->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP);
-
-    return true;
-}
-
-bool IpcClient::send(IpcDaemon dst, IpcCmd cmd, const std::vector<uint8_t>& payload)
-{
-    return send(dst, cmd, payload.data(), payload.size());
-}
-
-bool IpcClient::sendString(IpcDaemon dst, IpcCmd cmd, const std::string& s)
-{
-    return send(dst, cmd, (uint8_t*)s.data(), s.size());
-}
-
-bool IpcClient::pollMessage(IpcMessage& msg)
-{
-    std::lock_guard lock(m_rxMutex);
-
-    if (m_inbox.empty())
-        return false;
-
-    msg = std::move(m_inbox.front());
-    m_inbox.pop();
-
-    return true;
-}
-
-bool IpcClient::isConnected() const
-{
-    return m_state == State::Connected && m_conn != nullptr;
-}
-
-void IpcClient::cleanupConnection()
-{
     if (!m_conn)
-        return;
+    {
+        LOG_ERROR("IpcClient: connection allocation failed");
+        closeConnection();
+        return false;
+    }
 
-    int fd = m_conn->fd();
+    if (rc == nf::socket::UnixDomainSocket::ConnectResult::Connected)
+    {
+        m_state = State::Connected;
 
-    m_epoll.del(fd);
-    ::close(fd);
+        if (!m_epoll.add(m_socket->fd(), EPOLLIN | EPOLLRDHUP))
+        {
+            LOG_ERROR("IpcClient: epoll add connected fd failed fd={}", m_socket->fd());
+            closeConnection();
+            return false;
+        }
+
+        LOG_INFO("IpcClient: connected immediately fd={}", m_socket->fd());
+        return true;
+    }
+
+    m_state = State::Connecting;
+
+    if (!m_epoll.add(m_socket->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP))
+    {
+        LOG_ERROR("IpcClient: epoll add connecting fd failed fd={}", m_socket->fd());
+        closeConnection();
+        return false;
+    }
+
+    LOG_INFO("IpcClient: connecting fd={}", m_socket->fd());
+    return true;
+}
+
+void IpcClient::closeConnection()
+{
+    if (m_socket && m_socket->fd() >= 0)
+        m_epoll.del(m_socket->fd());
 
     m_conn.reset();
+
+    if (m_socket)
+        m_socket->close();
 
     m_state = State::Disconnected;
 }
 
-void IpcClient::handleDisconnect(const char* reason)
+void IpcClient::handleEvent(int fd, std::uint32_t events)
 {
-    LOG_WARN("IpcClient disconnect reason={}", reason);
+    if (fd == m_epoll.getEventFd())
+    {
+        m_epoll.drainWakeup();
+        return;
+    }
 
-    cleanupConnection();
+    if (!m_socket || fd != m_socket->fd())
+    {
+        LOG_WARN("IpcClient: unknown fd event fd={} events=0x{:x}", fd, events);
+        return;
+    }
+
+    const bool isClose = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
+    const bool isRecv  = (events & EPOLLIN) != 0;
+    const bool isSend  = (events & EPOLLOUT) != 0;
+
+    if (isClose)
+    {
+        LOG_INFO("IpcClient: close event fd={} events=0x{:x}", fd, events);
+        closeConnection();
+        return;
+    }
+
+    if (m_state == State::Connecting)
+    {
+        if (isRecv || isSend)
+            handleConnectEvent();
+
+        return;
+    }
+
+    if (m_state != State::Connected)
+        return;
+
+    if (isRecv)
+        handleRecv();
+
+    if (isSend)
+        handleSend();
 }
 
+void IpcClient::handleConnectEvent()
+{
+    if (!m_socket)
+        return;
+
+    int soError = 0;
+    socklen_t len = sizeof(soError);
+
+    if (::getsockopt(m_socket->fd(), SOL_SOCKET, SO_ERROR, &soError, &len) != 0)
+    {
+        LOG_ERROR("IpcClient: getsockopt(SO_ERROR) failed fd={} errno={}",
+                  m_socket->fd(),
+                  errno);
+        closeConnection();
+        return;
+    }
+
+    if (soError != 0)
+    {
+        LOG_ERROR("IpcClient: connect completion failed fd={} so_error={}",
+                  m_socket->fd(),
+                  soError);
+        closeConnection();
+        return;
+    }
+
+    m_state = State::Connected;
+
+    if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLRDHUP))
+    {
+        LOG_ERROR("IpcClient: epoll mod after connect failed fd={}", m_socket->fd());
+        closeConnection();
+        return;
+    }
+
+    LOG_INFO("IpcClient: connected fd={}", m_socket->fd());
 }
+
+void IpcClient::handleRecv()
+{
+    if (!m_conn || !m_socket)
+        return;
+
+    int ioErrno = 0;
+    const IoResult rc = m_conn->recv(ioErrno);
+
+    switch (rc)
+    {
+    case IoResult::Ok:
+    case IoResult::WouldBlock:
+        break;
+
+    case IoResult::PeerClosed:
+        LOG_INFO("IpcClient: peer closed fd={}", m_socket->fd());
+        closeConnection();
+        return;
+
+    case IoResult::BufferFull:
+        LOG_WARN("IpcClient: rx buffer full fd={}, closing", m_socket->fd());
+        closeConnection();
+        return;
+
+    case IoResult::Error:
+        LOG_ERROR("IpcClient: recv failed fd={} errno={}", m_socket->fd(), ioErrno);
+        closeConnection();
+        return;
+    }
+
+    auto& rx = m_conn->rx();
+    if (rx.readable() > 0)
+    {
+        LOG_DEBUG("IpcClient: received {} bytes from server", rx.readable());
+
+        // TODO:
+        // frame parser 붙이면 여기서 처리
+        // 현재는 transport layer 검증 용도로 모두 consume
+        rx.consume(rx.readable());
+    }
+}
+
+void IpcClient::handleSend()
+{
+    if (!m_conn || !m_socket)
+        return;
+
+    std::lock_guard<std::mutex> lock(m_txMutex);
+
+    int ioErrno = 0;
+    const IoResult rc = m_conn->send(ioErrno);
+
+    switch (rc)
+    {
+    case IoResult::Ok:
+        if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLRDHUP))
+        {
+            LOG_ERROR("IpcClient: epoll mod remove EPOLLOUT failed fd={}", m_socket->fd());
+            closeConnection();
+        }
+        return;
+
+    case IoResult::WouldBlock:
+        if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP))
+        {
+            LOG_ERROR("IpcClient: epoll mod keep EPOLLOUT failed fd={}", m_socket->fd());
+            closeConnection();
+        }
+        return;
+
+    case IoResult::PeerClosed:
+        LOG_INFO("IpcClient: peer closed while flushing fd={}", m_socket->fd());
+        closeConnection();
+        return;
+
+    case IoResult::BufferFull:
+        LOG_ERROR("IpcClient: unexpected BufferFull during flush fd={}", m_socket->fd());
+        closeConnection();
+        return;
+
+    case IoResult::Error:
+        LOG_ERROR("IpcClient: flushTx failed fd={} errno={}", m_socket->fd(), ioErrno);
+        closeConnection();
+        return;
+    }
+}
+
+} // namespace nf::ipc

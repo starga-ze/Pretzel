@@ -11,13 +11,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-namespace nf::ipcd
+namespace nf::socket
 {
-
-namespace
-{
-constexpr int LISTEN_BACKLOG = 64;
-}
 
 UnixDomainSocket::UnixDomainSocket(std::string socketPath)
     : m_socketPath(std::move(socketPath))
@@ -54,20 +49,10 @@ bool UnixDomainSocket::open()
         return false;
     }
 
-    LOG_INFO("UnixDomainSocket ready path={} fd={}", m_socketPath, m_fd);
+    m_shouldUnlinkOnClose = true;
+
+    LOG_INFO("UnixDomainSocket server ready path={} fd={}", m_socketPath, m_fd);
     return true;
-}
-
-void UnixDomainSocket::close()
-{
-    if (m_fd >= 0)
-    {
-        ::close(m_fd);
-        m_fd = -1;
-    }
-
-    if (!m_socketPath.empty())
-        ::unlink(m_socketPath.c_str());
 }
 
 int UnixDomainSocket::accept()
@@ -104,12 +89,69 @@ int UnixDomainSocket::accept()
     }
 }
 
-int UnixDomainSocket::fd()
+UnixDomainSocket::ConnectResult UnixDomainSocket::connect()
+{
+    if (m_fd >= 0)
+    {
+        LOG_WARN("UnixDomainSocket already opened fd={}", m_fd);
+        errno = EALREADY;
+        return ConnectResult::Failed;
+    }
+
+    if (!createSocket())
+        return ConnectResult::Failed;
+
+    sockaddr_un addr {};
+    addr.sun_family = AF_UNIX;
+
+    if (m_socketPath.size() >= sizeof(addr.sun_path))
+    {
+        LOG_ERROR("UnixDomainSocket: socket path too long path={}", m_socketPath);
+        close();
+        errno = ENAMETOOLONG;
+        return ConnectResult::Failed;
+    }
+
+    std::strncpy(addr.sun_path, m_socketPath.c_str(), sizeof(addr.sun_path) - 1);
+
+    const int rc = ::connect(m_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+    if (rc == 0)
+    {
+        LOG_INFO("UnixDomainSocket: connected immediately path={} fd={}", m_socketPath, m_fd);
+        return ConnectResult::Connected;
+    }
+
+    if (errno == EINPROGRESS)
+    {
+        LOG_INFO("UnixDomainSocket: connect in progress path={} fd={}", m_socketPath, m_fd);
+        return ConnectResult::InProgress;
+    }
+
+    LOG_ERROR("UnixDomainSocket: connect failed path={} errno={}", m_socketPath, errno);
+    close();
+    return ConnectResult::Failed;
+}
+
+void UnixDomainSocket::close()
+{
+    if (m_fd >= 0)
+    {
+        ::close(m_fd);
+        m_fd = -1;
+    }
+
+    if (m_shouldUnlinkOnClose && !m_socketPath.empty())
+        ::unlink(m_socketPath.c_str());
+
+    m_shouldUnlinkOnClose = false;
+}
+
+int UnixDomainSocket::fd() const
 {
     return m_fd;
 }
 
-const std::string& UnixDomainSocket::socketPath()
+const std::string& UnixDomainSocket::socketPath() const
 {
     return m_socketPath;
 }
@@ -125,9 +167,9 @@ bool UnixDomainSocket::createSocket()
 
     if (!setNonBlocking(m_fd))
     {
-        LOG_ERROR("UnixDomainSocket: setNonBlocking listen fd failed fd={} errno={}",
-                  m_fd,
-                  errno);
+        LOG_ERROR("UnixDomainSocket: setNonBlocking failed fd={} errno={}", m_fd, errno);
+        ::close(m_fd);
+        m_fd = -1;
         return false;
     }
 
@@ -136,7 +178,7 @@ bool UnixDomainSocket::createSocket()
 
 bool UnixDomainSocket::setNonBlocking(int fd)
 {
-    int flags = ::fcntl(fd, F_GETFL, 0);
+    const int flags = ::fcntl(fd, F_GETFL, 0);
     if (flags < 0)
         return false;
 
@@ -176,4 +218,4 @@ bool UnixDomainSocket::listenSocket()
     return true;
 }
 
-} // namespace nf::ipcd
+} // namespace nf::socket
