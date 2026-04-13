@@ -2,7 +2,7 @@
 
 #include "core/Core.h"
 #include "util/ThreadManager.h"
-#include "ipc/IpcServer.h"
+#include "net/ipc/IpcServer.h"
 #include "config/ConfigTypes.h"
 
 #include <memory>
