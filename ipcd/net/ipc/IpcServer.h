@@ -34,8 +34,7 @@ public:
 
 private:
     bool initEpoll();
-    bool initListener();
-    bool registerListenFd();
+    bool initListenSocket();
 
     void handleEvent(int fd, std::uint32_t events);
     void closeConnection(int fd);

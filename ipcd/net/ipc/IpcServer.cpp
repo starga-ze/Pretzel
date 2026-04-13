@@ -37,10 +37,7 @@ bool IpcServer::init()
     if (!initEpoll())
         return false;
 
-    if (!initListener())
-        return false;
-
-    if (!registerListenFd())
+    if (!initListenSocket())
         return false;
 
     m_initialized = true;
@@ -125,7 +122,7 @@ bool IpcServer::initEpoll()
     return true;
 }
 
-bool IpcServer::initListener()
+bool IpcServer::initListenSocket()
 {
     m_listener = std::make_unique<UnixDomainSocket>(m_cfg.socketPath);
     if (!m_listener)
@@ -140,17 +137,6 @@ bool IpcServer::initListener()
         return false;
     }
 
-    return true;
-}
-
-bool IpcServer::registerListenFd()
-{
-    if (!m_listener)
-    {
-        LOG_ERROR("IpcServer: listener not initialized");
-        return false;
-    }
-
     if (!m_epoll.add(m_listener->fd(), EPOLLIN | EPOLLRDHUP))
     {
         LOG_ERROR("IpcServer: epoll add listen fd failed fd={}", m_listener->fd());
@@ -158,6 +144,7 @@ bool IpcServer::registerListenFd()
     }
 
     LOG_INFO("IpcServer: listen fd registered fd={}", m_listener->fd());
+
     return true;
 }
 
@@ -169,15 +156,19 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
         return;
     }
 
+    const bool isCloseEvent = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
+    const bool isReadable = (events & EPOLLIN) != 0;
+    const bool isWritable = (events & EPOLLOUT) != 0;
+
     if (m_listener && fd == m_listener->fd())
     {
-        if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
+        if (isCloseEvent)
         {
             LOG_ERROR("IpcServer: listen fd abnormal events=0x{:x}", events);
             return;
         }
 
-        if (events & EPOLLIN)
+        if (isReadable)
             m_handler.handleAccept(*m_listener, m_connections, m_epoll);
 
         return;
@@ -190,17 +181,17 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
         return;
     }
 
-    if (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP))
+    if (isCloseEvent)
     {
         LOG_INFO("IpcServer: connection close event fd={} events=0x{:x}", fd, events);
         closeConnection(fd);
         return;
     }
 
-    if (events & EPOLLIN)
+    if (isReadable)
         m_handler.handleReadable(fd, m_connections, m_epoll);
 
-    if (events & EPOLLOUT)
+    if (isWritable)
         m_handler.handleWritable(fd, m_connections, m_epoll);
 }
 
@@ -213,9 +204,7 @@ void IpcServer::closeConnection(int fd)
     m_epoll.del(fd);
     m_connections.erase(it);
 
-    LOG_INFO("IpcServer: connection removed fd={} total={}",
-             fd,
-             m_connections.size());
+    LOG_INFO("IpcServer: connection removed fd={} total={}", fd, m_connections.size());
 }
 
 } // namespace nf::ipcd
