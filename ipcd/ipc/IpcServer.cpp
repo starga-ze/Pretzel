@@ -9,10 +9,11 @@
 namespace nf::ipcd
 {
 
-IpcServer::IpcServer(const nf::config::IpcConfig& cfg)
+IpcServer::IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId)
     : m_cfg(cfg),
-      m_handler(cfg),
-      m_events(MAX_EVENTS)
+      m_selfId(selfId),
+      m_events(MAX_EVENTS),
+      m_handler(cfg)
 {
 }
 
@@ -42,7 +43,8 @@ bool IpcServer::init()
 
     m_initialized = true;
 
-    LOG_INFO("IpcServer initialized path={}", m_cfg.socketPath);
+    LOG_INFO("IpcServer initialized path={}, self={}", m_cfg.socketPath, 
+            nf::ipc::IpcProtocol::daemonToStr(m_selfId));
     return true;
 }
 
@@ -88,16 +90,26 @@ void IpcServer::stop()
     m_epoll.wakeup();
 }
 
-bool IpcServer::send(int fd, const std::uint8_t* data, std::size_t len)
+bool IpcServer::send(int fd, const nf::ipc::IpcMessage& msg)
 {
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
         return false;
 
-    auto& conn = *it->second;
-    if (!conn.write(data, len))
+    const std::vector<std::uint8_t> frame = m_codec.encode(msg);
+    if (frame.empty())
     {
-        LOG_WARN("IpcServer: tx buffer full fd={} len={}", fd, len);
+        LOG_WARN("IpcServer: encode failed fd={} cmd={} payload={}bytes",
+                 fd,
+                 nf::ipc::IpcProtocol::cmdToStr(msg.cmd),
+                 msg.payload.size());
+        return false;
+    }
+
+    auto& conn = *it->second;
+    if (!conn.write(frame))
+    {
+        LOG_WARN("IpcServer: tx buffer full fd={} frame={}bytes", fd, frame.size());
         return false;
     }
 
@@ -107,6 +119,8 @@ bool IpcServer::send(int fd, const std::uint8_t* data, std::size_t len)
         m_handler.closeConnection(fd, m_connections, m_epoll);
         return false;
     }
+
+    LOG_DEBUG("Tx Ipc Message dump:\n{}", msg.dump());
 
     return true;
 }

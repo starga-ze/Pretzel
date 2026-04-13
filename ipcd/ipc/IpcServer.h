@@ -1,10 +1,14 @@
 #pragma once
 
 #include "config/ConfigTypes.h"
-#include "ipc/IpcHandler.h"
-#include "socket/UnixDomainSocket.h"
 #include "io/Epoll.h"
+#include "socket/UnixDomainSocket.h"
+
+#include "ipc/IpcServerHandler.h"
+#include "ipc/IpcCodec.h"
 #include "ipc/IpcConnection.h"
+#include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 
 #include <atomic>
 #include <cstddef>
@@ -21,7 +25,7 @@ namespace nf::ipcd
 class IpcServer
 {
 public:
-    explicit IpcServer(const nf::config::IpcConfig& cfg);
+    explicit IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId);
     ~IpcServer();
 
     IpcServer(const IpcServer&) = delete;
@@ -31,7 +35,7 @@ public:
     void start();
     void stop();
 
-    bool send(int fd, const std::uint8_t* data, std::size_t len);
+    bool send(int fd, const nf::ipc::IpcMessage& msg);
 
 private:
     bool initEpoll();
@@ -44,12 +48,16 @@ private:
 
 private:
     nf::config::IpcConfig m_cfg;
+    nf::ipc::IpcDaemon m_selfId;
+
     nf::io::Epoll m_epoll;
-    IpcHandler m_handler;
+    std::vector<epoll_event> m_events;
+
+    nf::ipc::IpcCodec m_codec;
+    IpcServerHandler m_handler;
 
     std::unique_ptr<nf::socket::UnixDomainSocket> m_listener;
     std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>> m_connections;
-    std::vector<epoll_event> m_events;
 
     std::atomic<bool> m_running{false};
     bool m_initialized{false};

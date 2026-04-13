@@ -89,7 +89,7 @@ bool CoreIpc::initThreadManager()
 
 void CoreIpc::initIpcServer()
 {
-    m_ipcServer = std::make_unique<IpcServer>(m_ipcConfig);
+    m_ipcServer = std::make_unique<IpcServer>(m_ipcConfig, nf::ipc::IpcDaemon::Ipcd);
 }
 
 void CoreIpc::startThreads()

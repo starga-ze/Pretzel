@@ -29,10 +29,12 @@ private:
     void initConfig();
     void initLogger();
     bool initThreadManager();
-
+    
     void initIpcClient();
 
     void startThreads();
+
+    void sendClientHello();
 
     LoggerConfig m_loggerConfig;
     IpcConfig m_ipcConfig;

@@ -40,7 +40,9 @@ bool IpcClient::init()
 
     m_initialized = true;
 
-    LOG_INFO("IpcClient initialized path={}", m_cfg.socketPath);
+    LOG_INFO("IpcClient initialized path={} self={}",
+             m_cfg.socketPath,
+             IpcProtocol::daemonToStr(m_selfId));
     return true;
 }
 
@@ -86,7 +88,7 @@ void IpcClient::stop()
     m_epoll.wakeup();
 }
 
-bool IpcClient::send(IpcDaemon dst, IpcCmd cmd, const std::uint8_t* payload, std::size_t len)
+bool IpcClient::send(const IpcMessage& msg)
 {
     if (!m_conn || !m_socket || m_state != State::Connected)
     {
@@ -94,21 +96,19 @@ bool IpcClient::send(IpcDaemon dst, IpcCmd cmd, const std::uint8_t* payload, std
         return false;
     }
 
-    auto frame = buildFrame(m_selfId, dst, cmd, payload, len);
-
+    const std::vector<std::uint8_t> frame = m_codec.encode(msg);
+    if (frame.empty())
     {
-        std::lock_guard<std::mutex> lock(m_txMutex);
+        LOG_WARN("IpcClient: encode failed cmd={} payload={}bytes",
+                 IpcProtocol::cmdToStr(msg.cmd),
+                 msg.payload.size());
+        return false;
+    }
 
-        auto& tx = m_conn->tx();
-        if (tx.writable() < frame.size())
-        {
-            LOG_WARN("IpcClient: tx buffer full writable={} need={}",
-                     tx.writable(),
-                     frame.size());
-            return false;
-        }
-
-        tx.write(frame.data(), frame.size());
+    if (!m_conn->write(frame))
+    {
+        LOG_WARN("IpcClient: tx buffer full frame={}bytes", frame.size());
+        return false;
     }
 
     if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP))
@@ -118,8 +118,40 @@ bool IpcClient::send(IpcDaemon dst, IpcCmd cmd, const std::uint8_t* payload, std
         return false;
     }
 
-    m_epoll.wakeup();
+    LOG_DEBUG("Tx Ipc Message dump:\n{}", msg.dump());
+
     return true;
+}
+
+bool IpcClient::send(IpcDaemon dst,
+                     IpcCmd cmd,
+                     const std::uint8_t* payload,
+                     std::size_t len,
+                     std::uint8_t flags)
+{
+    IpcMessage msg;
+    msg.src = m_selfId;
+    msg.dst = dst;
+    msg.cmd = cmd;
+    msg.flags = flags;
+    msg.seqNo = nextSeqNo();
+
+    if (payload && len > 0)
+        msg.payload.assign(payload, payload + len);
+
+    return send(msg);
+}
+
+bool IpcClient::send(IpcDaemon dst,
+                     IpcCmd cmd,
+                     const std::vector<std::uint8_t>& payload,
+                     std::uint8_t flags)
+{
+    return send(dst,
+                cmd,
+                payload.empty() ? nullptr : payload.data(),
+                payload.size(),
+                flags);
 }
 
 IpcClient::State IpcClient::state() const
@@ -258,14 +290,26 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
         return;
     }
 
-    if (m_state != State::Connected)
+    if (m_state != State::Connected || !m_conn)
         return;
 
     if (isRecv)
-        handleRecv();
+    {
+        if (!m_handler.handleRecv(m_socket->fd(), *m_conn, m_epoll))
+        {
+            closeConnection();
+            return;
+        }
+    }
 
     if (isSend)
-        handleSend();
+    {
+        if (!m_handler.handleSend(m_socket->fd(), *m_conn, m_epoll))
+        {
+            closeConnection();
+            return;
+        }
+    }
 }
 
 void IpcClient::handleConnectEvent()
@@ -306,91 +350,9 @@ void IpcClient::handleConnectEvent()
     LOG_INFO("IpcClient: connected fd={}", m_socket->fd());
 }
 
-void IpcClient::handleRecv()
+std::uint32_t IpcClient::nextSeqNo()
 {
-    if (!m_conn || !m_socket)
-        return;
-
-    int ioErrno = 0;
-    const IoResult rc = m_conn->recv(ioErrno);
-
-    switch (rc)
-    {
-    case IoResult::Ok:
-    case IoResult::WouldBlock:
-        break;
-
-    case IoResult::PeerClosed:
-        LOG_INFO("IpcClient: peer closed fd={}", m_socket->fd());
-        closeConnection();
-        return;
-
-    case IoResult::BufferFull:
-        LOG_WARN("IpcClient: rx buffer full fd={}, closing", m_socket->fd());
-        closeConnection();
-        return;
-
-    case IoResult::Error:
-        LOG_ERROR("IpcClient: recv failed fd={} errno={}", m_socket->fd(), ioErrno);
-        closeConnection();
-        return;
-    }
-
-    auto& rx = m_conn->rx();
-    if (rx.readable() > 0)
-    {
-        LOG_DEBUG("IpcClient: received {} bytes from server", rx.readable());
-
-        // TODO:
-        // frame parser 붙이면 여기서 처리
-        // 현재는 transport layer 검증 용도로 모두 consume
-        rx.consume(rx.readable());
-    }
-}
-
-void IpcClient::handleSend()
-{
-    if (!m_conn || !m_socket)
-        return;
-
-    std::lock_guard<std::mutex> lock(m_txMutex);
-
-    int ioErrno = 0;
-    const IoResult rc = m_conn->send(ioErrno);
-
-    switch (rc)
-    {
-    case IoResult::Ok:
-        if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLRDHUP))
-        {
-            LOG_ERROR("IpcClient: epoll mod remove EPOLLOUT failed fd={}", m_socket->fd());
-            closeConnection();
-        }
-        return;
-
-    case IoResult::WouldBlock:
-        if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP))
-        {
-            LOG_ERROR("IpcClient: epoll mod keep EPOLLOUT failed fd={}", m_socket->fd());
-            closeConnection();
-        }
-        return;
-
-    case IoResult::PeerClosed:
-        LOG_INFO("IpcClient: peer closed while flushing fd={}", m_socket->fd());
-        closeConnection();
-        return;
-
-    case IoResult::BufferFull:
-        LOG_ERROR("IpcClient: unexpected BufferFull during flush fd={}", m_socket->fd());
-        closeConnection();
-        return;
-
-    case IoResult::Error:
-        LOG_ERROR("IpcClient: flushTx failed fd={} errno={}", m_socket->fd(), ioErrno);
-        closeConnection();
-        return;
-    }
+    return m_seqNo++;
 }
 
 } // namespace nf::ipc

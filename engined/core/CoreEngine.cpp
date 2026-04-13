@@ -102,15 +102,15 @@ void CoreEngine::startThreads()
 
 void CoreEngine::sendClientHello()
 {
-    std::string name = nf::ipc::daemonToStr(
-        (uint8_t)nf::ipc::IpcDaemon::Engined
+    std::string name = nf::ipc::IpcProtocol::daemonToStr(
+        nf::ipc::IpcDaemon::Engined
     );
 
-    m_ipcClient->sendString(
+    m_ipcClient->send(
         nf::ipc::IpcDaemon::Ipcd,
         nf::ipc::IpcCmd::ClientHello,
-        name
+        reinterpret_cast<const std::uint8_t*>(name.data()),
+        name.size()
     );
 }
-
 } // namespace nf::ipcd
