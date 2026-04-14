@@ -127,6 +127,7 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
         rx.consume(frameSize);
 
         LOG_DEBUG("Rx Ipc Message dump:\n{}", msg.dump());
+
         onMessage(fd, msg);
     }
 }
