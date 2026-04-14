@@ -106,11 +106,19 @@ void CoreEngine::sendClientHello()
         nf::ipc::IpcDaemon::Engined
     );
 
-    m_ipcClient->send(
+    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
+        nf::ipc::IpcDaemon::Engined,
         nf::ipc::IpcDaemon::Ipcd,
         nf::ipc::IpcCmd::ClientHello,
+        0,
+        static_cast<std::uint8_t>(nf::ipc::IpcFlag::Request));
+
+    nf::ipc::IpcMessage msg(header);
+    msg.setPayload(
         reinterpret_cast<const std::uint8_t*>(name.data()),
-        name.size()
-    );
+        name.size());
+
+    m_ipcClient->send(msg);
 }
+
 } // namespace nf::ipcd

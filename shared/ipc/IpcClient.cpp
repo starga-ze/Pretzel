@@ -100,8 +100,8 @@ bool IpcClient::send(const IpcMessage& msg)
     if (frame.empty())
     {
         LOG_WARN("IpcClient: encode failed cmd={} payload={}bytes",
-                 IpcProtocol::cmdToStr(msg.cmd),
-                 msg.payload.size());
+                 IpcProtocol::cmdToStr(msg.getCmd()),
+                 msg.getPayloadLen());
         return false;
     }
 
@@ -121,37 +121,6 @@ bool IpcClient::send(const IpcMessage& msg)
     LOG_DEBUG("Tx Ipc Message dump:\n{}", msg.dump());
 
     return true;
-}
-
-bool IpcClient::send(IpcDaemon dst,
-                     IpcCmd cmd,
-                     const std::uint8_t* payload,
-                     std::size_t len,
-                     std::uint8_t flags)
-{
-    IpcMessage msg;
-    msg.src = m_selfId;
-    msg.dst = dst;
-    msg.cmd = cmd;
-    msg.flags = flags;
-    msg.seqNo = nextSeqNo();
-
-    if (payload && len > 0)
-        msg.payload.assign(payload, payload + len);
-
-    return send(msg);
-}
-
-bool IpcClient::send(IpcDaemon dst,
-                     IpcCmd cmd,
-                     const std::vector<std::uint8_t>& payload,
-                     std::uint8_t flags)
-{
-    return send(dst,
-                cmd,
-                payload.empty() ? nullptr : payload.data(),
-                payload.size(),
-                flags);
 }
 
 IpcClient::State IpcClient::state() const

@@ -101,8 +101,8 @@ bool IpcServer::send(int fd, const nf::ipc::IpcMessage& msg)
     {
         LOG_WARN("IpcServer: encode failed fd={} cmd={} payload={}bytes",
                  fd,
-                 nf::ipc::IpcProtocol::cmdToStr(msg.cmd),
-                 msg.payload.size());
+                 nf::ipc::IpcProtocol::cmdToStr(msg.getCmd()),
+                 msg.getPayloadLen());
         return false;
     }
 

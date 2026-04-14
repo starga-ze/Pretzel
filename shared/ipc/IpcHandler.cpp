@@ -87,7 +87,7 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 
     while (true)
     {
-        if (rx.readable() < sizeof(std::uint16_t))
+        if (rx.readable() < sizeof(nf::ipc::IpcWireHeader))
             return true;
 
         const std::uint8_t* data = rx.readPtr();

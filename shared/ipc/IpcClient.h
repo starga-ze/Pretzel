@@ -47,17 +47,6 @@ public:
 
     bool send(const IpcMessage& msg);
 
-    bool send(IpcDaemon dst,
-              IpcCmd cmd,
-              const std::uint8_t* payload,
-              std::size_t len,
-              std::uint8_t flags = static_cast<std::uint8_t>(IpcFlag::Request));
-
-    bool send(IpcDaemon dst,
-              IpcCmd cmd,
-              const std::vector<std::uint8_t>& payload,
-              std::uint8_t flags = static_cast<std::uint8_t>(IpcFlag::Request));
-
     State state() const;
     bool isConnected() const;
     int fd() const;
