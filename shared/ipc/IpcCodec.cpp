@@ -7,24 +7,24 @@ namespace nf::ipc
 
 std::vector<std::uint8_t> IpcCodec::encode(const IpcMessage& msg) const
 {
-    const std::size_t payloadLen = msg.getPayloadLen();
-    const std::size_t frameLen = sizeof(IpcWireHeader) + payloadLen;
+    constexpr std::size_t headerLen = sizeof(IpcWireHeader);
 
-    if (frameLen > IPC_MAX_FRAME_SIZE)
+    const std::size_t payloadLen = msg.getPayloadLen();
+    if (payloadLen > IPC_MAX_FRAME_SIZE - headerLen)
         return {};
+
+    const std::size_t frameLen = headerLen + payloadLen;
 
     std::vector<std::uint8_t> out(frameLen);
 
     IpcWireHeader wire = msg.toWireHeader();
     IpcWireHeader wireNet = IpcProtocol::hostToNet(wire);
 
-    std::memcpy(out.data(), &wireNet, sizeof(wireNet));
+    std::memcpy(out.data(), &wireNet, headerLen);
 
     if (payloadLen > 0)
     {
-        std::memcpy(out.data() + sizeof(IpcWireHeader),
-                    msg.getPayload().data(),
-                    payloadLen);
+        std::memcpy(out.data() + headerLen, msg.getPayload().data(), payloadLen);
     }
 
     return out;
@@ -32,11 +32,13 @@ std::vector<std::uint8_t> IpcCodec::encode(const IpcMessage& msg) const
 
 IpcDecodeResult IpcCodec::decode(const std::vector<std::uint8_t>& frame, IpcMessage& out) const
 {
-    if (frame.size() < sizeof(IpcWireHeader))
+    constexpr std::size_t headerLen = sizeof(IpcWireHeader);
+
+    if (frame.size() < headerLen)
         return IpcDecodeResult::NeedMoreData;
 
-    IpcWireHeader wireNet {};
-    std::memcpy(&wireNet, frame.data(), sizeof(IpcWireHeader));
+    IpcWireHeader wireNet{};
+    std::memcpy(&wireNet, frame.data(), headerLen);
 
     const IpcWireHeader wire = IpcProtocol::netToHost(wireNet);
 
@@ -46,10 +48,10 @@ IpcDecodeResult IpcCodec::decode(const std::vector<std::uint8_t>& frame, IpcMess
     if (wire.reserved != 0)
         return IpcDecodeResult::InvalidFrame;
 
-    const std::size_t totalLen = sizeof(IpcWireHeader) + wire.payloadLen;
-
-    if (totalLen > IPC_MAX_FRAME_SIZE)
+    if (wire.payloadLen > IPC_MAX_FRAME_SIZE - headerLen)
         return IpcDecodeResult::TooLarge;
+
+    const std::size_t totalLen = headerLen + wire.payloadLen;
 
     if (frame.size() < totalLen)
         return IpcDecodeResult::NeedMoreData;
@@ -57,49 +59,48 @@ IpcDecodeResult IpcCodec::decode(const std::vector<std::uint8_t>& frame, IpcMess
     if (frame.size() != totalLen)
         return IpcDecodeResult::InvalidFrame;
 
-    std::vector<std::uint8_t> payload(wire.payloadLen);
-    if (wire.payloadLen > 0)
-    {
-        std::memcpy(payload.data(),
-                    frame.data() + sizeof(IpcWireHeader),
-                    wire.payloadLen);
-    }
-
-    IpcHeader header = IpcHeader::build(
-        static_cast<IpcDaemon>(wire.src),
-        static_cast<IpcDaemon>(wire.dst),
-        static_cast<IpcCmd>(wire.cmd),
-        wire.seqNo,
-        wire.flags);
+    IpcHeader header = IpcHeader::build(static_cast<IpcDaemon>(wire.src), static_cast<IpcDaemon>(wire.dst),
+                                        static_cast<IpcCmd>(wire.cmd), wire.seqNo, wire.flags);
 
     header.version = wire.version;
+
+    std::vector<std::uint8_t> payload;
+    if (wire.payloadLen > 0)
+    {
+        payload.resize(wire.payloadLen);
+        std::memcpy(payload.data(), frame.data() + headerLen, wire.payloadLen);
+    }
 
     out = IpcMessage(std::move(header), std::move(payload));
     return IpcDecodeResult::Ok;
 }
 
-std::size_t IpcCodec::peekFrameSize(const std::uint8_t* data, std::size_t len) const
+IpcPeekResult IpcCodec::peekFrameSize(const std::uint8_t* data, 
+        std::size_t len, std::size_t& outFrameSize) const
 {
-    if (!data || len < sizeof(IpcWireHeader))
-        return 0;
+    constexpr std::size_t headerLen = sizeof(IpcWireHeader);
 
-    IpcWireHeader wireNet {};
-    std::memcpy(&wireNet, data, sizeof(IpcWireHeader));
+    outFrameSize = 0;
+
+    if (!data || len < headerLen)
+        return IpcPeekResult::NeedMoreData;
+
+    IpcWireHeader wireNet{};
+    std::memcpy(&wireNet, data, headerLen);
 
     const IpcWireHeader wire = IpcProtocol::netToHost(wireNet);
 
     if (wire.version != IPC_PROTOCOL_VERSION)
-        return 0;
+        return IpcPeekResult::InvalidFrame;
 
     if (wire.reserved != 0)
-        return 0;
+        return IpcPeekResult::InvalidFrame;
 
-    const std::size_t frameSize = sizeof(IpcWireHeader) + wire.payloadLen;
+    if (wire.payloadLen > IPC_MAX_FRAME_SIZE - headerLen)
+        return IpcPeekResult::InvalidFrame;
 
-    if (frameSize > IPC_MAX_FRAME_SIZE)
-        return 0;
-
-    return frameSize;
+    outFrameSize = headerLen + wire.payloadLen;
+    return IpcPeekResult::Ok;
 }
 
 } // namespace nf::ipc
