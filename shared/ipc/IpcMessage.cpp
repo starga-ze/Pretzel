@@ -1,82 +1,209 @@
 #include "ipc/IpcMessage.h"
 
+#include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
+#include <utility>
 
 namespace nf::ipc
 {
 
-IpcMessage::IpcMessage() : 
-    version(IPC_PROTOCOL_VERSION), 
-    src(IpcDaemon::Unknown), 
-    dst(IpcDaemon::Unknown),
-    flags(static_cast<std::uint8_t>(IpcFlag::None)), 
-    cmd(IpcCmd::Unknown), 
-    seqNo(0)
+IpcMessage::IpcMessage()
+    : m_header(),
+      m_payload()
 {
 }
 
-IpcMessage::IpcMessage(IpcDaemon srcDaemon, IpcDaemon dstDaemon, IpcCmd command, std::uint8_t messageFlags,
-                       std::uint32_t sequenceNo, std::vector<std::uint8_t> body) : 
-    version(IPC_PROTOCOL_VERSION), 
-    src(srcDaemon), 
-    dst(dstDaemon), 
-    flags(messageFlags), 
-    cmd(command),
-    seqNo(sequenceNo), 
-    payload(std::move(body))
+IpcMessage::IpcMessage(const IpcHeader& header,
+                       std::vector<std::uint8_t> payload)
+    : m_header(header),
+      m_payload(std::move(payload))
 {
 }
 
-bool IpcMessage::isRequest() const noexcept
+IpcMessage::IpcMessage(IpcHeader&& header,
+                       std::vector<std::uint8_t> payload)
+    : m_header(std::move(header)),
+      m_payload(std::move(payload))
 {
-    return IpcProtocol::hasFlag(flags, IpcFlag::Request);
 }
 
-bool IpcMessage::isResponse() const noexcept
+std::uint8_t IpcMessage::getVersion() const
 {
-    return IpcProtocol::hasFlag(flags, IpcFlag::Response);
+    return m_header.version;
 }
 
-bool IpcMessage::isError() const noexcept
+void IpcMessage::setVersion(std::uint8_t version)
 {
-    return IpcProtocol::hasFlag(flags, IpcFlag::Error);
+    m_header.version = version;
 }
 
-bool IpcMessage::isBroadcast() const noexcept
+IpcDaemon IpcMessage::getSrc() const
 {
-    return IpcProtocol::hasFlag(flags, IpcFlag::Broadcast);
+    return m_header.src;
+}
+
+void IpcMessage::setSrc(IpcDaemon src)
+{
+    m_header.src = src;
+}
+
+IpcDaemon IpcMessage::getDst() const
+{
+    return m_header.dst;
+}
+
+void IpcMessage::setDst(IpcDaemon dst)
+{
+    m_header.dst = dst;
+}
+
+std::uint8_t IpcMessage::getFlags() const
+{
+    return m_header.flags;
+}
+
+void IpcMessage::setFlags(std::uint8_t flags)
+{
+    m_header.flags = flags;
+}
+
+IpcCmd IpcMessage::getCmd() const
+{
+    return m_header.cmd;
+}
+
+void IpcMessage::setCmd(IpcCmd cmd)
+{
+    m_header.cmd = cmd;
+}
+
+std::uint32_t IpcMessage::getSeqNo() const
+{
+    return m_header.seqNo;
+}
+
+void IpcMessage::setSeqNo(std::uint32_t seqNo)
+{
+    m_header.seqNo = seqNo;
+}
+
+const IpcHeader& IpcMessage::getHeader() const
+{
+    return m_header;
+}
+
+IpcHeader& IpcMessage::getHeader()
+{
+    return m_header;
+}
+
+const std::vector<std::uint8_t>& IpcMessage::getPayload() const
+{
+    return m_payload;
+}
+
+std::vector<std::uint8_t>& IpcMessage::getPayload()
+{
+    return m_payload;
+}
+
+void IpcMessage::setPayload(const std::vector<std::uint8_t>& payload)
+{
+    m_payload = payload;
+}
+
+void IpcMessage::setPayload(std::vector<std::uint8_t>&& payload)
+{
+    m_payload = std::move(payload);
+}
+
+void IpcMessage::setPayload(const void* data, std::size_t len)
+{
+    if (data == nullptr && len != 0)
+        throw std::invalid_argument("IpcMessage::setPayload null data with non-zero length");
+
+    const auto* bytes = static_cast<const std::uint8_t*>(data);
+    m_payload.assign(bytes, bytes + len);
+}
+
+std::size_t IpcMessage::getPayloadLen() const
+{
+    return m_payload.size();
+}
+
+bool IpcMessage::empty() const
+{
+    return m_payload.empty();
+}
+
+bool IpcMessage::isRequest() const
+{
+    return m_header.isRequest();
+}
+
+bool IpcMessage::isResponse() const
+{
+    return m_header.isResponse();
+}
+
+bool IpcMessage::isError() const
+{
+    return m_header.isError();
+}
+
+bool IpcMessage::isBroadcast() const
+{
+    return m_header.isBroadcast();
+}
+
+IpcWireHeader IpcMessage::toWireHeader() const
+{
+    IpcWireHeader wire {};
+    wire.version = m_header.version;
+    wire.src = static_cast<std::uint8_t>(m_header.src);
+    wire.dst = static_cast<std::uint8_t>(m_header.dst);
+    wire.flags = m_header.flags;
+    wire.cmd = static_cast<std::uint16_t>(m_header.cmd);
+    wire.reserved = 0;
+    wire.seqNo = m_header.seqNo;
+    wire.payloadLen = static_cast<std::uint32_t>(m_payload.size());
+    return wire;
 }
 
 std::string IpcMessage::dump() const
 {
     std::ostringstream oss;
 
-    oss << "[IPC MESSAGE]\n";
-    oss << "  Version   : " << static_cast<int>(version) << "\n";
-    oss << "  Src       : " << IpcProtocol::daemonToStr(src) << " (" << static_cast<int>(src) << ")\n";
-    oss << "  Dst       : " << IpcProtocol::daemonToStr(dst) << " (" << static_cast<int>(dst) << ")\n";
-    oss << "  Cmd       : " << IpcProtocol::cmdToStr(cmd) << " (" << static_cast<std::uint16_t>(cmd) << ")\n";
-    oss << "  Flags     : " << IpcProtocol::flagsToStr(flags) << " (0x" << std::hex << std::setw(2) << std::setfill('0')
-        << static_cast<int>(flags) << std::dec << ")\n";
-    oss << "  SeqNo     : " << seqNo << "\n";
-    oss << "  Payload   : " << payload.size() << " bytes\n";
+    oss << "Version   : " << static_cast<int>(m_header.version) << "\n";
+    oss << "Src       : " << IpcProtocol::daemonToStr(m_header.src)
+        << " (" << static_cast<int>(m_header.src) << ")\n";
+    oss << "Dst       : " << IpcProtocol::daemonToStr(m_header.dst)
+        << " (" << static_cast<int>(m_header.dst) << ")\n";
+    oss << "Cmd       : " << IpcProtocol::cmdToStr(m_header.cmd)
+        << " (" << static_cast<int>(m_header.cmd) << ")\n";
+    oss << "Flags     : " << IpcProtocol::flagsToStr(m_header.flags)
+        << " (0x"
+        << std::hex << std::setw(2) << std::setfill('0')
+        << static_cast<int>(m_header.flags)
+        << std::dec << ")\n";
+    oss << "SeqNo     : " << m_header.seqNo << "\n";
+    oss << "Payload   : " << m_payload.size() << " bytes";
 
-    if (!payload.empty())
+    if (!m_payload.empty())
     {
-        oss << std::hex << std::setfill('0');
-
-        for (std::size_t i = 0; i < payload.size(); ++i)
+        oss << "\n  ";
+        for (std::size_t i = 0; i < m_payload.size(); ++i)
         {
-            if (i % 16 == 0)
-                oss << "    ";
+            oss << std::hex
+                << std::setw(2)
+                << std::setfill('0')
+                << static_cast<int>(m_payload[i]);
 
-            oss << std::setw(2) << static_cast<int>(payload[i]) << " ";
-
-            if (i % 16 == 15 || i + 1 == payload.size())
-                oss << "\n";
+            if (i + 1 != m_payload.size())
+                oss << ' ';
         }
-
         oss << std::dec;
     }
 

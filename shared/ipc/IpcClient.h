@@ -47,17 +47,6 @@ public:
 
     bool send(const IpcMessage& msg);
 
-    bool send(IpcDaemon dst,
-              IpcCmd cmd,
-              const std::uint8_t* payload,
-              std::size_t len,
-              std::uint8_t flags = static_cast<std::uint8_t>(IpcFlag::Request));
-
-    bool send(IpcDaemon dst,
-              IpcCmd cmd,
-              const std::vector<std::uint8_t>& payload,
-              std::uint8_t flags = static_cast<std::uint8_t>(IpcFlag::Request));
-
     State state() const;
     bool isConnected() const;
     int fd() const;
@@ -71,8 +60,6 @@ private:
 
     void handleEvent(int fd, std::uint32_t events);
     void handleConnectEvent();
-
-    std::uint32_t nextSeqNo();
 
 private:
     static constexpr int MAX_EVENTS = 32;
@@ -93,8 +80,6 @@ private:
     std::atomic<bool> m_running {false};
     bool m_initialized {false};
     State m_state {State::Disconnected};
-
-    std::uint32_t m_seqNo {1};
 };
 
 } // namespace nf::ipc

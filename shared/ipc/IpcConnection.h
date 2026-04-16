@@ -31,19 +31,8 @@ public:
     const nf::algorithm::ByteRingBuffer& rx() const noexcept { return m_rx; }
     const nf::algorithm::ByteRingBuffer& tx() const noexcept { return m_tx; }
 
-    // Read as much as possible from socket into rx ring.
-    // Ok         : read completed and ring may contain data
-    // WouldBlock : no more data for now
-    // PeerClosed : peer closed connection
-    // BufferFull : rx ring has no writable space
-    // Error      : fatal socket error (outErrno set)
     IoResult recv(int& outErrno);
 
-    // Flush as much as possible from tx ring to socket.
-    // Ok         : tx ring fully flushed
-    // WouldBlock : socket send buffer full, keep EPOLLOUT
-    // PeerClosed : peer closed connection
-    // Error      : fatal socket error (outErrno set)
     IoResult send(int& outErrno);
 
     bool write(const std::uint8_t* data, std::size_t len);
