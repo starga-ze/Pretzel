@@ -18,12 +18,23 @@ enum class IpcDecodeResult
     TooLarge
 };
 
+enum class IpcPeekResult
+{
+    Ok,
+    NeedMoreData,
+    InvalidFrame
+};
+
 class IpcCodec
 {
 public:
     std::vector<std::uint8_t> encode(const IpcMessage& msg) const;
+
     IpcDecodeResult decode(const std::vector<std::uint8_t>& frame, IpcMessage& out) const;
-    std::size_t peekFrameSize(const std::uint8_t* data, std::size_t len) const;
+
+    IpcPeekResult peekFrameSize(const std::uint8_t* data,
+                                std::size_t len,
+                                std::size_t& outFrameSize) const;
 };
 
 } // namespace nf::ipc

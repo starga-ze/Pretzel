@@ -12,6 +12,8 @@ namespace nf::ipc
 
 bool IpcHandler::handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
 {
+    (void)epoll;
+
     int ioErrno = 0;
     const IoResult rc = conn.recv(ioErrno);
 
@@ -34,12 +36,7 @@ bool IpcHandler::handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
         return false;
     }
 
-    if (!drainRxFrames(fd, conn))
-    {
-        return false;
-    }
-
-    return true;
+    return drainRxFrames(fd, conn);
 }
 
 bool IpcHandler::handleSend(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
@@ -87,17 +84,25 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 
     while (true)
     {
-        if (rx.readable() < sizeof(std::uint16_t))
+        if (rx.readable() < sizeof(IpcWireHeader))
             return true;
 
         const std::uint8_t* data = rx.readPtr();
         const std::size_t readable = rx.readLen();
 
-        const std::size_t frameSize = m_codec.peekFrameSize(data, readable);
-        if (frameSize == 0)
+        std::size_t frameSize = 0;
+        const IpcPeekResult peekRc = m_codec.peekFrameSize(data, readable, frameSize);
+
+        if (peekRc == IpcPeekResult::NeedMoreData)
             return true;
 
-        if (frameSize > IPC_MAX_FRAME_SIZE)
+        if (peekRc == IpcPeekResult::InvalidFrame)
+        {
+            LOG_ERROR("IpcHandler: invalid frame header fd={}", fd);
+            return false;
+        }
+
+        if (frameSize == 0 || frameSize > IPC_MAX_FRAME_SIZE)
         {
             LOG_ERROR("IpcHandler: invalid frame size={} fd={}", frameSize, fd);
             return false;
@@ -117,10 +122,8 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 
         if (rc != IpcDecodeResult::Ok)
         {
-            LOG_ERROR("IpcHandler: decode failed fd={} rc={} frameSize={}",
-                      fd,
-                      static_cast<int>(rc),
-                      frameSize);
+            LOG_ERROR("IpcHandler: decode failed fd={} rc={} frameSize={}", 
+                    fd, static_cast<int>(rc), frameSize);
             return false;
         }
 

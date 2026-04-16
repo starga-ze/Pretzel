@@ -34,7 +34,11 @@ private:
 
     void startThreads();
 
+    /* Temp implemented */
     void sendClientHello();
+    std::uint32_t nextSeqNo();
+    std::uint32_t m_seqNo {0};
+    
 
     LoggerConfig m_loggerConfig;
     IpcConfig m_ipcConfig;

@@ -100,17 +100,30 @@ void CoreEngine::startThreads()
             std::bind(&IpcClient::stop, m_ipcClient.get()));
 }
 
+std::uint32_t CoreEngine::nextSeqNo()
+{
+    return ++m_seqNo;
+}
+
 void CoreEngine::sendClientHello()
 {
     std::string name = nf::ipc::IpcProtocol::daemonToStr(
         nf::ipc::IpcDaemon::Engined
     );
 
-    m_ipcClient->send(
+    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
+        nf::ipc::IpcDaemon::Engined,
         nf::ipc::IpcDaemon::Ipcd,
         nf::ipc::IpcCmd::ClientHello,
+        nextSeqNo(),
+        static_cast<std::uint8_t>(nf::ipc::IpcFlag::Request));
+
+    nf::ipc::IpcMessage msg(header);
+    msg.setPayload(
         reinterpret_cast<const std::uint8_t*>(name.data()),
-        name.size()
-    );
+        name.size());
+
+    m_ipcClient->send(msg);
 }
+
 } // namespace nf::ipcd
