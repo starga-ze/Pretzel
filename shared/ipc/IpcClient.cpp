@@ -319,9 +319,4 @@ void IpcClient::handleConnectEvent()
     LOG_INFO("IpcClient: connected fd={}", m_socket->fd());
 }
 
-std::uint32_t IpcClient::nextSeqNo()
-{
-    return m_seqNo++;
-}
-
 } // namespace nf::ipc

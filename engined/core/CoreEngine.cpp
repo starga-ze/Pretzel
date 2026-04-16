@@ -100,6 +100,11 @@ void CoreEngine::startThreads()
             std::bind(&IpcClient::stop, m_ipcClient.get()));
 }
 
+std::uint32_t CoreEngine::nextSeqNo()
+{
+    return ++m_seqNo;
+}
+
 void CoreEngine::sendClientHello()
 {
     std::string name = nf::ipc::IpcProtocol::daemonToStr(
@@ -110,7 +115,7 @@ void CoreEngine::sendClientHello()
         nf::ipc::IpcDaemon::Engined,
         nf::ipc::IpcDaemon::Ipcd,
         nf::ipc::IpcCmd::ClientHello,
-        0,
+        nextSeqNo(),
         static_cast<std::uint8_t>(nf::ipc::IpcFlag::Request));
 
     nf::ipc::IpcMessage msg(header);
