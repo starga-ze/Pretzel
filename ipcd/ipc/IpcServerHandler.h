@@ -4,6 +4,7 @@
 #include "ipc/IpcConnection.h"
 #include "ipc/IpcHandler.h"
 #include "socket/UnixDomainSocket.h"
+#include "session/IpcdSessionManager.h"
 
 #include <memory>
 #include <unordered_map>
@@ -42,6 +43,7 @@ protected:
 
 private:
     nf::config::IpcConfig m_cfg;
+    IpcdSessionManager m_sessionManager;
 };
 
 } // namespace nf::ipcd

@@ -6,6 +6,8 @@
 #include <cerrno>
 #include <unistd.h>
 
+using namespace nf::ipc;
+
 namespace nf::ipcd
 {
 
@@ -43,7 +45,7 @@ void IpcServerHandler::handleAccept(
             continue;
         }
 
-        auto conn = std::make_unique<nf::ipc::IpcConnection>(
+        auto conn = std::make_unique<IpcConnection>(
             fd,
             static_cast<std::size_t>(m_cfg.rxBufferSize),
             static_cast<std::size_t>(m_cfg.txBufferSize));
@@ -72,14 +74,14 @@ void IpcServerHandler::handleAccept(
 
 bool IpcServerHandler::handleRecv(
     int fd,
-    std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
+    std::unordered_map<int, std::unique_ptr<IpcConnection>>& connections,
     nf::io::Epoll& epoll)
 {
     auto it = connections.find(fd);
     if (it == connections.end())
         return false;
 
-    if (!nf::ipc::IpcHandler::handleRecv(fd, *it->second, epoll))
+    if (!IpcHandler::handleRecv(fd, *it->second, epoll))
     {
         closeConnection(fd, connections, epoll);
         return false;
@@ -123,7 +125,7 @@ void IpcServerHandler::closeConnection(
 
 void IpcServerHandler::onMessage(int fd, const nf::ipc::IpcMessage& msg)
 {
-
+    m_sessionManager.handleMessage(fd, msg);
 }
 
 } // namespace nf::ipcd
