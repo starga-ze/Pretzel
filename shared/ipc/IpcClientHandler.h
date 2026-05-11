@@ -12,7 +12,7 @@ public:
     ~IpcClientHandler() override = default;
 
 protected:
-    void onMessage(int fd, const IpcMessage& msg) override;
+    void onMessage(const IpcMessage& msg) override;
 };
 
 } // namespace nf::ipc

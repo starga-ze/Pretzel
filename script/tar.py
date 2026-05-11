@@ -4,11 +4,12 @@ import tarfile
 import os
 
 TARGET_ITEMS = [
-    'serverd',
-    'mgmtd',
+    'shared',
+    'ipcd',
+    'engined',
 ]
 
-TAR_FILENAME = "nf-engine.tar.gz"
+TAR_FILENAME = "pretzel-ims.tar.gz"
 
 
 def run():
