@@ -14,4 +14,5 @@ target_compile_definitions(nf-ipcd PRIVATE
 
 target_link_libraries(nf-ipcd PRIVATE
     nf-shared
+    OpenSSL::Crypto
 )
