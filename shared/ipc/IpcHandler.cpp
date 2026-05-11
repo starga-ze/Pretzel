@@ -87,11 +87,16 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
         if (rx.readable() < sizeof(IpcWireHeader))
             return true;
 
-        const std::uint8_t* data = rx.readPtr();
-        const std::size_t readable = rx.readLen();
+        std::vector<std::uint8_t> header(sizeof(IpcWireHeader));
+        if (!rx.peek(header.data(), header.size()))
+        {
+            LOG_ERROR("IpcHandler: failed to peek header fd={}", fd);
+            return false;
+        }
 
         std::size_t frameSize = 0;
-        const IpcPeekResult peekRc = m_codec.peekFrameSize(data, readable, frameSize);
+        const IpcPeekResult peekRc =
+            m_codec.peekFrameSize(header.data(), header.size(), frameSize);
 
         if (peekRc == IpcPeekResult::NeedMoreData)
             return true;
@@ -108,31 +113,30 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
             return false;
         }
 
-        if (readable < frameSize)
+        if (rx.readable() < frameSize)
             return true;
 
         std::vector<std::uint8_t> frame(frameSize);
-        std::memcpy(frame.data(), data, frameSize);
+        if (!rx.peek(frame.data(), frameSize))
+        {
+            LOG_ERROR("IpcHandler: failed to peek frame fd={} frameSize={}", fd, frameSize);
+            return false;
+        }
 
         IpcMessage msg;
         const IpcDecodeResult rc = m_codec.decode(frame, msg);
 
-        if (rc == IpcDecodeResult::NeedMoreData)
-            return true;
-
         if (rc != IpcDecodeResult::Ok)
         {
-            LOG_ERROR("IpcHandler: decode failed fd={} rc={} frameSize={}", 
-                    fd, static_cast<int>(rc), frameSize);
+            LOG_ERROR("IpcHandler: decode failed fd={} rc={} frameSize={}",
+                      fd, static_cast<int>(rc), frameSize);
             return false;
         }
 
         rx.consume(frameSize);
 
         LOG_DEBUG("Rx Ipc Message dump:\n{}", msg.dump());
-
-        onMessage(fd, msg);
+        onMessage(msg);
     }
 }
-
 } // namespace nf::ipc

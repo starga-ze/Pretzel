@@ -1,23 +1,26 @@
 #include "ipc/IpcServerHandler.h"
 
+#include "ipc/IpcServer.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
 #include <cerrno>
 #include <unistd.h>
 
+using namespace nf::ipc;
+
 namespace nf::ipcd
 {
 
-IpcServerHandler::IpcServerHandler(const nf::config::IpcConfig& cfg)
-    : m_cfg(cfg)
+IpcServerHandler::IpcServerHandler(IpcServer* ipcServer, const nf::config::IpcConfig& cfg) : 
+    m_ipcServer(ipcServer),
+    m_cfg(cfg)
 {
 }
 
-void IpcServerHandler::handleAccept(
-    nf::socket::UnixDomainSocket& listener,
-    std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
-    nf::io::Epoll& epoll)
+void IpcServerHandler::handleAccept(nf::socket::UnixDomainSocket& listener, 
+        std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
+        nf::io::Epoll& epoll)
 {
     while (true)
     {
@@ -36,17 +39,13 @@ void IpcServerHandler::handleAccept(
 
         if (connections.size() >= static_cast<std::size_t>(m_cfg.maxConnections))
         {
-            LOG_WARN("IpcServerHandler: max connections reached max={} fd={}",
-                     m_cfg.maxConnections,
-                     fd);
+            LOG_WARN("IpcServerHandler: max connections reached max={} fd={}", m_cfg.maxConnections, fd);
             ::close(fd);
             continue;
         }
 
-        auto conn = std::make_unique<nf::ipc::IpcConnection>(
-            fd,
-            static_cast<std::size_t>(m_cfg.rxBufferSize),
-            static_cast<std::size_t>(m_cfg.txBufferSize));
+        auto conn = std::make_unique<IpcConnection>(fd, static_cast<std::size_t>(m_cfg.rxBufferSize),
+                                                    static_cast<std::size_t>(m_cfg.txBufferSize));
 
         if (!conn)
         {
@@ -64,22 +63,19 @@ void IpcServerHandler::handleAccept(
 
         connections.emplace(fd, std::move(conn));
 
-        LOG_INFO("IpcServerHandler: accepted connection fd={} total={}",
-                 fd,
-                 connections.size());
+        LOG_INFO("IpcServerHandler: accepted connection fd={} total={}", fd, connections.size());
     }
 }
 
-bool IpcServerHandler::handleRecv(
-    int fd,
-    std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
-    nf::io::Epoll& epoll)
+bool IpcServerHandler::handleRecv(int fd, 
+        std::unordered_map<int, std::unique_ptr<IpcConnection>>& connections,
+        nf::io::Epoll& epoll)
 {
     auto it = connections.find(fd);
     if (it == connections.end())
         return false;
 
-    if (!nf::ipc::IpcHandler::handleRecv(fd, *it->second, epoll))
+    if (!IpcHandler::handleRecv(fd, *it->second, epoll))
     {
         closeConnection(fd, connections, epoll);
         return false;
@@ -88,10 +84,9 @@ bool IpcServerHandler::handleRecv(
     return true;
 }
 
-bool IpcServerHandler::handleSend(
-    int fd,
-    std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
-    nf::io::Epoll& epoll)
+bool IpcServerHandler::handleSend(int fd, 
+        std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
+        nf::io::Epoll& epoll)
 {
     auto it = connections.find(fd);
     if (it == connections.end())
@@ -106,10 +101,9 @@ bool IpcServerHandler::handleSend(
     return true;
 }
 
-void IpcServerHandler::closeConnection(
-    int fd,
-    std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
-    nf::io::Epoll& epoll)
+void IpcServerHandler::closeConnection(int fd,
+        std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
+        nf::io::Epoll& epoll)
 {
     auto it = connections.find(fd);
     if (it == connections.end())
@@ -121,9 +115,9 @@ void IpcServerHandler::closeConnection(
     LOG_INFO("IpcServerHandler: connection removed fd={} total={}", fd, connections.size());
 }
 
-void IpcServerHandler::onMessage(int fd, const nf::ipc::IpcMessage& msg)
+void IpcServerHandler::onMessage(const nf::ipc::IpcMessage& msg)
 {
-
+    m_sessionManager.handleMessage(msg);
 }
 
 } // namespace nf::ipcd

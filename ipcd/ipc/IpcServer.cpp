@@ -13,7 +13,7 @@ IpcServer::IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId
     : m_cfg(cfg),
       m_selfId(selfId),
       m_events(MAX_EVENTS),
-      m_handler(cfg)
+      m_handler(this, cfg)
 {
 }
 

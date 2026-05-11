@@ -4,6 +4,7 @@
 #include "ipc/IpcConnection.h"
 #include "ipc/IpcHandler.h"
 #include "socket/UnixDomainSocket.h"
+#include "session/IpcdSessionManager.h"
 
 #include <memory>
 #include <unordered_map>
@@ -11,10 +12,12 @@
 namespace nf::ipcd
 {
 
+class IpcServer;
+
 class IpcServerHandler : public nf::ipc::IpcHandler
 {
 public:
-    explicit IpcServerHandler(const nf::config::IpcConfig& cfg);
+    explicit IpcServerHandler(IpcServer* ipcServer, const nf::config::IpcConfig& cfg);
     ~IpcServerHandler() override = default;
 
     void handleAccept(
@@ -38,10 +41,13 @@ public:
         nf::io::Epoll& epoll);
 
 protected:
-    void onMessage(int fd, const nf::ipc::IpcMessage& msg) override;
+    void onMessage(const nf::ipc::IpcMessage& msg) override;
 
 private:
+    IpcServer* m_ipcServer = nullptr;
     nf::config::IpcConfig m_cfg;
+
+    IpcdSessionManager m_sessionManager;
 };
 
 } // namespace nf::ipcd

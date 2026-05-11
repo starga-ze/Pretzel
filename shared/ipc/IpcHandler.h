@@ -20,7 +20,7 @@ public:
     bool handleSend(int fd, IpcConnection& conn, nf::io::Epoll& epoll);
 
 protected:
-    virtual void onMessage(int fd, const IpcMessage& msg) = 0;
+    virtual void onMessage(const IpcMessage& msg) = 0;
 
 private:
     bool drainRxFrames(int fd, IpcConnection& conn);

@@ -23,7 +23,7 @@ struct IpcHeader
                            IpcDaemon dst,
                            IpcCmd cmd,
                            std::uint32_t seqNo,
-                           std::uint8_t flags = static_cast<std::uint8_t>(IpcFlag::Request))
+                           std::uint8_t flags)
     {
         IpcHeader header;
         header.version = IPC_PROTOCOL_VERSION;
