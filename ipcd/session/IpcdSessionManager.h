@@ -13,18 +13,26 @@ namespace nf::ipcd
 class IpcdSessionManager : public nf::session::SessionManager
 {
 public:
-    explicit IpcdSessionManager() = default;
+    IpcdSessionManager() = default;
     ~IpcdSessionManager() override = default;
 
-    void handleMessage(int fd, const nf::ipc::IpcMessage& msg) override;
+    void handleMessage(const nf::ipc::IpcMessage& msg) override;
 
 private:
-    nf::session::Session* findSession(int fd);
-    const nf::session::Session* findSession(int fd) const;
-    nf::session::Session* createSession(int fd);
+    nf::session::Session* findSession(const std::string& sessionId);
+    nf::session::Session* findSession(nf::ipc::IpcDaemon src, nf::ipc::IpcDaemon dst);
 
-    IpcdServiceManager m_serviceManager;
-    std::unordered_map<int, std::unique_ptr<nf::session::Session>> m_sessions;
+    nf::session::Session* createSession(nf::ipc::IpcDaemon src, nf::ipc::IpcDaemon dst);
+
+    void removeSession(const std::string& sessionId);
+    void clear();
+
+    static std::string makePairKey(nf::ipc::IpcDaemon src, nf::ipc::IpcDaemon dst);
+    static std::string generateSessionId();
+
+    std::unordered_map<std::string, std::unique_ptr<nf::session::Session>> m_sessions;
+    std::unordered_map<std::string, std::string> m_pairToSessionId;
+
 };
 
 } // namespace nf::ipcd

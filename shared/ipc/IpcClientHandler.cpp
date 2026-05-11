@@ -6,7 +6,7 @@
 namespace nf::ipc
 {
 
-void IpcClientHandler::onMessage(int fd, const IpcMessage& msg)
+void IpcClientHandler::onMessage(const IpcMessage& msg)
 {
     LOG_DEBUG("IpcClientHandler message dump:\n{}", msg.dump());
 }

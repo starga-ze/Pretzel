@@ -1,34 +1,81 @@
 #include "session/Session.h"
 
-#include <atomic>
-
 namespace nf::session
 {
 
-namespace
-{
-std::atomic<std::uint64_t> g_sessionId {0};
-}
-
-Session::Session(int fd)
-    : m_fd(fd)
-    , m_id(nextId())
+Session::Session(std::string id,
+                 nf::ipc::IpcDaemon src,
+                 nf::ipc::IpcDaemon dst)
+    : m_id(std::move(id)),
+      m_src(src),
+      m_dst(dst)
 {
 }
 
-int Session::getFd() const noexcept
-{
-    return m_fd;
-}
-
-std::uint64_t Session::getId() const noexcept
+const std::string& Session::getId() const noexcept
 {
     return m_id;
 }
 
-std::uint64_t Session::nextId() noexcept
+nf::ipc::IpcDaemon Session::getSrc() const noexcept
 {
-    return g_sessionId.fetch_add(1, std::memory_order_relaxed) + 1;
+    return m_src;
+}
+
+nf::ipc::IpcDaemon Session::getDst() const noexcept
+{
+    return m_dst;
+}
+
+SessionState Session::getState() const noexcept
+{
+    return m_state;
+}
+
+bool Session::isEstablished() const noexcept
+{
+    return m_state == SessionState::Established;
+}
+
+bool Session::isClosing() const noexcept
+{
+    return m_state == SessionState::Closing;
+}
+
+std::uint64_t Session::getRxCount() const noexcept
+{
+    return m_rxCount;
+}
+
+std::uint64_t Session::getTxCount() const noexcept
+{
+    return m_txCount;
+}
+
+std::uint32_t Session::getLastSeqNo() const noexcept
+{
+    return m_lastSeqNo;
+}
+
+void Session::markEstablished() noexcept
+{
+    m_state = SessionState::Established;
+}
+
+void Session::markClosing() noexcept
+{
+    m_state = SessionState::Closing;
+}
+
+void Session::markRx(std::uint32_t seqNo) noexcept
+{
+    ++m_rxCount;
+    m_lastSeqNo = seqNo;
+}
+
+void Session::markTx() noexcept
+{
+    ++m_txCount;
 }
 
 } // namespace nf::session
