@@ -35,7 +35,7 @@ public:
     void start();
     void stop();
 
-    bool send(int fd, const nf::ipc::IpcMessage& msg);
+    bool enqueueMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg);
 
 private:
     bool initEpoll();

@@ -10,10 +10,7 @@ namespace nf::ipcd
 {
 
 IpcServer::IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId)
-    : m_cfg(cfg),
-      m_selfId(selfId),
-      m_events(MAX_EVENTS),
-      m_handler(this, cfg)
+    : m_cfg(cfg), m_selfId(selfId), m_events(MAX_EVENTS), m_handler(this, cfg)
 {
 }
 
@@ -90,19 +87,18 @@ void IpcServer::stop()
     m_epoll.wakeup();
 }
 
-bool IpcServer::send(int fd, const nf::ipc::IpcMessage& msg)
+bool IpcServer::enqueueMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
         return false;
 
-    const std::vector<std::uint8_t> frame = m_codec.encode(msg);
-    if (frame.empty())
+    std::vector<std::uint8_t> frame;
+
+    if (!m_codec.encode(msg, frame))
     {
-        LOG_WARN("IpcServer: encode failed fd={} cmd={} payload={}bytes",
-                 fd,
-                 nf::ipc::IpcProtocol::cmdToStr(msg.getCmd()),
-                 msg.getPayloadLen());
+        LOG_WARN("IpcServer: encode failed fd={} cmd={} payload={}bytes", fd,
+                 nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()), msg->getPayloadLen());
         return false;
     }
 
@@ -119,9 +115,6 @@ bool IpcServer::send(int fd, const nf::ipc::IpcMessage& msg)
         m_handler.closeConnection(fd, m_connections, m_epoll);
         return false;
     }
-
-    LOG_DEBUG("Tx Ipc Message dump:\n{}", msg.dump());
-
     return true;
 }
 

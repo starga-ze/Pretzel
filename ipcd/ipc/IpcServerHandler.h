@@ -1,10 +1,12 @@
 #pragma once
 
+#include "socket/UnixDomainSocket.h"
 #include "config/ConfigTypes.h"
 #include "ipc/IpcConnection.h"
 #include "ipc/IpcHandler.h"
-#include "socket/UnixDomainSocket.h"
-#include "session/IpcdSessionManager.h"
+
+#include "router/IpcdRxRouter.h"
+#include "router/IpcdTxRouter.h"
 
 #include <memory>
 #include <unordered_map>
@@ -40,14 +42,17 @@ public:
         std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
         nf::io::Epoll& epoll);
 
-protected:
-    void onMessage(const nf::ipc::IpcMessage& msg) override;
+    void onRxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
 private:
     IpcServer* m_ipcServer = nullptr;
+    
+    std::unique_ptr<IpcdRxRouter> m_rxRouter = nullptr;
+    std::unique_ptr<IpcdTxRouter> m_txRouter = nullptr;
+
     nf::config::IpcConfig m_cfg;
 
-    IpcdSessionManager m_sessionManager;
 };
 
 } // namespace nf::ipcd
