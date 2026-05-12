@@ -107,19 +107,32 @@ void IpcServerHandler::closeConnection(int fd,
         std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
         nf::io::Epoll& epoll)
 {
+    removeRoute(fd);
+
     auto it = connections.find(fd);
     if (it == connections.end())
+    {
         return;
+    }
 
     epoll.del(fd);
     connections.erase(it);
 
-    LOG_INFO("IpcServerHandler: connection removed fd={} total={}", fd, connections.size());
+    LOG_INFO("Connection removed. fd={}, total={}", fd, connections.size());
 }
 
-void IpcServerHandler::onRxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IpcServerHandler::onRxMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
+    if (!msg or !m_rxRouter)
+    {
+        LOG_WARN("Nullptr: IpcMessage or RxRouter");
+        return;
+    }
+
+    bindRoute(msg->getSrc(), fd);
+
     LOG_TRACE("IPC Rx Message dump:\n{}", msg->dump());
+
     m_rxRouter->handleMessage(std::move(msg));
 }
 
@@ -136,7 +149,7 @@ void IpcServerHandler::onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
         return;
     }
 
-    const int fd = m_routeTable.findFd(msg->getDst());
+    const int fd = findRoute(msg->getDst());
     if (fd < 0)
     {
         LOG_WARN("No route for dst={}", nf::ipc::IpcProtocol::daemonToStr(msg->getDst()));
@@ -145,7 +158,69 @@ void IpcServerHandler::onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     LOG_TRACE("IPC Tx Message dump:\n{}", msg->dump());
     
-    m_ipcServer->enqueueMessage(fd, std::move(msg));
+    if (!m_ipcServer->enqueueMessage(fd, std::move(msg)))
+    {
+        LOG_WARN("Enqueue Tx Failed. fd={}", fd);
+    }
+}
+
+void IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
+{
+    auto it = m_routeTable.find(daemon);
+    if (it == m_routeTable.end())
+    {
+        m_routeTable.emplace(daemon, fd);
+
+        LOG_DEBUG("Route added. daemon={}, fd={}, routes={}", 
+                nf::ipc::IpcProtocol::daemonToStr(daemon),
+                fd, m_routeTable.size());
+        return;
+    }
+
+    if (it->second == fd)
+    {
+        LOG_TRACE("Route unchanged. daemon={}, fd={}", 
+                nf::ipc::IpcProtocol::daemonToStr(daemon), fd);
+        return;
+    }
+
+    const int oldFd = it->second;
+    it->second = fd;
+
+    LOG_WARN("Route updated. daemon={}, oldFd={}, newFd={}, routes={}",
+            nf::ipc::IpcProtocol::daemonToStr(daemon),
+            oldFd,
+            fd,
+            m_routeTable.size());
+}
+
+int IpcServerHandler::findRoute(nf::ipc::IpcDaemon daemon) const
+{
+    auto it = m_routeTable.find(daemon);
+    if (it == m_routeTable.end())
+    {
+        return -1;
+    }
+
+    return it->second;
+}
+
+void IpcServerHandler::removeRoute(int fd)
+{
+    for (auto it = m_routeTable.begin(); it != m_routeTable.end();)
+    {
+        if (it->second == fd)
+        {
+            LOG_DEBUG("Route removed. daemon={}, fd={}",
+                    nf::ipc::IpcProtocol::daemonToStr(it->first),
+                    fd);
+            it = m_routeTable.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 } // namespace nf::ipcd

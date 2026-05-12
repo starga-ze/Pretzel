@@ -129,7 +129,7 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 
         rx.consume(frameSize);
 
-        onRxMessage(std::move(msg));
+        onRxMessage(fd, std::move(msg));
     }
 }
 

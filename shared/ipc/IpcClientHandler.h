@@ -12,7 +12,7 @@ public:
     ~IpcClientHandler() override = default;
 
 protected:
-    void onRxMessage(std::unique_ptr<IpcMessage> msg) override;
+    void onRxMessage(int fd, std::unique_ptr<IpcMessage> msg) override;
     void onTxMessage(std::unique_ptr<IpcMessage> msg) override;
 };
 

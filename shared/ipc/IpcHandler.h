@@ -19,7 +19,7 @@ public:
     bool handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll);
     bool handleSend(int fd, IpcConnection& conn, nf::io::Epoll& epoll);
 
-    virtual void onRxMessage(std::unique_ptr<IpcMessage> msg) = 0;
+    virtual void onRxMessage(int fd, std::unique_ptr<IpcMessage> msg) = 0;
     virtual void onTxMessage(std::unique_ptr<IpcMessage> msg) = 0;
 
 private:
