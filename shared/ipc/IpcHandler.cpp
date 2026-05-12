@@ -82,6 +82,12 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 {
     auto& rx = conn.rx();
 
+    LOG_TRACE("RxBuffer State: fd={}, readable={}, writeable={}, capacity={}, usage={:.2f}",
+            fd, rx.readable(), rx.writable(), rx.capacity(),
+            rx.capacity() > 0 
+            ? (static_cast<double>(rx.readable()) * 100.0 / 
+                static_cast<double>(rx.capacity())): 0.0);
+
     while (true)
     {
         if (rx.readable() < sizeof(IpcWireHeader))

@@ -118,14 +118,14 @@ void IpcServerHandler::closeConnection(int fd,
     epoll.del(fd);
     connections.erase(it);
 
-    LOG_INFO("Connection removed. fd={}, total={}", fd, connections.size());
+    LOG_INFO("Connection removed: fd={}, total={}", fd, connections.size());
 }
 
 void IpcServerHandler::onRxMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!msg or !m_rxRouter)
     {
-        LOG_WARN("Nullptr: IpcMessage or RxRouter");
+        LOG_WARN("IpcMessage or RxRouter is nullptr");
         return;
     }
 
@@ -145,7 +145,7 @@ void IpcServerHandler::onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     if (m_ipcServer == nullptr)
     {
-        LOG_FATAL("Nullptr: ipcServer");
+        LOG_FATAL("ipcServer is nullptr");
         return;
     }
 
@@ -160,7 +160,7 @@ void IpcServerHandler::onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     
     if (!m_ipcServer->enqueueMessage(fd, std::move(msg)))
     {
-        LOG_WARN("Enqueue Tx Failed. fd={}", fd);
+        LOG_WARN("Enqueue Tx Failed: fd={}", fd);
     }
 }
 
@@ -171,7 +171,7 @@ void IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
     {
         m_routeTable.emplace(daemon, fd);
 
-        LOG_DEBUG("Route added. daemon={}, fd={}, routes={}", 
+        LOG_DEBUG("Route added: daemon={}, fd={}, routes={}", 
                 nf::ipc::IpcProtocol::daemonToStr(daemon),
                 fd, m_routeTable.size());
         return;
@@ -179,7 +179,7 @@ void IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
 
     if (it->second == fd)
     {
-        LOG_TRACE("Route unchanged. daemon={}, fd={}", 
+        LOG_TRACE("Route unchanged: daemon={}, fd={}", 
                 nf::ipc::IpcProtocol::daemonToStr(daemon), fd);
         return;
     }
@@ -187,7 +187,7 @@ void IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
     const int oldFd = it->second;
     it->second = fd;
 
-    LOG_WARN("Route updated. daemon={}, oldFd={}, newFd={}, routes={}",
+    LOG_WARN("Route updated: daemon={}, oldFd={} -> newFd={}, routes={}",
             nf::ipc::IpcProtocol::daemonToStr(daemon),
             oldFd,
             fd,
