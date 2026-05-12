@@ -14,6 +14,8 @@ namespace nf::ipcd
 
 IpcServerHandler::IpcServerHandler(IpcServer* ipcServer, const nf::config::IpcConfig& cfg) : 
     m_ipcServer(ipcServer),
+    m_rxRouter(std::make_unique<IpcdRxRouter>()),
+    m_txRouter(std::make_unique<IpcdTxRouter>(this)),
     m_cfg(cfg)
 {
 }
@@ -115,9 +117,35 @@ void IpcServerHandler::closeConnection(int fd,
     LOG_INFO("IpcServerHandler: connection removed fd={} total={}", fd, connections.size());
 }
 
-void IpcServerHandler::onMessage(const nf::ipc::IpcMessage& msg)
+void IpcServerHandler::onRxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    m_sessionManager.handleMessage(msg);
+    LOG_TRACE("IPC Rx Message dump:\n{}", msg->dump());
+    m_rxRouter->handleMessage(std::move(msg));
+}
+
+void IpcServerHandler::onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+{
+    if (!msg)
+    {
+        return;
+    }
+
+    if (m_ipcServer == nullptr)
+    {
+        LOG_FATAL("Nullptr: ipcServer");
+        return;
+    }
+
+    const int fd = m_routeTable.findFd(msg->getDst());
+    if (fd < 0)
+    {
+        LOG_WARN("No route for dst={}", nf::ipc::IpcProtocol::daemonToStr(msg->getDst()));
+        return;
+    }
+
+    LOG_TRACE("IPC Tx Message dump:\n{}", msg->dump());
+    
+    m_ipcServer->enqueueMessage(fd, std::move(msg));
 }
 
 } // namespace nf::ipcd

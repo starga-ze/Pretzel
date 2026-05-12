@@ -87,16 +87,11 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
         if (rx.readable() < sizeof(IpcWireHeader))
             return true;
 
-        std::vector<std::uint8_t> header(sizeof(IpcWireHeader));
-        if (!rx.peek(header.data(), header.size()))
-        {
-            LOG_ERROR("IpcHandler: failed to peek header fd={}", fd);
-            return false;
-        }
+        const std::uint8_t* data = rx.readPtr();
+        const std::size_t readable = rx.readLen();
 
         std::size_t frameSize = 0;
-        const IpcPeekResult peekRc =
-            m_codec.peekFrameSize(header.data(), header.size(), frameSize);
+        const IpcPeekResult peekRc = m_codec.peekFrameSize(data, readable, frameSize);
 
         if (peekRc == IpcPeekResult::NeedMoreData)
             return true;
@@ -113,18 +108,17 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
             return false;
         }
 
-        if (rx.readable() < frameSize)
+        if (readable < frameSize)
             return true;
 
-        std::vector<std::uint8_t> frame(frameSize);
-        if (!rx.peek(frame.data(), frameSize))
-        {
-            LOG_ERROR("IpcHandler: failed to peek frame fd={} frameSize={}", fd, frameSize);
-            return false;
-        }
+        std::unique_ptr<IpcMessage> msg;
 
-        IpcMessage msg;
-        const IpcDecodeResult rc = m_codec.decode(frame, msg);
+        const IpcDecodeResult rc = m_codec.decode(data, frameSize, msg);
+
+        if (rc == IpcDecodeResult::NeedMoreData)
+        {
+            return true;
+        }
 
         if (rc != IpcDecodeResult::Ok)
         {
@@ -135,8 +129,8 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 
         rx.consume(frameSize);
 
-        LOG_DEBUG("Rx Ipc Message dump:\n{}", msg.dump());
-        onMessage(msg);
+        onRxMessage(std::move(msg));
     }
 }
+
 } // namespace nf::ipc

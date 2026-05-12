@@ -6,9 +6,15 @@
 namespace nf::ipc
 {
 
-void IpcClientHandler::onMessage(const IpcMessage& msg)
+void IpcClientHandler::onRxMessage(std::unique_ptr<IpcMessage> msg)
 {
-    LOG_DEBUG("IpcClientHandler message dump:\n{}", msg.dump());
+    LOG_TRACE("IPC Rx Message Dump:\n{}", msg->dump());
+    // m_rxRouter->handleMessage(std::move(msg));
+}
+
+void IpcClientHandler::onTxMessage(std::unique_ptr<IpcMessage> msg)
+{
+    LOG_TRACE("IPC Tx Message Dump:\n{}", msg->dump());
 }
 
 } // namespace nf::ipc
