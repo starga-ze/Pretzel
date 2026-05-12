@@ -42,10 +42,14 @@ public:
         std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
         nf::io::Epoll& epoll);
 
-    void onRxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void onRxMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg) override;
     void onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
 private:
+    void bindRoute(nf::ipc::IpcDaemon daemon, int fd);
+    int findRoute(nf::ipc::IpcDaemon daemon) const;
+    void removeRoute(int fd);
+
     IpcServer* m_ipcServer = nullptr;
     
     std::unique_ptr<IpcdRxRouter> m_rxRouter = nullptr;
@@ -53,6 +57,7 @@ private:
 
     nf::config::IpcConfig m_cfg;
 
+    std::unordered_map<nf::ipc::IpcDaemon, int> m_routeTable;
 };
 
 } // namespace nf::ipcd
