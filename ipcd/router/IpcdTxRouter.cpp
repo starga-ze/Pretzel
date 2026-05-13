@@ -15,7 +15,7 @@ void IpcdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     LOG_DEBUG("Ipcd Tx Router handle Message");
 
-    m_ipcServerHandler->onTxMessage(std::move(msg));
+    m_ipcServerHandler->egress(std::move(msg));
 }
 
 } // namespace nf::ipcd

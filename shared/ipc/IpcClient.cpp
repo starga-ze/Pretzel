@@ -88,20 +88,28 @@ void IpcClient::stop()
     m_epoll.wakeup();
 }
 
-bool IpcClient::send(const IpcMessage& msg)
+bool IpcClient::send(std::unique_ptr<IpcMessage> msg)
 {
+    if (!msg)
+    {
+        LOG_WARN("IpcClient: send rejected, message is nullptr");
+        return false;
+    }
+
     if (!m_conn || !m_socket || m_state != State::Connected)
     {
         LOG_WARN("IpcClient: send rejected, not connected");
         return false;
     }
 
-    const std::vector<std::uint8_t> frame = m_codec.encode(msg);
+    LOG_DEBUG("Tx Ipc Message dump:\n{}", msg->dump());
+
+    std::vector<std::uint8_t> frame = m_codec.encode(msg);
     if (frame.empty())
     {
         LOG_WARN("IpcClient: encode failed cmd={} payload={}bytes",
-                 IpcProtocol::cmdToStr(msg.getCmd()),
-                 msg.getPayloadLen());
+                 IpcProtocol::cmdToStr(msg->getCmd()),
+                 msg->getPayloadLen());
         return false;
     }
 
@@ -117,8 +125,6 @@ bool IpcClient::send(const IpcMessage& msg)
         closeConnection();
         return false;
     }
-
-    LOG_DEBUG("Tx Ipc Message dump:\n{}", msg.dump());
 
     return true;
 }

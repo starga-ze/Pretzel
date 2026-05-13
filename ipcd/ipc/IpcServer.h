@@ -35,7 +35,7 @@ public:
     void start();
     void stop();
 
-    bool enqueueFrame(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg);
+    bool enqueueFrame(int fd, std::vector<std::uint8_t> frame);
 
 private:
     bool initEpoll();

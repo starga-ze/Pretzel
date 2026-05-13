@@ -12,8 +12,8 @@ public:
     ~IpcClientHandler() override = default;
 
 protected:
-    void onRxMessage(int fd, std::unique_ptr<IpcMessage> msg) override;
-    void onTxMessage(std::unique_ptr<IpcMessage> msg) override;
+    bool ingress(int fd, nf::ipc::IpcFrameView frame) override;
+    void egress(std::unique_ptr<IpcMessage> msg) override;
 };
 
 } // namespace nf::ipc

@@ -42,8 +42,8 @@ public:
         std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
         nf::io::Epoll& epoll);
 
-    void onRxMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg) override;
-    void onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    bool ingress(int fd, nf::ipc::IpcFrameView frame) override;
+    void egress(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
 private:
     void bindRoute(nf::ipc::IpcDaemon daemon, int fd);
