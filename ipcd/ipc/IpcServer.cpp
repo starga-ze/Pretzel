@@ -9,15 +9,16 @@
 namespace nf::ipcd
 {
 
-IpcServer::IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId)
-    : m_cfg(cfg), m_selfId(selfId), m_events(MAX_EVENTS), m_handler(this, cfg)
+IpcServer::IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId) : 
+    m_cfg(cfg), 
+    m_selfId(selfId), 
+    m_events(MAX_EVENTS), 
+    m_handler(std::make_unique<IpcServerHandler>(this, cfg))
 {
 }
 
 IpcServer::~IpcServer()
 {
-    stop();
-
     for (auto& [fd, _] : m_connections)
         m_epoll.del(fd);
 
@@ -45,46 +46,29 @@ bool IpcServer::init()
     return true;
 }
 
-void IpcServer::start()
+bool IpcServer::poll(int timeoutMs)
 {
-    if (!init())
+    const int n = m_epoll.wait(m_events, timeoutMs);
+    if (n < 0)
     {
-        LOG_ERROR("IpcServer: init failed");
-        return;
-    }
-
-    m_running = true;
-
-    LOG_INFO("IpcServer start");
-
-    while (m_running)
-    {
-        const int n = m_epoll.wait(m_events, -1);
-        if (n < 0)
+        if (errno == EINTR)
         {
-            if (errno == EINTR)
-                continue;
-
-            LOG_WARN("IpcServer: epoll wait failed errno={}", errno);
-            continue;
+            return true;
         }
 
-        for (int i = 0; i < n; ++i)
-        {
-            const int fd = m_events[i].data.fd;
-            const std::uint32_t events = m_events[i].events;
-
-            handleEvent(fd, events);
-        }
+        LOG_WARN("IpcServer: epoll wait failed errno={}", errno);
+        return false;
     }
 
-    LOG_INFO("IpcServer stopped");
-}
+    for (int i = 0; i < n; ++i)
+    {
+        const int fd = m_events[i].data.fd;
+        const std::uint32_t events = m_events[i].events;
 
-void IpcServer::stop()
-{
-    m_running = false;
-    m_epoll.wakeup();
+        handleEvent(fd, events);
+    }
+    
+    return true;
 }
 
 bool IpcServer::enqueueFrame(int fd, std::vector<std::uint8_t> frame)
@@ -108,7 +92,7 @@ bool IpcServer::enqueueFrame(int fd, std::vector<std::uint8_t> frame)
     if (!m_epoll.mod(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP))
     {
         LOG_ERROR("IpcServer: epoll mod add EPOLLOUT failed fd={}", fd);
-        m_handler.closeConnection(fd, m_connections, m_epoll);
+        m_handler->closeConnection(fd, m_connections, m_epoll);
         return false;
     }
 
@@ -174,7 +158,7 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
         }
 
         if (isRecv)
-            m_handler.handleAccept(*m_listener, m_connections, m_epoll);
+            m_handler->handleAccept(*m_listener, m_connections, m_epoll);
 
         return;
     }
@@ -190,15 +174,25 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
     if (isClose)
     {
         LOG_INFO("IpcServer: connection close event fd={} events=0x{:x}", fd, events);
-        m_handler.closeConnection(fd, m_connections, m_epoll);
+        m_handler->closeConnection(fd, m_connections, m_epoll);
         return;
     }
 
     if (isRecv)
-        m_handler.handleRecv(fd, m_connections, m_epoll);
+        m_handler->handleRecv(fd, m_connections, m_epoll);
 
     if (isSend)
-        m_handler.handleSend(fd, m_connections, m_epoll);
+        m_handler->handleSend(fd, m_connections, m_epoll);
+}
+
+IpcServerHandler* IpcServer::handler()
+{
+    if (!m_handler)
+    {
+        LOG_FATAL("IpcServerHandler is nullptr");
+        return nullptr;
+    }
+    return m_handler.get();
 }
 
 } // namespace nf::ipcd

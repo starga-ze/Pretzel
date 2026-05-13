@@ -32,31 +32,31 @@ public:
     IpcServer& operator=(const IpcServer&) = delete;
 
     bool init();
-    void start();
-    void stop();
+    bool poll(int timeoutMs);
 
     bool enqueueFrame(int fd, std::vector<std::uint8_t> frame);
 
+    IpcServerHandler* handler();
+
 private:
+    static constexpr int MAX_EVENTS = 64;
+
     bool initEpoll();
     bool initListenSocket();
 
     void handleEvent(int fd, std::uint32_t events);
 
-private:
-    static constexpr int MAX_EVENTS = 64;
+    std::unique_ptr<nf::socket::UnixDomainSocket> m_listener;
 
-private:
     nf::config::IpcConfig m_cfg;
     nf::ipc::IpcDaemon m_selfId;
 
     nf::io::Epoll m_epoll;
     std::vector<epoll_event> m_events;
 
-    nf::ipc::IpcCodec m_codec;
-    IpcServerHandler m_handler;
+    std::unique_ptr<IpcServerHandler> m_handler;
 
-    std::unique_ptr<nf::socket::UnixDomainSocket> m_listener;
+    nf::ipc::IpcCodec m_codec;
     std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>> m_connections;
 
     std::atomic<bool> m_running{false};

@@ -14,7 +14,8 @@ namespace nf::ipc
 IpcClient::IpcClient(const nf::config::IpcConfig& cfg, IpcDaemon selfId)
     : m_cfg(cfg),
       m_selfId(selfId),
-      m_events(MAX_EVENTS)
+      m_events(MAX_EVENTS),
+      m_handler(this)
 {
 }
 
