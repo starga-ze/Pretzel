@@ -29,7 +29,7 @@ private:
     void initConfig();
     void initLogger();
     bool initThreadManager();
-    void initIpcClient();
+    bool initIpcClient();
 
     /* Temp implemented */
     void processIpcHealthCheck();
