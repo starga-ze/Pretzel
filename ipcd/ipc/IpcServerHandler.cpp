@@ -121,29 +121,55 @@ void IpcServerHandler::closeConnection(int fd,
     LOG_INFO("Connection removed: fd={}, total={}", fd, connections.size());
 }
 
-void IpcServerHandler::onRxMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg)
+bool IpcServerHandler::ingress(int fd, nf::ipc::IpcFrameView frame)
 {
-    if (!msg or !m_rxRouter)
+    if (frame.empty())
     {
-        LOG_WARN("IpcMessage or RxRouter is nullptr");
-        return;
+        LOG_WARN("Ingress frame is empty: fd={}", fd);
+        return false;
+    }
+
+    if (!m_rxRouter)
+    {
+        LOG_WARN("RxRouter is nullptr");
+        return false;
+    }
+
+    std::unique_ptr<nf::ipc::IpcMessage> msg;
+
+    const auto rc = m_codec.decode(frame, msg);
+    if (rc != nf::ipc::IpcDecodeResult::Ok)
+    {
+        LOG_ERROR("Ingress decode failed: fd={} rc={} frameSize={}",
+                  fd, static_cast<int>(rc), frame.size);
+        return false;
+    }
+
+    if (!msg)
+    {
+        LOG_ERROR("Ingress decode returned null message: fd={} frameSize={}",
+                  fd, frame.size);
+        return false;
     }
 
     bindRoute(msg->getSrc(), fd);
 
-    LOG_TRACE("IPC Rx Message dump:\n{}", msg->dump());
+    LOG_TRACE("IPC Ingress Message dump:\n{}", msg->dump());
 
     m_rxRouter->handleMessage(std::move(msg));
+    
+    return true;
 }
 
-void IpcServerHandler::onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IpcServerHandler::egress(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
+        LOG_WARN("Egress message is nullptr");
         return;
     }
 
-    if (m_ipcServer == nullptr)
+    if (!m_ipcServer)
     {
         LOG_FATAL("ipcServer is nullptr");
         return;
@@ -152,15 +178,30 @@ void IpcServerHandler::onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     const int fd = findRoute(msg->getDst());
     if (fd < 0)
     {
-        LOG_WARN("No route for dst={}", nf::ipc::IpcProtocol::daemonToStr(msg->getDst()));
+        LOG_WARN("No route for egress dst={}",
+                 nf::ipc::IpcProtocol::daemonToStr(msg->getDst()));
         return;
     }
 
-    LOG_TRACE("IPC Tx Message dump:\n{}", msg->dump());
-    
-    if (!m_ipcServer->enqueueFrame(fd, std::move(msg)))
+    LOG_TRACE("IPC Egress Message dump:\n{}", msg->dump());
+
+    std::vector<std::uint8_t> frame = m_codec.encode(msg);
+    if (frame.empty())
     {
-        LOG_WARN("Enqueue Tx Failed: fd={}", fd);
+        LOG_WARN("Egress encode failed: fd={} dst={} cmd={} payload={}bytes",
+                 fd,
+                 nf::ipc::IpcProtocol::daemonToStr(msg->getDst()),
+                 nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+                 msg->getPayloadLen());
+        return;
+    }
+
+    const std::size_t frameSize = frame.size();
+
+    if (!m_ipcServer->enqueueFrame(fd, std::move(frame)))
+    {
+        LOG_WARN("Egress enqueue failed: fd={} frame={}bytes",
+                 fd, frameSize);
     }
 }
 
