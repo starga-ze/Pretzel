@@ -158,7 +158,7 @@ void IpcServerHandler::onTxMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     LOG_TRACE("IPC Tx Message dump:\n{}", msg->dump());
     
-    if (!m_ipcServer->enqueueMessage(fd, std::move(msg)))
+    if (!m_ipcServer->enqueueFrame(fd, std::move(msg)))
     {
         LOG_WARN("Enqueue Tx Failed: fd={}", fd);
     }

@@ -87,7 +87,7 @@ void IpcServer::stop()
     m_epoll.wakeup();
 }
 
-bool IpcServer::enqueueMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg)
+bool IpcServer::enqueueFrame(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
@@ -95,9 +95,9 @@ bool IpcServer::enqueueMessage(int fd, std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     std::vector<std::uint8_t> frame;
 
-    if (!m_codec.encode(msg, frame))
+    if (!msg or !m_codec.encode(msg, frame))
     {
-        LOG_WARN("IpcServer: encode failed fd={} cmd={} payload={}bytes", fd,
+        LOG_WARN("IpcServer encode failed: fd={} cmd={} payload={}bytes", fd,
                  nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()), msg->getPayloadLen());
         return false;
     }

@@ -82,58 +82,90 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 {
     auto& rx = conn.rx();
 
-    LOG_TRACE("RxBuffer State: fd={}, readable={}, writeable={}, capacity={}, usage={:.2f}",
-            fd, rx.readable(), rx.writable(), rx.capacity(),
-            rx.capacity() > 0 
-            ? (static_cast<double>(rx.readable()) * 100.0 / 
-                static_cast<double>(rx.capacity())): 0.0);
+    LOG_TRACE("[RX Buffer State] fd={} buffer: used={}/{} ({:.2f}%) free={}", fd, 
+            rx.readable(), rx.capacity(),
+            rx.capacity() > 0 ? 
+            (static_cast<double>(rx.readable()) * 100.0 / static_cast<double>(rx.capacity())) 
+            : 0.0,
+            rx.writable());
 
     while (true)
     {
         if (rx.readable() < sizeof(IpcWireHeader))
             return true;
 
-        const std::uint8_t* data = rx.readPtr();
-        const std::size_t readable = rx.readLen();
+        std::uint8_t headerBuf[sizeof(IpcWireHeader)]{};
+        if (rx.peek(headerBuf, sizeof(headerBuf)) < sizeof(headerBuf))
+        {
+            LOG_TRACE("IpcHandler: incomplete header fd={} readable={} headerLen={}", fd, rx.readable(),
+                      sizeof(IpcWireHeader));
+            return true;
+        }
 
         std::size_t frameSize = 0;
-        const IpcPeekResult peekRc = m_codec.peekFrameSize(data, readable, frameSize);
+        const IpcPeekResult peekRc = m_codec.peekFrameSize(headerBuf, sizeof(headerBuf), frameSize);
 
         if (peekRc == IpcPeekResult::NeedMoreData)
             return true;
 
         if (peekRc == IpcPeekResult::InvalidFrame)
         {
-            LOG_ERROR("IpcHandler: invalid frame header fd={}", fd);
+            LOG_ERROR("IpcHandler: invalid frame header fd={} readable={}", fd, rx.readable());
             return false;
         }
 
         if (frameSize == 0 || frameSize > IPC_MAX_FRAME_SIZE)
         {
-            LOG_ERROR("IpcHandler: invalid frame size={} fd={}", frameSize, fd);
+            LOG_ERROR("IpcHandler: invalid frame size fd={} frameSize={} maxFrameSize={}", fd, frameSize,
+                      IPC_MAX_FRAME_SIZE);
             return false;
         }
 
-        if (readable < frameSize)
-            return true;
-
-        std::unique_ptr<IpcMessage> msg;
-
-        const IpcDecodeResult rc = m_codec.decode(data, frameSize, msg);
-
-        if (rc == IpcDecodeResult::NeedMoreData)
+        if (rx.readable() < frameSize)
         {
+            LOG_TRACE("IpcHandler: incomplete frame fd={} readable={} frameSize={}", fd, 
+                    rx.readable(), frameSize);
             return true;
         }
 
+        std::unique_ptr<IpcMessage> msg;
+        IpcDecodeResult rc = IpcDecodeResult::InvalidFrame;
+
+        if (rx.readLen() >= frameSize)
+        {
+            rc = m_codec.decode(rx.readPtr(), frameSize, msg);
+        }
+        else
+        {
+            std::vector<std::uint8_t> frame(frameSize);
+
+            if (rx.peek(frame.data(), frameSize) < frameSize)
+            {
+                LOG_ERROR("IpcHandler: failed to peek wrapped frame fd={} readable={} frameSize={}", fd, 
+                        rx.readable(), frameSize);
+                return false;
+            }
+
+            LOG_TRACE("IpcHandler: decoding wrapped frame fd={} contiguous={} frameSize={}", fd, 
+                    rx.readLen(), frameSize);
+
+            rc = m_codec.decode(frame.data(), frame.size(), msg);
+        }
+
+        if (rc == IpcDecodeResult::NeedMoreData)
+            return true;
+
         if (rc != IpcDecodeResult::Ok)
         {
-            LOG_ERROR("IpcHandler: decode failed fd={} rc={} frameSize={}",
-                      fd, static_cast<int>(rc), frameSize);
+            LOG_ERROR("IpcHandler: decode failed fd={} rc={} frameSize={}", fd, static_cast<int>(rc), 
+                    frameSize);
             return false;
         }
 
         rx.consume(frameSize);
+
+        LOG_TRACE("[RX Buffer State] fd={} consumed={} remaining={} free={}", fd, frameSize, 
+                rx.readable(), rx.writable());
 
         onRxMessage(fd, std::move(msg));
     }
