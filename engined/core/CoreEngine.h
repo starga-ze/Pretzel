@@ -29,16 +29,13 @@ private:
     void initConfig();
     void initLogger();
     bool initThreadManager();
-    
-    void initIpcClient();
-
-    void startThreads();
+    bool initIpcClient();
 
     /* Temp implemented */
-    void sendClientHello();
+    void processIpcHealthCheck();
+    void processRuntime();
     std::uint32_t nextSeqNo();
     std::uint32_t m_seqNo {0};
-    
 
     LoggerConfig m_loggerConfig;
     IpcConfig m_ipcConfig;
