@@ -14,8 +14,6 @@ namespace nf::ipcd
 
 IpcServerHandler::IpcServerHandler(IpcServer* ipcServer, const nf::config::IpcConfig& cfg) : 
     m_ipcServer(ipcServer),
-    m_txRouter(std::make_unique<IpcdTxRouter>(this)),
-    m_rxRouter(std::make_unique<IpcdRxRouter>(m_txRouter.get())),
     m_cfg(cfg)
 {
 }
@@ -262,6 +260,11 @@ void IpcServerHandler::removeRoute(int fd)
             ++it;
         }
     }
+}
+
+void IpcServerHandler::setRxRouter(nf::router::RxRouter* rxRouter)
+{
+    m_rxRouter = rxRouter;
 }
 
 } // namespace nf::ipcd

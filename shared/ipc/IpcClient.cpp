@@ -14,7 +14,8 @@ namespace nf::ipc
 IpcClient::IpcClient(const nf::config::IpcConfig& cfg, IpcDaemon selfId)
     : m_cfg(cfg),
       m_selfId(selfId),
-      m_events(MAX_EVENTS)
+      m_events(MAX_EVENTS),
+      m_handler(std::make_unique<IpcClientHandler>(this))
 {
 }
 
@@ -239,7 +240,7 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
     {
         if (isClose || isRecv || isSend)
         {
-            if (!m_handler.handleConnect(fd, m_epoll))
+            if (!m_handler->handleConnect(fd, m_epoll))
             {
                 closeConnection();
                 return;
@@ -270,7 +271,7 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
 
     if (isRecv)
     {
-        if (!m_handler.handleRecv(fd, *m_conn, m_epoll))
+        if (!m_handler->handleRecv(fd, *m_conn, m_epoll))
         {
             closeConnection();
             return;
@@ -279,12 +280,22 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
 
     if (isSend)
     {
-        if (!m_handler.handleSend(fd, *m_conn, m_epoll))
+        if (!m_handler->handleSend(fd, *m_conn, m_epoll))
         {
             closeConnection();
             return;
         }
     }
+}
+
+IpcClientHandler* IpcClient::handler()
+{
+    if(!m_handler)
+    {
+        LOG_FATAL("IpcClientHandler is nullptr");
+        return nullptr;
+    }
+    return m_handler.get();
 }
 
 } // namespace nf::ipc

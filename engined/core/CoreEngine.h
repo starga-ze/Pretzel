@@ -4,6 +4,8 @@
 #include "util/ThreadManager.h"
 #include "config/ConfigTypes.h"
 #include "ipc/IpcClient.h"
+#include "router/EnginedRxRouter.h"
+#include "router/EnginedTxRouter.h"
 
 #include <memory>
 
@@ -29,7 +31,7 @@ private:
     void initConfig();
     void initLogger();
     bool initThreadManager();
-    bool initIpcClient();
+    bool initIpcRuntime();
 
     /* Temp implemented */
     void processIpcHealthCheck();
@@ -42,6 +44,9 @@ private:
     
     std::unique_ptr<ThreadManager> m_threadManager;
     std::unique_ptr<IpcClient> m_ipcClient;
+
+    std::unique_ptr<EnginedRxRouter> m_rxRouter;
+    std::unique_ptr<EnginedTxRouter> m_txRouter;
 };
 
 } // namespace nf::engined
