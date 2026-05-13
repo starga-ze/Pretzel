@@ -1,5 +1,6 @@
 #include "ipc/IpcClientHandler.h"
 
+#include "ipc/IpcClient.h"
 #include "util/Logger.h"
 
 #include <cerrno>
@@ -11,6 +12,11 @@
 namespace nf::ipc
 {
 
+IpcClientHandler::IpcClientHandler(IpcClient* ipcClient) : 
+    m_ipcClient(ipcClient)
+{
+}
+
 bool IpcClientHandler::handleConnect(int fd, nf::io::Epoll& epoll)
 {
     int soError = 0;
@@ -18,19 +24,13 @@ bool IpcClientHandler::handleConnect(int fd, nf::io::Epoll& epoll)
 
     if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) != 0)
     {
-        LOG_ERROR("IpcClientHandler: getsockopt(SO_ERROR) failed fd={} errno={} ({})",
-                  fd,
-                  errno,
-                  std::strerror(errno));
+        LOG_ERROR("IpcClientHandler: getsockopt(SO_ERROR) failed fd={} errno={} ({})", fd, errno, std::strerror(errno));
         return false;
     }
 
     if (soError != 0)
     {
-        LOG_ERROR("IpcClientHandler: connect failed fd={} so_error={} ({})",
-                  fd,
-                  soError,
-                  std::strerror(soError));
+        LOG_ERROR("IpcClientHandler: connect failed fd={} so_error={} ({})", fd, soError, std::strerror(soError));
         return false;
     }
 
@@ -44,10 +44,7 @@ bool IpcClientHandler::handleConnect(int fd, nf::io::Epoll& epoll)
     return true;
 }
 
-bool IpcClientHandler::handleRecv(
-    int fd,
-    IpcConnection& conn,
-    nf::io::Epoll& epoll)
+bool IpcClientHandler::handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
 {
     if (!IpcHandler::handleRecv(fd, conn, epoll))
         return false;
@@ -55,10 +52,7 @@ bool IpcClientHandler::handleRecv(
     return true;
 }
 
-bool IpcClientHandler::handleSend(
-    int fd,
-    IpcConnection& conn,
-    nf::io::Epoll& epoll)
+bool IpcClientHandler::handleSend(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
 {
     if (!IpcHandler::handleSend(fd, conn, epoll))
         return false;
@@ -79,18 +73,14 @@ bool IpcClientHandler::ingress(int fd, nf::ipc::IpcFrameView frame)
     const auto rc = m_codec.decode(frame, msg);
     if (rc != IpcDecodeResult::Ok)
     {
-        LOG_ERROR("IpcClientHandler: ingress decode failed fd={} rc={} frameSize={}",
-                  fd,
-                  static_cast<int>(rc),
+        LOG_ERROR("IpcClientHandler: ingress decode failed fd={} rc={} frameSize={}", fd, static_cast<int>(rc),
                   frame.size);
         return false;
     }
 
     if (!msg)
     {
-        LOG_ERROR("IpcClientHandler: ingress decode returned null message fd={} frameSize={}",
-                  fd,
-                  frame.size);
+        LOG_ERROR("IpcClientHandler: ingress decode returned null message fd={} frameSize={}", fd, frame.size);
         return false;
     }
 
@@ -101,7 +91,7 @@ bool IpcClientHandler::ingress(int fd, nf::ipc::IpcFrameView frame)
 
 void IpcClientHandler::egress(std::unique_ptr<IpcMessage> msg)
 {
-    (void) msg;
+    (void)msg;
 
     LOG_WARN("Egress is not supported");
 }

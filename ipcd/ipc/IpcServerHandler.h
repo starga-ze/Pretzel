@@ -5,8 +5,8 @@
 #include "ipc/IpcConnection.h"
 #include "ipc/IpcHandler.h"
 
-#include "router/IpcdRxRouter.h"
-#include "router/IpcdTxRouter.h"
+#include "router/RxRouter.h"
+#include "router/TxRouter.h"
 
 #include <memory>
 #include <unordered_map>
@@ -45,15 +45,16 @@ public:
     bool ingress(int fd, nf::ipc::IpcFrameView frame) override;
     void egress(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
+    void setRxRouter(nf::router::RxRouter* rxRouter);
+
 private:
     void bindRoute(nf::ipc::IpcDaemon daemon, int fd);
     int findRoute(nf::ipc::IpcDaemon daemon) const;
     void removeRoute(int fd);
 
     IpcServer* m_ipcServer = nullptr;
-
-    std::unique_ptr<IpcdTxRouter> m_txRouter = nullptr;
-    std::unique_ptr<IpcdRxRouter> m_rxRouter = nullptr;
+    
+    nf::router::RxRouter* m_rxRouter = nullptr;
 
     nf::config::IpcConfig m_cfg;
 
