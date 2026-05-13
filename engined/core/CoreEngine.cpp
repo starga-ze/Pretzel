@@ -23,7 +23,10 @@ bool CoreEngine::onInit()
 
     initThreadManager();
 
-    initIpcClient();
+    if (!initIpcClient())
+    {
+        return false;
+    }
 
     return true;
 }
@@ -70,14 +73,16 @@ bool CoreEngine::initThreadManager()
     return true;
 }
 
-void CoreEngine::initIpcClient()
+bool CoreEngine::initIpcClient()
 {
     m_ipcClient = std::make_unique<IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Engined);
+    
     if (!m_ipcClient->init())
     {
         LOG_ERROR("IpcClient init failed");
-        return;
+        return false;
     }
+    return true;
 }
 
 void CoreEngine::onLoop()
