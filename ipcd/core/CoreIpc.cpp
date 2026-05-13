@@ -7,6 +7,8 @@
 namespace nf::ipcd
 {
 
+constexpr int kIpcServerTimeoutMs = 10;
+
 CoreIpc::CoreIpc() : Core("ipcd")
 {
 }
@@ -18,29 +20,31 @@ bool CoreIpc::onInit()
 
     LOG_INFO("CoreIpc init...");
 
-    initThreadManager();
-    initIpcServer();
+    if (!initIpcRuntime())
+    {
+        return false;
+    }
 
     return true;
 }
 
 void CoreIpc::onLoop()
 {
-    startThreads();
+    LOG_INFO("CoreIpc Runtime Loop Started");
 
     while (!stopping())
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        m_ipcServer->poll(kIpcServerTimeoutMs);
+
+        processRuntime();
     }
+
+    LOG_INFO("CoreIpc Runtime Loop Stopped");
 }
 
 void CoreIpc::onShutdown()
 {
     LOG_INFO("CoreIpc shutdown...");
-
-    m_threadManager->stopAll();
-
-    LOG_INFO("All threads terminated successfully");
 
     nf::util::Logger::Shutdown();
 }
@@ -75,28 +79,26 @@ void CoreIpc::initLogger()
             );
 }
 
-bool CoreIpc::initThreadManager()
+bool CoreIpc::initIpcRuntime()
 {
-    m_threadManager = std::make_unique<ThreadManager>();
-    if (!m_threadManager)
+    m_ipcServer = std::make_unique<IpcServer>(m_ipcConfig, nf::ipc::IpcDaemon::Ipcd);
+    
+    if (!m_ipcServer->init())
     {
-        LOG_FATAL("ThreadManager initialize failed");
+        LOG_ERROR("IpcServer init failed");
         return false;
     }
+
+    m_txRouter = std::make_unique<IpcdTxRouter>(m_ipcServer->handler());
+    m_rxRouter = std::make_unique<IpcdRxRouter>(m_txRouter.get());
+
+    m_ipcServer->handler()->setRxRouter(m_rxRouter.get());
 
     return true;
 }
 
-void CoreIpc::initIpcServer()
+void CoreIpc::processRuntime()
 {
-    m_ipcServer = std::make_unique<IpcServer>(m_ipcConfig, nf::ipc::IpcDaemon::Ipcd);
-}
-
-void CoreIpc::startThreads()
-{
-    m_threadManager->addThread("ipc_server",
-            std::bind(&IpcServer::start, m_ipcServer.get()),
-            std::bind(&IpcServer::stop, m_ipcServer.get()));
 }
 
 } // namespace nf::ipcd

@@ -3,6 +3,8 @@
 #include "core/Core.h"
 #include "util/ThreadManager.h"
 #include "ipc/IpcServer.h"
+#include "router/IpcdRxRouter.h"
+#include "router/IpcdTxRouter.h"
 #include "config/ConfigTypes.h"
 
 #include <memory>
@@ -27,16 +29,16 @@ protected:
 private:
     void initConfig();
     void initLogger();
-    bool initThreadManager();
-    void initIpcServer();
-
-    void startThreads();
+    bool initIpcRuntime();
+    void processRuntime();
 
     LoggerConfig m_loggerConfig;
     IpcConfig m_ipcConfig;
     
-    std::unique_ptr<ThreadManager> m_threadManager;
     std::unique_ptr<IpcServer> m_ipcServer;
+
+    std::unique_ptr<IpcdRxRouter> m_rxRouter;
+    std::unique_ptr<IpcdTxRouter> m_txRouter;
 };
 
 } // namespace nf::ipcd
