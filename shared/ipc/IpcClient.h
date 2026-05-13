@@ -48,6 +48,7 @@ public:
     State state() const;
     bool isConnected() const;
     int fd() const;
+    IpcClientHandler* handler();
 
 private:
     bool initEpoll();
@@ -73,7 +74,7 @@ private:
     std::unique_ptr<IpcConnection> m_conn;
 
     IpcCodec m_codec;
-    IpcClientHandler m_handler;
+    std::unique_ptr<IpcClientHandler> m_handler;
 
     std::atomic<bool> m_running {false};
     bool m_initialized {false};

@@ -23,7 +23,7 @@ bool CoreEngine::onInit()
 
     initThreadManager();
 
-    if (!initIpcClient())
+    if (!initIpcRuntime())
     {
         return false;
     }
@@ -73,7 +73,7 @@ bool CoreEngine::initThreadManager()
     return true;
 }
 
-bool CoreEngine::initIpcClient()
+bool CoreEngine::initIpcRuntime()
 {
     m_ipcClient = std::make_unique<IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Engined);
     
@@ -82,6 +82,12 @@ bool CoreEngine::initIpcClient()
         LOG_ERROR("IpcClient init failed");
         return false;
     }
+
+    m_txRouter = std::make_unique<EnginedTxRouter>(m_ipcClient->handler());
+    m_rxRouter = std::make_unique<EnginedRxRouter>(m_txRouter.get());
+
+    m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
+
     return true;
 }
 
