@@ -216,43 +216,61 @@ void IpcClient::closeConnection()
 
 void IpcClient::handleEvent(int fd, std::uint32_t events)
 {
+    const bool isClose = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
+    const bool isRecv  = (events & EPOLLIN) != 0;
+    const bool isSend  = (events & EPOLLOUT) != 0;
+
+    /* Event fd */
     if (fd == m_epoll.getEventFd())
     {
         m_epoll.drainWakeup();
         return;
     }
 
+    /* Socket fd */
     if (!m_socket || fd != m_socket->fd())
     {
         LOG_WARN("IpcClient: unknown fd event fd={} events=0x{:x}", fd, events);
         return;
     }
 
-    const bool isClose = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
-    const bool isRecv  = (events & EPOLLIN) != 0;
-    const bool isSend  = (events & EPOLLOUT) != 0;
+    /* Connecting fd */
+    if (m_state == State::Connecting)
+    {
+        if (isClose || isRecv || isSend)
+        {
+            if (!m_handler.handleConnect(fd, m_epoll))
+            {
+                closeConnection();
+                return;
+            }
+
+            m_state = State::Connected;
+        }
+
+        return;
+    }
+
+    /* Connected fd */
+    if (m_state != State::Connected || !m_conn)
+    {
+        LOG_WARN("IpcClient: event ignored in invalid state fd={} state={} events=0x{:x}",
+                 fd,
+                 static_cast<int>(m_state),
+                 events);
+        return;
+    }
 
     if (isClose)
     {
-        LOG_INFO("IpcClient: close event fd={} events=0x{:x}", fd, events);
+        LOG_INFO("IpcClient: connection close event fd={} events=0x{:x}", fd, events);
         closeConnection();
         return;
     }
 
-    if (m_state == State::Connecting)
-    {
-        if (isRecv || isSend)
-            handleConnectEvent();
-
-        return;
-    }
-
-    if (m_state != State::Connected || !m_conn)
-        return;
-
     if (isRecv)
     {
-        if (!m_handler.handleRecv(m_socket->fd(), *m_conn, m_epoll))
+        if (!m_handler.handleRecv(fd, *m_conn, m_epoll))
         {
             closeConnection();
             return;
@@ -261,50 +279,12 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
 
     if (isSend)
     {
-        if (!m_handler.handleSend(m_socket->fd(), *m_conn, m_epoll))
+        if (!m_handler.handleSend(fd, *m_conn, m_epoll))
         {
             closeConnection();
             return;
         }
     }
-}
-
-void IpcClient::handleConnectEvent()
-{
-    if (!m_socket)
-        return;
-
-    int soError = 0;
-    socklen_t len = sizeof(soError);
-
-    if (::getsockopt(m_socket->fd(), SOL_SOCKET, SO_ERROR, &soError, &len) != 0)
-    {
-        LOG_ERROR("IpcClient: getsockopt(SO_ERROR) failed fd={} errno={}",
-                  m_socket->fd(),
-                  errno);
-        closeConnection();
-        return;
-    }
-
-    if (soError != 0)
-    {
-        LOG_ERROR("IpcClient: connect completion failed fd={} so_error={}",
-                  m_socket->fd(),
-                  soError);
-        closeConnection();
-        return;
-    }
-
-    m_state = State::Connected;
-
-    if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLRDHUP))
-    {
-        LOG_ERROR("IpcClient: epoll mod after connect failed fd={}", m_socket->fd());
-        closeConnection();
-        return;
-    }
-
-    LOG_INFO("IpcClient: connected fd={}", m_socket->fd());
 }
 
 } // namespace nf::ipc
