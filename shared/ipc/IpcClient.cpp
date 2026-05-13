@@ -20,7 +20,6 @@ IpcClient::IpcClient(const nf::config::IpcConfig& cfg, IpcDaemon selfId)
 
 IpcClient::~IpcClient()
 {
-    stop();
     closeConnection();
 }
 
@@ -46,46 +45,29 @@ bool IpcClient::init()
     return true;
 }
 
-void IpcClient::start()
+bool IpcClient::poll(int timeoutMs)
 {
-    if (!init())
+    const int n = m_epoll.wait(m_events, timeoutMs);
+    if (n < 0)
     {
-        LOG_ERROR("IpcClient: init failed");
-        return;
-    }
-
-    m_running = true;
-
-    LOG_INFO("IpcClient start");
-
-    while (m_running)
-    {
-        const int n = m_epoll.wait(m_events, -1);
-        if (n < 0)
+        if (errno == EINTR)
         {
-            if (errno == EINTR)
-                continue;
-
-            LOG_WARN("IpcClient: epoll wait failed errno={}", errno);
-            continue;
+            return true;
         }
 
-        for (int i = 0; i < n; ++i)
-        {
-            const int fd = m_events[i].data.fd;
-            const std::uint32_t events = m_events[i].events;
-
-            handleEvent(fd, events);
-        }
+        LOG_WARN("Epoll wait failed errno={}", errno);
+        return false;
     }
 
-    LOG_INFO("IpcClient stopped");
-}
+    for (int i = 0; i < n; ++i)
+    {
+        const int fd = m_events[i].data.fd;
+        const std::uint32_t events = m_events[i].events;
 
-void IpcClient::stop()
-{
-    m_running = false;
-    m_epoll.wakeup();
+        handleEvent(fd, events);
+    }
+
+    return true;
 }
 
 bool IpcClient::send(std::unique_ptr<IpcMessage> msg)

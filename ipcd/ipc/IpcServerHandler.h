@@ -51,9 +51,9 @@ private:
     void removeRoute(int fd);
 
     IpcServer* m_ipcServer = nullptr;
-    
-    std::unique_ptr<IpcdRxRouter> m_rxRouter = nullptr;
+
     std::unique_ptr<IpcdTxRouter> m_txRouter = nullptr;
+    std::unique_ptr<IpcdRxRouter> m_rxRouter = nullptr;
 
     nf::config::IpcConfig m_cfg;
 

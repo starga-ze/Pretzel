@@ -42,9 +42,7 @@ public:
     IpcClient& operator=(IpcClient&&) = delete;
 
     bool init();
-    void start();
-    void stop();
-
+    bool poll(int timeoutMs);
     bool send(std::unique_ptr<IpcMessage> msg);
 
     State state() const;

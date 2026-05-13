@@ -2,9 +2,13 @@
 #include "util/Logger.h"
 
 #include <thread>
+#include <chrono>
 
 namespace nf::engined
 {
+
+constexpr int kIpcClientTimeoutMs = 10;
+constexpr auto kIpcHealthCheckInterval = std::chrono::seconds(1);
 
 CoreEngine::CoreEngine() : Core("engined")
 {
@@ -22,28 +26,6 @@ bool CoreEngine::onInit()
     initIpcClient();
 
     return true;
-}
-
-void CoreEngine::onLoop()
-{
-    startThreads();
-
-    while (!stopping())
-    {
-        sendClientHello();
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    }
-}
-
-void CoreEngine::onShutdown()
-{
-    LOG_INFO("CoreEngine shutdown...");
-
-    m_threadManager->stopAll();
-
-    LOG_INFO("All threads terminated successfully");
-
-    nf::util::Logger::Shutdown();
 }
 
 void CoreEngine::initConfig()
@@ -91,13 +73,46 @@ bool CoreEngine::initThreadManager()
 void CoreEngine::initIpcClient()
 {
     m_ipcClient = std::make_unique<IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Engined);
+    if (!m_ipcClient->init())
+    {
+        LOG_ERROR("IpcClient init failed");
+        return;
+    }
 }
 
-void CoreEngine::startThreads()
+void CoreEngine::onLoop()
 {
-    m_threadManager->addThread("ipc_client",
-            std::bind(&IpcClient::start, m_ipcClient.get()),
-            std::bind(&IpcClient::stop, m_ipcClient.get()));
+    LOG_INFO("CoreEngine Runtime Loop Started");
+
+    auto lastHealthCheckAt = std::chrono::steady_clock::now();
+
+    while (!stopping())
+    {
+        m_ipcClient->poll(kIpcClientTimeoutMs);
+
+        const auto now = std::chrono::steady_clock::now();
+
+        if (now - lastHealthCheckAt >= kIpcHealthCheckInterval)
+        {
+            processIpcHealthCheck();
+            lastHealthCheckAt = now;
+        }
+
+        processRuntime();
+    }
+
+    LOG_INFO("CoreEngine Runtime Loop Stopped");
+}
+
+void CoreEngine::onShutdown()
+{
+    LOG_INFO("CoreEngine shutdown...");
+
+    m_threadManager->stopAll();
+
+    LOG_INFO("All threads terminated successfully");
+
+    nf::util::Logger::Shutdown();
 }
 
 std::uint32_t CoreEngine::nextSeqNo()
@@ -105,7 +120,7 @@ std::uint32_t CoreEngine::nextSeqNo()
     return ++m_seqNo;
 }
 
-void CoreEngine::sendClientHello()
+void CoreEngine::processIpcHealthCheck()
 {
     std::string name = nf::ipc::IpcProtocol::daemonToStr(
         nf::ipc::IpcDaemon::Engined
@@ -124,6 +139,11 @@ void CoreEngine::sendClientHello()
         name.size());
 
     m_ipcClient->send(std::move(msg));
+}
+
+void CoreEngine::processRuntime()
+{
+
 }
 
 } // namespace nf::ipcd
