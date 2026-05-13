@@ -20,7 +20,10 @@ bool CoreIpc::onInit()
 
     LOG_INFO("CoreIpc init...");
 
-    initIpcRuntime();
+    if (!initIpcRuntime())
+    {
+        return false;
+    }
 
     return true;
 }
