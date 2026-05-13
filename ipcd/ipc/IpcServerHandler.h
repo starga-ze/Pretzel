@@ -53,7 +53,6 @@ private:
     void removeRoute(int fd);
 
     IpcServer* m_ipcServer = nullptr;
-    
     nf::router::RxRouter* m_rxRouter = nullptr;
 
     nf::config::IpcConfig m_cfg;

@@ -26,8 +26,8 @@ public:
     void setRxRouter(nf::router::RxRouter* rxRouter);
 
 private:
-    IpcClient* m_ipcClient;
-    nf::router::RxRouter* m_rxRouter;
+    IpcClient* m_ipcClient = nullptr;
+    nf::router::RxRouter* m_rxRouter = nullptr;
 };
 
 } // namespace nf::ipc
