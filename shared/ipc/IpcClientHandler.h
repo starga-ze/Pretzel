@@ -2,6 +2,9 @@
 
 #include "ipc/IpcHandler.h"
 
+#include "router/RxRouter.h"
+#include "router/TxRouter.h"
+
 namespace nf::ipc
 {
 
@@ -20,8 +23,11 @@ public:
     bool ingress(int fd, nf::ipc::IpcFrameView frame) override;
     void egress(std::unique_ptr<IpcMessage> msg) override;
 
+    void setRxRouter(nf::router::RxRouter* rxRouter);
+
 private:
     IpcClient* m_ipcClient;
+    nf::router::RxRouter* m_rxRouter;
 };
 
 } // namespace nf::ipc

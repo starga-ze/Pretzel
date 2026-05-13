@@ -84,7 +84,7 @@ bool IpcClientHandler::ingress(int fd, nf::ipc::IpcFrameView frame)
         return false;
     }
 
-    LOG_TRACE("IPC Client Ingress Message dump:\n{}", msg->dump());
+    m_rxRouter->handleMessage(std::move(msg));
 
     return true;
 }
@@ -96,4 +96,9 @@ void IpcClientHandler::egress(std::unique_ptr<IpcMessage> msg)
     LOG_WARN("Egress is not supported");
 }
 
-} // namespace nf::ipc
+void IpcClientHandler::setRxRouter(nf::router::RxRouter* rxRouter)
+{
+    m_rxRouter = rxRouter;
+} 
+
+}// namespace nf::ipc
