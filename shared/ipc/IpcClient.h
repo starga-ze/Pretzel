@@ -45,7 +45,7 @@ public:
     void start();
     void stop();
 
-    bool send(const IpcMessage& msg);
+    bool send(std::unique_ptr<IpcMessage> msg);
 
     State state() const;
     bool isConnected() const;

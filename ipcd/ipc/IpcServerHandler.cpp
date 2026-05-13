@@ -14,6 +14,8 @@ namespace nf::ipcd
 
 IpcServerHandler::IpcServerHandler(IpcServer* ipcServer, const nf::config::IpcConfig& cfg) : 
     m_ipcServer(ipcServer),
+    m_rxRouter(std::make_unique<IpcdRxRouter>()),
+    m_txRouter(std::make_unique<IpcdTxRouter>(this)),
     m_cfg(cfg)
 {
 }
@@ -105,19 +107,161 @@ void IpcServerHandler::closeConnection(int fd,
         std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
         nf::io::Epoll& epoll)
 {
+    removeRoute(fd);
+
     auto it = connections.find(fd);
     if (it == connections.end())
+    {
         return;
+    }
 
     epoll.del(fd);
     connections.erase(it);
 
-    LOG_INFO("IpcServerHandler: connection removed fd={} total={}", fd, connections.size());
+    LOG_INFO("Connection removed: fd={}, total={}", fd, connections.size());
 }
 
-void IpcServerHandler::onMessage(const nf::ipc::IpcMessage& msg)
+bool IpcServerHandler::ingress(int fd, nf::ipc::IpcFrameView frame)
 {
-    m_sessionManager.handleMessage(msg);
+    if (frame.empty())
+    {
+        LOG_WARN("Ingress frame is empty: fd={}", fd);
+        return false;
+    }
+
+    if (!m_rxRouter)
+    {
+        LOG_WARN("RxRouter is nullptr");
+        return false;
+    }
+
+    std::unique_ptr<nf::ipc::IpcMessage> msg;
+
+    const auto rc = m_codec.decode(frame, msg);
+    if (rc != nf::ipc::IpcDecodeResult::Ok)
+    {
+        LOG_ERROR("Ingress decode failed: fd={} rc={} frameSize={}",
+                  fd, static_cast<int>(rc), frame.size);
+        return false;
+    }
+
+    if (!msg)
+    {
+        LOG_ERROR("Ingress decode returned null message: fd={} frameSize={}",
+                  fd, frame.size);
+        return false;
+    }
+
+    bindRoute(msg->getSrc(), fd);
+
+    LOG_TRACE("IPC Ingress Message dump:\n{}", msg->dump());
+
+    m_rxRouter->handleMessage(std::move(msg));
+    
+    return true;
+}
+
+void IpcServerHandler::egress(std::unique_ptr<nf::ipc::IpcMessage> msg)
+{
+    if (!msg)
+    {
+        LOG_WARN("Egress message is nullptr");
+        return;
+    }
+
+    if (!m_ipcServer)
+    {
+        LOG_FATAL("ipcServer is nullptr");
+        return;
+    }
+
+    const int fd = findRoute(msg->getDst());
+    if (fd < 0)
+    {
+        LOG_WARN("No route for egress dst={}",
+                 nf::ipc::IpcProtocol::daemonToStr(msg->getDst()));
+        return;
+    }
+
+    LOG_TRACE("IPC Egress Message dump:\n{}", msg->dump());
+
+    std::vector<std::uint8_t> frame = m_codec.encode(msg);
+    if (frame.empty())
+    {
+        LOG_WARN("Egress encode failed: fd={} dst={} cmd={} payload={}bytes",
+                 fd,
+                 nf::ipc::IpcProtocol::daemonToStr(msg->getDst()),
+                 nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+                 msg->getPayloadLen());
+        return;
+    }
+
+    const std::size_t frameSize = frame.size();
+
+    if (!m_ipcServer->enqueueFrame(fd, std::move(frame)))
+    {
+        LOG_WARN("Egress enqueue failed: fd={} frame={}bytes",
+                 fd, frameSize);
+    }
+}
+
+void IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
+{
+    auto it = m_routeTable.find(daemon);
+    if (it == m_routeTable.end())
+    {
+        m_routeTable.emplace(daemon, fd);
+
+        LOG_DEBUG("Route added: daemon={}, fd={}, routes={}", 
+                nf::ipc::IpcProtocol::daemonToStr(daemon),
+                fd, m_routeTable.size());
+        return;
+    }
+
+    if (it->second == fd)
+    {
+        LOG_TRACE("Route unchanged: daemon={}, fd={}", 
+                nf::ipc::IpcProtocol::daemonToStr(daemon), fd);
+        return;
+    }
+
+    const int oldFd = it->second;
+    it->second = fd;
+
+    LOG_WARN("Route updated: daemon={}, oldFd={} -> newFd={}, routes={}",
+            nf::ipc::IpcProtocol::daemonToStr(daemon),
+            oldFd,
+            fd,
+            m_routeTable.size());
+}
+
+int IpcServerHandler::findRoute(nf::ipc::IpcDaemon daemon) const
+{
+    auto it = m_routeTable.find(daemon);
+    if (it == m_routeTable.end())
+    {
+        return -1;
+    }
+
+    return it->second;
+}
+
+void IpcServerHandler::removeRoute(int fd)
+{
+    for (auto it = m_routeTable.begin(); it != m_routeTable.end();)
+    {
+        if (it->second == fd)
+        {
+            LOG_DEBUG("Route removed. daemon={}, fd={}",
+                    nf::ipc::IpcProtocol::daemonToStr(it->first),
+                    fd);
+            it = m_routeTable.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 } // namespace nf::ipcd

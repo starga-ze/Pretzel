@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace nf::ipc
@@ -28,13 +29,10 @@ enum class IpcPeekResult
 class IpcCodec
 {
 public:
-    std::vector<std::uint8_t> encode(const IpcMessage& msg) const;
+    std::vector<std::uint8_t> encode(const std::unique_ptr<IpcMessage>& msg) const;
+    IpcDecodeResult decode(IpcFrameView frame, std::unique_ptr<IpcMessage>& out) const;
 
-    IpcDecodeResult decode(const std::vector<std::uint8_t>& frame, IpcMessage& out) const;
-
-    IpcPeekResult peekFrameSize(const std::uint8_t* data,
-                                std::size_t len,
-                                std::size_t& outFrameSize) const;
+    IpcPeekResult peekFrameSize(const std::uint8_t* data, std::size_t len, std::size_t& outFrameSize) const;
 };
 
 } // namespace nf::ipc

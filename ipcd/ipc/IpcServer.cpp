@@ -10,10 +10,7 @@ namespace nf::ipcd
 {
 
 IpcServer::IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId)
-    : m_cfg(cfg),
-      m_selfId(selfId),
-      m_events(MAX_EVENTS),
-      m_handler(this, cfg)
+    : m_cfg(cfg), m_selfId(selfId), m_events(MAX_EVENTS), m_handler(this, cfg)
 {
 }
 
@@ -90,26 +87,21 @@ void IpcServer::stop()
     m_epoll.wakeup();
 }
 
-bool IpcServer::send(int fd, const nf::ipc::IpcMessage& msg)
+bool IpcServer::enqueueFrame(int fd, std::vector<std::uint8_t> frame)
 {
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
         return false;
 
-    const std::vector<std::uint8_t> frame = m_codec.encode(msg);
     if (frame.empty())
-    {
-        LOG_WARN("IpcServer: encode failed fd={} cmd={} payload={}bytes",
-                 fd,
-                 nf::ipc::IpcProtocol::cmdToStr(msg.getCmd()),
-                 msg.getPayloadLen());
         return false;
-    }
 
     auto& conn = *it->second;
+
     if (!conn.write(frame))
     {
-        LOG_WARN("IpcServer: tx buffer full fd={} frame={}bytes", fd, frame.size());
+        LOG_WARN("IpcServer: tx buffer full fd={} frame={}bytes",
+                 fd, frame.size());
         return false;
     }
 
@@ -119,8 +111,6 @@ bool IpcServer::send(int fd, const nf::ipc::IpcMessage& msg)
         m_handler.closeConnection(fd, m_connections, m_epoll);
         return false;
     }
-
-    LOG_DEBUG("Tx Ipc Message dump:\n{}", msg.dump());
 
     return true;
 }

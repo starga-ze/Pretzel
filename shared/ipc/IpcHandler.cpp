@@ -82,61 +82,108 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 {
     auto& rx = conn.rx();
 
+    LOG_TRACE("[RX Buffer State] fd={} buffer: used={}/{} ({:.2f}%) free={}", fd,
+              rx.readable(), rx.capacity(),
+              rx.capacity() > 0
+                  ? (static_cast<double>(rx.readable()) * 100.0 /
+                     static_cast<double>(rx.capacity()))
+                  : 0.0,
+              rx.writable());
+
     while (true)
     {
         if (rx.readable() < sizeof(IpcWireHeader))
             return true;
 
-        std::vector<std::uint8_t> header(sizeof(IpcWireHeader));
-        if (!rx.peek(header.data(), header.size()))
+        std::uint8_t headerBuf[sizeof(IpcWireHeader)]{};
+        if (rx.peek(headerBuf, sizeof(headerBuf)) < sizeof(headerBuf))
         {
-            LOG_ERROR("IpcHandler: failed to peek header fd={}", fd);
-            return false;
+            LOG_TRACE("IpcHandler: incomplete header fd={} readable={} headerLen={}",
+                      fd, rx.readable(), sizeof(IpcWireHeader));
+            return true;
         }
 
         std::size_t frameSize = 0;
         const IpcPeekResult peekRc =
-            m_codec.peekFrameSize(header.data(), header.size(), frameSize);
+            m_codec.peekFrameSize(headerBuf, sizeof(headerBuf), frameSize);
 
         if (peekRc == IpcPeekResult::NeedMoreData)
             return true;
 
         if (peekRc == IpcPeekResult::InvalidFrame)
         {
-            LOG_ERROR("IpcHandler: invalid frame header fd={}", fd);
+            LOG_ERROR("IpcHandler: invalid frame header fd={} readable={}",
+                      fd, rx.readable());
             return false;
         }
 
         if (frameSize == 0 || frameSize > IPC_MAX_FRAME_SIZE)
         {
-            LOG_ERROR("IpcHandler: invalid frame size={} fd={}", frameSize, fd);
+            LOG_ERROR("IpcHandler: invalid frame size fd={} frameSize={} maxFrameSize={}",
+                      fd, frameSize, IPC_MAX_FRAME_SIZE);
             return false;
         }
 
         if (rx.readable() < frameSize)
-            return true;
-
-        std::vector<std::uint8_t> frame(frameSize);
-        if (!rx.peek(frame.data(), frameSize))
         {
-            LOG_ERROR("IpcHandler: failed to peek frame fd={} frameSize={}", fd, frameSize);
-            return false;
+            LOG_TRACE("IpcHandler: incomplete frame fd={} readable={} frameSize={}",
+                      fd, rx.readable(), frameSize);
+            return true;
         }
 
-        IpcMessage msg;
-        const IpcDecodeResult rc = m_codec.decode(frame, msg);
-
-        if (rc != IpcDecodeResult::Ok)
+        /* Contiguous Frame */
+        if (rx.readLen() >= frameSize)
         {
-            LOG_ERROR("IpcHandler: decode failed fd={} rc={} frameSize={}",
-                      fd, static_cast<int>(rc), frameSize);
-            return false;
+            IpcFrameView frame {
+                rx.readPtr(),
+                frameSize
+            };
+
+            LOG_TRACE("IpcHandler: frame ready fd={} frameSize={} contiguous=true",
+                      fd, frameSize);
+
+            if (!ingress(fd, frame))
+            {
+                LOG_ERROR("IpcHandler: ingress failed fd={} frameSize={}",
+                          fd, frameSize);
+                return false;
+            }
+        }
+        /* Wrapped Frame */
+        else
+        {
+            std::vector<std::uint8_t> frameBuf(frameSize);
+
+            if (rx.peek(frameBuf.data(), frameSize) < frameSize)
+            {
+                LOG_ERROR("IpcHandler: failed to peek wrapped frame fd={} readable={} frameSize={}",
+                          fd, rx.readable(), frameSize);
+                return false;
+            }
+
+            IpcFrameView frame {
+                frameBuf.data(),
+                frameBuf.size()
+            };
+
+            LOG_TRACE("IpcHandler: frame ready fd={} frameSize={} contiguous=false firstChunk={}",
+                      fd, frameSize, rx.readLen());
+
+            if (!ingress(fd, frame))
+            {
+                LOG_ERROR("IpcHandler: ingress failed fd={} frameSize={}",
+                          fd, frameSize);
+                return false;
+            }
         }
 
         rx.consume(frameSize);
-
-        LOG_DEBUG("Rx Ipc Message dump:\n{}", msg.dump());
-        onMessage(msg);
+    
+        /*
+        LOG_TRACE("[RX Buffer State] fd={} consumed={} remaining={} free={}",
+                  fd, frameSize, rx.readable(), rx.writable());
+        */
     }
 }
+
 } // namespace nf::ipc

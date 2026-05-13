@@ -1,10 +1,12 @@
 #pragma once
 
+#include "socket/UnixDomainSocket.h"
 #include "config/ConfigTypes.h"
 #include "ipc/IpcConnection.h"
 #include "ipc/IpcHandler.h"
-#include "socket/UnixDomainSocket.h"
-#include "session/IpcdSessionManager.h"
+
+#include "router/IpcdRxRouter.h"
+#include "router/IpcdTxRouter.h"
 
 #include <memory>
 #include <unordered_map>
@@ -40,14 +42,22 @@ public:
         std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
         nf::io::Epoll& epoll);
 
-protected:
-    void onMessage(const nf::ipc::IpcMessage& msg) override;
+    bool ingress(int fd, nf::ipc::IpcFrameView frame) override;
+    void egress(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
 private:
+    void bindRoute(nf::ipc::IpcDaemon daemon, int fd);
+    int findRoute(nf::ipc::IpcDaemon daemon) const;
+    void removeRoute(int fd);
+
     IpcServer* m_ipcServer = nullptr;
+    
+    std::unique_ptr<IpcdRxRouter> m_rxRouter = nullptr;
+    std::unique_ptr<IpcdTxRouter> m_txRouter = nullptr;
+
     nf::config::IpcConfig m_cfg;
 
-    IpcdSessionManager m_sessionManager;
+    std::unordered_map<nf::ipc::IpcDaemon, int> m_routeTable;
 };
 
 } // namespace nf::ipcd
