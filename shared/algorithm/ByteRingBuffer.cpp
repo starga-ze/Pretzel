@@ -9,6 +9,11 @@ ByteRingBuffer::ByteRingBuffer(size_t capacity) : m_buffer(capacity)
 {
 }
 
+size_t ByteRingBuffer::capacity() const
+{
+    return m_buffer.size();
+}
+
 size_t ByteRingBuffer::readable() const
 {
     return m_size;
@@ -16,7 +21,7 @@ size_t ByteRingBuffer::readable() const
 
 size_t ByteRingBuffer::writable() const
 {
-    return m_buffer.size() - m_size;
+    return capacity() - m_size;
 }
 
 uint8_t* ByteRingBuffer::writePtr()

@@ -12,6 +12,7 @@ class ByteRingBuffer
 public:
     explicit ByteRingBuffer(size_t capacity);
 
+    size_t capacity() const;
     size_t readable() const;
     size_t writable() const;
 

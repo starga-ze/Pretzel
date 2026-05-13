@@ -118,12 +118,12 @@ void CoreEngine::sendClientHello()
         nextSeqNo(),
         static_cast<std::uint8_t>(nf::ipc::IpcFlag::Request));
 
-    nf::ipc::IpcMessage msg(header);
-    msg.setPayload(
+    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    msg->setPayload(
         reinterpret_cast<const std::uint8_t*>(name.data()),
         name.size());
 
-    m_ipcClient->send(msg);
+    m_ipcClient->send(std::move(msg));
 }
 
 } // namespace nf::ipcd

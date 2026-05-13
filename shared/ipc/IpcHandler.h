@@ -19,8 +19,8 @@ public:
     bool handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll);
     bool handleSend(int fd, IpcConnection& conn, nf::io::Epoll& epoll);
 
-protected:
-    virtual void onMessage(const IpcMessage& msg) = 0;
+    virtual bool ingress(int fd, nf::ipc::IpcFrameView frame) = 0;
+    virtual void egress(std::unique_ptr<IpcMessage> msg) = 0;
 
 private:
     bool drainRxFrames(int fd, IpcConnection& conn);
