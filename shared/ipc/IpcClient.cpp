@@ -71,28 +71,17 @@ bool IpcClient::poll(int timeoutMs)
     return true;
 }
 
-bool IpcClient::send(std::unique_ptr<IpcMessage> msg)
+bool IpcClient::enqueueFrame(std::vector<std::uint8_t> frame)
 {
-    if (!msg)
-    {
-        LOG_WARN("IpcClient: send rejected, message is nullptr");
-        return false;
-    }
-
     if (!m_conn || !m_socket || m_state != State::Connected)
     {
-        LOG_WARN("IpcClient: send rejected, not connected");
+        LOG_WARN("Send rejected, not connected");
         return false;
     }
 
-    LOG_DEBUG("Tx Ipc Message dump:\n{}", msg->dump());
-
-    std::vector<std::uint8_t> frame = m_codec.encode(msg);
     if (frame.empty())
     {
-        LOG_WARN("IpcClient: encode failed cmd={} payload={}bytes",
-                 IpcProtocol::cmdToStr(msg->getCmd()),
-                 msg->getPayloadLen());
+        LOG_WARN("Frame is empty");
         return false;
     }
 
