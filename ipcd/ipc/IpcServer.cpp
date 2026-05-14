@@ -75,10 +75,16 @@ bool IpcServer::enqueueFrame(int fd, std::vector<std::uint8_t> frame)
 {
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
+    {
+        LOG_WARN("Send rejected, not connected");
         return false;
+    }
 
     if (frame.empty())
+    {
+        LOG_WARN("Frame is empty");
         return false;
+    }
 
     auto& conn = *it->second;
 
