@@ -43,7 +43,7 @@ public:
 
     bool init();
     bool poll(int timeoutMs);
-    bool send(std::unique_ptr<IpcMessage> msg);
+    bool enqueueFrame(std::vector<std::uint8_t> frame);
 
     State state() const;
     bool isConnected() const;
