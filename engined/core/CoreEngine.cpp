@@ -149,7 +149,7 @@ void CoreEngine::processIpcHealthCheck()
         reinterpret_cast<const std::uint8_t*>(name.data()),
         name.size());
 
-    m_ipcClient->send(std::move(msg));
+    m_txRouter->handleMessage(std::move(msg));
 }
 
 void CoreEngine::processRuntime()
