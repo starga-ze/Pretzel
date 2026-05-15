@@ -1,11 +1,14 @@
 #pragma once
 
 #include "core/Core.h"
-#include "util/ThreadManager.h"
-#include "config/ConfigTypes.h"
+
+#include "process/EnginedProcess.h"
 #include "ipc/IpcClient.h"
 #include "router/EnginedRxRouter.h"
 #include "router/EnginedTxRouter.h"
+
+#include "config/ConfigTypes.h"
+#include "util/ThreadManager.h"
 
 #include <memory>
 
@@ -28,17 +31,6 @@ protected:
     void onShutdown() override;
 
 private:
-    void initConfig();
-    void initLogger();
-    bool initThreadManager();
-    bool initIpcRuntime();
-
-    /* Temp implemented */
-    void processIpcHealthCheck();
-    void processRuntime();
-    std::uint32_t nextSeqNo();
-    std::uint32_t m_seqNo {0};
-
     LoggerConfig m_loggerConfig;
     IpcConfig m_ipcConfig;
     
@@ -47,6 +39,8 @@ private:
 
     std::unique_ptr<EnginedRxRouter> m_rxRouter;
     std::unique_ptr<EnginedTxRouter> m_txRouter;
+
+    std::unique_ptr<EnginedProcess> m_process;
 };
 
 } // namespace nf::engined

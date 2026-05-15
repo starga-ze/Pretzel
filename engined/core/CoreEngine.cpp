@@ -2,13 +2,9 @@
 #include "util/Logger.h"
 
 #include <thread>
-#include <chrono>
 
 namespace nf::engined
 {
-
-constexpr int kIpcClientTimeoutMs = 10;
-constexpr auto kIpcHealthCheckInterval = std::chrono::seconds(1);
 
 CoreEngine::CoreEngine() : Core("engined")
 {
@@ -16,27 +12,10 @@ CoreEngine::CoreEngine() : Core("engined")
 
 bool CoreEngine::onInit()
 {
-    initConfig();
-    initLogger();
-
-    LOG_INFO("CoreEngine init...");
-
-    initThreadManager();
-
-    if (!initIpcRuntime())
-    {
-        return false;
-    }
-
-    return true;
-}
-
-void CoreEngine::initConfig()
-{
+    /* Config init */
     const auto& cfg = m_config.json();
 
     const auto& log = cfg["logger"];
-
     m_loggerConfig.name = log["name"];
     m_loggerConfig.file = log["file"];
     m_loggerConfig.maxFileSize = log["max_file_size"];
@@ -49,112 +28,74 @@ void CoreEngine::initConfig()
     m_ipcConfig.maxFrameSize = ipc["max_frame_size"];
     m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
-}
 
-void CoreEngine::initLogger()
-{
+    /* Logger init */
     nf::util::Logger::Init(
             m_loggerConfig.name,
             m_loggerConfig.file,
             m_loggerConfig.maxFileSize,
-            m_loggerConfig.maxFiles
-            );
-}
+            m_loggerConfig.maxFiles);
 
-bool CoreEngine::initThreadManager()
-{
+    LOG_INFO("Engined onInit()...");
+
+    /* ThreadManager init */
     m_threadManager = std::make_unique<ThreadManager>();
     if (!m_threadManager)
     {
-        LOG_FATAL("ThreadManager initialize failed");
+        LOG_FATAL("ThreadManager init failed");
         return false;
     }
 
-    return true;
-}
-
-bool CoreEngine::initIpcRuntime()
-{
+    /* Ipc init */
     m_ipcClient = std::make_unique<IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Engined);
-    
+
     if (!m_ipcClient->init())
     {
-        LOG_ERROR("IpcClient init failed");
+        LOG_FATAL("IpcClient init failed");
         return false;
     }
 
+    /* Router init */
     m_txRouter = std::make_unique<EnginedTxRouter>(m_ipcClient->handler());
     m_rxRouter = std::make_unique<EnginedRxRouter>(m_txRouter.get());
 
+    if (!m_txRouter or !m_rxRouter)
+    {
+        LOG_FATAL("IpcRouter init failed");
+        return false;
+    }
+
     m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
+
+    /* Process init */
+    m_process = std::make_unique<EnginedProcess>(m_ipcClient.get(), m_txRouter.get());
+
+    if (!m_process)
+    {
+        LOG_FATAL("Process init failed");
+        return false;
+    }
 
     return true;
 }
 
 void CoreEngine::onLoop()
 {
-    LOG_INFO("CoreEngine Runtime Loop Started");
-
-    auto lastHealthCheckAt = std::chrono::steady_clock::now();
-
     while (!stopping())
     {
-        m_ipcClient->poll(kIpcClientTimeoutMs);
-
-        const auto now = std::chrono::steady_clock::now();
-
-        if (now - lastHealthCheckAt >= kIpcHealthCheckInterval)
-        {
-            processIpcHealthCheck();
-            lastHealthCheckAt = now;
-        }
-
-        processRuntime();
+        m_process->tick(); 
     }
-
-    LOG_INFO("CoreEngine Runtime Loop Stopped");
 }
 
 void CoreEngine::onShutdown()
 {
-    LOG_INFO("CoreEngine shutdown...");
+    LOG_INFO("CoreEngine onShutdown()...");
 
     m_threadManager->stopAll();
 
     LOG_INFO("All threads terminated successfully");
 
     nf::util::Logger::Shutdown();
-}
-
-std::uint32_t CoreEngine::nextSeqNo()
-{
-    return ++m_seqNo;
-}
-
-void CoreEngine::processIpcHealthCheck()
-{
-    std::string name = nf::ipc::IpcProtocol::daemonToStr(
-        nf::ipc::IpcDaemon::Engined
-    );
-
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Engined,
-        nf::ipc::IpcDaemon::Ipcd,
-        nf::ipc::IpcCmd::ClientHello,
-        nextSeqNo(),
-        static_cast<std::uint8_t>(nf::ipc::IpcFlag::Request));
-
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
-    msg->setPayload(
-        reinterpret_cast<const std::uint8_t*>(name.data()),
-        name.size());
-
-    m_txRouter->handleMessage(std::move(msg));
-}
-
-void CoreEngine::processRuntime()
-{
-
 }
 
 } // namespace nf::ipcd
