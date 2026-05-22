@@ -81,6 +81,8 @@ bool CoreEngine::onInit()
 
 void CoreEngine::onLoop()
 {
+    m_process->start();
+
     while (!stopping())
     {
         m_process->tick(); 
