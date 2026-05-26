@@ -65,8 +65,6 @@ bool CoreEngine::onInit()
         return false;
     }
 
-    m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
-
     /* Process init */
     m_process = std::make_unique<EnginedProcess>(m_ipcClient.get(), m_txRouter.get());
 
@@ -76,12 +74,21 @@ bool CoreEngine::onInit()
         return false;
     }
 
+    /* Binding */
+    m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
+    
+    m_rxRouter->setProcess(m_process.get());
+
     return true;
 }
 
 void CoreEngine::onLoop()
 {
-    m_process->start();
+    if (!m_process->start())
+    {
+        LOG_ERROR("Process Start Failed...");
+        return;
+    }
 
     while (!stopping())
     {

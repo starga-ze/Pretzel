@@ -54,8 +54,7 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     {
     case IpcCmd::ClientHello:  return "ClientHello";
     case IpcCmd::ServerHello:  return "ServerHello";
-    case IpcCmd::HeartBeatReq: return "HeartBeatReq";
-    case IpcCmd::HeartBeatRes: return "HeartBeatRes";
+    case IpcCmd::Sync:         return "Sync";
     case IpcCmd::ApiRequest:   return "ApiRequest";
     case IpcCmd::ApiResponse:  return "ApiResponse";
     case IpcCmd::Error:        return "Error";
