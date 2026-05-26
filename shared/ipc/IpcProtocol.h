@@ -26,8 +26,7 @@ enum class IpcCmd : std::uint16_t
     Unknown      = 0,
     ClientHello  = 1,
     ServerHello  = 2,
-    HeartBeatReq = 3,
-    HeartBeatRes = 4,
+    Sync         = 3,
 
     ApiRequest   = 100,
     ApiResponse  = 101,

@@ -29,4 +29,23 @@ void EnginedTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     m_ipcClientHandler->egress(std::move(msg));
 }
 
+void EnginedTxRouter::sendClientHello()
+{
+    std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Engined);
+
+    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
+            nf::ipc::IpcDaemon::Engined,
+            nf::ipc::IpcDaemon::Ipcd,
+            nf::ipc::IpcCmd::ClientHello,
+            0,
+            static_cast<std::uint8_t>(nf::ipc::IpcFlag::Request)
+            );
+
+    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()),
+                name.size());
+
+    handleMessage(std::move(msg));
+}
+
 } // namespace nf::engined

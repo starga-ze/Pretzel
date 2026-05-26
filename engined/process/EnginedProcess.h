@@ -3,32 +3,45 @@
 #include "process/Process.h"
 
 #include "ipc/IpcClient.h"
-#include "router/TxRouter.h"
+#include "router/EnginedTxRouter.h"
 
 #include <chrono>
 
 namespace nf::engined
 {
 
+enum class BootstrapState
+{
+    Init,
+    WaitHandshake,
+    WaitSync,
+    Ready,
+    Failed
+};
+
 class EnginedProcess : public nf::process::Process
 {
 public:
-    EnginedProcess(nf::ipc::IpcClient* ipcClient, nf::router::TxRouter* txRouter);
+    EnginedProcess(nf::ipc::IpcClient* ipcClient, EnginedTxRouter* txRouter);
     ~EnginedProcess() override = default;
 
-    void start() override;
+    bool start() override;
     void tick() override;
 
+    void onServerHello(const nf::ipc::IpcMessage& msg);
+    void onSync(const nf::ipc::IpcMessage& msg);
+
 private:
-    std::uint32_t nextSeqNo();
-    void processIpcHealthCheck();
+    void processBootstrap();
     void processRuntime();
 
     nf::ipc::IpcClient* m_ipcClient;
-    nf::router::TxRouter* m_txRouter;
+    EnginedTxRouter* m_txRouter;
 
-    std::chrono::steady_clock::time_point m_lastHealthCheckAt {};
-    std::uint32_t m_seqNo {0};
+    BootstrapState m_bootstrapState { BootstrapState::Init };
+
+    std::chrono::steady_clock::time_point m_bootstrapStartAt {};
+    std::chrono::steady_clock::time_point m_lastClientHelloSentAt {};
 };
 
 } // namespace nf::engined
