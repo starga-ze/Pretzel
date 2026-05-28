@@ -5,6 +5,7 @@ namespace nf::engined
 {
 
 constexpr auto kClientHelloInterval = std::chrono::seconds(1);
+constexpr auto kSyncRequestInterval = std::chrono::seconds(1);
 constexpr auto kBootstrapTimeout = std::chrono::seconds(10);
 constexpr int kIpcClientTimeoutMs = 10;
 
@@ -29,6 +30,8 @@ bool EnginedProcess::start()
 
     m_bootstrapState = BootstrapState::Init;
     m_bootstrapStartAt = std::chrono::steady_clock::now();
+    m_lastClientHelloSentAt = {};
+    m_lastSyncRequestSentAt = {};
 
     return true;
 }
@@ -60,6 +63,8 @@ void EnginedProcess::processBootstrap()
         }
 
         m_txRouter->sendClientHello();
+
+        LOG_INFO("Tx ClientHello, waiting ServerHello...");
 
         m_lastClientHelloSentAt = now;
         m_bootstrapState = BootstrapState::WaitHandshake;
@@ -93,7 +98,14 @@ void EnginedProcess::processBootstrap()
             return;
         }
 
-        LOG_INFO("WaitSync...");
+        if (now - m_lastSyncRequestSentAt >= kSyncRequestInterval)
+        {
+            m_txRouter->sendSyncRequest();
+            m_lastSyncRequestSentAt = now;
+
+            LOG_INFO("Re-Tx SyncRequest, waiting Sync...");
+        }
+
         return;
     }
 
@@ -127,6 +139,13 @@ void EnginedProcess::onServerHello(const nf::ipc::IpcMessage& msg)
         LOG_WARN("ServerHello received in unexpected bootstrap state={}", static_cast<int>(m_bootstrapState));
         return;
     }
+
+    const auto now = std::chrono::steady_clock::now();
+
+    m_txRouter->sendSyncRequest();
+    m_lastSyncRequestSentAt = now;
+
+    LOG_INFO("Tx SyncRequest, waiting Sync...");
 
     m_bootstrapState = BootstrapState::WaitSync;
 

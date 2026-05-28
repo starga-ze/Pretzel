@@ -26,7 +26,7 @@ void EnginedRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
             m_process->onServerHello(*msg);
             break;
 
-        case nf::ipc::IpcCmd::Sync:
+        case nf::ipc::IpcCmd::SyncResponse:
             m_process->onSync(*msg);
             break;
 
