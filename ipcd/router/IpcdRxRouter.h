@@ -3,6 +3,7 @@
 #include "router/RxRouter.h"
 
 #include "router/IpcdTxRouter.h"
+#include "process/IpcdProcess.h"
 
 namespace nf::ipcd
 {
@@ -14,9 +15,11 @@ public:
     ~IpcdRxRouter() override = default;
 
     void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void setProcess(IpcdProcess* process);
 
 private:
     IpcdTxRouter* m_txRouter;
+    IpcdProcess* m_process;
 };
 
 } // namespace nf::ipcd

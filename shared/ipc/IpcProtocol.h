@@ -28,6 +28,8 @@ enum class IpcCmd : std::uint16_t
     ServerHello  = 2,
     Sync         = 3,
 
+    RuntimeRequest = 4,
+    RuntimeResponse = 5,
     ApiRequest   = 100,
     ApiResponse  = 101,
     Error        = 102

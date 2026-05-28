@@ -14,10 +14,15 @@ void IpcdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     if (!m_txRouter)
     {
-        LOG_FATAL("TxRouter is nullptr");
+        LOG_ERROR("TxRouter is nullptr");
         return;
     }
     m_txRouter->handleMessage(std::move(msg));
+}
+
+void IpcdRxRouter::setProcess(IpcdProcess* process)
+{
+    m_process = process;
 }
 
 } // namespace nf::ipcd
