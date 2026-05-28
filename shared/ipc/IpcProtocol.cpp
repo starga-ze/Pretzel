@@ -55,6 +55,8 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::ClientHello:  return "ClientHello";
     case IpcCmd::ServerHello:  return "ServerHello";
     case IpcCmd::Sync:         return "Sync";
+    case IpcCmd::RuntimeRequest: return "RuntimeRequest";
+    case IpcCmd::RuntimeResponse: return "RuntimeResponse";
     case IpcCmd::ApiRequest:   return "ApiRequest";
     case IpcCmd::ApiResponse:  return "ApiResponse";
     case IpcCmd::Error:        return "Error";

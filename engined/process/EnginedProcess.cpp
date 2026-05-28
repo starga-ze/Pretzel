@@ -8,9 +8,8 @@ constexpr auto kClientHelloInterval = std::chrono::seconds(1);
 constexpr auto kBootstrapTimeout = std::chrono::seconds(10);
 constexpr int kIpcClientTimeoutMs = 10;
 
-EnginedProcess::EnginedProcess(nf::ipc::IpcClient* ipcClient, EnginedTxRouter* txRouter) : 
-    m_ipcClient(ipcClient), 
-    m_txRouter(txRouter)
+EnginedProcess::EnginedProcess(nf::ipc::IpcClient* ipcClient, EnginedTxRouter* txRouter)
+    : m_ipcClient(ipcClient), m_txRouter(txRouter)
 {
 }
 
@@ -38,7 +37,7 @@ void EnginedProcess::tick()
 {
     m_ipcClient->poll(kIpcClientTimeoutMs);
 
-    if (m_bootstrapState != BootstrapState::Ready)
+    if (m_bootstrapState != BootstrapState::Running)
     {
         processBootstrap();
         return;
@@ -55,6 +54,11 @@ void EnginedProcess::processBootstrap()
     {
     case BootstrapState::Init:
     {
+        if (checkBootstrapTimeout(now, "Init"))
+        {
+            return;
+        }
+
         m_txRouter->sendClientHello();
 
         m_lastClientHelloSentAt = now;
@@ -66,10 +70,8 @@ void EnginedProcess::processBootstrap()
 
     case BootstrapState::WaitHandshake:
     {
-        if (now - m_bootstrapStartAt >= kBootstrapTimeout)
+        if (checkBootstrapTimeout(now, "WaitHandshake"))
         {
-            LOG_ERROR("Bootstrap timeout while waiting Handshake");
-            m_bootstrapState = BootstrapState::Failed;
             return;
         }
 
@@ -85,17 +87,28 @@ void EnginedProcess::processBootstrap()
     }
 
     case BootstrapState::WaitSync:
-        if (now - m_bootstrapStartAt >= kBootstrapTimeout)
+    {
+        if (checkBootstrapTimeout(now, "WaitSync"))
         {
-            LOG_ERROR("Bootstrap timeout while waiting Sync");
-            m_bootstrapState = BootstrapState::Failed;
             return;
         }
 
-        LOG_INFO("Waiting Sync...");
+        LOG_INFO("WaitSync...");
         return;
+    }
 
     case BootstrapState::Ready:
+    {
+        /* Note that RuntimeRequest does not handle retransmission. */
+        m_txRouter->sendRuntimeRequest();
+
+        m_bootstrapState = BootstrapState::Running;
+
+        LOG_INFO("State change to Running");
+        return;
+    }
+
+    case BootstrapState::Running:
         return;
 
     case BootstrapState::Failed:
@@ -105,15 +118,13 @@ void EnginedProcess::processBootstrap()
 
 void EnginedProcess::processRuntime()
 {
-
 }
 
 void EnginedProcess::onServerHello(const nf::ipc::IpcMessage& msg)
 {
     if (m_bootstrapState != BootstrapState::WaitHandshake)
     {
-        LOG_WARN("ServerHello received in unexpected bootstrap state={}",
-                 static_cast<int>(m_bootstrapState));
+        LOG_WARN("ServerHello received in unexpected bootstrap state={}", static_cast<int>(m_bootstrapState));
         return;
     }
 
@@ -124,7 +135,26 @@ void EnginedProcess::onServerHello(const nf::ipc::IpcMessage& msg)
 
 void EnginedProcess::onSync(const nf::ipc::IpcMessage& msg)
 {
+    m_bootstrapState = BootstrapState::Ready;
 
+    LOG_INFO("State change to Ready");
+}
+
+bool EnginedProcess::checkBootstrapTimeout(std::chrono::steady_clock::time_point now, const char* state)
+{
+    if (m_bootstrapState == BootstrapState::Failed)
+    {
+        return true;
+    }
+
+    if (now - m_bootstrapStartAt < kBootstrapTimeout)
+    {
+        return false;
+    }
+    LOG_ERROR("Bootstrap timeout state={}", state);
+
+    m_bootstrapState = BootstrapState::Failed;
+    return true;
 }
 
 } // namespace nf::engined

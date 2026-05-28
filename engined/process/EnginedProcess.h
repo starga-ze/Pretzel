@@ -16,6 +16,7 @@ enum class BootstrapState
     WaitHandshake,
     WaitSync,
     Ready,
+    Running,
     Failed
 };
 
@@ -34,6 +35,8 @@ public:
 private:
     void processBootstrap();
     void processRuntime();
+
+    bool checkBootstrapTimeout(std::chrono::steady_clock::time_point now, const char* state);
 
     nf::ipc::IpcClient* m_ipcClient;
     EnginedTxRouter* m_txRouter;

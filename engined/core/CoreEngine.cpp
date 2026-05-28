@@ -42,7 +42,7 @@ bool CoreEngine::onInit()
     m_threadManager = std::make_unique<ThreadManager>();
     if (!m_threadManager)
     {
-        LOG_FATAL("ThreadManager init failed");
+        LOG_ERROR("ThreadManager init failed");
         return false;
     }
 
@@ -51,7 +51,7 @@ bool CoreEngine::onInit()
 
     if (!m_ipcClient->init())
     {
-        LOG_FATAL("IpcClient init failed");
+        LOG_ERROR("IpcClient init failed");
         return false;
     }
 
@@ -61,7 +61,7 @@ bool CoreEngine::onInit()
 
     if (!m_txRouter or !m_rxRouter)
     {
-        LOG_FATAL("IpcRouter init failed");
+        LOG_ERROR("IpcRouter init failed");
         return false;
     }
 
@@ -70,7 +70,7 @@ bool CoreEngine::onInit()
 
     if (!m_process)
     {
-        LOG_FATAL("Process init failed");
+        LOG_ERROR("Process init failed");
         return false;
     }
 

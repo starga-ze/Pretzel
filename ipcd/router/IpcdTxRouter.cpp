@@ -23,7 +23,7 @@ void IpcdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     if (!m_ipcServerHandler)
     {
-        LOG_FATAL("IpcServerHandler is nullptr");
+        LOG_ERROR("IpcServerHandler is nullptr");
         return;
     }
 

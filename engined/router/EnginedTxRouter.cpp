@@ -48,4 +48,24 @@ void EnginedTxRouter::sendClientHello()
     handleMessage(std::move(msg));
 }
 
+void EnginedTxRouter::sendRuntimeRequest()
+{
+    std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Engined);
+
+    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
+            nf::ipc::IpcDaemon::Engined,
+            nf::ipc::IpcDaemon::Broadcast,
+            nf::ipc::IpcCmd::RuntimeRequest,
+            0,
+            static_cast<std::uint8_t>(nf::ipc::IpcFlag::Request)
+            );
+
+    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()),
+                name.size());
+
+    handleMessage(std::move(msg));
+   
+}
+
 } // namespace nf::engined

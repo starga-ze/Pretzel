@@ -195,7 +195,7 @@ IpcServerHandler* IpcServer::handler()
 {
     if (!m_handler)
     {
-        LOG_FATAL("IpcServerHandler is nullptr");
+        LOG_ERROR("IpcServerHandler is nullptr");
         return nullptr;
     }
     return m_handler.get();
