@@ -22,19 +22,19 @@ public:
         switch (msg.level)
         {
         case spdlog::level::debug:
-            color_code = "\033[36m";
+            color_code = "\033[34m";
             break;
         case spdlog::level::trace:
-            color_code = "\033[34m";
-            break; // Blue
-        case spdlog::level::info:
             color_code = "\033[90m";
-            break; // Dark gray
+            break;
+        case spdlog::level::info:
+            color_code = "\033[32m";
+            break;
         case spdlog::level::warn:
             color_code = "\033[33m";
             break; // Yellow
         case spdlog::level::err:
-            color_code = "\033[91m";
+            color_code = "\033[31m";
             break; // Red
         case spdlog::level::critical:
             color_code = "\033[31m";
@@ -102,14 +102,18 @@ void Logger::Init(const std::string& logger_name, const std::string& log_filepat
     spdlog::init_thread_pool(8192, 1, &Logger::setThreadName, [] {});
 
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(log_filepath, max_filesize, max_files);
+    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+            log_filepath, max_filesize, max_files);
 
     std::vector<spdlog::sink_ptr> sinks{console_sink, file_sink};
 
-    s_logger = std::make_shared<spdlog::async_logger>(logger_name, sinks.begin(), sinks.end(), spdlog::thread_pool(),
-                                                      spdlog::async_overflow_policy::block);
+    s_logger = std::make_shared<spdlog::async_logger>(logger_name, sinks.begin(), sinks.end(), 
+            spdlog::thread_pool(),
+            spdlog::async_overflow_policy::block);
 
     spdlog::set_default_logger(s_logger);
+
+    /* Spdlog Level */
     spdlog::set_level(spdlog::level::trace);
 
     auto console_fmt = std::make_unique<spdlog::pattern_formatter>();

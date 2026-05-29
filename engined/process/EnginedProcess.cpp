@@ -1,6 +1,8 @@
 #include "process/EnginedProcess.h"
 #include "util/Logger.h"
 
+#include <nlohmann/json.hpp>
+
 namespace nf::engined
 {
 
@@ -27,6 +29,8 @@ bool EnginedProcess::start()
         LOG_ERROR("TxRouter is nullptr");
         return false;
     }
+
+    initProcessMap();
 
     m_bootstrapState = BootstrapState::Init;
     m_bootstrapStartAt = std::chrono::steady_clock::now();
@@ -112,7 +116,7 @@ void EnginedProcess::processBootstrap()
     case BootstrapState::Ready:
     {
         /* Note that RuntimeRequest does not handle retransmission. */
-        m_txRouter->sendRuntimeRequest();
+        m_txRouter->sendRuntimeStart();
 
         m_bootstrapState = BootstrapState::Running;
 
@@ -156,20 +160,31 @@ void EnginedProcess::onSync(const nf::ipc::IpcMessage& msg)
 {
     if (m_bootstrapState != BootstrapState::WaitSync)
     {
-        LOG_WARN("Sync received in unexpeted bootstrap state={}", static_cast<int>(m_bootstrapState));
+        LOG_WARN("Sync received in unexpected bootstrap state={}",
+                 static_cast<int>(m_bootstrapState));
         return;
     }
 
-    m_sync = false;
+    if (!updateProcessMap(msg))
+    {
+        LOG_WARN("Synchronization failed, waiting Sync...");
+        dumpProcessMap();
+        return;
+    }
 
-    if (m_sync)
+    /* Test */
+    if (!isProcessReady(nf::ipc::IpcDaemon::Icmpd))
     {
-        m_bootstrapState = BootstrapState::Ready;
+        LOG_WARN("Synchronization incomplete: icmpd is not ready, waiting Sync...");
+        dumpProcessMap();
+        return;
     }
-    else
-    {
-        LOG_INFO("Synchronization failed, waiting Sync...");
-    }
+
+    LOG_INFO("Synchronization completed: icmpd is ready");
+    /* Test */
+
+    LOG_INFO("State change to Ready");
+    m_bootstrapState = BootstrapState::Ready;
 }
 
 bool EnginedProcess::checkBootstrapTimeout(std::chrono::steady_clock::time_point now, const char* state)
@@ -183,10 +198,141 @@ bool EnginedProcess::checkBootstrapTimeout(std::chrono::steady_clock::time_point
     {
         return false;
     }
+
     LOG_ERROR("Bootstrap timeout state={}", state);
 
     m_bootstrapState = BootstrapState::Failed;
     return true;
+}
+
+void EnginedProcess::initProcessMap()
+{
+    m_processMap.clear();
+
+    m_processMap[nf::ipc::IpcDaemon::Ipcd] = true;
+    m_processMap[nf::ipc::IpcDaemon::Engined] = true;
+
+    m_processMap[nf::ipc::IpcDaemon::Authd] = false;
+    m_processMap[nf::ipc::IpcDaemon::Icmpd] = false;
+    m_processMap[nf::ipc::IpcDaemon::Snmpd] = false;
+    m_processMap[nf::ipc::IpcDaemon::Topologyd] = false;
+    m_processMap[nf::ipc::IpcDaemon::Mgmtd] = false;
+}
+
+bool EnginedProcess::updateProcessMap(const nf::ipc::IpcMessage& msg)
+{
+    const auto& payload = msg.getPayload();
+    if (payload.empty())
+    {
+        LOG_WARN("SyncResponse payload is empty");
+        return false;
+    }
+
+    try
+    {
+        const std::string jsonText(
+            reinterpret_cast<const char*>(payload.data()),
+            payload.size());
+
+        const auto root = nlohmann::json::parse(jsonText);
+
+        if (!root.contains("daemons") || !root["daemons"].is_array())
+        {
+            LOG_WARN("SyncResponse invalid json: missing daemons array");
+            return false;
+        }
+
+        for (const auto& item : root["daemons"])
+        {
+            if (!item.contains("daemon") || !item.contains("ready"))
+            {
+                LOG_WARN("SyncResponse daemon item invalid: {}", item.dump());
+                continue;
+            }
+
+            const std::string daemonName = item["daemon"].get<std::string>();
+            const bool ready = item["ready"].get<bool>();
+
+            const nf::ipc::IpcDaemon daemon =
+                nf::ipc::IpcProtocol::strToDaemon(daemonName);
+
+            auto it = m_processMap.find(daemon);
+            if (it == m_processMap.end())
+            {
+                LOG_DEBUG("Ignore unknown daemon from SyncResponse: {}", daemonName);
+                continue;
+            }
+
+            if (ready)
+            {
+                it->second = true;
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_ERROR("SyncResponse json parse failed: {}", e.what());
+        return false;
+    }
+
+    return true;
+}
+
+bool EnginedProcess::isProcessReady(nf::ipc::IpcDaemon daemon) const
+{
+    const auto it = m_processMap.find(daemon);
+    if (it == m_processMap.end())
+    {
+        return false;
+    }
+
+    return it->second;
+}
+
+bool EnginedProcess::isAllProcessReady() const
+{
+    for (const auto& [daemon, ready] : m_processMap)
+    {
+        if (!ready)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void EnginedProcess::dumpProcessMap() const
+{
+    static const std::vector<nf::ipc::IpcDaemon> dumpOrder = {
+        nf::ipc::IpcDaemon::Ipcd,
+        nf::ipc::IpcDaemon::Engined,
+        nf::ipc::IpcDaemon::Authd,
+        nf::ipc::IpcDaemon::Icmpd,
+        nf::ipc::IpcDaemon::Mgmtd,
+        nf::ipc::IpcDaemon::Snmpd,
+        nf::ipc::IpcDaemon::Topologyd,
+    };
+
+    std::string dump;
+    dump += "Process readiness dump:\n";
+
+    for (const auto daemon : dumpOrder)
+    {
+        const auto it = m_processMap.find(daemon);
+        if (it == m_processMap.end())
+        {
+            continue;
+        }
+
+        dump += "  - ";
+        dump += nf::ipc::IpcProtocol::daemonToStr(daemon);
+        dump += " : ";
+        dump += it->second ? "ready" : "not-ready";
+        dump += "\n";
+    }
+
+    LOG_WARN("{}", dump);
 }
 
 } // namespace nf::engined

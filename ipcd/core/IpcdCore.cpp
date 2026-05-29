@@ -1,16 +1,14 @@
-#include "CoreIpc.h"
+#include "IpcdCore.h"
 #include "util/Logger.h"
-
-#include <thread>
 
 namespace nf::ipcd
 {
 
-CoreIpc::CoreIpc() : Core("ipcd")
+IpcdCore::IpcdCore() : Core("ipcd")
 {
 }
 
-bool CoreIpc::onInit()
+bool IpcdCore::onInit()
 {
     const auto& cfg = m_config.json();
 
@@ -37,7 +35,7 @@ bool CoreIpc::onInit()
     m_threadManager = std::make_unique<ThreadManager>();
     if (!m_threadManager)
     {
-        LOG_ERROR("CoreIpc dependency failed");
+        LOG_ERROR("IpcdCore dependency failed");
         return false;
     }
 
@@ -49,7 +47,7 @@ bool CoreIpc::onInit()
     }
 
     m_txRouter = std::make_unique<IpcdTxRouter>(m_ipcServer->handler());
-    m_rxRouter = std::make_unique<IpcdRxRouter>(m_txRouter.get());
+    m_rxRouter = std::make_unique<IpcdRxRouter>(m_ipcServer->handler(), m_txRouter.get());
     if (!m_txRouter or !m_rxRouter)
     {
         LOG_ERROR("IpcRouter init failed");
@@ -69,7 +67,7 @@ bool CoreIpc::onInit()
     return true;
 }
 
-void CoreIpc::onLoop()
+void IpcdCore::onLoop()
 {
     if (!m_process->start())
     {
@@ -83,9 +81,9 @@ void CoreIpc::onLoop()
     }
 }
 
-void CoreIpc::onShutdown()
+void IpcdCore::onShutdown()
 {
-    LOG_INFO("CoreIpc shutdown...");
+    LOG_INFO("IpcdCore shutdown...");
 
     if (m_threadManager)
     {
