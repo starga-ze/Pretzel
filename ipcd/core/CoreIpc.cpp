@@ -64,6 +64,7 @@ bool CoreIpc::onInit()
     }
 
     m_ipcServer->handler()->setRxRouter(m_rxRouter.get());
+    m_rxRouter->setProcess(m_process.get());
 
     return true;
 }
@@ -86,7 +87,10 @@ void CoreIpc::onShutdown()
 {
     LOG_INFO("CoreIpc shutdown...");
 
-    m_threadManager->stopAll();
+    if (m_threadManager)
+    {
+        m_threadManager->stopAll();
+    }
 
     LOG_INFO("All threads terminated successfully");
 

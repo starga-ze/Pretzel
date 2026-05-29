@@ -46,6 +46,8 @@ private:
     std::chrono::steady_clock::time_point m_bootstrapStartAt {};
     std::chrono::steady_clock::time_point m_lastClientHelloSentAt {};
     std::chrono::steady_clock::time_point m_lastSyncRequestSentAt {};
+
+    bool m_sync;
 };
 
 } // namespace nf::engined

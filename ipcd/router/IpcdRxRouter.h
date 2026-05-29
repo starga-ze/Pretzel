@@ -18,8 +18,8 @@ public:
     void setProcess(IpcdProcess* process);
 
 private:
-    IpcdTxRouter* m_txRouter;
-    IpcdProcess* m_process;
+    IpcdTxRouter* m_txRouter = nullptr;
+    IpcdProcess* m_process = nullptr;
 };
 
 } // namespace nf::ipcd
