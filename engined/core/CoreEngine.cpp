@@ -100,7 +100,10 @@ void CoreEngine::onShutdown()
 {
     LOG_INFO("CoreEngine onShutdown()...");
 
-    m_threadManager->stopAll();
+    if (m_threadManager)
+    {
+        m_threadManager->stopAll();
+    }
 
     LOG_INFO("All threads terminated successfully");
 

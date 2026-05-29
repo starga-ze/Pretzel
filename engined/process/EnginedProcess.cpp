@@ -144,19 +144,32 @@ void EnginedProcess::onServerHello(const nf::ipc::IpcMessage& msg)
 
     m_txRouter->sendSyncRequest();
     m_lastSyncRequestSentAt = now;
-
+    
     LOG_INFO("Tx SyncRequest, waiting Sync...");
 
     m_bootstrapState = BootstrapState::WaitSync;
-
+    
     LOG_INFO("State change to WaitSync");
 }
 
 void EnginedProcess::onSync(const nf::ipc::IpcMessage& msg)
 {
-    m_bootstrapState = BootstrapState::Ready;
+    if (m_bootstrapState != BootstrapState::WaitSync)
+    {
+        LOG_WARN("Sync received in unexpeted bootstrap state={}", static_cast<int>(m_bootstrapState));
+        return;
+    }
 
-    LOG_INFO("State change to Ready");
+    m_sync = false;
+
+    if (m_sync)
+    {
+        m_bootstrapState = BootstrapState::Ready;
+    }
+    else
+    {
+        LOG_INFO("Synchronization failed, waiting Sync...");
+    }
 }
 
 bool EnginedProcess::checkBootstrapTimeout(std::chrono::steady_clock::time_point now, const char* state)

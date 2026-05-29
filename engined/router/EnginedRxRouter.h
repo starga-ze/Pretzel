@@ -19,7 +19,7 @@ public:
     void setProcess(EnginedProcess* process);
 
 private:
-    EnginedProcess* m_process;
-    EnginedTxRouter* m_txRouter;
+    EnginedProcess* m_process = nullptr;
+    EnginedTxRouter* m_txRouter = nullptr;
 };
 } // namespace nf::engined
