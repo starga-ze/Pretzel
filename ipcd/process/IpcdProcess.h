@@ -9,15 +9,6 @@
 
 namespace nf::ipcd
 {
-enum class BootstrapState
-{
-    Init,
-    WaitHandshake,
-    WaitSync,
-    Ready,
-    Running,
-    Failed
-};
 
 class IpcdProcess : public nf::process::Process
 {
