@@ -175,7 +175,7 @@ void EnginedProcess::onSync(const nf::ipc::IpcMessage& msg)
     /* Test */
     if (!isProcessReady(nf::ipc::IpcDaemon::Icmpd))
     {
-        LOG_WARN("Synchronization incomplete: icmpd is not ready, waiting Sync...");
+        LOG_DEBUG("Synchronization incomplete: icmpd is not ready, waiting Sync...");
         dumpProcessMap();
         return;
     }
@@ -244,7 +244,8 @@ bool EnginedProcess::updateProcessMap(const nf::ipc::IpcMessage& msg)
 
         for (const auto& item : root["daemons"])
         {
-            if (!item.contains("daemon") || !item.contains("ready"))
+            if (!item.contains("daemon") || !item.contains("ready") ||
+                    !item["daemon"].is_string() || !item["ready"].is_boolean())
             {
                 LOG_WARN("SyncResponse daemon item invalid: {}", item.dump());
                 continue;
@@ -263,10 +264,7 @@ bool EnginedProcess::updateProcessMap(const nf::ipc::IpcMessage& msg)
                 continue;
             }
 
-            if (ready)
-            {
-                it->second = true;
-            }
+            it->second = ready;
         }
     }
     catch (const std::exception& e)
@@ -332,7 +330,7 @@ void EnginedProcess::dumpProcessMap() const
         dump += "\n";
     }
 
-    LOG_WARN("{}", dump);
+    LOG_DEBUG("{}", dump);
 }
 
 } // namespace nf::engined

@@ -57,7 +57,7 @@ public:
     const std::unordered_map<nf::ipc::IpcDaemon, RuntimeState>& getRuntimeTable() const;
 
 private:
-    void bindRoute(nf::ipc::IpcDaemon daemon, int fd);
+    bool bindRoute(nf::ipc::IpcDaemon daemon, int fd);
     int findRoute(nf::ipc::IpcDaemon daemon) const;
     void removeRoute(int fd);
 
