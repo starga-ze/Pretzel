@@ -2,6 +2,8 @@
 #include "ipc/IpcServerHandler.h"
 #include "util/Logger.h"
 
+#include <nlohmann/json.hpp>
+
 namespace nf::ipcd
 {
 
@@ -34,10 +36,16 @@ void IpcdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
         return;
     }
 
-    if (msg->getCmd() == nf::ipc::IpcCmd::SyncRequest)
+    else if (msg->getCmd() == nf::ipc::IpcCmd::SyncRequest)
     {
         auto res = makeSyncResponse(*msg);
         m_ipcServerHandler->egress(std::move(res));
+        return;
+    }
+
+    else if (msg->getCmd() == nf::ipc::IpcCmd::RuntimeStart)
+    {
+        m_ipcServerHandler->egress(std::move(msg));
         return;
     }
 
@@ -74,26 +82,45 @@ IpcdTxRouter::makeServerHello(const nf::ipc::IpcMessage& req)
 std::unique_ptr<nf::ipc::IpcMessage>
 IpcdTxRouter::makeSyncResponse(const nf::ipc::IpcMessage& req)
 {
-    std::string name = nf::ipc::IpcProtocol::daemonToStr(
-            nf::ipc::IpcDaemon::Ipcd
-    );
-
     auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Response);
 
     nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-            nf::ipc::IpcDaemon::Ipcd,
-            req.getSrc(),
-            nf::ipc::IpcCmd::SyncResponse,
-            req.getSeqNo(),
-            flag
-    );
+        nf::ipc::IpcDaemon::Ipcd,
+        req.getSrc(),
+        nf::ipc::IpcCmd::SyncResponse,
+        req.getSeqNo(),
+        flag);
 
     auto response = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
 
+    nlohmann::json payloadJson;
+    payloadJson["daemons"] = nlohmann::json::array();
+
+    const auto& runtimeTable = m_ipcServerHandler->getRuntimeTable();
+
+    for (const auto& [daemon, state] : runtimeTable)
+    {
+        if (daemon == nf::ipc::IpcDaemon::Engined)
+        {
+            continue;
+        }
+
+        if (state.fd < 0)
+        {
+            continue;
+        }
+
+        payloadJson["daemons"].push_back({
+            {"daemon", nf::ipc::IpcProtocol::daemonToStr(daemon)},
+            {"ready", state.ready}
+        });
+    }
+
+    const std::string payload = payloadJson.dump();
+
     response->setPayload(
-            reinterpret_cast<const std::uint8_t*>(name.data()),
-            name.size()
-    );
+        reinterpret_cast<const std::uint8_t*>(payload.data()),
+        payload.size());
 
     return response;
 }

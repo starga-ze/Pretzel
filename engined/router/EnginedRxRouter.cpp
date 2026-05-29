@@ -4,7 +4,9 @@
 namespace nf::engined
 {
 
-EnginedRxRouter::EnginedRxRouter(EnginedTxRouter* txRouter) : m_txRouter(txRouter)
+EnginedRxRouter::EnginedRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, EnginedTxRouter* txRouter) : 
+    m_ipcClientHandler(ipcClientHandler),
+    m_txRouter(txRouter)
 {
 }
 

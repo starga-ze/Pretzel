@@ -7,24 +7,22 @@ namespace nf::ipc
 class IpcClientHandler;
 }
 
-namespace nf::engined
+namespace nf::icmpd
 {
 
-class EnginedTxRouter : public nf::router::TxRouter
+class IcmpdTxRouter : public nf::router::TxRouter
 {
-
 public:
-    EnginedTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler);
-    ~EnginedTxRouter() override = default;
+    IcmpdTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler);
+    ~IcmpdTxRouter() override = default;
 
     void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
-    
+
     void sendClientHello();
-    void sendSyncRequest();
-    void sendRuntimeStart();
+    void sendRuntimeReady();
 
 private:
     nf::ipc::IpcClientHandler* m_ipcClientHandler;
 };
 
-} // namespace nf::engined
+} // namespace nf::icmpd

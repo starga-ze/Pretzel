@@ -6,6 +6,8 @@
 #include "router/EnginedTxRouter.h"
 
 #include <chrono>
+#include <unordered_map>
+#include <vector>
 
 namespace nf::engined
 {
@@ -38,6 +40,12 @@ private:
 
     bool checkBootstrapTimeout(std::chrono::steady_clock::time_point now, const char* state);
 
+    bool updateProcessMap(const nf::ipc::IpcMessage& msg);
+    void initProcessMap();
+    void dumpProcessMap() const;
+    bool isProcessReady(nf::ipc::IpcDaemon daemon) const;
+    bool isAllProcessReady() const;
+
     nf::ipc::IpcClient* m_ipcClient;
     EnginedTxRouter* m_txRouter;
 
@@ -47,7 +55,7 @@ private:
     std::chrono::steady_clock::time_point m_lastClientHelloSentAt {};
     std::chrono::steady_clock::time_point m_lastSyncRequestSentAt {};
 
-    bool m_sync;
+    std::unordered_map<nf::ipc::IpcDaemon, bool> m_processMap;
 };
 
 } // namespace nf::engined

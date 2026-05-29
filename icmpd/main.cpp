@@ -1,13 +1,14 @@
-#include "util/Logger.h"
+#include "core/IcmpdCore.h"
 
-#include <unistd.h>
+#include <memory>
+
+using namespace nf::icmpd;
 
 int main()
 {
+    auto core = std::make_unique<IcmpdCore>();
 
-    while(true)
-    {
-        sleep(1);
-    }
+    core->run();
+
     return 0;
 }
