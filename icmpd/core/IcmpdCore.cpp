@@ -1,16 +1,15 @@
-#include "CoreEngine.h"
+#include "IcmpdCore.h"
 #include "util/Logger.h"
 
-#include <thread>
-
-namespace nf::engined
+namespace nf::icmpd
 {
 
-CoreEngine::CoreEngine() : Core("engined")
+IcmpdCore::IcmpdCore() : 
+    Core("icmpd")
 {
 }
 
-bool CoreEngine::onInit()
+bool IcmpdCore::onInit()
 {
     /* Config init */
     const auto& cfg = m_config.json();
@@ -36,10 +35,10 @@ bool CoreEngine::onInit()
             m_loggerConfig.maxFileSize,
             m_loggerConfig.maxFiles);
 
-    LOG_INFO("Engined onInit()...");
+    LOG_INFO("Icmpd onInit()...");
 
     /* ThreadManager init */
-    m_threadManager = std::make_unique<ThreadManager>();
+    m_threadManager = std::make_unique<nf::util::ThreadManager>();
     if (!m_threadManager)
     {
         LOG_ERROR("ThreadManager init failed");
@@ -47,7 +46,7 @@ bool CoreEngine::onInit()
     }
 
     /* Ipc init */
-    m_ipcClient = std::make_unique<IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Engined);
+    m_ipcClient = std::make_unique<nf::ipc::IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Icmpd);
 
     if (!m_ipcClient->init())
     {
@@ -56,8 +55,8 @@ bool CoreEngine::onInit()
     }
 
     /* Router init */
-    m_txRouter = std::make_unique<EnginedTxRouter>(m_ipcClient->handler());
-    m_rxRouter = std::make_unique<EnginedRxRouter>(m_txRouter.get());
+    m_txRouter = std::make_unique<IcmpdTxRouter>(m_ipcClient->handler());
+    m_rxRouter = std::make_unique<IcmpdRxRouter>(m_ipcClient->handler(), m_txRouter.get());
 
     if (!m_txRouter or !m_rxRouter)
     {
@@ -66,7 +65,7 @@ bool CoreEngine::onInit()
     }
 
     /* Process init */
-    m_process = std::make_unique<EnginedProcess>(m_ipcClient.get(), m_txRouter.get());
+    m_process = std::make_unique<IcmpdProcess>(m_ipcClient.get(), m_txRouter.get());
 
     if (!m_process)
     {
@@ -76,13 +75,13 @@ bool CoreEngine::onInit()
 
     /* Binding */
     m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
-    
+ 
     m_rxRouter->setProcess(m_process.get());
 
     return true;
 }
 
-void CoreEngine::onLoop()
+void IcmpdCore::onLoop()
 {
     if (!m_process->start())
     {
@@ -92,13 +91,13 @@ void CoreEngine::onLoop()
 
     while (!stopping())
     {
-        m_process->tick(); 
+        m_process->tick();
     }
 }
 
-void CoreEngine::onShutdown()
+void IcmpdCore::onShutdown()
 {
-    LOG_INFO("CoreEngine onShutdown()...");
+    LOG_INFO("IcmpdCore onShutdown()...");
 
     if (m_threadManager)
     {
@@ -110,4 +109,4 @@ void CoreEngine::onShutdown()
     nf::util::Logger::Shutdown();
 }
 
-} // namespace nf::ipcd
+} // namespace nf::icmpd

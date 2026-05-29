@@ -5,7 +5,8 @@
 namespace nf::engined
 {
 
-EnginedTxRouter::EnginedTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler) : m_ipcClientHandler(ipcClientHandler)
+EnginedTxRouter::EnginedTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler) : 
+    m_ipcClientHandler(ipcClientHandler)
 {
 }
 
@@ -66,7 +67,7 @@ void EnginedTxRouter::sendSyncRequest()
     handleMessage(std::move(msg));
 }
 
-void EnginedTxRouter::sendRuntimeRequest()
+void EnginedTxRouter::sendRuntimeStart()
 {
     std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Engined);
 
@@ -75,7 +76,7 @@ void EnginedTxRouter::sendRuntimeRequest()
     nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
             nf::ipc::IpcDaemon::Engined, 
             nf::ipc::IpcDaemon::Broadcast,
-            nf::ipc::IpcCmd::RuntimeRequest, 
+            nf::ipc::IpcCmd::RuntimeStart, 
             0,
             flag);
 

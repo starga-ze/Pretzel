@@ -15,8 +15,11 @@ enum class IpcDaemon : std::uint8_t
     Unknown   = 0,
     Ipcd      = 1,
     Engined   = 2,
-    Topologyd = 3,
-    Mgmtd     = 4,
+    Authd     = 3,
+    Icmpd     = 4,
+    Snmpd     = 5,
+    Topologyd = 6,
+    Mgmtd     = 7,
 
     Broadcast = 255
 };
@@ -24,15 +27,20 @@ enum class IpcDaemon : std::uint8_t
 enum class IpcCmd : std::uint16_t
 {
     Unknown      = 0,
+    
     ClientHello  = 1,
     ServerHello  = 2,
+    
     SyncRequest  = 3,
     SyncResponse = 4,
 
-    RuntimeRequest = 5,
-    RuntimeResponse = 6,
+    RuntimeReady = 5,
+    RuntimeStart = 6,
+    RuntimeStop  = 7,
+
     ApiRequest   = 100,
     ApiResponse  = 101,
+    
     Error        = 102
 };
 
@@ -42,7 +50,8 @@ enum class IpcFlag : std::uint8_t
     Request   = 0x01,
     Response  = 0x02,
     Error     = 0x04,
-    Broadcast = 0x08
+    Broadcast = 0x08,
+    Retransmit = 0x10
 };
 
 #pragma pack(push, 1)
@@ -74,6 +83,8 @@ public:
     static const char* daemonToStr(IpcDaemon daemon) noexcept;
     static const char* cmdToStr(IpcCmd cmd) noexcept;
     static std::string flagsToStr(std::uint8_t flags);
+
+    static IpcDaemon strToDaemon(const std::string& daemon) noexcept;
 };
 
 } // namespace nf::ipc

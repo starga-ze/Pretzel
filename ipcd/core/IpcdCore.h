@@ -19,10 +19,10 @@ using LoggerConfig = nf::config::LoggerConfig;
 using IpcConfig = nf::config::IpcConfig;
 using ThreadManager = nf::util::ThreadManager;
 
-class CoreIpc : public nf::core::Core
+class IpcdCore : public nf::core::Core
 {
 public:
-    CoreIpc();
+    IpcdCore();
 
 protected:
     bool onInit() override;

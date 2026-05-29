@@ -46,6 +46,9 @@ const char* IpcProtocol::daemonToStr(IpcDaemon daemon) noexcept
     {
     case IpcDaemon::Ipcd:      return "ipcd";
     case IpcDaemon::Engined:   return "engined";
+    case IpcDaemon::Authd:     return "authd";
+    case IpcDaemon::Icmpd:     return "icmpd";
+    case IpcDaemon::Snmpd:     return "snmpd";
     case IpcDaemon::Topologyd: return "topologyd";
     case IpcDaemon::Mgmtd:     return "mgmtd";
     case IpcDaemon::Broadcast: return "broadcast";
@@ -61,8 +64,9 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::ServerHello:  return "ServerHello";
     case IpcCmd::SyncRequest:  return "SyncRequest";
     case IpcCmd::SyncResponse: return "SyncResponse";
-    case IpcCmd::RuntimeRequest: return "RuntimeRequest";
-    case IpcCmd::RuntimeResponse: return "RuntimeResponse";
+    case IpcCmd::RuntimeReady: return "RuntimeReady";
+    case IpcCmd::RuntimeStart: return "RuntimeStart";
+    case IpcCmd::RuntimeStop:  return "RuntimeStop";
     case IpcCmd::ApiRequest:   return "ApiRequest";
     case IpcCmd::ApiResponse:  return "ApiResponse";
     case IpcCmd::Error:        return "Error";
@@ -85,15 +89,72 @@ std::string IpcProtocol::flagsToStr(std::uint8_t flags)
     };
 
     if (hasFlag(flags, IpcFlag::Request))
+    {
         append("Request");
+    }
     if (hasFlag(flags, IpcFlag::Response))
+    {
         append("Response");
+    }
     if (hasFlag(flags, IpcFlag::Error))
+    {
         append("Error");
+    }
     if (hasFlag(flags, IpcFlag::Broadcast))
+    {
         append("Broadcast");
+    }
+    if (hasFlag(flags, IpcFlag::Retransmit))
+    {
+        append("Retransmit");
+    }
 
     return out;
+}
+
+nf::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
+{
+    if (daemon == "ipcd")
+    {
+        return IpcDaemon::Ipcd;
+    }
+
+    if (daemon == "engined")
+    {
+        return IpcDaemon::Engined;
+    }
+
+    if (daemon == "authd")
+    {
+        return IpcDaemon::Authd;
+    }
+
+    if (daemon == "icmpd")
+    {
+        return IpcDaemon::Icmpd;
+    }
+
+    if (daemon == "snmpd")
+    {
+        return IpcDaemon::Snmpd;
+    }
+
+    if (daemon == "topologyd")
+    {
+        return IpcDaemon::Topologyd;
+    }
+
+    if (daemon == "mgmtd")
+    {
+        return IpcDaemon::Mgmtd;
+    }
+
+    if (daemon == "broadcast")
+    {
+        return IpcDaemon::Broadcast;
+    }
+
+    return IpcDaemon::Unknown;
 }
 
 } // namespace nf::ipc
