@@ -11,7 +11,7 @@ namespace nf::engined
 class EnginedRxRouter : public nf::router::RxRouter
 {
 public:
-    EnginedRxRouter(EnginedTxRouter* txRouter);
+    EnginedRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, EnginedTxRouter* txRouter);
     ~EnginedRxRouter() override = default;
 
     void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
@@ -19,6 +19,7 @@ public:
     void setProcess(EnginedProcess* process);
 
 private:
+    nf::ipc::IpcClientHandler* m_ipcClientHandler = nullptr;
     EnginedProcess* m_process = nullptr;
     EnginedTxRouter* m_txRouter = nullptr;
 };
