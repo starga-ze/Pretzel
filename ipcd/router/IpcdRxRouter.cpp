@@ -17,7 +17,7 @@ void IpcdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     if (!m_txRouter or !m_ipcServerHandler)
     {
-        LOG_ERROR("Dependency is not ready, (rxRouter={}, ipcServerHandler={})",
+        LOG_ERROR("Dependency is not ready, (txRouter={}, ipcServerHandler={})",
                 static_cast<bool>(m_txRouter),
                 static_cast<bool>(m_ipcServerHandler));
         return;

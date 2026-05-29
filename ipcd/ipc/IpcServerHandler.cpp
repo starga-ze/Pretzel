@@ -173,7 +173,13 @@ bool IpcServerHandler::ingress(int fd, nf::ipc::IpcFrameView frame)
         return false;
     }
 
-    bindRoute(msg->getSrc(), fd);
+    if (!bindRoute(msg->getSrc(), fd))
+    {
+        LOG_ERROR("Ingress rejected: route validation failed, src={}, fd={}",
+                nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()),
+                fd);
+        return false;
+    }
 
     LOG_TRACE("IPC Ingress Message dump:\n{}", msg->dump());
 
@@ -303,7 +309,7 @@ bool IpcServerHandler::sendFrame(
     return true;
 }
 
-void IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
+bool IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
 {
     auto it = m_runtimeTable.find(daemon);
     if (it == m_runtimeTable.end())
@@ -318,7 +324,7 @@ void IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
                   nf::ipc::IpcProtocol::daemonToStr(daemon),
                   fd,
                   m_runtimeTable.size());
-        return;
+        return true;
     }
 
     RuntimeState& state = it->second;
@@ -329,19 +335,26 @@ void IpcServerHandler::bindRoute(nf::ipc::IpcDaemon daemon, int fd)
                   nf::ipc::IpcProtocol::daemonToStr(daemon),
                   fd,
                   state.ready);
-        return;
+        return true;
     }
 
-    const int oldFd = state.fd;
+    if (state.fd >= 0 && state.fd != fd)
+    {
+        LOG_ERROR("Runtime route hijack attempt blocked: daemon={} oldFd={} newFd={}",
+                  nf::ipc::IpcProtocol::daemonToStr(daemon),
+                  state.fd,
+                  fd);
+        return false;
+    }
 
     state.fd = fd;
     state.ready = false;
 
-    LOG_WARN("Runtime route updated: daemon={}, oldFd={} -> newFd={}, ready=false, runtimes={}",
-             nf::ipc::IpcProtocol::daemonToStr(daemon),
-             oldFd,
-             fd,
-             m_runtimeTable.size());
+    LOG_DEBUG("Runtime route rebound: daemon={}, fd={}, ready=false",
+              nf::ipc::IpcProtocol::daemonToStr(daemon),
+              fd);
+
+    return true;
 }
 
 int IpcServerHandler::findRoute(nf::ipc::IpcDaemon daemon) const

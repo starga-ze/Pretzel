@@ -99,7 +99,7 @@ void IcmpdCore::onShutdown()
 {
     LOG_INFO("IcmpdCore onShutdown()...");
 
-    if (!m_threadManager)
+    if (m_threadManager)
     {
         m_threadManager->stopAll();
     }
