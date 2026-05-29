@@ -10,14 +10,35 @@ EnginedRxRouter::EnginedRxRouter(EnginedTxRouter* txRouter) : m_txRouter(txRoute
 
 void EnginedRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    LOG_DEBUG("TODO: Engined Rx Router handle Message");
+    LOG_DEBUG("RxRouter handle Message");
 
-    if (!m_txRouter)
+    if (!m_txRouter or !m_process)
     {
-        LOG_FATAL("TxRouter is nullptr");
+        LOG_ERROR("Dependency is not ready, (txRouter={}, process={})",
+                static_cast<bool>(m_txRouter),
+                static_cast<bool>(m_process));
         return;
     }
-    // m_txRouter->handleMessage(std::move(msg));
+
+    switch(msg->getCmd())
+    {
+        case nf::ipc::IpcCmd::ServerHello:
+            m_process->onServerHello(*msg);
+            break;
+
+        case nf::ipc::IpcCmd::SyncResponse:
+            m_process->onSync(*msg);
+            break;
+
+        default:
+            LOG_WARN("Unhandled Rx msg, cmd={}", static_cast<int>(msg->getCmd()));
+            break;
+    }
+}
+
+void EnginedRxRouter::setProcess(EnginedProcess* process)
+{
+    m_process = process;
 }
 
 } // namespace nf::engined

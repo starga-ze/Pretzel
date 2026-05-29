@@ -23,14 +23,21 @@ void IpcdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     if (!m_ipcServerHandler)
     {
-        LOG_FATAL("IpcServerHandler is nullptr");
+        LOG_ERROR("IpcServerHandler is nullptr");
         return;
     }
 
     if (msg->getCmd() == nf::ipc::IpcCmd::ClientHello)
     {
-        auto replyMsg = makeServerHello(*msg);
-        m_ipcServerHandler->egress(std::move(replyMsg));
+        auto res = makeServerHello(*msg);
+        m_ipcServerHandler->egress(std::move(res));
+        return;
+    }
+
+    if (msg->getCmd() == nf::ipc::IpcCmd::SyncRequest)
+    {
+        auto res = makeSyncResponse(*msg);
+        m_ipcServerHandler->egress(std::move(res));
         return;
     }
 
@@ -38,18 +45,20 @@ void IpcdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 }
 
 std::unique_ptr<nf::ipc::IpcMessage>
-IpcdTxRouter::makeServerHello(const nf::ipc::IpcMessage& request)
+IpcdTxRouter::makeServerHello(const nf::ipc::IpcMessage& req)
 {
     std::string name = nf::ipc::IpcProtocol::daemonToStr(
         nf::ipc::IpcDaemon::Ipcd
     );
 
+    auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Response);
+
     nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
         nf::ipc::IpcDaemon::Ipcd,
-        request.getSrc(),
+        req.getSrc(),
         nf::ipc::IpcCmd::ServerHello,
-        request.getSeqNo(),
-        static_cast<std::uint8_t>(nf::ipc::IpcFlag::Response)
+        req.getSeqNo(),
+        flag
     );
 
     auto response = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
@@ -57,6 +66,33 @@ IpcdTxRouter::makeServerHello(const nf::ipc::IpcMessage& request)
     response->setPayload(
         reinterpret_cast<const std::uint8_t*>(name.data()),
         name.size()
+    );
+
+    return response;
+}
+
+std::unique_ptr<nf::ipc::IpcMessage>
+IpcdTxRouter::makeSyncResponse(const nf::ipc::IpcMessage& req)
+{
+    std::string name = nf::ipc::IpcProtocol::daemonToStr(
+            nf::ipc::IpcDaemon::Ipcd
+    );
+
+    auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Response);
+
+    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
+            nf::ipc::IpcDaemon::Ipcd,
+            req.getSrc(),
+            nf::ipc::IpcCmd::SyncResponse,
+            req.getSeqNo(),
+            flag
+    );
+
+    auto response = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+
+    response->setPayload(
+            reinterpret_cast<const std::uint8_t*>(name.data()),
+            name.size()
     );
 
     return response;
