@@ -9,6 +9,7 @@ public:
     Process() = default;
     virtual ~Process() = default;
 
+    virtual bool start() = 0;
     virtual void tick() = 0;
 };
 

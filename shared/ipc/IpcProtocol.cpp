@@ -5,6 +5,11 @@
 namespace nf::ipc
 {
 
+std::uint8_t IpcProtocol::toFlag(IpcFlag flag) noexcept
+{
+    return static_cast<std::uint8_t>(flag);
+}
+
 std::uint8_t IpcProtocol::orFlag(IpcFlag lhs, IpcFlag rhs) noexcept
 {
     return static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs);
@@ -54,8 +59,10 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     {
     case IpcCmd::ClientHello:  return "ClientHello";
     case IpcCmd::ServerHello:  return "ServerHello";
-    case IpcCmd::HeartBeatReq: return "HeartBeatReq";
-    case IpcCmd::HeartBeatRes: return "HeartBeatRes";
+    case IpcCmd::SyncRequest:  return "SyncRequest";
+    case IpcCmd::SyncResponse: return "SyncResponse";
+    case IpcCmd::RuntimeRequest: return "RuntimeRequest";
+    case IpcCmd::RuntimeResponse: return "RuntimeResponse";
     case IpcCmd::ApiRequest:   return "ApiRequest";
     case IpcCmd::ApiResponse:  return "ApiResponse";
     case IpcCmd::Error:        return "Error";

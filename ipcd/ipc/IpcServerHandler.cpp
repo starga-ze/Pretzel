@@ -169,7 +169,7 @@ void IpcServerHandler::egress(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     if (!m_ipcServer)
     {
-        LOG_FATAL("ipcServer is nullptr");
+        LOG_ERROR("ipcServer is nullptr");
         return;
     }
 

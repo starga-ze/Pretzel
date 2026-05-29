@@ -26,9 +26,11 @@ enum class IpcCmd : std::uint16_t
     Unknown      = 0,
     ClientHello  = 1,
     ServerHello  = 2,
-    HeartBeatReq = 3,
-    HeartBeatRes = 4,
+    SyncRequest  = 3,
+    SyncResponse = 4,
 
+    RuntimeRequest = 5,
+    RuntimeResponse = 6,
     ApiRequest   = 100,
     ApiResponse  = 101,
     Error        = 102
@@ -62,6 +64,7 @@ static_assert(sizeof(IpcWireHeader) == 16, "IpcWireHeader must be 16 bytes");
 class IpcProtocol
 {
 public:
+    static std::uint8_t toFlag(IpcFlag flag) noexcept;
     static std::uint8_t orFlag(IpcFlag lhs, IpcFlag rhs) noexcept;
     static bool hasFlag(std::uint8_t flags, IpcFlag flag) noexcept;
 

@@ -42,7 +42,7 @@ bool CoreEngine::onInit()
     m_threadManager = std::make_unique<ThreadManager>();
     if (!m_threadManager)
     {
-        LOG_FATAL("ThreadManager init failed");
+        LOG_ERROR("ThreadManager init failed");
         return false;
     }
 
@@ -51,7 +51,7 @@ bool CoreEngine::onInit()
 
     if (!m_ipcClient->init())
     {
-        LOG_FATAL("IpcClient init failed");
+        LOG_ERROR("IpcClient init failed");
         return false;
     }
 
@@ -61,26 +61,35 @@ bool CoreEngine::onInit()
 
     if (!m_txRouter or !m_rxRouter)
     {
-        LOG_FATAL("IpcRouter init failed");
+        LOG_ERROR("IpcRouter init failed");
         return false;
     }
-
-    m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
 
     /* Process init */
     m_process = std::make_unique<EnginedProcess>(m_ipcClient.get(), m_txRouter.get());
 
     if (!m_process)
     {
-        LOG_FATAL("Process init failed");
+        LOG_ERROR("Process init failed");
         return false;
     }
+
+    /* Binding */
+    m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
+    
+    m_rxRouter->setProcess(m_process.get());
 
     return true;
 }
 
 void CoreEngine::onLoop()
 {
+    if (!m_process->start())
+    {
+        LOG_ERROR("Process Start Failed...");
+        return;
+    }
+
     while (!stopping())
     {
         m_process->tick(); 
@@ -91,7 +100,10 @@ void CoreEngine::onShutdown()
 {
     LOG_INFO("CoreEngine onShutdown()...");
 
-    m_threadManager->stopAll();
+    if (m_threadManager)
+    {
+        m_threadManager->stopAll();
+    }
 
     LOG_INFO("All threads terminated successfully");
 
