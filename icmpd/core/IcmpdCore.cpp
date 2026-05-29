@@ -46,7 +46,7 @@ bool IcmpdCore::onInit()
     }
 
     /* Ipc init */
-    m_ipcClient = std::make_unique<nf::ipc::IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Engined);
+    m_ipcClient = std::make_unique<nf::ipc::IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Icmpd);
 
     if (!m_ipcClient->init())
     {
