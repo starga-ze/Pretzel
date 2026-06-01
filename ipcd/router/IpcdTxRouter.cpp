@@ -15,8 +15,6 @@ IpcdTxRouter::IpcdTxRouter(IpcServerHandler* ipcServerHandler) :
 
 void IpcdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    LOG_DEBUG("Ipcd Tx Router handle Message");
-
     if (!msg)
     {
         LOG_WARN("Message is nullptr");

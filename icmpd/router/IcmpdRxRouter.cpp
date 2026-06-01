@@ -12,8 +12,6 @@ IcmpdRxRouter::IcmpdRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, IcmpdT
 
 void IcmpdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    LOG_DEBUG("RxRouter handle Message");
-
     if (!m_txRouter or !m_process)
     {
         LOG_ERROR("Dependency is not ready, (txRouter={}, process={})", static_cast<bool>(m_txRouter),

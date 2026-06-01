@@ -12,8 +12,6 @@ EnginedTxRouter::EnginedTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler) :
 
 void EnginedTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    LOG_DEBUG("Engined Tx Router handle Message");
-
     if (!msg)
     {
         LOG_WARN("Message is nullptr");

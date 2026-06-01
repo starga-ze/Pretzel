@@ -13,8 +13,6 @@ IpcdRxRouter::IpcdRxRouter(IpcServerHandler* ipcServerHandler, IpcdTxRouter* txR
 
 void IpcdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    LOG_DEBUG("Ipcd Rx Router handle Message");
-
     if (!m_txRouter or !m_ipcServerHandler)
     {
         LOG_ERROR("Dependency is not ready, (txRouter={}, ipcServerHandler={})",
@@ -25,7 +23,6 @@ void IpcdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     if (msg->getCmd() == nf::ipc::IpcCmd::RuntimeReady)
     {
-        LOG_INFO("Runtime Ready, daemon={}", nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
         m_ipcServerHandler->markRuntimeReady(msg->getSrc(), true);
         return;
     }

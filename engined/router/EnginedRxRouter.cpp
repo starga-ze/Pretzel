@@ -12,8 +12,6 @@ EnginedRxRouter::EnginedRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, En
 
 void EnginedRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    LOG_DEBUG("RxRouter handle Message");
-
     if (!m_txRouter or !m_process)
     {
         LOG_ERROR("Dependency is not ready, (txRouter={}, process={})",
