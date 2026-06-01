@@ -19,4 +19,4 @@ public:
     bool isReady();
 };
 
-} // namespace nf::ipcd
+} // namespace nf::icmpd

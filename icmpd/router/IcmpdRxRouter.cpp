@@ -22,8 +22,6 @@ void IcmpdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
         return;
     }
 
-    LOG_INFO("we are here ");
-
     std::unique_ptr<nf::event::Event> event = m_eventFactory.create(std::move(msg));
 
     handleEvent(std::move(event));
@@ -31,7 +29,6 @@ void IcmpdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
 void IcmpdRxRouter::handleEvent(std::unique_ptr<nf::event::Event> event)
 {
-    LOG_DEBUG("handle Event");
     m_serviceManager->dispatch(std::move(event));
 }
 

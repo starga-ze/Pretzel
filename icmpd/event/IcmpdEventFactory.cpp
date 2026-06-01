@@ -8,6 +8,7 @@ namespace nf::icmpd
 
 std::unique_ptr<nf::event::Event> IcmpdEventFactory::create()
 {
+    return nullptr;
 }
 
 std::unique_ptr<nf::event::Event> IcmpdEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> message)
