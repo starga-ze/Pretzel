@@ -15,6 +15,7 @@ public:
     ~EnginedRxRouter() override = default;
 
     void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleEvent(std::unique_ptr<nf::event::Event> event) override;
 
     void setProcess(EnginedProcess* process);
 

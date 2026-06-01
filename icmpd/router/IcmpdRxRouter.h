@@ -1,9 +1,9 @@
 #pragma once
 
 #include "router/RxRouter.h"
-
 #include "process/IcmpdProcess.h"
-#include "router/IcmpdTxRouter.h"
+#include "event/IcmpdEvent.h"
+#include "event/IcmpdEventFactory.h"
 
 namespace nf::icmpd
 {
@@ -11,17 +11,18 @@ namespace nf::icmpd
 class IcmpdRxRouter : public nf::router::RxRouter
 {
 public:
-    IcmpdRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, IcmpdTxRouter* txRouter);
+    IcmpdRxRouter();
     ~IcmpdRxRouter() override = default;
 
     void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleEvent(std::unique_ptr<nf::event::Event> event) override;
 
-    void setProcess(IcmpdProcess* process);
+    void setServiceManager(IcmpdServiceManager* serviceManager);
 
 private:
-    nf::ipc::IpcClientHandler* m_ipcClientHandler = nullptr;
-    IcmpdProcess* m_process = nullptr;
-    IcmpdTxRouter* m_txRouter = nullptr;
+    IcmpdServiceManager* m_serviceManager = nullptr;
+
+    IcmpdEventFactory m_eventFactory;
 };
 
 } // namespace nf::icmpd
