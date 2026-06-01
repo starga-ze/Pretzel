@@ -25,9 +25,9 @@ bool IcmpdProcess::start()
         return false;
     }
 
-    return true;
-
     m_serviceManager->start();
+    
+    return true;
 }
 
 void IcmpdProcess::tick()

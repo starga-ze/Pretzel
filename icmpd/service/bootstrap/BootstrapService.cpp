@@ -16,7 +16,7 @@ void BootstrapService::start()
 
 std::unique_ptr<nf::event::Event> BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
-
+    return nullptr;
 }
 
 bool BootstrapService::isReady()
