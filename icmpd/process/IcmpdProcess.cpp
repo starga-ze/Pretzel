@@ -148,7 +148,7 @@ void IcmpdProcess::onServerHello(const nf::ipc::IpcMessage& msg)
 
     m_bootstrapState = BootstrapState::WaitRuntime;
 
-    LOG_INFO("State change to WaitRuntime...");
+    LOG_INFO("State change to WaitRuntime");
 }
 
 void IcmpdProcess::onRuntimeStart(const nf::ipc::IpcMessage& msg)
