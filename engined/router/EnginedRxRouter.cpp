@@ -36,6 +36,11 @@ void EnginedRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     }
 }
 
+void EnginedRxRouter::handleEvent(std::unique_ptr<nf::event::Event> event)
+{
+
+}
+
 void EnginedRxRouter::setProcess(EnginedProcess* process)
 {
     m_process = process;
