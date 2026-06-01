@@ -1,5 +1,7 @@
 #include "service/IcmpdServiceManager.h"
 
+#include "util/Logger.h"
+
 #include <chrono> 
 
 namespace nf::icmpd
@@ -46,9 +48,23 @@ void IcmpdServiceManager::execute()
        auto event = std::move(m_eventQueue.front());
        m_eventQueue.pop();
 
-       if (!event)
+       auto* icmpdEvent = dynamic_cast<IcmpdEvent*>(event.get());
+
+       if (!icmpdEvent)
        {
+           LOG_WARN("Unknown event");
            continue;
+       }
+
+       switch(icmpdEvent->domain())
+       {
+           case IcmpdEventDomain::Bootstrap:
+               m_bootstrapService->handleEvent(*icmpdEvent);
+               break;
+
+           default:
+               LOG_WARN("Unhandled icmpd event domain={}", static_cast<std::uint32_t>(icmpdEvent->domain()));
+               break;
        }
 
        // event->execute();
