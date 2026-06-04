@@ -14,7 +14,7 @@ public:
     EnginedRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, EnginedTxRouter* txRouter);
     ~EnginedRxRouter() override = default;
 
-    void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
     void setProcess(EnginedProcess* process);
 

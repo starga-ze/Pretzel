@@ -20,8 +20,6 @@ class ProbeEvent final : public IcmpdEvent
 public:
     explicit ProbeEvent(ProbeEventType type);
 
-    ProbeEvent(ProbeEventType type, std::unique_ptr<nf::ipc::IpcMessage> message);
-
     ProbeEventType type() const;
 
     void dispatch(IcmpdServiceManager& serviceManager) override;

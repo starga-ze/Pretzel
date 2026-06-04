@@ -13,7 +13,7 @@ IpcdTxRouter::IpcdTxRouter(IpcServerHandler* ipcServerHandler) :
 
 }
 
-void IpcdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IpcdTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!msg)
     {

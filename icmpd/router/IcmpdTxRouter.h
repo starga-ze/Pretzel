@@ -2,6 +2,7 @@
 
 #include "router/TxRouter.h"
 #include "ipc/IpcClientHandler.h"
+#include "icmp/IcmpPacket.h"
 
 namespace nf::icmpd
 {
@@ -12,7 +13,8 @@ public:
     IcmpdTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler);
     ~IcmpdTxRouter() override = default;
 
-    void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIcmpPacket(std::unique_ptr<IcmpPacket> packet);
 
 private:
     nf::ipc::IpcClientHandler* m_ipcClientHandler;

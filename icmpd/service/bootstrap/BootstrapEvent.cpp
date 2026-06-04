@@ -11,9 +11,15 @@ BootstrapEvent::BootstrapEvent(BootstrapEventType type) :
 }
 
 BootstrapEvent::BootstrapEvent(BootstrapEventType type, std::unique_ptr<nf::ipc::IpcMessage> message) : 
-    IcmpdEvent(IcmpdEventDomain::Bootstrap, std::move(message)), 
+    IcmpdEvent(IcmpdEventDomain::Bootstrap), 
+    m_message(std::move(message)),
     m_type(type) 
 {
+}
+
+void BootstrapEvent::dispatch(IcmpdServiceManager& serviceManager)
+{
+    serviceManager.bootstrapService().handleEvent(serviceManager, *this);
 }
 
 BootstrapEventType BootstrapEvent::type() const
@@ -21,9 +27,14 @@ BootstrapEventType BootstrapEvent::type() const
     return m_type;
 }
 
-void BootstrapEvent::dispatch(IcmpdServiceManager& serviceManager)
+const nf::ipc::IpcMessage* BootstrapEvent::message() const
 {
-    serviceManager.bootstrapService().handleEvent(serviceManager, *this);
+    return m_message.get();
+}
+
+std::unique_ptr<nf::ipc::IpcMessage> BootstrapEvent::takeMessage()
+{
+    return std::move(m_message);
 }
 
 } // namespace nf::icmpd

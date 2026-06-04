@@ -9,7 +9,7 @@ IcmpdRxRouter::IcmpdRxRouter(IcmpdEventFactory* eventFactory) :
 {
 }
 
-void IcmpdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IcmpdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {

@@ -13,14 +13,14 @@ namespace nf::icmpd
 class IcmpdProcess : public nf::process::Process
 {
 public:
-    IcmpdProcess(nf::ipc::IpcClient* ipcClient, IcmpdServiceManager* serviceManager);
+    IcmpdProcess(nf::ipc::IpcClient* ipcClientEngine, IcmpdServiceManager* serviceManager);
     ~IcmpdProcess() override = default;
 
     bool start() override;
     void tick() override;
 
 private:
-    nf::ipc::IpcClient* m_ipcClient;
+    nf::ipc::IpcClient* m_ipcClientEngine;
     IcmpdServiceManager* m_serviceManager;
 };
 

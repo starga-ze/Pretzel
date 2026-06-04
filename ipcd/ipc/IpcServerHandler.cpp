@@ -183,7 +183,7 @@ bool IpcServerHandler::ingress(int fd, nf::ipc::IpcFrameView frame)
 
     LOG_TRACE("IPC Ingress Message dump:\n{}", msg->dump());
 
-    m_rxRouter->handleMessage(std::move(msg));
+    m_rxRouter->handleIpcMessage(std::move(msg));
 
     return true;
 }
