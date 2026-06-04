@@ -56,20 +56,20 @@ void IcmpdServiceManager::postAction(std::unique_ptr<IcmpdAction> action)
 
 void IcmpdServiceManager::execute()
 {
-    while (!m_eventQueue.empty())
+    while (!m_eventQueue.empty() or !m_actionQueue.empty())
     {
-        std::unique_ptr<IcmpdEvent> event = std::move(m_eventQueue.front());
-        m_eventQueue.pop();
-
-        event->dispatch(*this);
-    }
-
-    while(!m_actionQueue.empty())
-    {
-        std::unique_ptr<IcmpdAction> action = std::move(m_actionQueue.front());
-        m_actionQueue.pop();
-
-        action->dispatch(*this);
+        if (!m_eventQueue.empty())
+        {
+            std::unique_ptr<IcmpdEvent> event = std::move(m_eventQueue.front());
+            m_eventQueue.pop();
+            event->dispatch(*this);
+        }
+        else if (!m_actionQueue.empty())
+        {
+            std::unique_ptr<IcmpdAction> action = std::move(m_actionQueue.front());
+            m_actionQueue.pop();
+            action->dispatch(*this);
+        }
     }
 }
 
