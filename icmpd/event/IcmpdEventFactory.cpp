@@ -1,32 +1,49 @@
-#include "event/IcmpdEvent.h"
 #include "event/IcmpdEventFactory.h"
-#include "ipc/IpcProtocol.h"
+
+#include "service/bootstrap/BootstrapEvent.h"
+
 #include "util/Logger.h"
 
 namespace nf::icmpd
 {
 
-std::unique_ptr<nf::event::Event> IcmpdEventFactory::create()
+std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create()
 {
     return nullptr;
 }
 
-std::unique_ptr<nf::event::Event> IcmpdEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> message)
+std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    if (!message)
+    if (!msg)
     {
         LOG_WARN("IcmpdEventFactory: null message");
         return nullptr;
     }
 
-    switch (message->getCmd())
+    switch (msg->getCmd())
     {
+    case nf::ipc::IpcCmd::ServerHello:
+        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello, std::move(msg));
+    
     default:
-        LOG_WARN("IcmpdEventFactory: unhandled cmd={}", static_cast<int>(message->getCmd()));
+        LOG_WARN("IcmpdEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 
     return nullptr;
+}
+
+std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(IcmpdEventDomain domain, std::uint32_t type)
+{
+    switch (domain)
+    {
+    case IcmpdEventDomain::Bootstrap:
+        return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
+
+    default:
+        LOG_WARN("Unhandled event domain={}", static_cast<std::uint32_t>(domain));
+        return nullptr;
+    }
 }
 
 } // namespace nf::icmpd

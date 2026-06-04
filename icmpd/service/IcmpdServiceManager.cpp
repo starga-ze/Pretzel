@@ -2,13 +2,15 @@
 
 #include "util/Logger.h"
 
-#include <chrono> 
+#include <chrono>
 
 namespace nf::icmpd
 {
 
-IcmpdServiceManager::IcmpdServiceManager() :
-    m_bootstrapService(std::make_unique<BootstrapService>())
+IcmpdServiceManager::IcmpdServiceManager(IcmpdEventFactory* eventFactory, IcmpdActionFactory* actionFactory) : 
+    m_eventFactory(eventFactory),
+    m_actionFactory(actionFactory),
+    m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory))
 {
 }
 
@@ -23,15 +25,15 @@ void IcmpdServiceManager::schedule()
 
     if (!m_bootstrapService->isReady())
     {
-        dispatch(m_bootstrapService->schedule(now));
+        postEvent(m_bootstrapService->schedule(now));
         return;
     }
 
-    //dispatch(m_probeService->schedule(now));
-    //dispatch(m_scanService->schedule(now));
+    // postEvent(m_probeService->schedule(now));
+    // postEvent(m_scanService->schedule(now));
 }
 
-void IcmpdServiceManager::dispatch(std::unique_ptr<nf::event::Event> event)
+void IcmpdServiceManager::postEvent(std::unique_ptr<IcmpdEvent> event)
 {
     if (!event)
     {
@@ -43,33 +45,18 @@ void IcmpdServiceManager::dispatch(std::unique_ptr<nf::event::Event> event)
 
 void IcmpdServiceManager::execute()
 {
-   while (!m_eventQueue.empty())
-   {
-       auto event = std::move(m_eventQueue.front());
-       m_eventQueue.pop();
+    while (!m_eventQueue.empty())
+    {
+        std::unique_ptr<IcmpdEvent> event = std::move(m_eventQueue.front());
+        m_eventQueue.pop();
 
-       auto* icmpdEvent = dynamic_cast<IcmpdEvent*>(event.get());
-
-       if (!icmpdEvent)
-       {
-           LOG_WARN("Unknown event");
-           continue;
-       }
-
-       switch(icmpdEvent->domain())
-       {
-           case IcmpdEventDomain::Bootstrap:
-               m_bootstrapService->handleEvent(*icmpdEvent);
-               break;
-
-           default:
-               LOG_WARN("Unhandled icmpd event domain={}", static_cast<std::uint32_t>(icmpdEvent->domain()));
-               break;
-       }
-
-       // event->execute();
-   }
+        event->dispatch(*this);
+    }
 }
 
+BootstrapService& IcmpdServiceManager::bootstrapService()
+{
+    return *m_bootstrapService;
+}
 
 } // namespace nf::icmpd

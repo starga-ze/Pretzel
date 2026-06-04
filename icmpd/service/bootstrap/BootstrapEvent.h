@@ -3,10 +3,13 @@
 #include "event/IcmpdEvent.h"
 #include "ipc/IpcMessage.h"
 
+#include <cstdint>
 #include <memory>
 
 namespace nf::icmpd
 {
+
+class IcmpdServiceManager;
 
 enum class BootstrapEventType : std::uint32_t
 {
@@ -20,39 +23,18 @@ enum class BootstrapEventType : std::uint32_t
 class BootstrapEvent final : public IcmpdEvent
 {
 public:
-    explicit BootstrapEvent(BootstrapEventType type)
-        : IcmpdEvent(IcmpdEventDomain::Bootstrap),
-          m_type(type)
-    {
-    }
+    explicit BootstrapEvent(BootstrapEventType type);
 
-    BootstrapEvent(BootstrapEventType type,
-                   std::unique_ptr<nf::ipc::IpcMessage> message)
-        : IcmpdEvent(IcmpdEventDomain::Bootstrap),
-          m_type(type),
-          m_message(std::move(message))
-    {
-    }
+    BootstrapEvent(
+        BootstrapEventType type,
+        std::unique_ptr<nf::ipc::IpcMessage> message);
 
-    BootstrapEventType type() const
-    {
-        return m_type;
-    }
+    BootstrapEventType type() const;
 
-    const nf::ipc::IpcMessage* message() const
-    {
-        return m_message.get();
-    }
-
-    std::unique_ptr<nf::ipc::IpcMessage> takeMessage()
-    {
-        return std::move(m_message);
-    }
-
+    void dispatch(IcmpdServiceManager& serviceManager) override;
 
 private:
     BootstrapEventType m_type{BootstrapEventType::Unknown};
-    std::unique_ptr<nf::ipc::IpcMessage> m_message;
 };
 
 } // namespace nf::icmpd

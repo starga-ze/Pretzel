@@ -15,7 +15,6 @@ class RxRouter
         virtual ~RxRouter() = default;
 
         virtual void handleMessage(std::unique_ptr<nf::ipc::IpcMessage>) = 0;
-        virtual void handleEvent(std::unique_ptr<nf::event::Event>) = 0;
 };
 
 }

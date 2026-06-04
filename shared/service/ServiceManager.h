@@ -7,6 +7,7 @@
 namespace nf::service
 {
 
+template <typename EventT>
 class ServiceManager
 {
 public:
@@ -15,7 +16,7 @@ public:
 
     virtual void start() = 0;
     virtual void schedule() = 0;
-    virtual void dispatch(std::unique_ptr<nf::event::Event> event) = 0;
+    virtual void postEvent(std::unique_ptr<EventT> event) = 0;
     virtual void execute() = 0;
 };
 
