@@ -15,8 +15,6 @@ public:
     IcmpdActionFactory() = default;
     ~IcmpdActionFactory() override = default;
 
-    std::unique_ptr<IcmpdAction> create(std::unique_ptr<nf::ipc::IpcMessage> message) override;
-
     std::unique_ptr<IcmpdAction> create(IcmpdActionDomain domain, std::uint32_t type) override;
 };
 
