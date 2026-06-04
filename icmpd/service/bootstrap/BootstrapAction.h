@@ -11,7 +11,7 @@ enum class BootstrapActionType : std::uint32_t
 {
     Unknown = 0,
     SendClientHello = 1,
-    SendRuntimeReady = 2,
+    SendRuntimeReady = 2
 };
 
 class BootstrapAction final : public IcmpdAction
