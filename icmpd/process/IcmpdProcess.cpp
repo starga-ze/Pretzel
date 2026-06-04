@@ -5,6 +5,7 @@ namespace nf::icmpd
 {
 
 constexpr int kIpcClientTimeoutMs = 10;
+constexpr int kIcmpClientTimeoutMs = 10;
 
 IcmpdProcess::IcmpdProcess(nf::ipc::IpcClient* ipcClient, IcmpdServiceManager* serviceManager) : 
     m_ipcClient(ipcClient), m_serviceManager(serviceManager)
@@ -33,6 +34,8 @@ bool IcmpdProcess::start()
 void IcmpdProcess::tick()
 {
     m_ipcClient->poll(kIpcClientTimeoutMs);
+
+    //m_icmpClient->poll(kIcmpClientTimeoutMs);
 
     m_serviceManager->schedule(); 
 

@@ -1,6 +1,7 @@
 #include "event/IcmpdEventFactory.h"
 
 #include "service/bootstrap/BootstrapEvent.h"
+#include "service/probe/ProbeEvent.h"
 
 #include "util/Logger.h"
 
@@ -42,6 +43,9 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(IcmpdEventDomain domain, s
     {
     case IcmpdEventDomain::Bootstrap:
         return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
+
+    case IcmpdEventDomain::Probe:
+        return std::make_unique<ProbeEvent>(static_cast<ProbeEventType>(type));
 
     default:
         LOG_WARN("Unhandled event domain={}", static_cast<std::uint32_t>(domain));

@@ -15,6 +15,7 @@ enum class IcmpdEventDomain : std::uint32_t
 {
     Unknown = 0,
     Bootstrap = 1,
+    Probe = 2
 };
 
 class IcmpdEvent : public nf::event::Event

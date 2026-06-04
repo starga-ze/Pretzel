@@ -31,7 +31,7 @@ void BootstrapService::start()
     m_lastClientHelloSentAt = {};
     m_lastRuntimeReadySentAt = {};
 
-    LOG_INFO("BootstrapService start");
+    LOG_INFO("BootstrapService start...");
 }
 
 std::unique_ptr<IcmpdEvent>

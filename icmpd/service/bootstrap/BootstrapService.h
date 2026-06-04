@@ -29,6 +29,8 @@ public:
     BootstrapService(IcmpdEventFactory* eventFactory,
                      IcmpdActionFactory* actionFactory);
 
+    ~BootstrapService() = default;
+
     void start();
 
     std::unique_ptr<IcmpdEvent> schedule(std::chrono::steady_clock::time_point now);
