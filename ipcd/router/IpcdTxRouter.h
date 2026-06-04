@@ -13,7 +13,7 @@ public:
     IpcdTxRouter(IpcServerHandler* ipcServerHandler);
     ~IpcdTxRouter() override = default;
 
-    void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
 private:
     std::unique_ptr<nf::ipc::IpcMessage> makeServerHello(const nf::ipc::IpcMessage& req);

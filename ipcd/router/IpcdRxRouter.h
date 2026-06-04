@@ -14,7 +14,7 @@ public:
     IpcdRxRouter(IpcServerHandler* ipcServerHandler, IpcdTxRouter* txRouter);
     ~IpcdRxRouter() override = default;
 
-    void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
     void setProcess(IpcdProcess* process);
 

@@ -7,6 +7,8 @@
 
 #include "util/Logger.h"
 
+#include <unistd.h>
+
 namespace nf::icmpd
 {
 
@@ -31,8 +33,7 @@ std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::ti
     {
         LOG_DEBUG("Schedule start probing");
         m_state = State::IsProbing;
-        return m_eventFactory->create(IcmpdEventDomain::Probe, 
-                static_cast<std::uint32_t>(ProbeEventType::StartProbe));
+        return m_eventFactory->create(IcmpdEventDomain::Probe, static_cast<std::uint32_t>(ProbeEventType::StartProbe));
     }
 
     case State::IsProbing:
@@ -57,8 +58,7 @@ void ProbeService::handleEvent(IcmpdServiceManager& serviceManager, const ProbeE
     case ProbeEventType::StartProbe:
     {
         auto action =
-            m_actionFactory->create(IcmpdActionDomain::Probe, 
-                    static_cast<std::uint32_t>(ProbeActionType::StartProbe));
+            m_actionFactory->create(IcmpdActionDomain::Probe, static_cast<std::uint32_t>(ProbeActionType::StartProbe));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -72,19 +72,51 @@ void ProbeService::handleEvent(IcmpdServiceManager& serviceManager, const ProbeE
     }
 }
 
-void ProbeService::handleAction(IcmpdServiceManager& serviceManager, const ProbeAction& action)
+void ProbeService::handleAction(IcmpdServiceManager& serviceManager,
+                                const ProbeAction& action)
 {
-    /*
-    std::unique_ptr<nf::ipc::IpcMessage> msg = nullptr;
+    std::unique_ptr<IcmpPacket> packet = nullptr;
 
     switch (action.type())
     {
-        case ProbeActionType::StartProbe:
+    case ProbeActionType::StartProbe:
+    {
+        if (m_state != State::IsProbing)
+        {
+            LOG_DEBUG("ProbeService: skip StartProbe action state={}",
+                      static_cast<int>(m_state));
+            return;
+        }
 
+        LOG_INFO("ProbeService: Tx ICMP EchoRequest");
+
+        packet = buildEchoRequestPacket();
+        break;
     }
-    
-    serviceManager.txRouter().handleMessage(std::move(msg));
-    */
+
+    default:
+        LOG_WARN("ProbeService: unhandled action type={}",
+                 static_cast<std::uint32_t>(action.type()));
+        return;
+    }
+
+    serviceManager.txRouter().handleIcmpPacket(std::move(packet));
+}
+
+std::unique_ptr<IcmpPacket> ProbeService::buildEchoRequestPacket() const
+{
+    const std::uint16_t identifier =
+        static_cast<std::uint16_t>(::getpid() & 0xffff);
+
+    const std::uint16_t sequence = 1;
+
+    const std::string payload = "nf-icmpd-probe";
+
+    return std::make_unique<IcmpPacket>(
+        IcmpPacket::buildEchoRequest(
+            identifier,
+            sequence,
+            std::vector<std::uint8_t>(payload.begin(), payload.end())));
 }
 
 } // namespace nf::icmpd

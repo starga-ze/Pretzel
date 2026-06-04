@@ -11,6 +11,7 @@ namespace nf::icmpd
 class IcmpdServiceManager;
 class IcmpdEventFactory;
 class IcmpdActionFactory;
+class IcmpPacket;
 
 class ProbeService
 {
@@ -34,6 +35,8 @@ public:
     void handleAction(IcmpdServiceManager& serviceManager, const ProbeAction& action);
 
 private:
+    std::unique_ptr<IcmpPacket> buildEchoRequestPacket() const;
+
     IcmpdEventFactory* m_eventFactory;
     IcmpdActionFactory* m_actionFactory;
 

@@ -9,7 +9,7 @@ IcmpdTxRouter::IcmpdTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler) :
 {
 }
 
-void IcmpdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IcmpdTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -24,6 +24,11 @@ void IcmpdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     }
 
     m_ipcClientHandler->egress(std::move(msg));
+}
+
+void IcmpdTxRouter::handleIcmpPacket(std::unique_ptr<IcmpPacket> packet)
+{
+    LOG_DEBUG("handle icmp packet");
 }
 
 } // namespace nf::icmpd

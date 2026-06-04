@@ -229,7 +229,7 @@ void BootstrapService::handleAction(IcmpdServiceManager& serviceManager,
         return;
     }
 
-    serviceManager.txRouter().handleMessage(std::move(msg));
+    serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
 
 void BootstrapService::onServerHello(IcmpdServiceManager& serviceManager,

@@ -14,7 +14,7 @@ public:
     IcmpdRxRouter(IcmpdEventFactory* eventFactory);
     ~IcmpdRxRouter() override = default;
 
-    void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
     void setServiceManager(IcmpdServiceManager* serviceManager);
 

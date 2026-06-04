@@ -23,16 +23,19 @@ class BootstrapEvent final : public IcmpdEvent
 public:
     explicit BootstrapEvent(BootstrapEventType type);
 
-    BootstrapEvent(
-        BootstrapEventType type,
-        std::unique_ptr<nf::ipc::IpcMessage> message);
-
-    BootstrapEventType type() const;
+    BootstrapEvent(BootstrapEventType type, 
+            std::unique_ptr<nf::ipc::IpcMessage> message);
 
     void dispatch(IcmpdServiceManager& serviceManager) override;
 
+    BootstrapEventType type() const;
+    const nf::ipc::IpcMessage* message() const;
+    std::unique_ptr<nf::ipc::IpcMessage> takeMessage();
+
 private:
+    std::unique_ptr<nf::ipc::IpcMessage> m_message;
     BootstrapEventType m_type{BootstrapEventType::Unknown};
+
 };
 
 } // namespace nf::icmpd
