@@ -14,7 +14,6 @@ public:
     ActionFactory() = default;
     virtual ~ActionFactory() = default;
 
-    virtual std::unique_ptr<ActionT> create(std::unique_ptr<nf::ipc::IpcMessage> msg) = 0;
     virtual std::unique_ptr<ActionT> create(DomainT domain, std::uint32_t type) = 0;
 };
 

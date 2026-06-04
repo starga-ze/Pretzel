@@ -7,17 +7,6 @@
 namespace nf::icmpd
 {
 
-std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(std::unique_ptr<nf::ipc::IpcMessage> message)
-{
-    if (!message)
-    {
-        LOG_WARN("IcmpdActionFactory: empty IpcMessage");
-        return nullptr;
-    }
-
-    return nullptr;
-}
-
 std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(IcmpdActionDomain domain, std::uint32_t type)
 {
     switch (domain)
