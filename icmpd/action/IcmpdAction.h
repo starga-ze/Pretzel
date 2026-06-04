@@ -4,6 +4,7 @@
 #include "ipc/IpcMessage.h"
 
 #include <memory>
+#include <cstdint>
 
 namespace nf::icmpd
 {

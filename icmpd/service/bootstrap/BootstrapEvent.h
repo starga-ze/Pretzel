@@ -15,7 +15,7 @@ enum class BootstrapEventType : std::uint32_t
     SendClientHello = 1,
     ReceiveServerHello = 2,
     SendRuntimeReady = 3,
-    ReceiveRuntimeStart = 4,
+    ReceiveRuntimeStart = 4
 };
 
 class BootstrapEvent final : public IcmpdEvent

@@ -24,6 +24,9 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<nf::ipc::I
     {
     case nf::ipc::IpcCmd::ServerHello:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello, std::move(msg));
+
+    case nf::ipc::IpcCmd::RuntimeStart:
+        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
     
     default:
         LOG_WARN("IcmpdEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));
