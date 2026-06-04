@@ -1,4 +1,3 @@
-#include "ipc/IpcClientHandler.h"
 #include "router/IcmpdTxRouter.h"
 #include "util/Logger.h"
 
@@ -27,40 +26,15 @@ void IcmpdTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     m_ipcClientHandler->egress(std::move(msg));
 }
 
-void IcmpdTxRouter::sendClientHello()
+void IcmpdTxRouter::handleAction(std::unique_ptr<IcmpdAction> action)
 {
-    std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Icmpd);
+    if (!action)
+    {
+        LOG_WARN("Action is empty");
+        return;
+    }
 
-    auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
-
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-            nf::ipc::IpcDaemon::Icmpd, 
-            nf::ipc::IpcDaemon::Ipcd, 
-            nf::ipc::IpcCmd::ClientHello,
-            0, 
-            flag);
-
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
-    msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
-
-    handleMessage(std::move(msg));
-}
-
-void IcmpdTxRouter::sendRuntimeReady()
-{
-    std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Icmpd);
-
-    auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
-
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-            nf::ipc::IpcDaemon::Icmpd, 
-            nf::ipc::IpcDaemon::Ipcd, 
-            nf::ipc::IpcCmd::RuntimeReady,
-            0, 
-            flag);
-
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
-    msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
+    auto msg = action->takeMessage();
 
     handleMessage(std::move(msg));
 }

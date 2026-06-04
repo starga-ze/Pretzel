@@ -4,7 +4,8 @@
 namespace nf::icmpd
 {
 
-IcmpdRxRouter::IcmpdRxRouter()
+IcmpdRxRouter::IcmpdRxRouter(IcmpdEventFactory* eventFactory) :
+    m_eventFactory(eventFactory)
 {
 }
 
@@ -22,14 +23,14 @@ void IcmpdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
         return;
     }
 
-    std::unique_ptr<nf::event::Event> event = m_eventFactory.create(std::move(msg));
+    std::unique_ptr<IcmpdEvent> event = m_eventFactory->create(std::move(msg));
 
     handleEvent(std::move(event));
 }
 
-void IcmpdRxRouter::handleEvent(std::unique_ptr<nf::event::Event> event)
+void IcmpdRxRouter::handleEvent(std::unique_ptr<IcmpdEvent> event)
 {
-    m_serviceManager->dispatch(std::move(event));
+    m_serviceManager->postEvent(std::move(event));
 }
 
 void IcmpdRxRouter::setServiceManager(IcmpdServiceManager* serviceManager)

@@ -2,10 +2,8 @@
 
 #include "router/TxRouter.h"
 
-namespace nf::ipc
-{
-class IpcClientHandler;
-}
+#include "ipc/IpcClientHandler.h"
+#include "action/IcmpdAction.h"
 
 namespace nf::icmpd
 {
@@ -17,9 +15,7 @@ public:
     ~IcmpdTxRouter() override = default;
 
     void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
-
-    void sendClientHello();
-    void sendRuntimeReady();
+    void handleAction(std::unique_ptr<IcmpdAction> action);
 
 private:
     nf::ipc::IpcClientHandler* m_ipcClientHandler;

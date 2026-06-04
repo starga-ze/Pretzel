@@ -1,6 +1,10 @@
 #pragma once
 
 #include "service/bootstrap/BootstrapEvent.h"
+#include "service/bootstrap/BootstrapAction.h"
+
+#include "event/IcmpdEventFactory.h"
+#include "action/IcmpdActionFactory.h"
 
 #include <memory>
 #include <chrono>
@@ -11,16 +15,19 @@ namespace nf::icmpd
 class BootstrapService
 {
 public:
-    BootstrapService();
+    BootstrapService(IcmpdEventFactory* eventFactory, IcmpdActionFactory* actionFactory);
     ~BootstrapService() = default;
 
     void start();
-    std::unique_ptr<nf::event::Event> schedule(std::chrono::steady_clock::time_point now);
+    std::unique_ptr<IcmpdEvent> schedule(std::chrono::steady_clock::time_point now);
     bool isReady();
 
-    void handleEvent(const IcmpdEvent& event);
+    void handleEvent(const BootstrapEvent& event);
 
 private:
+    IcmpdEventFactory* m_eventFactory;
+    IcmpdActionFactory* m_actionFactory;
+
     enum class State
     {
         Init, 

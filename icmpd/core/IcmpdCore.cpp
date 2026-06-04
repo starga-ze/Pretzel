@@ -54,8 +54,12 @@ bool IcmpdCore::onInit()
         return false;
     }
 
+    /* Factory init */
+    m_eventFactory = std::make_unique<IcmpdEventFactory>();
+    m_actionFactory = std::make_unique<IcmpdActionFactory>();
+
     /* Router init */
-    m_rxRouter = std::make_unique<IcmpdRxRouter>();
+    m_rxRouter = std::make_unique<IcmpdRxRouter>(m_eventFactory.get());
     m_txRouter = std::make_unique<IcmpdTxRouter>(m_ipcClient->handler());
 
     if (!m_txRouter or !m_rxRouter)
@@ -65,7 +69,7 @@ bool IcmpdCore::onInit()
     }
 
     /* Service init */
-    m_serviceManager = std::make_unique<IcmpdServiceManager>();
+    m_serviceManager = std::make_unique<IcmpdServiceManager>(m_eventFactory.get(), m_actionFactory.get());
     if (!m_serviceManager)
     {
         LOG_ERROR("Service init failed");
