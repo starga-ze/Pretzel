@@ -2,7 +2,6 @@
 
 #include "session/Session.h"
 #include "session/SessionManager.h"
-#include "service/IpcdServiceManager.h"
 
 #include <unordered_map>
 #include <memory>

@@ -30,6 +30,7 @@ void IpcdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     m_txRouter->handleMessage(std::move(msg));
 }
 
+
 void IpcdRxRouter::setProcess(IpcdProcess* process)
 {
     m_process = process;

@@ -4,40 +4,33 @@
 namespace nf::icmpd
 {
 
-IcmpdRxRouter::IcmpdRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, IcmpdTxRouter* txRouter) : 
-    m_ipcClientHandler(ipcClientHandler), 
-    m_txRouter(txRouter)
+IcmpdRxRouter::IcmpdRxRouter(IcmpdEventFactory* eventFactory) :
+    m_eventFactory(eventFactory)
 {
 }
 
 void IcmpdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    if (!m_txRouter or !m_process)
+    if (!m_serviceManager)
     {
-        LOG_ERROR("Dependency is not ready, (txRouter={}, process={})", static_cast<bool>(m_txRouter),
-                  static_cast<bool>(m_process));
+        LOG_ERROR("ServiceManager is nullptr");
         return;
     }
 
-    switch (msg->getCmd())
+    if (!msg)
     {
-    case nf::ipc::IpcCmd::ServerHello:
-        m_process->onServerHello(*msg);
-        break;
-
-    case nf::ipc::IpcCmd::RuntimeStart:
-        m_process->onRuntimeStart(*msg);
-        break;
-
-    default:
-        LOG_WARN("Unhandled Rx msg, cmd={}", static_cast<int>(msg->getCmd()));
-        break;
+        LOG_WARN("IpcMessage is empty");
+        return;
     }
+
+    std::unique_ptr<IcmpdEvent> event = m_eventFactory->create(std::move(msg));
+
+    m_serviceManager->postEvent(std::move(event));
 }
 
-void IcmpdRxRouter::setProcess(IcmpdProcess* process)
+void IcmpdRxRouter::setServiceManager(IcmpdServiceManager* serviceManager)
 {
-    m_process = process;
+    m_serviceManager = serviceManager;
 }
 
 } // namespace nf::icmpd

@@ -8,6 +8,9 @@
 #include "process/IcmpdProcess.h"
 #include "router/IcmpdRxRouter.h"
 #include "router/IcmpdTxRouter.h"
+#include "service/IcmpdServiceManager.h"
+#include "event/IcmpdEventFactory.h"
+#include "action/IcmpdActionFactory.h"
 
 #include "config/ConfigTypes.h"
 
@@ -34,8 +37,15 @@ private:
     std::unique_ptr<nf::ipc::IpcClient> m_ipcClient;
 
     std::unique_ptr<IcmpdProcess> m_process;
+
+    std::unique_ptr<IcmpdEventFactory> m_eventFactory;
+    std::unique_ptr<IcmpdActionFactory> m_actionFactory;
+
     std::unique_ptr<IcmpdRxRouter> m_rxRouter;
     std::unique_ptr<IcmpdTxRouter> m_txRouter;
+
+    std::unique_ptr<IcmpdServiceManager> m_serviceManager;
+
 };
 
 } // namespace nf::icmpd

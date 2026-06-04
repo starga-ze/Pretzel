@@ -7,6 +7,7 @@ TARGET_ITEMS = [
     'shared',
     'ipcd',
     'engined',
+    'icmpd',
 ]
 
 TAR_FILENAME = "pretzel-ims.tar.gz"

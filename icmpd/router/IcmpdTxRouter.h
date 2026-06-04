@@ -1,11 +1,7 @@
 #pragma once
 
 #include "router/TxRouter.h"
-
-namespace nf::ipc
-{
-class IpcClientHandler;
-}
+#include "ipc/IpcClientHandler.h"
 
 namespace nf::icmpd
 {
@@ -17,9 +13,6 @@ public:
     ~IcmpdTxRouter() override = default;
 
     void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
-
-    void sendClientHello();
-    void sendRuntimeReady();
 
 private:
     nf::ipc::IpcClientHandler* m_ipcClientHandler;
