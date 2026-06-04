@@ -21,6 +21,8 @@ public:
 
     BootstrapActionType type() const;
 
+    void dispatch(IcmpdServiceManager& serviceManager) override;
+
 private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };

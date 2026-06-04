@@ -8,6 +8,8 @@
 namespace nf::icmpd
 {
 
+class IcmpdServiceManager;
+
 enum class IcmpdActionDomain : std::uint32_t
 {
     Unknown = 0,
@@ -25,6 +27,8 @@ public:
 
     const nf::ipc::IpcMessage* message() const;
     std::unique_ptr<nf::ipc::IpcMessage> takeMessage();
+
+    virtual void dispatch(IcmpdServiceManager& serviceManager) = 0;
 
 private:
     IcmpdActionDomain m_domain{IcmpdActionDomain::Unknown};

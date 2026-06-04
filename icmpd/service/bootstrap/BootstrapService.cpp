@@ -1,4 +1,5 @@
 #include "service/bootstrap/BootstrapService.h"
+#include "service/IcmpdServiceManager.h"
 
 #include "util/Logger.h"
 
@@ -41,8 +42,9 @@ bool BootstrapService::isReady()
     return false;
 }
 
-void BootstrapService::handleEvent(const BootstrapEvent& event)
+void BootstrapService::handleEvent(IcmpdServiceManager& serviceManager, const BootstrapEvent& event)
 {
+    LOG_DEBUG("handleEvent");
     std::unique_ptr<IcmpdAction> action = nullptr;
 
     switch (event.type())
@@ -52,12 +54,48 @@ void BootstrapService::handleEvent(const BootstrapEvent& event)
         action = m_actionFactory->create(IcmpdActionDomain::Bootstrap,
                                               static_cast<std::uint32_t>(BootstrapActionType::SendClientHello));
 
-        LOG_DEBUG("need to create client hello action");
+        serviceManager.postAction(std::move(action));
         break;
     }
 
     default:
         LOG_WARN("Unhandled bootstrap event type={}", static_cast<std::uint32_t>(event.type()));
+        break;
+    }
+}
+
+void BootstrapService::handleAction(IcmpdServiceManager& serviceManager,
+                                    const BootstrapAction& action)
+{
+    switch (action.type())
+    {
+    case BootstrapActionType::SendClientHello:
+    {
+        std::string name =
+            nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Icmpd);
+
+        auto flag =
+            nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+
+        nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
+            nf::ipc::IpcDaemon::Icmpd,
+            nf::ipc::IpcDaemon::Ipcd,
+            nf::ipc::IpcCmd::ClientHello,
+            0,
+            flag);
+
+        auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+        msg->setPayload(
+            reinterpret_cast<const std::uint8_t*>(name.data()),
+            name.size());
+
+        serviceManager.txRouter().handleMessage(std::move(msg));
+        break;
+    }
+
+    default:
+        LOG_WARN("Unhandled bootstrap action type={}",
+                 static_cast<std::uint32_t>(action.type()));
         break;
     }
 }

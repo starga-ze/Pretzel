@@ -9,8 +9,6 @@
 namespace nf::icmpd
 {
 
-class IcmpdServiceManager;
-
 enum class BootstrapEventType : std::uint32_t
 {
     Unknown = 0,

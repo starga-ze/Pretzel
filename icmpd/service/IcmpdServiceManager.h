@@ -4,31 +4,40 @@
 
 #include "service/bootstrap/BootstrapService.h"
 
+#include "router/IcmpdTxRouter.h"
+
 #include <queue>
 
 namespace nf::icmpd
 {
 
-class IcmpdServiceManager : public nf::service::ServiceManager<IcmpdEvent>
+class IcmpdServiceManager : public nf::service::ServiceManager<IcmpdEvent, IcmpdAction>
 {
 public:
-    IcmpdServiceManager(IcmpdEventFactory* eventFactory, IcmpdActionFactory* actionFactory);
+    IcmpdServiceManager(IcmpdEventFactory* eventFactory, 
+            IcmpdActionFactory* actionFactory, 
+            IcmpdTxRouter* txRouter);
     ~IcmpdServiceManager() override = default;
 
     void start() override;
 
     void schedule() override;
     void postEvent(std::unique_ptr<IcmpdEvent> event) override;
+    void postAction(std::unique_ptr<IcmpdAction> action) override;
     void execute() override;
 
     BootstrapService& bootstrapService();
+    IcmpdTxRouter& txRouter();
 
 private:
     IcmpdEventFactory* m_eventFactory;
     IcmpdActionFactory* m_actionFactory;   
+    IcmpdTxRouter* m_txRouter;
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
+
     std::queue<std::unique_ptr<IcmpdEvent>> m_eventQueue;
+    std::queue<std::unique_ptr<IcmpdAction>> m_actionQueue;
 };
 
 } // namespace nf::icmpd
