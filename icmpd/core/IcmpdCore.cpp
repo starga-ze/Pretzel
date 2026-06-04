@@ -69,7 +69,7 @@ bool IcmpdCore::onInit()
     }
 
     /* Service init */
-    m_serviceManager = std::make_unique<IcmpdServiceManager>(m_eventFactory.get(), m_actionFactory.get());
+    m_serviceManager = std::make_unique<IcmpdServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
     if (!m_serviceManager)
     {
         LOG_ERROR("Service init failed");

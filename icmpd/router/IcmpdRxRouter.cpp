@@ -25,11 +25,6 @@ void IcmpdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 
     std::unique_ptr<IcmpdEvent> event = m_eventFactory->create(std::move(msg));
 
-    handleEvent(std::move(event));
-}
-
-void IcmpdRxRouter::handleEvent(std::unique_ptr<IcmpdEvent> event)
-{
     m_serviceManager->postEvent(std::move(event));
 }
 

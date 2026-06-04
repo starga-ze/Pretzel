@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ipc/IpcMessage.h"
-#include "event/Event.h"
 
 #include <memory>
 

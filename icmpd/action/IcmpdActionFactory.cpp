@@ -15,7 +15,7 @@ std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(std::unique_ptr<nf::ipc:
         return nullptr;
     }
 
-    return std::make_unique<IcmpdAction>(IcmpdActionDomain::Unknown, std::move(message));
+    return nullptr;
 }
 
 std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(IcmpdActionDomain domain, std::uint32_t type)

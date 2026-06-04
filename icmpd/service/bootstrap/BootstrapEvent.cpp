@@ -1,7 +1,5 @@
 #include "service/bootstrap/BootstrapEvent.h"
-
 #include "service/IcmpdServiceManager.h"
-#include "service/bootstrap/BootstrapService.h"
 
 namespace nf::icmpd
 {
@@ -25,7 +23,7 @@ BootstrapEventType BootstrapEvent::type() const
 
 void BootstrapEvent::dispatch(IcmpdServiceManager& serviceManager)
 {
-    serviceManager.bootstrapService().handleEvent(*this);
+    serviceManager.bootstrapService().handleEvent(serviceManager, *this);
 }
 
 } // namespace nf::icmpd

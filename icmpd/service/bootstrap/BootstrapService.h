@@ -22,7 +22,8 @@ public:
     std::unique_ptr<IcmpdEvent> schedule(std::chrono::steady_clock::time_point now);
     bool isReady();
 
-    void handleEvent(const BootstrapEvent& event);
+    void handleEvent(IcmpdServiceManager& serviceManager, const BootstrapEvent& event);
+    void handleAction(IcmpdServiceManager& serviceManager, const BootstrapAction& action);
 
 private:
     IcmpdEventFactory* m_eventFactory;
