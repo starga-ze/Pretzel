@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>nf-engine Control Plane</title>
+        <link rel="stylesheet" href="/css/style.css">
+    </head>
+    <body>
+
+        <div class="navbar">
+            <div class="brand">nf-engine</div>
+            <div class="tabs">
+                <button class="tab active" data-tab="dashboard">Dashboard</button>
+                <button class="tab" data-tab="sessions">Sessions</button>
+                <button class="tab" data-tab="markets">Markets</button>
+                <button class="tab" data-tab="system">System</button>
+                <button type="button" class="logout-btn">Logout</button>
+            </div>
+        </div>
+
+        <div class="container">
+
+            <div id="dashboard" class="tab-content active">
+
+                <div class="kpi-top">
+                    <div class="kpi-main">
+                        <div class="label">Total Sessions</div>
+                        <div id="totalSessions" class="kpi-value">0</div>
+                    </div>
+
+                    <div class="kpi-side">
+                        <div class="mini-card">
+                            <div class="label">Auth</div>
+                            <div id="authSessions" class="value">0</div>
+                        </div>
+
+                        <div class="mini-card">
+                            <div class="label">World</div>
+                            <div id="worldSessions" class="value">0</div>
+                        </div>
+
+                        <div class="mini-card">
+                            <div class="label">Shard</div>
+                            <div id="shardCount" class="value">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kpi-bottom">
+
+                    <div class="mini-card">
+                        <div class="label">Engine Uptime</div>
+                        <div id="engineUptime" class="value">-</div>
+                    </div>
+
+                    <div class="mini-card">
+                        <div class="label">RSS</div>
+                        <div id="rssUsage" class="value">-</div>
+                    </div>
+
+                    <div class="mini-card">
+                        <div class="label">Heap</div>
+                        <div id="heapUsage" class="value">-</div>
+                    </div>
+
+                    <div class="mini-card">
+                        <div class="label">Data</div>
+                        <div id="dataUsage" class="value">-</div>
+                    </div>
+
+                    <div class="mini-card">
+                        <div class="label">Virtual</div>
+                        <div id="virtualUsage" class="value">-</div>
+                    </div>
+
+                    <div class="mini-card">
+                        <div class="label">CPU Usage</div>
+                        <div id="cpuUsage" class="value">-</div>
+                    </div>
+
+                    <div class="mini-card status-card">
+                        <div class="label">IPC</div>
+                        <div id="ipcStatus" class="status-badge">CONNECTED</div>
+                    </div>
+
+                </div>
+            </div> 
+            
+            <div id="sessions" class="tab-content">
+                <h2>Active Sessions</h2>
+
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>SID</th>
+                            <th>STATE</th>
+                            <th>TLS</th>
+                            <th>TCP</th>
+                            <th>UDP</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessionTableBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="markets" class="tab-content">
+                <h2>Market Overview</h2>
+                <p>Market engine metrics will appear here.</p>
+            </div>
+
+            <div id="system" class="tab-content">
+                <h2>System Information</h2>
+                <p>Engine runtime metrics & controls.</p>
+            </div>
+
+        </div>
+
+        <script type="module" src="/js/main.js"></script>
+    </body>
+
+    <div id="loginOverlay" class="login-overlay" style="display:none;">
+        <div class="login-card">
+            <h2>Admin Login</h2>
+
+            <input id="username" type="text" placeholder="Username" />
+            <input id="password" type="password" placeholder="Password" />
+
+            <button onclick="handleLogin()">Login</button>
+
+            <div id="loginError" class="login-error"></div>
+        </div>
+    </div>
+</html>
