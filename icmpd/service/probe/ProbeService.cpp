@@ -78,7 +78,7 @@ std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::ti
             m_lastReplyAt = now;
             m_state = State::WaitingReplies;
 
-            LOG_INFO("ProbeService: all probes sent, waiting replies (idle_timeout={}ms, max_timeout={}ms)",
+            LOG_INFO("All probes sent, waiting replies (idle_timeout={}ms, max_timeout={}ms)",
                      std::chrono::duration_cast<std::chrono::milliseconds>(
                          kReplyIdleTimeout).count(),
                      std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -229,7 +229,7 @@ void ProbeService::beginProbeSession()
     m_lastReplyAt = {};
     m_state = State::Sending;
 
-    LOG_INFO("ProbeService: start probe cidr=192.168.0.0/23 generated={} targets={} excluded_local={}",
+    LOG_INFO("Start probe, (cidr=192.168.0.0/23 generated={} targets={} excluded_local={})",
              generatedCount,
              m_targets.size(),
              generatedCount - m_targets.size());
@@ -350,7 +350,7 @@ void ProbeService::completeProbeSession()
 
     const auto now = std::chrono::steady_clock::now();
 
-    LOG_INFO("ProbeService: probe completed total={} alive={} dead={} elapsed={}ms",
+    LOG_INFO("Probe completed, (total={} alive={} dead={} elapsed={}ms)",
              m_targets.size(),
              aliveIps.size(),
              m_targets.size() - aliveIps.size(),
@@ -387,7 +387,7 @@ bool ProbeService::replyWaitExpired(std::chrono::steady_clock::time_point now) c
             reason = "ReplyIdleTimeout|ReplyMaxWaitTimeout";
         }
 
-        LOG_INFO("Probe stopped, reason=\"{}\", idle_elapsed={}ms/{}ms, max_elapsed={}ms/{}ms",
+        LOG_INFO("Probe stopped, (reason=\"{}\", idle_elapsed={}ms/{}ms, max_elapsed={}ms/{}ms)",
                  reason,
                  idleElapsed.count(),
                  duration_cast<milliseconds>(kReplyIdleTimeout).count(),
