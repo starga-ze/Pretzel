@@ -7,17 +7,21 @@
 namespace nf::icmpd
 {
 
-IcmpdServiceManager::IcmpdServiceManager(IcmpdEventFactory* eventFactory, IcmpdActionFactory* actionFactory, IcmpdTxRouter* txRouter) : 
+IcmpdServiceManager::IcmpdServiceManager(IcmpdEventFactory* eventFactory, 
+        IcmpdActionFactory* actionFactory, 
+        IcmpdTxRouter* txRouter) : 
     m_eventFactory(eventFactory),
     m_actionFactory(actionFactory),
     m_txRouter(txRouter),
-    m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory))
+    m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
+    m_probeService(std::make_unique<ProbeService>(m_eventFactory, m_actionFactory))
 {
 }
 
 void IcmpdServiceManager::start()
 {
     m_bootstrapService->start();
+    m_probeService->start();
 }
 
 void IcmpdServiceManager::schedule()
@@ -30,8 +34,10 @@ void IcmpdServiceManager::schedule()
         return;
     }
 
-    // postEvent(m_probeService->schedule(now));
-    // postEvent(m_scanService->schedule(now));
+    if (auto event = m_probeService->schedule(now))
+    {
+        postEvent(std::move(event));
+    }
 }
 
 void IcmpdServiceManager::postEvent(std::unique_ptr<IcmpdEvent> event)
@@ -76,6 +82,11 @@ void IcmpdServiceManager::execute()
 BootstrapService& IcmpdServiceManager::bootstrapService()
 {
     return *m_bootstrapService;
+}
+
+ProbeService& IcmpdServiceManager::probeService()
+{
+    return *m_probeService;
 }
 
 IcmpdTxRouter& IcmpdServiceManager::txRouter()

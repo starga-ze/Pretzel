@@ -10,7 +10,7 @@ EnginedRxRouter::EnginedRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, En
 {
 }
 
-void EnginedRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void EnginedRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!m_txRouter or !m_process)
     {

@@ -10,7 +10,7 @@ EnginedTxRouter::EnginedTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler) :
 {
 }
 
-void EnginedTxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void EnginedTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -43,7 +43,7 @@ void EnginedTxRouter::sendClientHello()
     auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
-    handleMessage(std::move(msg));
+    handleIpcMessage(std::move(msg));
 }
 
 void EnginedTxRouter::sendSyncRequest()
@@ -62,7 +62,7 @@ void EnginedTxRouter::sendSyncRequest()
     auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
-    handleMessage(std::move(msg));
+    handleIpcMessage(std::move(msg));
 }
 
 void EnginedTxRouter::sendRuntimeStart()
@@ -81,7 +81,7 @@ void EnginedTxRouter::sendRuntimeStart()
     auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
-    handleMessage(std::move(msg));
+    handleIpcMessage(std::move(msg));
 }
 
 } // namespace nf::engined

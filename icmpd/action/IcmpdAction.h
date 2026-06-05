@@ -15,6 +15,7 @@ enum class IcmpdActionDomain : std::uint32_t
 {
     Unknown = 0,
     Bootstrap = 1,
+    Probe = 2
 };
 
 class IcmpdAction : public nf::action::Action

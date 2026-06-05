@@ -11,7 +11,7 @@ IpcdRxRouter::IpcdRxRouter(IpcServerHandler* ipcServerHandler, IpcdTxRouter* txR
 {
 }
 
-void IpcdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IpcdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!m_txRouter or !m_ipcServerHandler)
     {
@@ -27,7 +27,7 @@ void IpcdRxRouter::handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
         return;
     }
 
-    m_txRouter->handleMessage(std::move(msg));
+    m_txRouter->handleIpcMessage(std::move(msg));
 }
 
 

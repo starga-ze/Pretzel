@@ -1,6 +1,7 @@
 #include "action/IcmpdActionFactory.h"
 
 #include "service/bootstrap/BootstrapAction.h"
+#include "service/probe/ProbeAction.h"
 
 #include "util/Logger.h"
 
@@ -13,6 +14,9 @@ std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(IcmpdActionDomain domain
     {
     case IcmpdActionDomain::Bootstrap:
         return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
+
+    case IcmpdActionDomain::Probe:
+        return std::make_unique<ProbeAction>(static_cast<ProbeActionType>(type));
 
     default:
         LOG_WARN("Unhandled action domain={}", static_cast<std::uint32_t>(domain));

@@ -13,7 +13,7 @@ class TxRouter
         TxRouter() = default;
         virtual ~TxRouter() = default;
 
-        virtual void handleMessage(std::unique_ptr<nf::ipc::IpcMessage>) = 0;
+        virtual void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage>) = 0;
 };
 
 }
