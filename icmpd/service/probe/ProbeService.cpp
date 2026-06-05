@@ -290,7 +290,32 @@ void ProbeService::onEchoReply(const ProbeEvent& event)
         return;
     }
 
+    const auto* packet = event.packet();
+    if (!packet)
+    {
+        LOG_WARN("ProbeService: ignore echo reply with null packet src={}", srcIp);
+        return;
+    }
+
     auto& target = m_targets[it->second];
+
+    if (packet->identifier() != m_identifier)
+    {
+        LOG_TRACE("ProbeService: ignore echo reply id mismatch src={} recv={} expected={}",
+                  srcIp,
+                  packet->identifier(),
+                  m_identifier);
+        return;
+    }
+
+    if (packet->sequence() != target.sequence)
+    {
+        LOG_TRACE("ProbeService: ignore echo reply seq mismatch src={} recv={} expected={}",
+                  srcIp,
+                  packet->sequence(),
+                  target.sequence);
+        return;
+    }
 
     m_lastReplyAt = std::chrono::steady_clock::now();
 

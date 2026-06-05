@@ -1,12 +1,11 @@
 #include "icmp/IcmpConnection.h"
 
-#include <arpa/inet.h>
+#include "util/Logger.h"
 
+#include <arpa/inet.h>
 #include <cerrno>
 #include <cstdint>
-
 #include <netinet/in.h>
-
 #include <sys/socket.h>
 
 namespace nf::icmpd
@@ -109,8 +108,9 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
 
         if (::inet_pton(AF_INET, frame.dstIp.c_str(), &addr.sin_addr) != 1)
         {
-            outErrno = EINVAL;
-            return IcmpIoResult::Error;
+            LOG_WARN("ICMP Tx drop: invalid dstIp={}", frame.dstIp);
+            m_txQueue.pop();
+            continue;
         }
 
         const ssize_t n = ::sendto(m_fd,
@@ -124,8 +124,13 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
         {
             if (static_cast<std::size_t>(n) != frame.bytes.size())
             {
-                outErrno = EMSGSIZE;
-                return IcmpIoResult::Error;
+                LOG_WARN("ICMP Tx drop: partial send dst={} sent={} expected={}",
+                         frame.dstIp,
+                         n,
+                         frame.bytes.size());
+
+                m_txQueue.pop();
+                continue;
             }
 
             m_txQueue.pop();
@@ -133,7 +138,11 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
         }
 
         if (n == 0)
-            return IcmpIoResult::PeerClosed;
+        {
+            LOG_WARN("ICMP Tx drop: sendto returned 0 dst={}", frame.dstIp);
+            m_txQueue.pop();
+            continue;
+        }
 
         if (errno == EINTR)
             continue;
@@ -141,8 +150,27 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             return IcmpIoResult::WouldBlock;
 
-        outErrno = errno;
-        return IcmpIoResult::Error;
+        const int err = errno;
+
+        switch (err)
+        {
+        case EHOSTUNREACH:
+        case ENETUNREACH:
+        case EINVAL:
+        case EADDRNOTAVAIL:
+        case EMSGSIZE:
+            LOG_WARN("ICMP Tx drop: dst={} size={} errno={}",
+                     frame.dstIp,
+                     frame.bytes.size(),
+                     err);
+
+            m_txQueue.pop();
+            continue;
+
+        default:
+            outErrno = err;
+            return IcmpIoResult::Error;
+        }
     }
 
     return IcmpIoResult::Ok;
