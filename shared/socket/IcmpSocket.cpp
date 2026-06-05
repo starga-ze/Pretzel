@@ -3,12 +3,9 @@
 #include "util/Logger.h"
 
 #include <cerrno>
-
 #include <fcntl.h>
 #include <unistd.h>
-
 #include <netinet/in.h>
-
 #include <sys/socket.h>
 
 namespace nf::socket

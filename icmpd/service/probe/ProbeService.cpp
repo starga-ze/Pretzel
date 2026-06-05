@@ -39,6 +39,7 @@ std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::ti
             m_state = State::IsProbing;
             return event;
         }
+        return nullptr;
     }
 
     case State::IsProbing:
@@ -67,6 +68,14 @@ void ProbeService::handleEvent(IcmpdServiceManager& serviceManager, const ProbeE
                     static_cast<std::uint32_t>(ProbeActionType::StartProbe));
 
         serviceManager.postAction(std::move(action));
+        break;
+    }
+
+    case ProbeEventType::EchoReply:
+    {
+        LOG_INFO("Echo Reply event recv, ip: {}", event.srcIp());
+
+        
         break;
     }
 
@@ -111,18 +120,17 @@ void ProbeService::handleAction(IcmpdServiceManager& serviceManager,
 
 std::unique_ptr<IcmpPacket> ProbeService::buildEchoRequestPacket() const
 {
-    const std::uint16_t identifier =
-        static_cast<std::uint16_t>(::getpid() & 0xffff);
-
+    const std::uint16_t identifier = static_cast<std::uint16_t>(::getpid() & 0xffff);
     const std::uint16_t sequence = 1;
-
+    
     const std::string payload = "nf-icmpd-probe";
 
-    return std::make_unique<IcmpPacket>(
-        IcmpPacket::buildEchoRequest(
-            identifier,
-            sequence,
-            std::vector<std::uint8_t>(payload.begin(), payload.end())));
+    IcmpHeader header = IcmpHeader::buildEchoRequest(identifier, sequence);
+
+    auto packet = std::make_unique<IcmpPacket>(std::move(header));
+    packet->setPayload(payload.data(), payload.size());
+    
+    return packet;
 }
 
 } // namespace nf::icmpd

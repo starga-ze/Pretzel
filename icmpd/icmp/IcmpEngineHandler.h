@@ -5,9 +5,10 @@
 #include "icmp/IcmpPacket.h"
 #include "io/Epoll.h"
 
+#include <cstdint>
 #include <memory>
-#include <queue>
 #include <string>
+#include <vector>
 
 namespace nf::icmpd
 {
@@ -25,29 +26,18 @@ public:
 
     bool ingress(int fd,
                  const std::string& srcIp,
-                 std::vector<std::uint8_t> bytes);
+                 IcmpFrameView frame);
 
     void egress(std::unique_ptr<IcmpPacket> packet,
                 std::string dstIp);
 
-    bool enqueuePacket(std::unique_ptr<IcmpPacket> packet,
-                       std::string dstIp);
-
     void setRxRouter(IcmpdRxRouter* rxRouter);
-
-private:
-    struct TxItem
-    {
-        std::unique_ptr<IcmpPacket> packet;
-        std::string dstIp;
-    };
 
 private:
     IcmpEngine* m_icmpEngine {nullptr};
     IcmpdRxRouter* m_rxRouter {nullptr};
 
     IcmpCodec m_codec;
-    std::queue<TxItem> m_txQueue;
 };
 
 } // namespace nf::icmpd

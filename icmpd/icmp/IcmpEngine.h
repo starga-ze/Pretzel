@@ -34,8 +34,8 @@ public:
     bool sendPacket(std::unique_ptr<IcmpPacket> packet,
                     std::string dstIp);
 
-    bool enqueuePacket(std::unique_ptr<IcmpPacket> packet,
-                       std::string dstIp);
+    bool enqueueFrame(std::vector<std::uint8_t> frame,
+                      std::string dstIp);
 
     bool isOpened() const;
     int fd() const;
