@@ -12,24 +12,22 @@
 namespace nf::icmpd
 {
 
-namespace
-{
-
-constexpr std::size_t kRecvBufferSize = 65536;
-
-} // namespace
-
-IcmpConnection::IcmpConnection(int fd)
-    : m_fd(fd)
+IcmpConnection::IcmpConnection(int fd,
+                               std::size_t rxQueueLimit,
+                               std::size_t txQueueLimit)
+    : m_fd(fd),
+      m_rxQueueLimit(rxQueueLimit),
+      m_txQueueLimit(txQueueLimit)
 {
 }
 
-IcmpIoResult IcmpConnection::recv(std::vector<std::uint8_t>& outBytes,
-                                  std::string& outSrcIp,
-                                  int& outErrno)
+int IcmpConnection::fd() const noexcept
 {
-    outBytes.clear();
-    outSrcIp.clear();
+    return m_fd;
+}
+
+IcmpIoResult IcmpConnection::recv(int& outErrno)
+{
     outErrno = 0;
 
     if (m_fd < 0)
@@ -38,10 +36,13 @@ IcmpIoResult IcmpConnection::recv(std::vector<std::uint8_t>& outBytes,
         return IcmpIoResult::Error;
     }
 
-    std::vector<std::uint8_t> buffer(kRecvBufferSize);
+    std::vector<std::uint8_t> buffer(RECV_BUFFER_SIZE);
 
     while (true)
     {
+        if (m_rxQueue.size() >= m_rxQueueLimit)
+            return IcmpIoResult::BufferFull;
+
         sockaddr_in addr {};
         socklen_t addrLen = sizeof(addr);
 
@@ -61,9 +62,12 @@ IcmpIoResult IcmpConnection::recv(std::vector<std::uint8_t>& outBytes,
                 return IcmpIoResult::Error;
             }
 
-            outBytes.assign(buffer.begin(), buffer.begin() + n);
-            outSrcIp = ipBuf;
-            return IcmpIoResult::Ok;
+            RxFrame frame;
+            frame.bytes.assign(buffer.begin(), buffer.begin() + n);
+            frame.srcIp = ipBuf;
+
+            m_rxQueue.push(std::move(frame));
+            continue;
         }
 
         if (n == 0)
@@ -80,9 +84,7 @@ IcmpIoResult IcmpConnection::recv(std::vector<std::uint8_t>& outBytes,
     }
 }
 
-IcmpIoResult IcmpConnection::send(const std::vector<std::uint8_t>& bytes,
-                                  const std::string& dstIp,
-                                  int& outErrno)
+IcmpIoResult IcmpConnection::send(int& outErrno)
 {
     outErrno = 0;
 
@@ -92,33 +94,42 @@ IcmpIoResult IcmpConnection::send(const std::vector<std::uint8_t>& bytes,
         return IcmpIoResult::Error;
     }
 
-    if (bytes.empty())
-        return IcmpIoResult::Ok;
-
-    sockaddr_in addr {};
-    addr.sin_family = AF_INET;
-
-    if (::inet_pton(AF_INET, dstIp.c_str(), &addr.sin_addr) != 1)
+    while (!m_txQueue.empty())
     {
-        outErrno = EINVAL;
-        return IcmpIoResult::Error;
-    }
+        const TxFrame& frame = m_txQueue.front();
 
-    while (true)
-    {
+        if (frame.bytes.empty())
+        {
+            m_txQueue.pop();
+            continue;
+        }
+
+        sockaddr_in addr {};
+        addr.sin_family = AF_INET;
+
+        if (::inet_pton(AF_INET, frame.dstIp.c_str(), &addr.sin_addr) != 1)
+        {
+            outErrno = EINVAL;
+            return IcmpIoResult::Error;
+        }
+
         const ssize_t n = ::sendto(m_fd,
-                                   bytes.data(),
-                                   bytes.size(),
+                                   frame.bytes.data(),
+                                   frame.bytes.size(),
                                    0,
                                    reinterpret_cast<sockaddr*>(&addr),
                                    sizeof(addr));
 
         if (n > 0)
         {
-            if (static_cast<std::size_t>(n) == bytes.size())
-                return IcmpIoResult::Ok;
+            if (static_cast<std::size_t>(n) != frame.bytes.size())
+            {
+                outErrno = EMSGSIZE;
+                return IcmpIoResult::Error;
+            }
 
-            return IcmpIoResult::WouldBlock;
+            m_txQueue.pop();
+            continue;
         }
 
         if (n == 0)
@@ -133,11 +144,58 @@ IcmpIoResult IcmpConnection::send(const std::vector<std::uint8_t>& bytes,
         outErrno = errno;
         return IcmpIoResult::Error;
     }
+
+    return IcmpIoResult::Ok;
 }
 
-int IcmpConnection::fd() const
+bool IcmpConnection::write(std::vector<std::uint8_t> bytes,
+                           std::string dstIp)
 {
-    return m_fd;
+    if (bytes.empty())
+        return true;
+
+    if (dstIp.empty())
+        return false;
+
+    if (m_txQueue.size() >= m_txQueueLimit)
+        return false;
+
+    m_txQueue.push(TxFrame {
+        std::move(bytes),
+        std::move(dstIp),
+    });
+
+    return true;
+}
+
+bool IcmpConnection::read(RxFrame& outFrame)
+{
+    if (m_rxQueue.empty())
+        return false;
+
+    outFrame = std::move(m_rxQueue.front());
+    m_rxQueue.pop();
+    return true;
+}
+
+bool IcmpConnection::hasPendingRx() const noexcept
+{
+    return !m_rxQueue.empty();
+}
+
+bool IcmpConnection::hasPendingTx() const noexcept
+{
+    return !m_txQueue.empty();
+}
+
+std::size_t IcmpConnection::rxQueueSize() const noexcept
+{
+    return m_rxQueue.size();
+}
+
+std::size_t IcmpConnection::txQueueSize() const noexcept
+{
+    return m_txQueue.size();
 }
 
 } // namespace nf::icmpd

@@ -11,20 +11,23 @@
 namespace nf::icmpd
 {
 
-class IcmpPacket final
+class IcmpHeader final
 {
 public:
-    IcmpPacket();
+    IcmpHeader() = default;
 
-    IcmpPacket(IcmpType type,
+    IcmpHeader(IcmpType type,
                IcmpCode code,
                std::uint16_t identifier,
-               std::uint16_t sequence,
-               std::vector<std::uint8_t> payload = {});
+               std::uint16_t sequence);
 
-    static IcmpPacket buildEchoRequest(std::uint16_t identifier,
-                                       std::uint16_t sequence,
-                                       std::vector<std::uint8_t> payload = {});
+    static IcmpHeader build(IcmpType type,
+                            IcmpCode code,
+                            std::uint16_t identifier,
+                            std::uint16_t sequence);
+
+    static IcmpHeader buildEchoRequest(std::uint16_t identifier,
+                                       std::uint16_t sequence);
 
     IcmpType type() const;
     void setType(IcmpType type);
@@ -33,12 +36,37 @@ public:
     void setCode(IcmpCode code);
 
     std::uint16_t checksum() const;
+    void setChecksum(std::uint16_t checksum);
 
     std::uint16_t identifier() const;
     void setIdentifier(std::uint16_t identifier);
 
     std::uint16_t sequence() const;
     void setSequence(std::uint16_t sequence);
+
+private:
+    IcmpType m_type {IcmpType::EchoRequest};
+    IcmpCode m_code {IcmpCode::Echo};
+    std::uint16_t m_checksum {0};
+    std::uint16_t m_identifier {0};
+    std::uint16_t m_sequence {0};
+};
+
+class IcmpPacket final
+{
+public:
+    IcmpPacket();
+    explicit IcmpPacket(IcmpHeader header);
+    IcmpPacket(IcmpHeader header, std::vector<std::uint8_t> payload);
+
+    const IcmpHeader& header() const;
+    IcmpHeader& header();
+
+    IcmpType type() const;
+    IcmpCode code() const;
+    std::uint16_t checksum() const;
+    std::uint16_t identifier() const;
+    std::uint16_t sequence() const;
 
     const std::vector<std::uint8_t>& payload() const;
     std::vector<std::uint8_t>& payload();
@@ -48,26 +76,12 @@ public:
     void setPayload(const void* data, std::size_t len);
 
     std::size_t payloadLen() const;
-    std::size_t wireLen() const;
     bool empty() const;
-
-    std::vector<std::uint8_t> toWire() const;
-    std::vector<std::uint8_t> serialize() const;
-
-    static std::unique_ptr<IcmpPacket> fromWire(const std::vector<std::uint8_t>& wire);
-    static std::unique_ptr<IcmpPacket> parse(const std::vector<std::uint8_t>& wire);
 
     std::string dump() const;
 
 private:
-    static std::uint16_t calculateChecksum(const std::uint8_t* data,
-                                           std::size_t len);
-
-private:
-    IcmpType m_type {IcmpType::EchoRequest};
-    IcmpCode m_code {IcmpCode::Echo};
-    std::uint16_t m_identifier {0};
-    std::uint16_t m_sequence {0};
+    IcmpHeader m_header;
     std::vector<std::uint8_t> m_payload;
 };
 

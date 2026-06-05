@@ -37,11 +37,8 @@ void IcmpdRxRouter::handleIcmpPacket(const std::string& srcIp,
         return;
     }
 
-    // TODO:
-    // 여기서 ProbeEvent로 변환해서 ServiceManager에 postEvent 하면 됨.
-    // 예:
-    // auto event = m_eventFactory->createIcmpPacketEvent(srcIp, std::move(packet));
-    // m_serviceManager->postEvent(std::move(event));
+    auto event = m_eventFactory->create(srcIp, std::move(packet));
+    m_serviceManager->postEvent(std::move(event));
 }
 
 void IcmpdRxRouter::setServiceManager(IcmpdServiceManager* serviceManager)

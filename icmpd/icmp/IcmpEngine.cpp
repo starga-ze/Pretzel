@@ -73,15 +73,22 @@ bool IcmpEngine::poll(int timeoutMs)
 bool IcmpEngine::sendPacket(std::unique_ptr<IcmpPacket> packet,
                             std::string dstIp)
 {
-    return enqueuePacket(std::move(packet), std::move(dstIp));
+    if (!m_handler)
+    {
+        LOG_FATAL("IcmpEngineHandler is nullptr");
+        return false;
+    }
+
+    m_handler->egress(std::move(packet), std::move(dstIp));
+    return true;
 }
 
-bool IcmpEngine::enqueuePacket(std::unique_ptr<IcmpPacket> packet,
-                               std::string dstIp)
+bool IcmpEngine::enqueueFrame(std::vector<std::uint8_t> frame,
+                              std::string dstIp)
 {
-    if (!packet)
+    if (frame.empty())
     {
-        LOG_WARN("IcmpEngine: enqueue rejected, packet is nullptr");
+        LOG_WARN("IcmpEngine: enqueue rejected, frame is empty dst={}", dstIp);
         return false;
     }
 
@@ -91,9 +98,9 @@ bool IcmpEngine::enqueuePacket(std::unique_ptr<IcmpPacket> packet,
         return false;
     }
 
-    if (!m_handler->enqueuePacket(std::move(packet), std::move(dstIp)))
+    if (!m_conn->write(std::move(frame), std::move(dstIp)))
     {
-        LOG_WARN("IcmpEngine: handler enqueue failed");
+        LOG_WARN("IcmpEngine: tx queue full or invalid frame");
         return false;
     }
 
@@ -197,7 +204,6 @@ void IcmpEngine::closeConnection()
 
 void IcmpEngine::handleEvent(int fd, std::uint32_t events)
 {
-    LOG_TRACE("fd event fd={}, events=0x{:x}", fd, events);
     const bool isClose = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
     const bool isRecv  = (events & EPOLLIN) != 0;
     const bool isSend  = (events & EPOLLOUT) != 0;

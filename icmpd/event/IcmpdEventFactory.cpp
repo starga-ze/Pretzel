@@ -13,6 +13,22 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create()
     return nullptr;
 }
 
+std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(IcmpdEventDomain domain, std::uint32_t type)
+{
+    switch (domain)
+    {
+    case IcmpdEventDomain::Bootstrap:
+        return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
+
+    case IcmpdEventDomain::Probe:
+        return std::make_unique<ProbeEvent>(static_cast<ProbeEventType>(type));
+
+    default:
+        LOG_WARN("Unhandled event domain={}", static_cast<std::uint32_t>(domain));
+        return nullptr;
+    }
+}
+
 std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
     if (!msg)
@@ -37,20 +53,26 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<nf::ipc::I
     return nullptr;
 }
 
-std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(IcmpdEventDomain domain, std::uint32_t type)
+std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp, 
+        std::unique_ptr<IcmpPacket> packet)
 {
-    switch (domain)
+    if (!packet)
     {
-    case IcmpdEventDomain::Bootstrap:
-        return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
-
-    case IcmpdEventDomain::Probe:
-        return std::make_unique<ProbeEvent>(static_cast<ProbeEventType>(type));
-
-    default:
-        LOG_WARN("Unhandled event domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("IcmpdEventFactory: null packet");
         return nullptr;
     }
+
+    switch (packet->type())
+    {
+    case IcmpType::EchoReply:
+        return std::make_unique<ProbeEvent>(ProbeEventType::EchoReply, srcIp, std::move(packet));
+
+    default:
+        LOG_WARN("Unhandled type={}", static_cast<int>(packet->type()));
+        return nullptr;
+    }
+
+    return nullptr;
 }
 
 } // namespace nf::icmpd
