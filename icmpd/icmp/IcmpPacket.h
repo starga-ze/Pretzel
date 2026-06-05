@@ -1,25 +1,17 @@
 #pragma once
 
-#include <cstdint>
+#include "icmp/IcmpProtocol.h"
+
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace nf::icmpd
 {
 
-enum class IcmpType : std::uint8_t
-{
-    EchoReply   = 0,
-    EchoRequest = 8,
-};
-
-enum class IcmpCode : std::uint8_t
-{
-    Echo = 0,
-};
-
-class IcmpPacket
+class IcmpPacket final
 {
 public:
     IcmpPacket();
@@ -60,6 +52,10 @@ public:
     bool empty() const;
 
     std::vector<std::uint8_t> toWire() const;
+    std::vector<std::uint8_t> serialize() const;
+
+    static std::unique_ptr<IcmpPacket> fromWire(const std::vector<std::uint8_t>& wire);
+    static std::unique_ptr<IcmpPacket> parse(const std::vector<std::uint8_t>& wire);
 
     std::string dump() const;
 
@@ -68,11 +64,11 @@ private:
                                            std::size_t len);
 
 private:
-    IcmpType m_type{IcmpType::EchoRequest};
-    IcmpCode m_code{IcmpCode::Echo};
-    std::uint16_t m_identifier{0};
-    std::uint16_t m_sequence{0};
+    IcmpType m_type {IcmpType::EchoRequest};
+    IcmpCode m_code {IcmpCode::Echo};
+    std::uint16_t m_identifier {0};
+    std::uint16_t m_sequence {0};
     std::vector<std::uint8_t> m_payload;
 };
 
-}
+} // namespace nf::icmpd

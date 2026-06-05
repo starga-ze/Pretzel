@@ -7,8 +7,12 @@ namespace nf::icmpd
 constexpr int kIpcClientEngineTimeoutMs = 10;
 constexpr int kIcmpEngineTimeoutMs = 10;
 
-IcmpdProcess::IcmpdProcess(nf::ipc::IpcClient* ipcClientEngine, IcmpdServiceManager* serviceManager) : 
-    m_ipcClientEngine(ipcClientEngine), m_serviceManager(serviceManager)
+IcmpdProcess::IcmpdProcess(nf::ipc::IpcClient* ipcClientEngine, 
+        IcmpEngine* icmpEngine,
+        IcmpdServiceManager* serviceManager) : 
+    m_ipcClientEngine(ipcClientEngine), 
+    m_icmpEngine(icmpEngine),
+    m_serviceManager(serviceManager)
 {
 }
 
@@ -35,7 +39,7 @@ void IcmpdProcess::tick()
 {
     m_ipcClientEngine->poll(kIpcClientEngineTimeoutMs);
 
-    //m_icmpEngine->poll(kIcmpEngineTimeoutMs);
+    m_icmpEngine->poll(kIcmpEngineTimeoutMs);
 
     m_serviceManager->schedule(); 
 

@@ -32,8 +32,13 @@ std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::ti
     case State::NotProbing:
     {
         LOG_DEBUG("Schedule start probing");
-        m_state = State::IsProbing;
-        return m_eventFactory->create(IcmpdEventDomain::Probe, static_cast<std::uint32_t>(ProbeEventType::StartProbe));
+        
+        if (auto event = m_eventFactory->create(IcmpdEventDomain::Probe, 
+                    static_cast<std::uint32_t>(ProbeEventType::StartProbe)))
+        {
+            m_state = State::IsProbing;
+            return event;
+        }
     }
 
     case State::IsProbing:
@@ -58,7 +63,8 @@ void ProbeService::handleEvent(IcmpdServiceManager& serviceManager, const ProbeE
     case ProbeEventType::StartProbe:
     {
         auto action =
-            m_actionFactory->create(IcmpdActionDomain::Probe, static_cast<std::uint32_t>(ProbeActionType::StartProbe));
+            m_actionFactory->create(IcmpdActionDomain::Probe, 
+                    static_cast<std::uint32_t>(ProbeActionType::StartProbe));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -100,7 +106,7 @@ void ProbeService::handleAction(IcmpdServiceManager& serviceManager,
         return;
     }
 
-    serviceManager.txRouter().handleIcmpPacket(std::move(packet));
+    serviceManager.txRouter().handleIcmpPacket(std::move(packet), "192.168.1.189");
 }
 
 std::unique_ptr<IcmpPacket> ProbeService::buildEchoRequestPacket() const

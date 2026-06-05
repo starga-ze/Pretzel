@@ -28,6 +28,22 @@ void IcmpdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     m_serviceManager->postEvent(std::move(event));
 }
 
+void IcmpdRxRouter::handleIcmpPacket(const std::string& srcIp,
+                                     std::unique_ptr<IcmpPacket> packet)
+{
+    if (!packet)
+    {
+        LOG_WARN("IcmpdRxRouter: ICMP packet is nullptr src={}", srcIp);
+        return;
+    }
+
+    // TODO:
+    // 여기서 ProbeEvent로 변환해서 ServiceManager에 postEvent 하면 됨.
+    // 예:
+    // auto event = m_eventFactory->createIcmpPacketEvent(srcIp, std::move(packet));
+    // m_serviceManager->postEvent(std::move(event));
+}
+
 void IcmpdRxRouter::setServiceManager(IcmpdServiceManager* serviceManager)
 {
     m_serviceManager = serviceManager;
