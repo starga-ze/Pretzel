@@ -7,10 +7,13 @@
 namespace nf::icmpd
 {
 
+class IcmpdServiceManager;
+
 enum class ProbeActionType : std::uint32_t
 {
-    Unknown = 0,
-    StartProbe = 1
+    Unknown        = 0,
+    StartProbe     = 1,
+    SendProbeBatch = 2,
 };
 
 class ProbeAction final : public IcmpdAction
@@ -23,7 +26,7 @@ public:
     void dispatch(IcmpdServiceManager& serviceManager) override;
 
 private:
-    ProbeActionType m_type{ProbeActionType::Unknown};
+    ProbeActionType m_type = ProbeActionType::Unknown;
 };
 
 } // namespace nf::icmpd

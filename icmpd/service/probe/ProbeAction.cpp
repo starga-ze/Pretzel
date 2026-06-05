@@ -1,10 +1,14 @@
-#include "service/IcmpdServiceManager.h"
 #include "service/probe/ProbeAction.h"
+
+#include "service/IcmpdServiceManager.h"
+#include "service/probe/ProbeService.h"
 
 namespace nf::icmpd
 {
 
-ProbeAction::ProbeAction(ProbeActionType type) : IcmpdAction(IcmpdActionDomain::Probe), m_type(type)
+ProbeAction::ProbeAction(ProbeActionType type)
+    : IcmpdAction(IcmpdActionDomain::Probe),
+      m_type(type)
 {
 }
 

@@ -64,6 +64,12 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp,
 
     switch (packet->type())
     {
+    case IcmpType::EchoRequest:
+        return nullptr;
+
+    case IcmpType::DestinationUnreachable:
+        return nullptr;
+
     case IcmpType::EchoReply:
         return std::make_unique<ProbeEvent>(ProbeEventType::EchoReply, srcIp, std::move(packet));
 
