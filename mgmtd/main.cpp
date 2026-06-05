@@ -1,13 +1,14 @@
-#include "util/Logger.h"
+#include "core/MgmtdCore.h"
 
-#include <unistd.h>
+#include <memory>
+
+using namespace nf::mgmtd;
 
 int main()
 {
+    auto core = std::make_unique<MgmtdCore>();
 
-    while(true)
-    {
-        sleep(1);
-    }
+    core->run();
+
     return 0;
 }

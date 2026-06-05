@@ -14,4 +14,8 @@ target_compile_definitions(nf-mgmtd PRIVATE
 
 target_link_libraries(nf-mgmtd PRIVATE
     nf-shared
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    Boost::boost
+    Threads::Threads
 )
