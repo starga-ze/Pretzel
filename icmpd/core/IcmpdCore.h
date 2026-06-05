@@ -3,6 +3,7 @@
 #include "core/Core.h"
 
 #include "ipc/IpcClient.h"
+#include "icmp/IcmpEngine.h"
 #include "util/ThreadManager.h"
 
 #include "process/IcmpdProcess.h"
@@ -35,6 +36,7 @@ private:
 
     std::unique_ptr<nf::util::ThreadManager> m_threadManager;
     std::unique_ptr<nf::ipc::IpcClient> m_ipcClient;
+    std::unique_ptr<IcmpEngine> m_icmpEngine;
 
     std::unique_ptr<IcmpdProcess> m_process;
 

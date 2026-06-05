@@ -16,6 +16,8 @@ public:
 
     void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
+    void handleIcmpPacket(const std::string& srcIp, std::unique_ptr<IcmpPacket> packet);
+
     void setServiceManager(IcmpdServiceManager* serviceManager);
 
 private:

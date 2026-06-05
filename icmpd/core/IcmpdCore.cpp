@@ -54,13 +54,22 @@ bool IcmpdCore::onInit()
         return false;
     }
 
+    /* IcmpEngine init */
+    m_icmpEngine = std::make_unique<IcmpEngine>();
+
+    if (!m_icmpEngine->init())
+    {
+        LOG_ERROR("IcmpEngine init failed");
+        return false;
+    }
+
     /* Factory init */
     m_eventFactory = std::make_unique<IcmpdEventFactory>();
     m_actionFactory = std::make_unique<IcmpdActionFactory>();
 
     /* Router init */
     m_rxRouter = std::make_unique<IcmpdRxRouter>(m_eventFactory.get());
-    m_txRouter = std::make_unique<IcmpdTxRouter>(m_ipcClient->handler());
+    m_txRouter = std::make_unique<IcmpdTxRouter>(m_ipcClient->handler(), m_icmpEngine->handler());
 
     if (!m_txRouter or !m_rxRouter)
     {
@@ -77,7 +86,7 @@ bool IcmpdCore::onInit()
     }
 
     /* Process init */
-    m_process = std::make_unique<IcmpdProcess>(m_ipcClient.get(), m_serviceManager.get());
+    m_process = std::make_unique<IcmpdProcess>(m_ipcClient.get(), m_icmpEngine.get(), m_serviceManager.get());
 
     if (!m_process)
     {
@@ -87,7 +96,8 @@ bool IcmpdCore::onInit()
 
     /* Binding */
     m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
- 
+    m_icmpEngine->handler()->setRxRouter(m_rxRouter.get());
+
     m_rxRouter->setServiceManager(m_serviceManager.get());
 
     return true;
