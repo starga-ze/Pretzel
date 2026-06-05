@@ -10,16 +10,6 @@
 namespace nf::ipc
 {
 
-struct IpcFrameView
-{
-    const std::uint8_t* data {nullptr};
-    std::size_t size {0};
-
-    bool empty() const 
-    {
-        return data == nullptr || size == 0;
-    }
-};
 
 struct IpcHeader
 {

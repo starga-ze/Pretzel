@@ -17,7 +17,7 @@ public:
     EnginedTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler);
     ~EnginedTxRouter() override = default;
 
-    void handleMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
     
     void sendClientHello();
     void sendSyncRequest();

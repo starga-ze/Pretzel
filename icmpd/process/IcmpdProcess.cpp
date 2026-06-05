@@ -4,16 +4,21 @@
 namespace nf::icmpd
 {
 
-constexpr int kIpcClientTimeoutMs = 10;
+constexpr int kIpcClientEngineTimeoutMs = 10;
+constexpr int kIcmpEngineTimeoutMs = 10;
 
-IcmpdProcess::IcmpdProcess(nf::ipc::IpcClient* ipcClient, IcmpdServiceManager* serviceManager) : 
-    m_ipcClient(ipcClient), m_serviceManager(serviceManager)
+IcmpdProcess::IcmpdProcess(nf::ipc::IpcClient* ipcClientEngine, 
+        IcmpEngine* icmpEngine,
+        IcmpdServiceManager* serviceManager) : 
+    m_ipcClientEngine(ipcClientEngine), 
+    m_icmpEngine(icmpEngine),
+    m_serviceManager(serviceManager)
 {
 }
 
 bool IcmpdProcess::start()
 {
-    if (!m_ipcClient)
+    if (!m_ipcClientEngine)
     {
         LOG_ERROR("IpcClient is nullptr");
         return false;
@@ -32,7 +37,9 @@ bool IcmpdProcess::start()
 
 void IcmpdProcess::tick()
 {
-    m_ipcClient->poll(kIpcClientTimeoutMs);
+    m_ipcClientEngine->poll(kIpcClientEngineTimeoutMs);
+
+    m_icmpEngine->poll(kIcmpEngineTimeoutMs);
 
     m_serviceManager->schedule(); 
 

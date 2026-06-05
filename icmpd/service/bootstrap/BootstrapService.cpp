@@ -31,7 +31,7 @@ void BootstrapService::start()
     m_lastClientHelloSentAt = {};
     m_lastRuntimeReadySentAt = {};
 
-    LOG_INFO("BootstrapService start");
+    LOG_INFO("BootstrapService start...");
 }
 
 std::unique_ptr<IcmpdEvent>
@@ -229,7 +229,7 @@ void BootstrapService::handleAction(IcmpdServiceManager& serviceManager,
         return;
     }
 
-    serviceManager.txRouter().handleMessage(std::move(msg));
+    serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
 
 void BootstrapService::onServerHello(IcmpdServiceManager& serviceManager,

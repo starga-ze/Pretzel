@@ -3,6 +3,7 @@
 #include "service/ServiceManager.h"
 
 #include "service/bootstrap/BootstrapService.h"
+#include "service/probe/ProbeService.h"
 
 #include "router/IcmpdTxRouter.h"
 
@@ -27,6 +28,8 @@ public:
     void execute() override;
 
     BootstrapService& bootstrapService();
+    ProbeService& probeService();
+
     IcmpdTxRouter& txRouter();
 
 private:
@@ -35,6 +38,7 @@ private:
     IcmpdTxRouter* m_txRouter;
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
+    std::unique_ptr<ProbeService> m_probeService;
 
     std::queue<std::unique_ptr<IcmpdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<IcmpdAction>> m_actionQueue;
