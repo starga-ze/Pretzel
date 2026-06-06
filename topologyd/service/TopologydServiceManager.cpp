@@ -1,15 +1,15 @@
-#include "service/EnginedServiceManager.h"
+#include "service/TopologydServiceManager.h"
 
 #include "util/Logger.h"
 
 #include <chrono>
 
-namespace nf::engined
+namespace nf::topologyd
 {
 
-EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory,
-                                             EnginedActionFactory* actionFactory,
-                                             EnginedTxRouter* txRouter)
+TopologydServiceManager::TopologydServiceManager(TopologydEventFactory* eventFactory,
+                                                 TopologydActionFactory* actionFactory,
+                                                 TopologydTxRouter* txRouter)
     : m_eventFactory(eventFactory),
       m_actionFactory(actionFactory),
       m_txRouter(txRouter),
@@ -18,13 +18,12 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory,
 {
 }
 
-void EnginedServiceManager::start()
+void TopologydServiceManager::start()
 {
     m_bootstrapService->start();
-    m_heartbeatService->start();
 }
 
-void EnginedServiceManager::schedule()
+void TopologydServiceManager::schedule()
 {
     const auto now = std::chrono::steady_clock::now();
 
@@ -33,11 +32,9 @@ void EnginedServiceManager::schedule()
         postEvent(m_bootstrapService->schedule(now));
         return;
     }
-
-    postEvent(m_heartbeatService->schedule(now));
 }
 
-void EnginedServiceManager::postEvent(std::unique_ptr<EnginedEvent> event)
+void TopologydServiceManager::postEvent(std::unique_ptr<TopologydEvent> event)
 {
     if (!event)
     {
@@ -47,7 +44,7 @@ void EnginedServiceManager::postEvent(std::unique_ptr<EnginedEvent> event)
     m_eventQueue.push(std::move(event));
 }
 
-void EnginedServiceManager::postAction(std::unique_ptr<EnginedAction> action)
+void TopologydServiceManager::postAction(std::unique_ptr<TopologydAction> action)
 {
     if (!action)
     {
@@ -57,38 +54,38 @@ void EnginedServiceManager::postAction(std::unique_ptr<EnginedAction> action)
     m_actionQueue.push(std::move(action));
 }
 
-void EnginedServiceManager::execute()
+void TopologydServiceManager::execute()
 {
     while (!m_eventQueue.empty() or !m_actionQueue.empty())
     {
         if (!m_eventQueue.empty())
         {
-            std::unique_ptr<EnginedEvent> event = std::move(m_eventQueue.front());
+            std::unique_ptr<TopologydEvent> event = std::move(m_eventQueue.front());
             m_eventQueue.pop();
             event->dispatch(*this);
         }
         else if (!m_actionQueue.empty())
         {
-            std::unique_ptr<EnginedAction> action = std::move(m_actionQueue.front());
+            std::unique_ptr<TopologydAction> action = std::move(m_actionQueue.front());
             m_actionQueue.pop();
             action->dispatch(*this);
         }
     }
 }
 
-BootstrapService& EnginedServiceManager::bootstrapService()
+BootstrapService& TopologydServiceManager::bootstrapService()
 {
     return *m_bootstrapService;
 }
 
-HeartbeatService& EnginedServiceManager::heartbeatService()
+HeartbeatService& TopologydServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
 }
 
-EnginedTxRouter& EnginedServiceManager::txRouter()
+TopologydTxRouter& TopologydServiceManager::txRouter()
 {
     return *m_txRouter;
 }
 
-} // namespace nf::engined
+} // namespace nf::topologyd

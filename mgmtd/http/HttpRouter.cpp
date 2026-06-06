@@ -199,63 +199,58 @@ HttpRouter::Response HttpRouter::handleLogout(const Request& req)
 
 HttpRouter::Response HttpRouter::handleStatus(const Request& req)
 {
-    // Build a JSON status blob that dashboard.js can consume.
-    // Fields mirror what the frontend expects:
-    //   management.status, uptime_seconds, prometheus.status,
-    //   node_exporter.status, alive_devices, daemons[], events[]
-    //
-    // Real daemon/IPC data would be injected here once wired up.
-    // For now we derive what we can from MetricService metrics and
-    // return sensible placeholder values for the rest.
-
     json body;
 
-    // Management
     body["management"]["status"] = "Active";
     body["management"]["sub"]    = "HTTPS listener online";
-
-    // Uptime — read from MetricService if available
-    double uptimeSec = 0.0;
-    if (m_metricService)
-    {
-        // renderPrometheus exposes pretzel_mgmtd_uptime_seconds;
-        // we expose it directly here for the dashboard.
-        // TODO: add MetricService::uptimeSeconds() accessor instead of
-        //       parsing the Prometheus text format.
-        uptimeSec = 0.0; // placeholder until accessor is added
-    }
-    body["uptime_seconds"] = uptimeSec;
-
-    // Prometheus connectivity (we can reach /metrics so it's running)
+    body["uptime_seconds"]       = 0.0;
     body["prometheus"]["status"] = "Connected";
-
-    // Node Exporter — unknown until IPC reports it
     body["node_exporter"]["status"] = "Pending";
 
-    // Alive devices — icmpd ProbeResult 수신 시 갱신, 미수신이면 null
     if (m_serviceManager)
     {
         const auto alive = m_serviceManager->aliveDevices();
         body["alive_devices"] = alive.has_value() ? json(alive.value()) : json(nullptr);
+
+        const auto& hb = m_serviceManager->heartbeatService();
+        if (hb.hasData())
+        {
+            try
+            {
+                const auto hbRoot = json::parse(hb.latestJson());
+
+                body["timestamp_ms"] = hbRoot.value("timestamp_ms", json(nullptr));
+
+                json daemons = json::array();
+                for (const auto& d : hbRoot.value("daemons", json::array()))
+                {
+                    json entry;
+                    entry["name"]       = d.value("name", "unknown");
+                    entry["status"]     = d.value("status", "dead");
+                    entry["latency_ms"] = d.contains("latency_ms") ? d["latency_ms"] : json(nullptr);
+                    daemons.push_back(std::move(entry));
+                }
+                body["daemons"] = std::move(daemons);
+            }
+            catch (...)
+            {
+                body["daemons"] = json::array();
+            }
+        }
+        else
+        {
+            body["daemons"] = json::array();
+        }
     }
     else
     {
         body["alive_devices"] = nullptr;
+        body["daemons"]       = json::array();
     }
 
-    // Daemon status — will be populated via IPC in the future
-    body["daemons"] = json::array({
-        {{"name", "nf-ipcd"},  {"status", "UP"}},
-        {{"name", "nf-mgmtd"}, {"status", "UP"}},
-        {{"name", "nf-icmpd"}, {"status", "UP"}},
-        {{"name", "nf-snmpd"}, {"status", "WAIT"}},
-    });
-
-    // Events — last N system events (placeholder)
     body["events"] = json::array({
-        {{"source", "mgmtd"},      {"message", "metrics scrape completed"}},
-        {{"source", "icmpd"},      {"message", "waiting probe cycle"}},
-        {{"source", "prometheus"}, {"message", "target healthy"}},
+        {{"source", "mgmtd"},  {"message", "HTTPS listener online"}},
+        {{"source", "engined"}, {"message", "heartbeat polling active"}},
     });
 
     return makeResponse(http::status::ok,

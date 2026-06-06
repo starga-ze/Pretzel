@@ -6,6 +6,7 @@
 #include "action/EnginedAction.h"
 
 #include "service/bootstrap/BootstrapService.h"
+#include "service/heartbeat/HeartbeatService.h"
 
 #include "router/EnginedTxRouter.h"
 
@@ -33,6 +34,7 @@ public:
     void execute() override;
 
     BootstrapService& bootstrapService();
+    HeartbeatService& heartbeatService();
 
     EnginedTxRouter& txRouter();
 
@@ -42,6 +44,7 @@ private:
     EnginedTxRouter* m_txRouter{nullptr};
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
+    std::unique_ptr<HeartbeatService> m_heartbeatService;
 
     std::queue<std::unique_ptr<EnginedEvent>> m_eventQueue;
     std::queue<std::unique_ptr<EnginedAction>> m_actionQueue;

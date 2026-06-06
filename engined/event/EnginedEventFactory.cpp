@@ -1,6 +1,7 @@
 #include "event/EnginedEventFactory.h"
 
 #include "service/bootstrap/BootstrapEvent.h"
+#include "service/heartbeat/HeartbeatEvent.h"
 
 #include "util/Logger.h"
 
@@ -18,6 +19,9 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(EnginedEventDomain dom
     {
     case EnginedEventDomain::Bootstrap:
         return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
+
+    case EnginedEventDomain::Heartbeat:
+        return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
 
     default:
         LOG_WARN("EnginedEventFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
@@ -43,6 +47,10 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<nf::ip
 
     case nf::ipc::IpcCmd::RuntimeStart:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
+
+    case nf::ipc::IpcCmd::HeartbeatResponse:
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResponse,
+                                               std::move(msg));
 
     default:
         LOG_WARN("EnginedEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));

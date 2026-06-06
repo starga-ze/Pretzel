@@ -401,7 +401,117 @@ html, body {
 }
 .btn-sm:hover { background: var(--border); }
 
-/* Daemon list */
+/* ══════════════════════════════════════
+   DAEMON HEALTH GRID (heartbeat cards)
+══════════════════════════════════════ */
+.daemon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.daemon-card {
+  position: relative;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: box-shadow var(--tr), border-color var(--tr), transform var(--tr);
+  overflow: hidden;
+}
+.daemon-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 18px rgba(0,0,0,.09);
+}
+.daemon-card.alive {
+  border-color: rgba(22,163,74,.35);
+  background: linear-gradient(135deg, #f0fdf4 0%, var(--surface-2) 100%);
+}
+.daemon-card.dead {
+  border-color: rgba(220,38,38,.2);
+  background: linear-gradient(135deg, #fff1f2 0%, var(--surface-2) 100%);
+  opacity: .85;
+}
+
+.daemon-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.daemon-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+}
+.daemon-dot.pulse {
+  background: var(--green);
+  animation: heartPulse 2s ease-in-out infinite;
+}
+@keyframes heartPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(22,163,74,.5); }
+  50%       { opacity: .7; box-shadow: 0 0 0 5px rgba(22,163,74,0); }
+}
+
+.daemon-card-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.daemon-card-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.daemon-card-raw {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.daemon-card-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  letter-spacing: .1em;
+  padding: 2px 7px;
+  border-radius: 20px;
+  width: fit-content;
+  margin-top: 2px;
+}
+.daemon-card-badge.alive {
+  background: #dcfce7;
+  color: #15803d;
+}
+.daemon-card-badge.dead {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.daemon-card-latency {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.hb-timestamp {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Legacy daemon-list kept for compatibility */
 .daemon-list { padding: 2px 0; }
 .daemon-row {
   display: flex; align-items: center; justify-content: space-between;

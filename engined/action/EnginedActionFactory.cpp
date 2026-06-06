@@ -1,6 +1,7 @@
 #include "action/EnginedActionFactory.h"
 
 #include "service/bootstrap/BootstrapAction.h"
+#include "service/heartbeat/HeartbeatAction.h"
 
 #include "util/Logger.h"
 
@@ -13,6 +14,11 @@ std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain 
     {
     case EnginedActionDomain::Bootstrap:
         return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
+
+    case EnginedActionDomain::Heartbeat:
+        return std::make_unique<HeartbeatAction>(
+            static_cast<HeartbeatActionType>(type),
+            nf::ipc::IpcDaemon::Unknown);
 
     default:
         LOG_WARN("EnginedActionFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));

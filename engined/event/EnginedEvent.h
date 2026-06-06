@@ -13,7 +13,8 @@ class EnginedServiceManager;
 enum class EnginedEventDomain : std::uint32_t
 {
     Unknown   = 0,
-    Bootstrap = 1
+    Bootstrap = 1,
+    Heartbeat = 2
 };
 
 class EnginedEvent : public nf::event::Event
