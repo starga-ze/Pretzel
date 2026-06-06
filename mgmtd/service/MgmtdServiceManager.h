@@ -9,6 +9,7 @@
 #include "service/bootstrap/BootstrapService.h"
 #include "service/metrics/MetricService.h"
 #include "service/probe/ProbeService.h"
+#include "service/heartbeat/HeartbeatService.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -42,6 +43,7 @@ public:
     MetricService& metricService();
     BootstrapService& bootstrapService();
     ProbeService& probeService();
+    HeartbeatService& heartbeatService();
 
     MgmtdTxRouter& txRouter();
 
@@ -57,6 +59,7 @@ private:
     MetricService m_metricService;
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<ProbeService> m_probeService;
+    std::unique_ptr<HeartbeatService> m_heartbeatService;
 
     std::queue<std::unique_ptr<MgmtdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<MgmtdAction>> m_actionQueue;

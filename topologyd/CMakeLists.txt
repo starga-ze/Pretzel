@@ -14,4 +14,6 @@ target_compile_definitions(nf-topologyd PRIVATE
 
 target_link_libraries(nf-topologyd PRIVATE
     nf-shared
+    spdlog::spdlog
+    Threads::Threads
 )

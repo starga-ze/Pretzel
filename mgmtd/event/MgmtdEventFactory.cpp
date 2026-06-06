@@ -2,6 +2,7 @@
 
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/probe/ProbeEvent.h"
+#include "service/heartbeat/HeartbeatEvent.h"
 
 #include "util/Logger.h"
 
@@ -22,6 +23,9 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(MgmtdEventDomain domain, s
 
     case MgmtdEventDomain::Probe:
         return std::make_unique<ProbeEvent>(static_cast<ProbeEventType>(type));
+
+    case MgmtdEventDomain::Heartbeat:
+        return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
 
     default:
         LOG_WARN("MgmtdEventFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
@@ -47,6 +51,10 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<nf::ipc::I
 
     case nf::ipc::IpcCmd::ProbeResult:
         return std::make_unique<ProbeEvent>(ProbeEventType::ReceiveProbeResult, std::move(msg));
+
+    case nf::ipc::IpcCmd::HeartbeatResult:
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResult,
+                                               std::move(msg));
 
     default:
         LOG_WARN("MgmtdEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));

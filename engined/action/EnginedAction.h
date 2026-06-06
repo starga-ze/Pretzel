@@ -14,7 +14,8 @@ class EnginedServiceManager;
 enum class EnginedActionDomain : std::uint32_t
 {
     Unknown   = 0,
-    Bootstrap = 1
+    Bootstrap = 1,
+    Heartbeat = 2
 };
 
 class EnginedAction : public nf::action::Action
