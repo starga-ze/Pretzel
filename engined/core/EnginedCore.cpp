@@ -4,14 +4,13 @@
 namespace nf::engined
 {
 
-EnginedCore::EnginedCore() : 
-    Core("engined")
+EnginedCore::EnginedCore()
+    : Core("engined")
 {
 }
 
 bool EnginedCore::onInit()
 {
-    /* Config init */
     const auto& cfg = m_config.json();
 
     const auto& log = cfg["logger"];
@@ -28,16 +27,14 @@ bool EnginedCore::onInit()
     m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
-    /* Logger init */
     nf::util::Logger::Init(
             m_loggerConfig.name,
             m_loggerConfig.file,
             m_loggerConfig.maxFileSize,
             m_loggerConfig.maxFiles);
 
-    LOG_INFO("Engined onInit()...");
+    LOG_INFO("EnginedCore onInit()...");
 
-    /* ThreadManager init */
     m_threadManager = std::make_unique<nf::util::ThreadManager>();
     if (!m_threadManager)
     {
@@ -45,7 +42,6 @@ bool EnginedCore::onInit()
         return false;
     }
 
-    /* Ipc init */
     m_ipcClient = std::make_unique<nf::ipc::IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Engined);
 
     if (!m_ipcClient->init())
@@ -54,29 +50,39 @@ bool EnginedCore::onInit()
         return false;
     }
 
-    /* Router init */
-    m_txRouter = std::make_unique<EnginedTxRouter>(m_ipcClient->handler());
-    m_rxRouter = std::make_unique<EnginedRxRouter>(m_ipcClient->handler(), m_txRouter.get());
+    m_eventFactory  = std::make_unique<EnginedEventFactory>();
+    m_actionFactory = std::make_unique<EnginedActionFactory>();
 
-    if (!m_txRouter or !m_rxRouter)
+    m_txRouter = std::make_unique<EnginedTxRouter>(m_ipcClient->handler());
+
+    m_serviceManager = std::make_unique<EnginedServiceManager>(
+        m_eventFactory.get(),
+        m_actionFactory.get(),
+        m_txRouter.get());
+
+    if (!m_serviceManager)
     {
-        LOG_ERROR("IpcRouter init failed");
+        LOG_ERROR("EnginedServiceManager init failed");
         return false;
     }
 
-    /* Process init */
-    m_process = std::make_unique<EnginedProcess>(m_ipcClient.get(), m_txRouter.get());
+    m_rxRouter = std::make_unique<EnginedRxRouter>(m_eventFactory.get(), m_serviceManager.get());
+
+    if (!m_rxRouter)
+    {
+        LOG_ERROR("EnginedRxRouter init failed");
+        return false;
+    }
+
+    m_process = std::make_unique<EnginedProcess>(m_ipcClient.get(), m_serviceManager.get());
 
     if (!m_process)
     {
-        LOG_ERROR("Process init failed");
+        LOG_ERROR("EnginedProcess init failed");
         return false;
     }
 
-    /* Binding */
     m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
-    
-    m_rxRouter->setProcess(m_process.get());
 
     return true;
 }
@@ -91,7 +97,7 @@ void EnginedCore::onLoop()
 
     while (!stopping())
     {
-        m_process->tick(); 
+        m_process->tick();
     }
 }
 
@@ -109,4 +115,4 @@ void EnginedCore::onShutdown()
     nf::util::Logger::Shutdown();
 }
 
-} // namespace nf::ipcd
+} // namespace nf::engined

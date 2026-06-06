@@ -11,9 +11,10 @@ class IcmpdServiceManager;
 
 enum class ProbeActionType : std::uint32_t
 {
-    Unknown        = 0,
-    StartProbe     = 1,
-    SendProbeBatch = 2,
+    Unknown          = 0,
+    StartProbe       = 1,
+    SendProbeBatch   = 2,
+    SendProbeResult  = 3,  // probe 완료 후 결과를 mgmtd로 전송
 };
 
 class ProbeAction final : public IcmpdAction

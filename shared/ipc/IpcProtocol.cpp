@@ -70,6 +70,7 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::ApiRequest:   return "ApiRequest";
     case IpcCmd::ApiResponse:  return "ApiResponse";
     case IpcCmd::Error:        return "Error";
+    case IpcCmd::ProbeResult:  return "ProbeResult";
     default:                   return "Unknown";
     }
 }

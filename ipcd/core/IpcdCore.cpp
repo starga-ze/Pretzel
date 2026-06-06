@@ -32,6 +32,8 @@ bool IpcdCore::onInit()
             m_loggerConfig.maxFileSize,
             m_loggerConfig.maxFiles);
 
+    LOG_INFO("IpcdCore onInit()...");
+
     m_threadManager = std::make_unique<ThreadManager>();
     if (!m_threadManager)
     {
@@ -46,23 +48,42 @@ bool IpcdCore::onInit()
         return false;
     }
 
+    m_eventFactory  = std::make_unique<IpcdEventFactory>();
+    m_actionFactory = std::make_unique<IpcdActionFactory>();
+
     m_txRouter = std::make_unique<IpcdTxRouter>(m_ipcServer->handler());
-    m_rxRouter = std::make_unique<IpcdRxRouter>(m_ipcServer->handler(), m_txRouter.get());
-    if (!m_txRouter or !m_rxRouter)
+
+    m_serviceManager = std::make_unique<IpcdServiceManager>(
+        m_eventFactory.get(),
+        m_actionFactory.get(),
+        m_ipcServer->handler(),
+        m_txRouter.get());
+
+    if (!m_serviceManager)
     {
-        LOG_ERROR("IpcRouter init failed");
+        LOG_ERROR("IpcdServiceManager init failed");
         return false;
     }
 
-    m_process = std::make_unique<IpcdProcess>(m_ipcServer.get(), m_txRouter.get());
+    m_rxRouter = std::make_unique<IpcdRxRouter>(
+        m_eventFactory.get(),
+        m_serviceManager.get(),
+        m_txRouter.get());
+
+    if (!m_rxRouter)
+    {
+        LOG_ERROR("IpcdRxRouter init failed");
+        return false;
+    }
+
+    m_process = std::make_unique<IpcdProcess>(m_ipcServer.get(), m_serviceManager.get());
     if (!m_process)
     {
-        LOG_ERROR("Process init failed");
+        LOG_ERROR("IpcdProcess init failed");
         return false;
     }
 
     m_ipcServer->handler()->setRxRouter(m_rxRouter.get());
-    m_rxRouter->setProcess(m_process.get());
 
     return true;
 }
@@ -75,7 +96,7 @@ void IpcdCore::onLoop()
         return;
     }
 
-    while(!stopping())
+    while (!stopping())
     {
         m_process->tick();
     }
@@ -94,7 +115,5 @@ void IpcdCore::onShutdown()
 
     nf::util::Logger::Shutdown();
 }
-
-
 
 } // namespace nf::ipcd

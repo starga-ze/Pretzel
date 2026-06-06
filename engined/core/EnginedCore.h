@@ -8,6 +8,9 @@
 #include "process/EnginedProcess.h"
 #include "router/EnginedRxRouter.h"
 #include "router/EnginedTxRouter.h"
+#include "service/EnginedServiceManager.h"
+#include "event/EnginedEventFactory.h"
+#include "action/EnginedActionFactory.h"
 
 #include "config/ConfigTypes.h"
 
@@ -29,13 +32,18 @@ protected:
 private:
     nf::config::LoggerConfig m_loggerConfig;
     nf::config::IpcConfig m_ipcConfig;
-    
-    std::unique_ptr<nf::util::ThreadManager> m_threadManager;
-    std::unique_ptr<nf::ipc::IpcClient> m_ipcClient;
 
-    std::unique_ptr<EnginedProcess> m_process;
-    std::unique_ptr<EnginedRxRouter> m_rxRouter;
-    std::unique_ptr<EnginedTxRouter> m_txRouter;
+    std::unique_ptr<nf::util::ThreadManager>  m_threadManager;
+    std::unique_ptr<nf::ipc::IpcClient>        m_ipcClient;
+
+    std::unique_ptr<EnginedEventFactory>       m_eventFactory;
+    std::unique_ptr<EnginedActionFactory>      m_actionFactory;
+
+    std::unique_ptr<EnginedTxRouter>           m_txRouter;
+    std::unique_ptr<EnginedServiceManager>     m_serviceManager;
+    std::unique_ptr<EnginedRxRouter>           m_rxRouter;
+
+    std::unique_ptr<EnginedProcess>            m_process;
 };
 
 } // namespace nf::engined

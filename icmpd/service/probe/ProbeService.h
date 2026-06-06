@@ -55,6 +55,7 @@ private:
     void sendProbeBatch(IcmpdServiceManager& serviceManager);
     void onEchoReply(const ProbeEvent& event);
     void completeProbeSession();
+    void sendProbeResult(IcmpdServiceManager& serviceManager);
 
     bool allProbeSent() const;
     bool replyWaitExpired(std::chrono::steady_clock::time_point now) const;
@@ -85,6 +86,7 @@ private:
     std::chrono::steady_clock::time_point m_lastReplyAt {};
 
     std::uint16_t m_identifier = 0;
+    std::uint32_t m_lastAliveCount = 0;  // 마지막 probe 사이클의 alive device 수
 
     static constexpr std::size_t kProbeBatchSize = 32;
     static constexpr auto kProbeBatchInterval = std::chrono::milliseconds(20);

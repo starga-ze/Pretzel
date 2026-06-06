@@ -3,6 +3,7 @@
 #include "http/HttpCache.h"
 #include "http/HttpListener.h"
 #include "http/HttpRouter.h"
+#include "service/MgmtdServiceManager.h"
 #include "util/Logger.h"
 
 #include <boost/asio/ip/address.hpp>
@@ -17,14 +18,16 @@ HttpServer::HttpServer(std::string listenAddress,
                        std::string certFile,
                        std::string keyFile,
                        MetricService* metricService,
-                       AuthService* authService)
+                       AuthService* authService,
+                       MgmtdServiceManager* serviceManager)
     : m_listenAddress(std::move(listenAddress)),
       m_listenPort(listenPort),
       m_tlsEnabled(tlsEnabled),
       m_certFile(std::move(certFile)),
       m_keyFile(std::move(keyFile)),
       m_metricService(metricService),
-      m_authService(authService)
+      m_authService(authService),
+      m_serviceManager(serviceManager)
 {
 }
 
@@ -115,7 +118,7 @@ bool HttpServer::init()
     }
 
     auto cache = std::make_shared<HttpCache>(std::string(PROJECT_ROOT) + "/mgmtd/www");
-    auto router = std::make_shared<HttpRouter>(m_metricService, m_authService, cache);
+    auto router = std::make_shared<HttpRouter>(m_metricService, m_authService, m_serviceManager, cache);
 
     const auto endpoint = boost::asio::ip::tcp::endpoint(address, m_listenPort);
     m_listener = std::make_shared<HttpListener>(m_ioContext,

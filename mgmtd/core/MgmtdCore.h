@@ -6,7 +6,11 @@
 #include "http/HttpServer.h"
 #include "ipc/IpcClient.h"
 #include "process/MgmtdProcess.h"
+#include "router/MgmtdRxRouter.h"
+#include "router/MgmtdTxRouter.h"
 #include "service/MgmtdServiceManager.h"
+#include "event/MgmtdEventFactory.h"
+#include "action/MgmtdActionFactory.h"
 
 #include <cstdint>
 #include <memory>
@@ -17,10 +21,10 @@ namespace nf::mgmtd
 
 struct HttpConfig
 {
-    std::string listenAddress {"0.0.0.0"};
-    std::uint16_t listenPort {9101};
+    std::string listenAddress{"0.0.0.0"};
+    std::uint16_t listenPort{9101};
 
-    bool tlsEnabled {false};
+    bool tlsEnabled{false};
     std::string certFile;
     std::string keyFile;
 };
@@ -47,10 +51,14 @@ private:
     nf::config::IpcConfig m_ipcConfig;
     HttpConfig m_httpConfig;
 
-    std::unique_ptr<nf::ipc::IpcClient> m_ipcClient;
+    std::unique_ptr<nf::ipc::IpcClient>  m_ipcClient;
+    std::unique_ptr<MgmtdEventFactory>   m_eventFactory;
+    std::unique_ptr<MgmtdActionFactory>  m_actionFactory;
+    std::unique_ptr<MgmtdTxRouter>       m_txRouter;
     std::unique_ptr<MgmtdServiceManager> m_serviceManager;
-    std::unique_ptr<HttpServer> m_httpServer;
-    std::unique_ptr<MgmtdProcess> m_process;
+    std::unique_ptr<MgmtdRxRouter>       m_rxRouter;
+    std::unique_ptr<HttpServer>          m_httpServer;
+    std::unique_ptr<MgmtdProcess>        m_process;
 };
 
 } // namespace nf::mgmtd
