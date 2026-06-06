@@ -1,11 +1,14 @@
-#include "util/Logger.h"
+#include "core/AuthdCore.h"
 
-#include <unistd.h>
+#include <memory>
 
-int main() {
+using namespace nf::authd;
 
-    while (true) {
-        sleep(1);
-    }
+int main()
+{
+    auto core = std::make_unique<AuthdCore>();
+
+    core->run();
+
     return 0;
 }

@@ -6,9 +6,9 @@
 #include "action/MgmtdAction.h"
 
 #include "service/auth/AuthService.h"
-#include "service/bootstrap/MgmtdBootstrapService.h"
+#include "service/bootstrap/BootstrapService.h"
 #include "service/metrics/MetricService.h"
-#include "service/probe/MgmtdProbeService.h"
+#include "service/probe/ProbeService.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -40,8 +40,8 @@ public:
 
     AuthService& authService();
     MetricService& metricService();
-    MgmtdBootstrapService& bootstrapService();
-    MgmtdProbeService& probeService();
+    BootstrapService& bootstrapService();
+    ProbeService& probeService();
 
     MgmtdTxRouter& txRouter();
 
@@ -55,8 +55,8 @@ private:
 
     AuthService m_authService;
     MetricService m_metricService;
-    std::unique_ptr<MgmtdBootstrapService> m_bootstrapService;
-    std::unique_ptr<MgmtdProbeService> m_probeService;
+    std::unique_ptr<BootstrapService> m_bootstrapService;
+    std::unique_ptr<ProbeService> m_probeService;
 
     std::queue<std::unique_ptr<MgmtdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<MgmtdAction>> m_actionQueue;

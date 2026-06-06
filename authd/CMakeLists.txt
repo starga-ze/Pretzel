@@ -14,4 +14,6 @@ target_compile_definitions(nf-authd PRIVATE
 
 target_link_libraries(nf-authd PRIVATE
     nf-shared
+    spdlog::spdlog
+    Threads::Threads
 )

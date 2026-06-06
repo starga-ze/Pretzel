@@ -313,7 +313,13 @@ std::string HttpRouter::extractSession(const Request& req) const
 
     const std::string cookies(it->value());
     const std::string key = "session=";
-    const auto pos = cookies.find(key);
+    auto pos = cookies.find(key);
+    while (pos != std::string::npos)
+    {
+        if (pos == 0 || cookies[pos - 1] == ' ' || cookies[pos - 1] == ';')
+            break;
+        pos = cookies.find(key, pos + 1);
+    }
     if (pos == std::string::npos) return {};
 
     auto end = cookies.find(';', pos);

@@ -12,7 +12,7 @@ IpcdServiceManager::IpcdServiceManager(IpcdEventFactory* eventFactory,
     : m_eventFactory(eventFactory),
       m_actionFactory(actionFactory),
       m_txRouter(txRouter),
-      m_bootstrapService(std::make_unique<IpcdBootstrapService>(
+      m_bootstrapService(std::make_unique<BootstrapService>(
           m_eventFactory, m_actionFactory, ipcServerHandler))
 {
 }
@@ -64,7 +64,7 @@ void IpcdServiceManager::execute()
     }
 }
 
-IpcdBootstrapService& IpcdServiceManager::bootstrapService()
+BootstrapService& IpcdServiceManager::bootstrapService()
 {
     return *m_bootstrapService;
 }

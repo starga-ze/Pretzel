@@ -14,4 +14,6 @@ target_compile_definitions(nf-snmpd PRIVATE
 
 target_link_libraries(nf-snmpd PRIVATE
     nf-shared
+    spdlog::spdlog
+    Threads::Threads
 )

@@ -477,7 +477,7 @@ void ProbeService::sendProbeResult(IcmpdServiceManager& serviceManager)
     msg->setDst(nf::ipc::IpcDaemon::Mgmtd);
     msg->setCmd(nf::ipc::IpcCmd::ProbeResult);
     msg->setFlags(nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request));
-    msg->setPayload(&aliveNet, sizeof(aliveNet));
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(&aliveNet), sizeof(aliveNet));
 
     LOG_INFO("ProbeService: sending ProbeResult to mgmtd alive={}", m_lastAliveCount);
 
