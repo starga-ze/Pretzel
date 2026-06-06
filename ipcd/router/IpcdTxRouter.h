@@ -10,16 +10,13 @@ class IpcServerHandler;
 class IpcdTxRouter : public nf::router::TxRouter
 {
 public:
-    IpcdTxRouter(IpcServerHandler* ipcServerHandler);
+    explicit IpcdTxRouter(IpcServerHandler* ipcServerHandler);
     ~IpcdTxRouter() override = default;
 
     void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
 
 private:
-    std::unique_ptr<nf::ipc::IpcMessage> makeServerHello(const nf::ipc::IpcMessage& req);
-    std::unique_ptr<nf::ipc::IpcMessage> makeSyncResponse(const nf::ipc::IpcMessage& req);
-
-    IpcServerHandler* m_ipcServerHandler;
+    IpcServerHandler* m_ipcServerHandler{nullptr};
 };
 
 } // namespace nf::ipcd

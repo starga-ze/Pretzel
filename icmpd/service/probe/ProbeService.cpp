@@ -3,6 +3,8 @@
 
 #include "action/IcmpdActionFactory.h"
 #include "event/IcmpdEventFactory.h"
+#include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 #include "router/IcmpdTxRouter.h"
 #include "service/IcmpdServiceManager.h"
 #include "util/Logger.h"
@@ -143,6 +145,12 @@ void ProbeService::handleEvent(IcmpdServiceManager& serviceManager, const ProbeE
     case ProbeEventType::ProbeCompleted:
     {
         completeProbeSession();
+
+        auto action = m_actionFactory->create(
+            IcmpdActionDomain::Probe,
+            static_cast<std::uint32_t>(ProbeActionType::SendProbeResult));
+
+        serviceManager.postAction(std::move(action));
         break;
     }
 
@@ -183,6 +191,12 @@ void ProbeService::handleAction(IcmpdServiceManager& serviceManager,
         }
 
         sendProbeBatch(serviceManager);
+        break;
+    }
+
+    case ProbeActionType::SendProbeResult:
+    {
+        sendProbeResult(serviceManager);
         break;
     }
 
@@ -350,6 +364,8 @@ void ProbeService::completeProbeSession()
 
     const auto now = std::chrono::steady_clock::now();
 
+    m_lastAliveCount = static_cast<std::uint32_t>(aliveIps.size());
+
     LOG_INFO("Probe completed, (total={} alive={} dead={} elapsed={}ms)",
              m_targets.size(),
              aliveIps.size(),
@@ -449,6 +465,23 @@ ProbeService::buildIpv4Targets(const std::string& cidr)
     }
 
     return targets;
+}
+
+void ProbeService::sendProbeResult(IcmpdServiceManager& serviceManager)
+{
+    // payload: alive count를 4바이트 big-endian으로 인코딩
+    const std::uint32_t aliveNet = htonl(m_lastAliveCount);
+
+    auto msg = std::make_unique<nf::ipc::IpcMessage>();
+    msg->setSrc(nf::ipc::IpcDaemon::Icmpd);
+    msg->setDst(nf::ipc::IpcDaemon::Mgmtd);
+    msg->setCmd(nf::ipc::IpcCmd::ProbeResult);
+    msg->setFlags(nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request));
+    msg->setPayload(&aliveNet, sizeof(aliveNet));
+
+    LOG_INFO("ProbeService: sending ProbeResult to mgmtd alive={}", m_lastAliveCount);
+
+    serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
 
 std::uint32_t ProbeService::ipv4ToHostU32(const std::string& ip)

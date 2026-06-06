@@ -1,6 +1,8 @@
 #include "service/metrics/MetricRegistry.h"
 
-#include "util/Logger.cpp"
+// BUG FIX: was '#include "util/Logger.cpp"' — including a .cpp causes
+//          duplicate-symbol linker errors. Use the header instead.
+#include "util/Logger.h"
 
 #include <sstream>
 

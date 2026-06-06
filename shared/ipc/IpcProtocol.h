@@ -40,8 +40,10 @@ enum class IpcCmd : std::uint16_t
 
     ApiRequest   = 100,
     ApiResponse  = 101,
-    
-    Error        = 102
+
+    Error        = 102,
+
+    ProbeResult  = 103,  // icmpd → mgmtd: ICMP probe cycle 결과 (alive device count)
 };
 
 enum class IpcFlag : std::uint8_t

@@ -33,7 +33,24 @@ bool MgmtdCore::onInit()
         return false;
     }
 
-    m_serviceManager = std::make_unique<MgmtdServiceManager>();
+    m_ipcClient = std::make_unique<nf::ipc::IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Mgmtd);
+    if (!m_ipcClient->init())
+    {
+        LOG_WARN("Mgmtd IpcClient init failed. Continue with HTTP metrics only.");
+        m_ipcClient.reset();
+    }
+
+    m_eventFactory  = std::make_unique<MgmtdEventFactory>();
+    m_actionFactory = std::make_unique<MgmtdActionFactory>();
+
+    m_txRouter = std::make_unique<MgmtdTxRouter>(
+        m_ipcClient ? m_ipcClient->handler() : nullptr);
+
+    m_serviceManager = std::make_unique<MgmtdServiceManager>(
+        m_eventFactory.get(),
+        m_actionFactory.get(),
+        m_txRouter.get());
+
     if (!m_serviceManager)
     {
         LOG_ERROR("Mgmtd service manager init failed");
@@ -45,11 +62,11 @@ bool MgmtdCore::onInit()
         return false;
     }
 
-    m_ipcClient = std::make_unique<nf::ipc::IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Mgmtd);
-    if (!m_ipcClient->init())
+    m_rxRouter = std::make_unique<MgmtdRxRouter>(m_eventFactory.get(), m_serviceManager.get());
+
+    if (m_ipcClient)
     {
-        LOG_WARN("Mgmtd IpcClient init failed. Continue with HTTP metrics only.");
-        m_ipcClient.reset();
+        m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
     }
 
     m_httpServer = std::make_unique<HttpServer>(m_httpConfig.listenAddress,
@@ -58,7 +75,8 @@ bool MgmtdCore::onInit()
                                                 m_httpConfig.certFile,
                                                 m_httpConfig.keyFile,
                                                 &m_serviceManager->metricService(),
-                                                &m_serviceManager->authService());
+                                                &m_serviceManager->authService(),
+                                                m_serviceManager.get());
     if (!m_httpServer || !m_httpServer->init())
     {
         LOG_ERROR("Mgmtd HttpServer init failed");

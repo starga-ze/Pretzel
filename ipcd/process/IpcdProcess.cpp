@@ -6,9 +6,9 @@ namespace nf::ipcd
 
 constexpr int kIpcServerTimeoutMs = 10;
 
-IpcdProcess::IpcdProcess(IpcServer* ipcServer, IpcdTxRouter* txRouter) : 
-    m_ipcServer(ipcServer), 
-    m_txRouter(txRouter)
+IpcdProcess::IpcdProcess(IpcServer* ipcServer, IpcdServiceManager* serviceManager)
+    : m_ipcServer(ipcServer),
+      m_serviceManager(serviceManager)
 {
 }
 
@@ -16,15 +16,17 @@ bool IpcdProcess::start()
 {
     if (!m_ipcServer)
     {
-        LOG_ERROR("IpcServer is nullptr");
+        LOG_ERROR("IpcdProcess: IpcServer is nullptr");
         return false;
     }
 
-    if (!m_txRouter)
+    if (!m_serviceManager)
     {
-        LOG_ERROR("TxRouter is nullptr");
+        LOG_ERROR("IpcdProcess: ServiceManager is nullptr");
         return false;
     }
+
+    m_serviceManager->start();
 
     return true;
 }
@@ -33,12 +35,9 @@ void IpcdProcess::tick()
 {
     m_ipcServer->poll(kIpcServerTimeoutMs);
 
-    processRuntime();
-}
+    m_serviceManager->schedule();
 
-void IpcdProcess::processRuntime()
-{
-
+    m_serviceManager->execute();
 }
 
 } // namespace nf::ipcd

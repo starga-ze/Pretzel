@@ -1,44 +1,39 @@
 #include "router/EnginedRxRouter.h"
+
+#include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
 namespace nf::engined
 {
 
-EnginedRxRouter::EnginedRxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, EnginedTxRouter* txRouter) : 
-    m_ipcClientHandler(ipcClientHandler),
-    m_txRouter(txRouter)
+EnginedRxRouter::EnginedRxRouter(EnginedEventFactory* eventFactory,
+                                  EnginedServiceManager* serviceManager)
+    : m_eventFactory(eventFactory),
+      m_serviceManager(serviceManager)
 {
 }
 
 void EnginedRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
 {
-    if (!m_txRouter or !m_process)
+    if (!m_serviceManager)
     {
-        LOG_ERROR("Dependency is not ready, (txRouter={}, process={})",
-                static_cast<bool>(m_txRouter),
-                static_cast<bool>(m_process));
+        LOG_ERROR("EnginedRxRouter: ServiceManager is nullptr");
         return;
     }
 
-    switch(msg->getCmd())
+    if (!msg)
     {
-        case nf::ipc::IpcCmd::ServerHello:
-            m_process->onServerHello(*msg);
-            break;
-
-        case nf::ipc::IpcCmd::SyncResponse:
-            m_process->onSync(*msg);
-            break;
-
-        default:
-            LOG_WARN("Unhandled Rx msg, cmd={}", static_cast<int>(msg->getCmd()));
-            break;
+        LOG_WARN("EnginedRxRouter: IpcMessage is nullptr");
+        return;
     }
-}
 
-void EnginedRxRouter::setProcess(EnginedProcess* process)
-{
-    m_process = process;
+    LOG_DEBUG("EnginedRxRouter: recv cmd={} src={}",
+              nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+              nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+
+    std::unique_ptr<EnginedEvent> event = m_eventFactory->create(std::move(msg));
+
+    m_serviceManager->postEvent(std::move(event));
 }
 
 } // namespace nf::engined

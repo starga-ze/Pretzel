@@ -3,9 +3,7 @@
 #include "process/Process.h"
 
 #include "ipc/IpcServer.h"
-#include "router/IpcdTxRouter.h"
-
-#include <chrono>
+#include "service/IpcdServiceManager.h"
 
 namespace nf::ipcd
 {
@@ -13,17 +11,15 @@ namespace nf::ipcd
 class IpcdProcess : public nf::process::Process
 {
 public:
-    IpcdProcess(IpcServer* ipcServer, IpcdTxRouter* txRouter);
+    IpcdProcess(IpcServer* ipcServer, IpcdServiceManager* serviceManager);
     ~IpcdProcess() override = default;
 
     bool start() override;
     void tick() override;
 
 private:
-    void processRuntime();
-
-    IpcServer* m_ipcServer;
-    IpcdTxRouter* m_txRouter;
+    IpcServer* m_ipcServer{nullptr};
+    IpcdServiceManager* m_serviceManager{nullptr};
 };
 
 } // namespace nf::ipcd
