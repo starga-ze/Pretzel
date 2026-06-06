@@ -1,0 +1,20 @@
+[Unit]
+Description=NF-NMS Grafana
+After=nf-prometheus.service
+Wants=nf-prometheus.service
+PartOf=nf-nms.target
+
+[Service]
+Type=simple
+ExecStart=/usr/share/grafana/bin/grafana server \
+  --config=/etc/nf-nms/grafana/grafana.ini \
+  --homepath=/usr/share/grafana
+
+StandardOutput=append:/var/log/nf-nms/grafana.log
+StandardError=append:/var/log/nf-nms/grafana.log
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=nf-nms.target

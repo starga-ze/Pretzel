@@ -13,7 +13,7 @@ namespace nf::mgmtd
 
 class AuthService;
 class HttpListener;
-class MetricsService;
+class MetricService;
 
 class HttpServer
 {
@@ -23,7 +23,7 @@ public:
                bool tlsEnabled,
                std::string certFile,
                std::string keyFile,
-               MetricsService* metricsService,
+               MetricService* metricService,
                AuthService* authService);
 
     bool init();
@@ -42,7 +42,7 @@ private:
     std::string m_certFile;
     std::string m_keyFile;
 
-    MetricsService* m_metricsService {nullptr};
+    MetricService* m_metricService {nullptr};
     AuthService* m_authService {nullptr};
 
     boost::asio::io_context m_ioContext;

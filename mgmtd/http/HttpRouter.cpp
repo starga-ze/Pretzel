@@ -2,7 +2,7 @@
 
 #include "http/HttpCache.h"
 #include "service/auth/AuthService.h"
-#include "service/metrics/MetricsService.h"
+#include "service/metrics/MetricService.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
@@ -14,10 +14,10 @@ namespace nf::mgmtd
 
 using json = nlohmann::json;
 
-HttpRouter::HttpRouter(MetricsService* metricsService,
+HttpRouter::HttpRouter(MetricService* metricService,
                        AuthService* authService,
                        std::shared_ptr<HttpCache> cache)
-    : m_metricsService(metricsService),
+    : m_metricService(metricService),
       m_authService(authService),
       m_cache(std::move(cache))
 {
@@ -31,7 +31,7 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
 
     if (target == "/metrics" && req.method() == http::verb::get)
     {
-        return handleMetrics(req);
+        return handleMetric(req);
     }
 
     if (target == "/health" && req.method() == http::verb::get)
@@ -61,19 +61,19 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
                         req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleMetrics(const Request& req)
+HttpRouter::Response HttpRouter::handleMetric(const Request& req)
 {
-    if (!m_metricsService)
+    if (!m_metricService)
     {
         return makeResponse(http::status::service_unavailable,
-                            "# mgmtd metrics service unavailable\n",
+                            "# mgmtd metric service unavailable\n",
                             "text/plain; version=0.0.4; charset=utf-8",
                             req.version(),
                             req.keep_alive());
     }
 
     return makeResponse(http::status::ok,
-                        m_metricsService->renderPrometheus(),
+                        m_metricService->renderPrometheus(),
                         "text/plain; version=0.0.4; charset=utf-8",
                         req.version(),
                         req.keep_alive());

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "service/auth/AuthService.h"
-#include "service/metrics/MetricsService.h"
+#include "service/metrics/MetricService.h"
 
 #include <chrono>
 
@@ -19,11 +19,11 @@ public:
     void execute();
 
     AuthService& authService();
-    MetricsService& metricsService();
+    MetricService& metricService();
 
 private:
     AuthService m_authService;
-    MetricsService m_metricsService;
+    MetricService m_metricService;
 };
 
 } // namespace nf::mgmtd

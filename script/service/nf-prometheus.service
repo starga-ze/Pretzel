@@ -1,0 +1,22 @@
+[Unit]
+Description=NF-NMS Prometheus
+After=network.target nf-mgmtd.service
+Wants=nf-mgmtd.service
+PartOf=nf-nms.target
+
+[Service]
+Type=simple
+ExecStart=/opt/nf-nms/bin/prometheus \
+  --config.file=/etc/nf-nms/prometheus/prometheus.yml \
+  --storage.tsdb.path=/var/lib/nf-nms/prometheus \
+  --web.listen-address=0.0.0.0:9090 \
+  --web.config.file=/etc/nf-nms/prometheus/web.yml
+
+StandardOutput=append:/var/log/nf-nms/prometheus.log
+StandardError=append:/var/log/nf-nms/prometheus.log
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=nf-nms.target

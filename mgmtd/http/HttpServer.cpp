@@ -16,14 +16,14 @@ HttpServer::HttpServer(std::string listenAddress,
                        bool tlsEnabled,
                        std::string certFile,
                        std::string keyFile,
-                       MetricsService* metricsService,
+                       MetricService* metricService,
                        AuthService* authService)
     : m_listenAddress(std::move(listenAddress)),
       m_listenPort(listenPort),
       m_tlsEnabled(tlsEnabled),
       m_certFile(std::move(certFile)),
       m_keyFile(std::move(keyFile)),
-      m_metricsService(metricsService),
+      m_metricService(metricService),
       m_authService(authService)
 {
 }
@@ -115,7 +115,7 @@ bool HttpServer::init()
     }
 
     auto cache = std::make_shared<HttpCache>(std::string(PROJECT_ROOT) + "/mgmtd/www");
-    auto router = std::make_shared<HttpRouter>(m_metricsService, m_authService, cache);
+    auto router = std::make_shared<HttpRouter>(m_metricService, m_authService, cache);
 
     const auto endpoint = boost::asio::ip::tcp::endpoint(address, m_listenPort);
     m_listener = std::make_shared<HttpListener>(m_ioContext,

@@ -57,7 +57,7 @@ bool MgmtdCore::onInit()
                                                 m_httpConfig.tlsEnabled,
                                                 m_httpConfig.certFile,
                                                 m_httpConfig.keyFile,
-                                                &m_serviceManager->metricsService(),
+                                                &m_serviceManager->metricService(),
                                                 &m_serviceManager->authService());
     if (!m_httpServer || !m_httpServer->init())
     {
