@@ -8,10 +8,10 @@
 namespace nf::mgmtd
 {
 
-class MetricsService
+class MetricService
 {
 public:
-    MetricsService();
+    MetricService();
 
     void start();
     void tick(std::chrono::steady_clock::time_point now);

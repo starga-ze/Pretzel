@@ -1,296 +1,164 @@
+"""
+script/install.py
+
+Downloads and builds system packages (APT) and 3rd-party C++ dependencies required to run the project.
+Installed libraries are isolated under the `3rd_party/install/` directory.
+"""
+
 import os
 import sys
 import subprocess
 import shutil
 
 from script.utils import (
-    ROOT_DIR, INSTALL_ROOT, NUM_CORES, MAKE_JOBS, run_cmd,
+    INSTALL_ROOT, NUM_CORES, MAKE_JOBS, run_cmd, download_and_extract, build_cmake_project,
     OPENSSL_VERSION, OPENSSL_DIR, OPENSSL_INSTALL, OPENSSL_TAR, OPENSSL_SRC_PATH,
     SPDLOG_VERSION, SPDLOG_DIR, SPDLOG_INSTALL, SPDLOG_TAR, SPDLOG_SRC_PATH,
     BOOST_VERSION, BOOST_VERSION_UNDERSCORE, BOOST_DIR, BOOST_INSTALL, BOOST_TAR, BOOST_SRC_PATH,
     JSON_VERSION, JSON_DIR, JSON_INSTALL, JSON_TAR, JSON_SRC_PATH,
+    PROMETHEUS_VERSION, PROMETHEUS_DIR, PROMETHEUS_TAR, PROMETHEUS_SRC_PATH,
 )
 
-
 def install_openssl():
-    libssl_path = os.path.join(OPENSSL_INSTALL, "lib64", "libssl.a")
-    if os.path.exists(libssl_path):
+    """Compiles and installs the OpenSSL library from source."""
+    # Skip installation if the static library (libssl.a) already exists (idempotency)
+    if os.path.exists(os.path.join(OPENSSL_INSTALL, "lib64", "libssl.a")):
         print("[*] OpenSSL already built and installed, skipping...")
         return
 
-    os.makedirs(OPENSSL_DIR, exist_ok=True)
     os.makedirs(OPENSSL_INSTALL, exist_ok=True)
+    url = f"https://www.openssl.org/source/openssl-{OPENSSL_VERSION}.tar.gz"
+    download_and_extract(url, OPENSSL_TAR, OPENSSL_DIR, "Extracting OpenSSL source")
 
-    if not os.path.exists(OPENSSL_TAR):
-        print(f"[*] Downloading OpenSSL {OPENSSL_VERSION}...")
-        try:
-            subprocess.run(
-                ["wget", f"https://www.openssl.org/source/openssl-{OPENSSL_VERSION}.tar.gz", "-O", OPENSSL_TAR],
-                check=True)
-        except subprocess.CalledProcessError:
-            print("[Error] wget failed. Please check network connection or download the file manually.")
-            sys.exit(1)
-        except FileNotFoundError:
-            print("[Error] wget command not found. Please install wget.")
-            sys.exit(1)
-
-    if not os.path.exists(OPENSSL_SRC_PATH):
-        run_cmd(["tar", "xvf", OPENSSL_TAR, "-C", OPENSSL_DIR], cwd=OPENSSL_DIR, msg="Extracting OpenSSL source")
-
-    config_cmd = ["./Configure", "linux-x86_64", "no-shared", f"--prefix={OPENSSL_INSTALL}"]
-    run_cmd(config_cmd, cwd=OPENSSL_SRC_PATH, msg="Configuring OpenSSL")
-
+    # Uses OpenSSL's custom Configure script
+    run_cmd(["./Configure", "linux-x86_64", "no-shared", f"--prefix={OPENSSL_INSTALL}"], cwd=OPENSSL_SRC_PATH, msg="Configuring OpenSSL")
     run_cmd(["make", MAKE_JOBS], cwd=OPENSSL_SRC_PATH, msg=f"Compiling OpenSSL with {NUM_CORES} jobs")
     run_cmd(["make", "install"], cwd=OPENSSL_SRC_PATH, msg="Installing OpenSSL")
-
     print("[*] OpenSSL installation complete.")
 
-
 def install_spdlog():
-    config_check = os.path.join(SPDLOG_INSTALL, "lib", "cmake", "spdlog", "spdlogConfig.cmake")
-
-    if os.path.exists(config_check):
+    """Builds and installs spdlog, a high-performance C++ logging library, using CMake."""
+    if os.path.exists(os.path.join(SPDLOG_INSTALL, "lib", "cmake", "spdlog", "spdlogConfig.cmake")):
         print("[*] spdlog already installed, skipping...")
         return
 
-    os.makedirs(SPDLOG_DIR, exist_ok=True)
-    os.makedirs(SPDLOG_INSTALL, exist_ok=True)
+    url = f"https://github.com/gabime/spdlog/archive/refs/tags/v{SPDLOG_VERSION}.tar.gz"
+    download_and_extract(url, SPDLOG_TAR, SPDLOG_DIR, "Extracting spdlog source")
 
-    if not os.path.exists(SPDLOG_SRC_PATH):
-        print(f"[*] Downloading spdlog {SPDLOG_VERSION}...")
-
-        subprocess.run(
-            [
-                "wget",
-                f"https://github.com/gabime/spdlog/archive/refs/tags/v{SPDLOG_VERSION}.tar.gz",
-                "-O",
-                SPDLOG_TAR
-            ],
-            check=True
-        )
-
-        run_cmd(
-            ["tar", "xvf", SPDLOG_TAR, "-C", SPDLOG_DIR],
-            cwd=SPDLOG_DIR,
-            msg="Extracting spdlog source"
-        )
-
-    build_dir = os.path.join(SPDLOG_SRC_PATH, "build_temp")
-    os.makedirs(build_dir, exist_ok=True)
-
-    run_cmd(
-        [
-            "cmake",
-            "..",
-            f"-DCMAKE_INSTALL_PREFIX={SPDLOG_INSTALL}",
-            "-DSPDLOG_BUILD_SHARED=OFF",
-            "-DSPDLOG_BUILD_EXAMPLES=OFF",
-            "-DSPDLOG_BUILD_TESTS=OFF"
-        ],
-        cwd=build_dir,
-        msg="Configuring spdlog"
+    build_cmake_project(
+        src_path=SPDLOG_SRC_PATH,
+        install_prefix=SPDLOG_INSTALL,
+        extra_args=["-DSPDLOG_BUILD_SHARED=OFF", "-DSPDLOG_BUILD_EXAMPLES=OFF", "-DSPDLOG_BUILD_TESTS=OFF"]
     )
-
-    run_cmd(["make", MAKE_JOBS], cwd=build_dir)
-    run_cmd(["make", "install"], cwd=build_dir)
-
     print("[*] spdlog installation complete.")
 
-
 def install_boost():
-    header_check = os.path.join(BOOST_INSTALL, "include", "boost", "asio.hpp")
-
-    if os.path.exists(header_check):
+    """Installs the C++ Boost library using the b2 engine (primarily utilizing asio and thread features)."""
+    if os.path.exists(os.path.join(BOOST_INSTALL, "include", "boost", "asio.hpp")):
         print("[*] Boost already built and installed, skipping...")
         return
 
-    os.makedirs(BOOST_DIR, exist_ok=True)
-    os.makedirs(BOOST_INSTALL, exist_ok=True)
+    url = f"https://archives.boost.io/release/{BOOST_VERSION}/source/boost_{BOOST_VERSION_UNDERSCORE}.tar.gz"
+    download_and_extract(url, BOOST_TAR, BOOST_DIR, "Extracting Boost source")
 
-    if not os.path.exists(BOOST_TAR):
-        print(f"[*] Downloading Boost {BOOST_VERSION}...")
-        subprocess.run(
-            [
-                "wget",
-                f"https://archives.boost.io/release/{BOOST_VERSION}/source/boost_{BOOST_VERSION_UNDERSCORE}.tar.gz",
-                "-O",
-                BOOST_TAR
-            ],
-            check=True
-        )
-
-    if not os.path.exists(BOOST_SRC_PATH):
-        run_cmd(
-            ["tar", "xvf", BOOST_TAR, "-C", BOOST_DIR],
-            cwd=BOOST_DIR,
-            msg="Extracting Boost source"
-        )
-
+    # Boost custom bootstrap and build process
+    run_cmd(["./bootstrap.sh", f"--prefix={BOOST_INSTALL}"], cwd=BOOST_SRC_PATH, msg="Bootstrapping Boost")
     run_cmd(
-        ["./bootstrap.sh", f"--prefix={BOOST_INSTALL}"],
-        cwd=BOOST_SRC_PATH,
-        msg="Bootstrapping Boost"
+        ["./b2", f"-j{NUM_CORES}", "variant=release", "link=static", "threading=multi", "runtime-link=static", "--with-system", "--with-thread", "install"], 
+        cwd=BOOST_SRC_PATH, 
+        msg="Building Boost"
     )
-
-    run_cmd(
-        [
-            "./b2",
-            f"-j{NUM_CORES}",
-            "variant=release",
-            "link=static",
-            "threading=multi",
-            "runtime-link=static",
-            "--with-system",
-            "--with-thread",
-            "install"
-        ],
-        cwd=BOOST_SRC_PATH,
-        msg="Building Boost (system + thread)"
-    )
-
     print("[*] Boost installation complete.")
 
-
 def install_json():
-    config_check = os.path.join(JSON_INSTALL, "share", "cmake", "nlohmann_json", "nlohmann_jsonConfig.cmake")
-    if os.path.exists(config_check):
+    """Installs the nlohmann_json header-only library."""
+    if os.path.exists(os.path.join(JSON_INSTALL, "share", "cmake", "nlohmann_json", "nlohmann_jsonConfig.cmake")):
         print("[*] nlohmann_json already installed, skipping...")
         return
 
-    os.makedirs(JSON_DIR, exist_ok=True)
-    os.makedirs(JSON_INSTALL, exist_ok=True)
+    url = f"https://github.com/nlohmann/json/archive/refs/tags/v{JSON_VERSION}.tar.gz"
+    download_and_extract(url, JSON_TAR, JSON_DIR, "Extracting nlohmann_json")
 
-    if not os.path.exists(JSON_TAR):
-        print(f"[*] Downloading nlohmann_json {JSON_VERSION}...")
-        url = f"https://github.com/nlohmann/json/archive/refs/tags/v{JSON_VERSION}.tar.gz"
-        run_cmd(["wget", url, "-O", JSON_TAR], msg="Downloading nlohmann_json")
-
-    if not os.path.exists(JSON_SRC_PATH):
-        run_cmd(["tar", "xvf", JSON_TAR, "-C", JSON_DIR], cwd=JSON_DIR, msg="Extracting nlohmann_json")
-
-    build_dir = os.path.join(JSON_SRC_PATH, "build_temp")
-    os.makedirs(build_dir, exist_ok=True)
-
-    run_cmd([
-        "cmake",
-        "..",
-        f"-DCMAKE_INSTALL_PREFIX={JSON_INSTALL}",
-        "-DJSON_BuildTests=OFF"
-    ], cwd=build_dir, msg="Configuring nlohmann_json")
-
-    run_cmd(["make", "install"], cwd=build_dir, msg="Installing nlohmann_json")
-
+    build_cmake_project(
+        src_path=JSON_SRC_PATH,
+        install_prefix=JSON_INSTALL,
+        extra_args=["-DJSON_BuildTests=OFF"]
+    )
     print("[*] nlohmann_json installation complete.")
 
+def install_prometheus():
+    """Downloads the Prometheus binary for monitoring (uses pre-compiled binary distribution)."""
+    if os.path.exists(os.path.join(PROMETHEUS_SRC_PATH, "prometheus")):
+        print("[*] Prometheus already downloaded and extracted, skipping...")
+        return
+
+    url = f"https://github.com/prometheus/prometheus/releases/download/v{PROMETHEUS_VERSION}/prometheus-{PROMETHEUS_VERSION}.linux-amd64.tar.gz"
+    download_and_extract(url, PROMETHEUS_TAR, PROMETHEUS_DIR, "Extracting Prometheus")
+    print("[*] Prometheus installation complete.")
+
 def get_gpp_version():
+    """Extracts the major version of the currently installed g++ compiler."""
     try:
         out = subprocess.check_output(["g++", "--version"], stderr=subprocess.STDOUT)
-        first_line = out.decode().split("\n")[0]
-        version_str = first_line.split()[-1]
-        major = int(version_str.split(".")[0])
-        return major
+        return int(out.decode().split("\n")[0].split()[-1].split(".")[0])
     except Exception:
         return 0
 
-
-def install_gcc9():
-    current = get_gpp_version()
-    print(f"[*] Detected g++ major version: {current}")
-
-    if current >= 9:
-        print("[*] System g++ is already 9 or higher, skipping GCC toolchain installation.")
-        return
-
-    print("[*] Installing GCC 9 toolchain...")
-
-    cmds = [
-        ["sudo", "apt", "update"],
-        ["sudo", "apt", "install", "-y", "software-properties-common"],
-        ["sudo", "add-apt-repository", "-y", "ppa:ubuntu-toolchain-r/test"],
-        ["sudo", "apt", "update"],
-        ["sudo", "apt", "install", "-y", "g++-9"],
-        ["sudo", "update-alternatives", "--install", "/usr/bin/g++", "g++", "/usr/bin/g++-9", "20"],
-    ]
-
-    for cmd in cmds:
-        try:
-            run_cmd(cmd, msg=f"Running: {' '.join(cmd)}")
-        except Exception as e:
-            print(f"[ERROR] Command failed: {cmd}\n{e}")
-            sys.exit(1)
-
-    print("[*] GCC version after update:")
-    subprocess.run(["g++", "--version"], check=False)
-
-
-def install_unixodbc():
-    sql_header = "/usr/include/sql.h"
-    if os.path.exists(sql_header):
-        print("[*] unixODBC already installed, skipping...")
-        return
-
-    print("[*] Installing unixODBC (ODBC headers + runtime)...")
-
-    cmds = [
-        ["sudo", "apt", "update"],
-        ["sudo", "apt", "install", "-y", "unixodbc", "unixodbc-dev"],
-    ]
-
-    for cmd in cmds:
-        try:
-            run_cmd(cmd, msg=f"Running: {' '.join(cmd)}")
-        except Exception as e:
-            print(f"[ERROR] unixODBC install failed: {cmd}\n{e}")
-            sys.exit(1)
-
-    if not os.path.exists(sql_header):
-        print("[ERROR] sql.h not found after unixODBC installation.")
-        sys.exit(1)
-
-    print("[*] unixODBC installation complete.")
-
-
-def install_build_essential():
+def install_system_packages():
+    """
+    Installs the basic build toolchain and required packages for the OS (Ubuntu/Debian) via APT.
+    Groups required packages into a single apt command to optimize speed.
+    """
+    packages_to_install = []
+    
+    # 1. Build tools check (make, gcc, cmake, etc.)
     required_tools = ["make", "gcc", "g++", "cmake"]
-    missing = []
+    if any(shutil.which(tool) is None for tool in required_tools):
+        packages_to_install.extend(["build-essential", "cmake"])
 
-    for tool in required_tools:
-        if shutil.which(tool) is None:
-            missing.append(tool)
+    # 2. GCC 9 version check (required for C++17 support)
+    if get_gpp_version() < 9:
+        packages_to_install.extend(["software-properties-common", "g++-9"])
 
-    if not missing:
-        print("[*] Build tools (make, gcc, g++, cmake) already installed, skipping...")
+    # 3. unixODBC check (for DB integration)
+    if not os.path.exists("/usr/include/sql.h"):
+        packages_to_install.extend(["unixodbc", "unixodbc-dev"])
+
+    # Early exit if no packages need to be installed
+    if not packages_to_install:
+        print("[*] System dependencies (build tools, GCC >= 9, unixODBC) are already satisfied.")
         return
 
-    print(f"[*] Installing build tools: {', '.join(missing)}")
+    print(f"[*] Installing system packages: {', '.join(packages_to_install)}")
+    run_cmd(["sudo", "apt", "update"])
+    
+    # Add PPA repository for GCC-9 if required
+    if "g++-9" in packages_to_install:
+        run_cmd(["sudo", "add-apt-repository", "-y", "ppa:ubuntu-toolchain-r/test"])
+        run_cmd(["sudo", "apt", "update"])
 
-    cmds = [
-        ["sudo", "apt", "update"],
-        ["sudo", "apt", "install", "-y", "build-essential", "cmake"],
-    ]
+    # Batch install packages
+    run_cmd(["sudo", "apt", "install", "-y"] + packages_to_install)
 
-    for cmd in cmds:
-        try:
-            run_cmd(cmd, msg=f"Running: {' '.join(cmd)}")
-        except Exception as e:
-            print(f"[ERROR] build tools install failed: {cmd}\n{e}")
-            sys.exit(1)
-
-    for tool in required_tools:
-        if shutil.which(tool) is None:
-            print(f"[ERROR] Required tool '{tool}' not found after installation.")
-            sys.exit(1)
-
-    print("[*] build-essential + cmake installation complete.")
-
+    # Set default gcc version to 9 using update-alternatives
+    if "g++-9" in packages_to_install:
+        run_cmd(["sudo", "update-alternatives", "--install", "/usr/bin/g++", "g++", "/usr/bin/g++-9", "20"])
 
 def run():
+    """The main entry point function that orchestrates the installation process."""
     os.makedirs(INSTALL_ROOT, exist_ok=True)
-    install_build_essential()
+    
+    # Install system packages first (secure the build toolchain)
+    install_system_packages()
+    
+    # Sequentially build 3rd-party source codes
     install_openssl()
     install_spdlog()
     install_boost()
     install_json()
-    install_gcc9()
-    install_unixodbc()
+    install_prometheus()
+    
     print("[*] All dependencies installed successfully.")
+
+if __name__ == "__main__":
+    run()

@@ -10,7 +10,7 @@ namespace nf::mgmtd
 
 class AuthService;
 class HttpCache;
-class MetricsService;
+class MetricService;
 
 namespace http = boost::beast::http;
 
@@ -20,14 +20,14 @@ public:
     using Request = http::request<http::string_body>;
     using Response = http::response<http::string_body>;
 
-    HttpRouter(MetricsService* metricsService,
+    HttpRouter(MetricService* metricService,
                AuthService* authService,
                std::shared_ptr<HttpCache> cache);
 
     Response handle(const Request& req);
 
 private:
-    Response handleMetrics(const Request& req);
+    Response handleMetric(const Request& req);
     Response handleHealth(const Request& req);
     Response handleLogin(const Request& req);
     Response handleLogout(const Request& req);
@@ -43,7 +43,7 @@ private:
                                  bool keepAlive);
 
 private:
-    MetricsService* m_metricsService {nullptr};
+    MetricService* m_metricService {nullptr};
     AuthService* m_authService {nullptr};
     std::shared_ptr<HttpCache> m_cache;
 };
