@@ -96,6 +96,62 @@ def install_prometheus():
     download_and_extract(url, PROMETHEUS_TAR, PROMETHEUS_DIR, "Extracting Prometheus")
     print("[*] Prometheus installation complete.")
 
+def is_grafana_installed():
+    """Checks whether Grafana is already installed."""
+    candidates = [
+        "/usr/share/grafana/bin/grafana",
+        "/usr/sbin/grafana-server",
+    ]
+
+    return any(os.path.exists(path) for path in candidates)
+
+
+def install_grafana():
+    """Installs Grafana from the official APT repository."""
+    if is_grafana_installed():
+        print("[*] Grafana already installed, skipping...")
+        return
+
+    print("[*] Installing Grafana...")
+
+    run_cmd([
+        "sudo",
+        "apt",
+        "install",
+        "-y",
+        "apt-transport-https",
+        "software-properties-common",
+        "wget",
+        "gpg",
+    ])
+
+    keyring_path = "/usr/share/keyrings/grafana.gpg"
+    source_list_path = "/etc/apt/sources.list.d/grafana.list"
+
+    run_cmd([
+        "bash",
+        "-c",
+        f"wget -q -O - https://apt.grafana.com/gpg.key | "
+        f"sudo gpg --dearmor -o {keyring_path}"
+    ])
+
+    run_cmd([
+        "bash",
+        "-c",
+        f"echo 'deb [signed-by={keyring_path}] https://apt.grafana.com stable main' | "
+        f"sudo tee {source_list_path} > /dev/null"
+    ])
+
+    run_cmd(["sudo", "apt", "update"])
+    run_cmd(["sudo", "apt", "install", "-y", "grafana"])
+
+    if not is_grafana_installed():
+        print("[ERROR] Grafana installation failed.")
+        sys.exit(1)
+
+    print("[*] Grafana installation complete.")
+
+
 def get_gpp_version():
     """Extracts the major version of the currently installed g++ compiler."""
     try:
@@ -157,6 +213,7 @@ def run():
     install_boost()
     install_json()
     install_prometheus()
+    install_grafana()
     
     print("[*] All dependencies installed successfully.")
 
