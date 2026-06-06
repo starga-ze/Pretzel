@@ -5,7 +5,7 @@
 #include "event/IpcdEvent.h"
 #include "action/IpcdAction.h"
 
-#include "service/bootstrap/IpcdBootstrapService.h"
+#include "service/bootstrap/BootstrapService.h"
 
 #include "router/IpcdTxRouter.h"
 
@@ -33,7 +33,7 @@ public:
     void postAction(std::unique_ptr<IpcdAction> action) override;
     void execute() override;
 
-    IpcdBootstrapService& bootstrapService();
+    BootstrapService& bootstrapService();
 
     IpcdTxRouter& txRouter();
 
@@ -42,7 +42,7 @@ private:
     IpcdActionFactory* m_actionFactory{nullptr};
     IpcdTxRouter* m_txRouter{nullptr};
 
-    std::unique_ptr<IpcdBootstrapService> m_bootstrapService;
+    std::unique_ptr<BootstrapService> m_bootstrapService;
 
     std::queue<std::unique_ptr<IpcdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<IpcdAction>> m_actionQueue;

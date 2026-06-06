@@ -1,13 +1,14 @@
-#include "util/Logger.h"
+#include "core/SnmpdCore.h"
 
-#include <unistd.h>
+#include <memory>
+
+using namespace nf::snmpd;
 
 int main()
 {
+    auto core = std::make_unique<SnmpdCore>();
 
-    while(true)
-    {
-        sleep(1);
-    }
+    core->run();
+
     return 0;
 }

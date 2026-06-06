@@ -69,9 +69,12 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::RuntimeStop:  return "RuntimeStop";
     case IpcCmd::ApiRequest:   return "ApiRequest";
     case IpcCmd::ApiResponse:  return "ApiResponse";
-    case IpcCmd::Error:        return "Error";
-    case IpcCmd::ProbeResult:  return "ProbeResult";
-    default:                   return "Unknown";
+    case IpcCmd::Error:             return "Error";
+    case IpcCmd::ProbeResult:       return "ProbeResult";
+    case IpcCmd::HeartbeatRequest:  return "HeartbeatRequest";
+    case IpcCmd::HeartbeatResponse: return "HeartbeatResponse";
+    case IpcCmd::HeartbeatResult:   return "HeartbeatResult";
+    default:                        return "Unknown";
     }
 }
 

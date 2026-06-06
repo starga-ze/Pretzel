@@ -13,8 +13,8 @@ MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory,
     : m_eventFactory(eventFactory),
       m_actionFactory(actionFactory),
       m_txRouter(txRouter),
-      m_bootstrapService(std::make_unique<MgmtdBootstrapService>(m_eventFactory, m_actionFactory)),
-      m_probeService(std::make_unique<MgmtdProbeService>())
+      m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
+      m_probeService(std::make_unique<ProbeService>())
 {
 }
 
@@ -86,12 +86,12 @@ MetricService& MgmtdServiceManager::metricService()
     return m_metricService;
 }
 
-MgmtdBootstrapService& MgmtdServiceManager::bootstrapService()
+BootstrapService& MgmtdServiceManager::bootstrapService()
 {
     return *m_bootstrapService;
 }
 
-MgmtdProbeService& MgmtdServiceManager::probeService()
+ProbeService& MgmtdServiceManager::probeService()
 {
     return *m_probeService;
 }

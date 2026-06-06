@@ -1,6 +1,6 @@
 #include "event/IpcdEventFactory.h"
 
-#include "service/bootstrap/IpcdBootstrapEvent.h"
+#include "service/bootstrap/BootstrapEvent.h"
 
 #include "util/Logger.h"
 
@@ -17,7 +17,7 @@ std::unique_ptr<IpcdEvent> IpcdEventFactory::create(IpcdEventDomain domain, std:
     switch (domain)
     {
     case IpcdEventDomain::Bootstrap:
-        return std::make_unique<IpcdBootstrapEvent>(static_cast<IpcdBootstrapEventType>(type));
+        return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
 
     default:
         LOG_WARN("IpcdEventFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
@@ -36,13 +36,13 @@ std::unique_ptr<IpcdEvent> IpcdEventFactory::create(std::unique_ptr<nf::ipc::Ipc
     switch (msg->getCmd())
     {
     case nf::ipc::IpcCmd::ClientHello:
-        return std::make_unique<IpcdBootstrapEvent>(IpcdBootstrapEventType::ReceiveClientHello, std::move(msg));
+        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveClientHello, std::move(msg));
 
     case nf::ipc::IpcCmd::SyncRequest:
-        return std::make_unique<IpcdBootstrapEvent>(IpcdBootstrapEventType::ReceiveSyncRequest, std::move(msg));
+        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveSyncRequest, std::move(msg));
 
     case nf::ipc::IpcCmd::RuntimeReady:
-        return std::make_unique<IpcdBootstrapEvent>(IpcdBootstrapEventType::ReceiveRuntimeReady, std::move(msg));
+        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeReady, std::move(msg));
 
     default:
         return nullptr;

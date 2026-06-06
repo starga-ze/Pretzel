@@ -5,7 +5,7 @@
 #include "event/EnginedEvent.h"
 #include "action/EnginedAction.h"
 
-#include "service/bootstrap/EnginedBootstrapService.h"
+#include "service/bootstrap/BootstrapService.h"
 
 #include "router/EnginedTxRouter.h"
 
@@ -32,7 +32,7 @@ public:
     void postAction(std::unique_ptr<EnginedAction> action) override;
     void execute() override;
 
-    EnginedBootstrapService& bootstrapService();
+    BootstrapService& bootstrapService();
 
     EnginedTxRouter& txRouter();
 
@@ -41,7 +41,7 @@ private:
     EnginedActionFactory* m_actionFactory{nullptr};
     EnginedTxRouter* m_txRouter{nullptr};
 
-    std::unique_ptr<EnginedBootstrapService> m_bootstrapService;
+    std::unique_ptr<BootstrapService> m_bootstrapService;
 
     std::queue<std::unique_ptr<EnginedEvent>> m_eventQueue;
     std::queue<std::unique_ptr<EnginedAction>> m_actionQueue;

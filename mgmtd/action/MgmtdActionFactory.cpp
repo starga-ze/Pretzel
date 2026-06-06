@@ -1,6 +1,6 @@
 #include "action/MgmtdActionFactory.h"
 
-#include "service/bootstrap/MgmtdBootstrapAction.h"
+#include "service/bootstrap/BootstrapAction.h"
 
 #include "util/Logger.h"
 
@@ -12,7 +12,7 @@ std::unique_ptr<MgmtdAction> MgmtdActionFactory::create(MgmtdActionDomain domain
     switch (domain)
     {
     case MgmtdActionDomain::Bootstrap:
-        return std::make_unique<MgmtdBootstrapAction>(static_cast<MgmtdBootstrapActionType>(type));
+        return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
 
     default:
         LOG_WARN("MgmtdActionFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));

@@ -1,6 +1,6 @@
 #include "action/EnginedActionFactory.h"
 
-#include "service/bootstrap/EnginedBootstrapAction.h"
+#include "service/bootstrap/BootstrapAction.h"
 
 #include "util/Logger.h"
 
@@ -12,7 +12,7 @@ std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain 
     switch (domain)
     {
     case EnginedActionDomain::Bootstrap:
-        return std::make_unique<EnginedBootstrapAction>(static_cast<EnginedBootstrapActionType>(type));
+        return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
 
     default:
         LOG_WARN("EnginedActionFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
