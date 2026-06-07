@@ -113,6 +113,7 @@ void IcmpdCore::onLoop()
 
     while (!stopping())
     {
+        checkReload();
         m_process->tick();
     }
 }

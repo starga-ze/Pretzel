@@ -4,9 +4,6 @@ file(GLOB_RECURSE SHARED_SRC_FILES
 
 add_library(pz-shared ${SHARED_SRC_FILES})
 
-target_compile_definitions(pz-shared PUBLIC
-    PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
-
 target_include_directories(pz-shared PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

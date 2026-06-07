@@ -1,8 +1,11 @@
 #include "ipc/IpcClient.h"
 
+#include "config/Config.h"
 #include "util/Logger.h"
 
 #include <cerrno>
+#include <chrono>
+#include <thread>
 #include <unistd.h>
 
 #include <sys/epoll.h>
@@ -10,6 +13,28 @@
 
 namespace pz::ipc
 {
+
+namespace
+{
+
+// ipcd is launched as a simple systemd service, so it can be reported "active"
+// before its listening socket file actually exists. Retry the connect for a
+// short window so daemons started in parallel don't fail on this race. Defaults
+// match the previous hardcoded values; overridable via "tuning"."ipc_connect"
+// in running-config.json under each daemon's section.
+int connectMaxAttempts(IpcDaemon selfId)
+{
+    const auto& tuning = pz::config::Config::tuningSection(IpcProtocol::daemonToStr(selfId), "ipc_connect");
+    return tuning.value("max_attempts", 10);
+}
+
+int connectRetryDelayMs(IpcDaemon selfId)
+{
+    const auto& tuning = pz::config::Config::tuningSection(IpcProtocol::daemonToStr(selfId), "ipc_connect");
+    return tuning.value("retry_delay_ms", 500);
+}
+
+} // namespace
 
 IpcClient::IpcClient(const pz::config::IpcConfig& cfg, IpcDaemon selfId)
     : m_cfg(cfg),
@@ -32,18 +57,46 @@ bool IpcClient::init()
     if (!initEpoll())
         return false;
 
-    if (!initSocket())
-        return false;
+    const int maxAttempts = connectMaxAttempts(m_selfId);
+    const int retryDelayMs = connectRetryDelayMs(m_selfId);
 
-    if (!connectServer())
-        return false;
+    for (int attempt = 1; attempt <= maxAttempts; ++attempt)
+    {
+        if (!initSocket())
+            return false;
 
-    m_initialized = true;
+        if (connectServer())
+        {
+            m_initialized = true;
 
-    LOG_INFO("IpcClient initialized path={} self={}",
-             m_cfg.socketPath,
-             IpcProtocol::daemonToStr(m_selfId));
-    return true;
+            LOG_INFO("IpcClient initialized path={} self={} attempt={}",
+                     m_cfg.socketPath,
+                     IpcProtocol::daemonToStr(m_selfId),
+                     attempt);
+            return true;
+        }
+
+        // Discard the failed socket so the next attempt starts from a clean state.
+        m_socket.reset();
+
+        if (attempt == maxAttempts)
+            break;
+
+        LOG_WARN("IpcClient: connect attempt {}/{} failed path={} self={}, retrying in {}ms",
+                 attempt,
+                 maxAttempts,
+                 m_cfg.socketPath,
+                 IpcProtocol::daemonToStr(m_selfId),
+                 retryDelayMs);
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
+    }
+
+    LOG_ERROR("IpcClient: failed to connect after {} attempts path={} self={}",
+              maxAttempts,
+              m_cfg.socketPath,
+              IpcProtocol::daemonToStr(m_selfId));
+    return false;
 }
 
 bool IpcClient::poll(int timeoutMs)

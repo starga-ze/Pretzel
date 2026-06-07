@@ -7,6 +7,7 @@ and certificates to the actual operational paths (/opt/pretzel, /etc/pretzel) an
 
 import os
 import sys
+import shutil
 import subprocess
 import time
 from script.utils import (
@@ -33,6 +34,17 @@ PROMETHEUS_CONFIG_DIR = os.path.join(ETC_ROOT_DIR, "prometheus")
 PROMETHEUS_DATA_DIR = "/var/lib/pretzel/prometheus"
 GRAFANA_CONFIG_DIR = os.path.join(ETC_ROOT_DIR, "grafana")
 TARGET = "pretzel.target"
+
+# pz daemons read their canonical config from /etc/pretzel/running-config.json
+# and persist runtime state under /var/lib/pretzel/<daemon>/ (see pz::config::Config —
+# both overridable via PRETZEL_CONFIG_DIR / PRETZEL_STATE_DIR for alternate deployments).
+RUNNING_CONFIG_INSTALL_PATH = os.path.join(ETC_ROOT_DIR, "running-config.json")
+STATE_ROOT_DIR = "/var/lib/pretzel"
+
+# Static web frontend assets served by mgmtd, installed read-only alongside the
+# binaries (see pz::mgmtd::HttpServer — overridable via PRETZEL_SHARE_DIR).
+SHARE_INSTALL_DIR = "/opt/pretzel/share"
+MGMTD_WWW_INSTALL_DIR = os.path.join(SHARE_INSTALL_DIR, "mgmtd", "www")
 
 def pre_flight_checks():
     """
@@ -112,6 +124,23 @@ def deploy_files():
         for f in os.listdir(CERT_DIR):
             mode = 0o600 if f.endswith(".key") or "key" in f.lower() else 0o644
             install_file(os.path.join(CERT_DIR, f), os.path.join(CERT_INSTALL_DIR, f), mode)
+
+    # 7. Deploy the canonical daemon config (running-config.json). Only seed it
+    # on first install — once deployed, it's the live operational config that
+    # mgmtd edits via the settings dashboard, so redeploys must not clobber it.
+    if not os.path.isfile(RUNNING_CONFIG_INSTALL_PATH):
+        install_file(os.path.join(ROOT_DIR, "config", "running-config.json"), RUNNING_CONFIG_INSTALL_PATH, 0o644)
+    else:
+        print(f"[*] Skipping running-config.json (already deployed at {RUNNING_CONFIG_INSTALL_PATH})")
+
+    # 8. Create the runtime-state root. Each daemon creates its own
+    # <daemon>/ subdirectory on first write (see Config::saveStateSnapshot).
+    os.makedirs(STATE_ROOT_DIR, exist_ok=True)
+
+    # 9. Deploy the mgmtd web frontend (static, read-only — always overwritten).
+    if os.path.isdir(MGMTD_WWW_INSTALL_DIR):
+        shutil.rmtree(MGMTD_WWW_INSTALL_DIR)
+    shutil.copytree(os.path.join(ROOT_DIR, "mgmtd", "www"), MGMTD_WWW_INSTALL_DIR)
 
 
 def start_services():

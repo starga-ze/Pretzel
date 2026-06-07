@@ -7,7 +7,9 @@
 #include "ipc/IpcProtocol.h"
 #include "router/IcmpdTxRouter.h"
 #include "service/IcmpdServiceManager.h"
+#include "config/Config.h"
 #include "util/Logger.h"
+#include <nlohmann/json.hpp>
 
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -18,6 +20,43 @@
 
 namespace pz::icmpd
 {
+
+namespace
+{
+
+// Defaults match the previous hardcoded values; overridable via
+// "tuning"."probe" in running-config.json (section "icmpd").
+const nlohmann::json& probeTuning()
+{
+    return pz::config::Config::tuningSection("icmpd", "probe");
+}
+
+std::size_t probeBatchSize()
+{
+    return probeTuning().value("batch_size", 32);
+}
+
+std::chrono::milliseconds probeBatchInterval()
+{
+    return std::chrono::milliseconds(probeTuning().value("batch_interval_ms", 20));
+}
+
+std::chrono::milliseconds probeCycleInterval()
+{
+    return std::chrono::milliseconds(probeTuning().value("cycle_interval_ms", 30000));
+}
+
+std::chrono::milliseconds replyIdleTimeout()
+{
+    return std::chrono::milliseconds(probeTuning().value("reply_idle_timeout_ms", 5000));
+}
+
+std::chrono::milliseconds replyMaxWaitTimeout()
+{
+    return std::chrono::milliseconds(probeTuning().value("reply_max_wait_timeout_ms", 15000));
+}
+
+} // namespace
 
 ProbeService::ProbeService(IcmpdEventFactory* eventFactory,
                            IcmpdActionFactory* actionFactory)
@@ -55,7 +94,7 @@ std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::ti
 
     case State::Idle:
     {
-        if (now - m_lastProbeCompletedAt >= kProbeCycleInterval)
+        if (now - m_lastProbeCompletedAt >= probeCycleInterval())
         {
             return m_eventFactory->create(
                 IcmpdEventDomain::Probe,
@@ -67,7 +106,7 @@ std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::ti
 
     case State::Sending:
     {
-        if (!allProbeSent() && now - m_lastBatchSentAt >= kProbeBatchInterval)
+        if (!allProbeSent() && now - m_lastBatchSentAt >= probeBatchInterval())
         {
             return m_eventFactory->create(
                 IcmpdEventDomain::Probe,
@@ -82,9 +121,9 @@ std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::ti
 
             LOG_INFO("All probes sent, waiting replies (idle_timeout={}ms, max_timeout={}ms)",
                      std::chrono::duration_cast<std::chrono::milliseconds>(
-                         kReplyIdleTimeout).count(),
+                         replyIdleTimeout()).count(),
                      std::chrono::duration_cast<std::chrono::milliseconds>(
-                         kReplyMaxWaitTimeout).count());
+                         replyMaxWaitTimeout()).count());
         }
 
         return nullptr;
@@ -238,7 +277,7 @@ void ProbeService::beginProbeSession()
 
     const auto now = std::chrono::steady_clock::now();
     m_probeStartedAt = now;
-    m_lastBatchSentAt = now - kProbeBatchInterval;
+    m_lastBatchSentAt = now - probeBatchInterval();
     m_waitingStartedAt = {};
     m_lastReplyAt = {};
     m_state = State::Sending;
@@ -262,7 +301,7 @@ void ProbeService::sendProbeBatch(IcmpdServiceManager& serviceManager)
 
     std::size_t sentCount = 0;
 
-    while (m_nextSendIndex < m_targets.size() && sentCount < kProbeBatchSize)
+    while (m_nextSendIndex < m_targets.size() && sentCount < probeBatchSize())
     {
         auto& target = m_targets[m_nextSendIndex];
 
@@ -392,8 +431,8 @@ bool ProbeService::replyWaitExpired(std::chrono::steady_clock::time_point now) c
     const auto idleElapsed = duration_cast<milliseconds>(now - m_lastReplyAt);
     const auto maxElapsed  = duration_cast<milliseconds>(now - m_waitingStartedAt);
 
-    const bool idleExpired = idleElapsed >= kReplyIdleTimeout;
-    const bool maxExpired  = maxElapsed  >= kReplyMaxWaitTimeout;
+    const bool idleExpired = idleElapsed >= replyIdleTimeout();
+    const bool maxExpired  = maxElapsed  >= replyMaxWaitTimeout();
 
     if (idleExpired || maxExpired)
     {
@@ -406,9 +445,9 @@ bool ProbeService::replyWaitExpired(std::chrono::steady_clock::time_point now) c
         LOG_INFO("Probe stopped, (reason=\"{}\", idle_elapsed={}ms/{}ms, max_elapsed={}ms/{}ms)",
                  reason,
                  idleElapsed.count(),
-                 duration_cast<milliseconds>(kReplyIdleTimeout).count(),
+                 duration_cast<milliseconds>(replyIdleTimeout()).count(),
                  maxElapsed.count(),
-                 duration_cast<milliseconds>(kReplyMaxWaitTimeout).count());
+                 duration_cast<milliseconds>(replyMaxWaitTimeout()).count());
     }
 
     return idleExpired || maxExpired;

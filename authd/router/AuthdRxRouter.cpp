@@ -1,4 +1,5 @@
 #include "router/AuthdRxRouter.h"
+
 #include "util/Logger.h"
 
 namespace pz::authd

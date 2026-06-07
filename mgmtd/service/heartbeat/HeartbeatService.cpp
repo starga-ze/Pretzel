@@ -59,11 +59,11 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
         LOG_DEBUG("HeartbeatService: updated heartbeat result len={}", m_latestJson.size());
 
         // Persist the runtime-determined heartbeat snapshot as mgmtd's running-config,
-        // distinct from the static boot-time startup-config.
+        // distinct from the operational running-config.
         auto parsed = nlohmann::json::parse(m_latestJson, nullptr, false);
         if (!parsed.is_discarded())
         {
-            pz::config::Config::saveRunningConfig("mgmtd", parsed);
+            pz::config::Config::saveStateSnapshot("mgmtd", parsed);
         }
         break;
     }

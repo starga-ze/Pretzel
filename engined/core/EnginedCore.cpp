@@ -97,6 +97,7 @@ void EnginedCore::onLoop()
 
     while (!stopping())
     {
+        checkReload();
         m_process->tick();
     }
 }

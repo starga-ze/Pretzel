@@ -8,10 +8,6 @@ target_include_directories(pz-mgmtd PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_definitions(pz-mgmtd PRIVATE
-    PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
-)
-
 target_link_libraries(pz-mgmtd PRIVATE
     pz-shared
     OpenSSL::SSL

@@ -87,13 +87,6 @@ private:
 
     std::uint16_t m_identifier = 0;
     std::uint32_t m_lastAliveCount = 0;  // 마지막 probe 사이클의 alive device 수
-
-    static constexpr std::size_t kProbeBatchSize = 32;
-    static constexpr auto kProbeBatchInterval = std::chrono::milliseconds(20);
-
-    static constexpr auto kProbeCycleInterval = std::chrono::seconds(30);
-    static constexpr auto kReplyIdleTimeout = std::chrono::seconds(5);
-    static constexpr auto kReplyMaxWaitTimeout = std::chrono::seconds(15);
 };
 
 } // namespace pz::icmpd

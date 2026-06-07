@@ -34,12 +34,18 @@ private:
     Response handleLogin   (const Request& req);
     Response handleLogout  (const Request& req);
     Response handleStatus  (const Request& req);   // NEW
+    Response handleSettingsGet (const Request& req);
+    Response handleSettingsSet (const Request& req);
     Response handleStatic  (const Request& req);
 
     // Returns true when the request carries a valid session cookie.
     bool     isAuthenticated(const Request& req) const;
     bool     isStaticTarget (const std::string& target) const;
     std::string extractSession(const Request& req) const;
+
+    // Reads /run/pretzel/<daemon>.pid and sends SIGHUP to that pid so the
+    // daemon reloads its config. Best-effort; failures are logged only.
+    static void sendReloadSignal(const std::string& daemon);
 
     static Response makeResponse(http::status status,
                                  std::string  body,

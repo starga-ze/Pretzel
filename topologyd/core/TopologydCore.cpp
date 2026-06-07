@@ -97,6 +97,7 @@ void TopologydCore::onLoop()
 
     while (!stopping())
     {
+        checkReload();
         m_process->tick();
     }
 }
