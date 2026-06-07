@@ -8,10 +8,6 @@ target_include_directories(pz-topologyd PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_definitions(pz-topologyd PRIVATE
-    PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
-)
-
 target_link_libraries(pz-topologyd PRIVATE
     pz-shared
     spdlog::spdlog

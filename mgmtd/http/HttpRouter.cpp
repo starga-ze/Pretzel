@@ -4,10 +4,17 @@
 #include "service/auth/AuthService.h"
 #include "service/metrics/MetricService.h"
 #include "service/MgmtdServiceManager.h"
+#include "router/MgmtdTxRouter.h"
+
+#include "config/Config.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <csignal>
+#include <fstream>
+#include <unistd.h>
 #include <utility>
 
 namespace pz::mgmtd
@@ -72,6 +79,24 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
             return unauthorized(req.version(), req.keep_alive());
         }
         return handleStatus(req);
+    }
+
+    if (target == "/api/settings" && req.method() == http::verb::get)
+    {
+        if (!isAuthenticated(req))
+        {
+            return unauthorized(req.version(), req.keep_alive());
+        }
+        return handleSettingsGet(req);
+    }
+
+    if (target == "/api/settings" && req.method() == http::verb::post)
+    {
+        if (!isAuthenticated(req))
+        {
+            return unauthorized(req.version(), req.keep_alive());
+        }
+        return handleSettingsSet(req);
     }
 
     // ── Static files ──────────────────────────────────────────────────────
@@ -259,6 +284,104 @@ HttpRouter::Response HttpRouter::handleStatus(const Request& req)
                         req.keep_alive());
 }
 
+namespace
+{
+
+// Daemons whose "tuning" section is exposed/editable through the settings
+// dashboard. Mirrors the top-level keys in config/running-config.json.
+constexpr const char* kSettingsDaemons[] = {
+    "engined", "authd", "icmpd", "mgmtd", "snmpd", "topologyd", "ipcd",
+};
+
+} // namespace
+
+HttpRouter::Response HttpRouter::handleSettingsGet(const Request& req)
+{
+    json daemons = json::object();
+
+    for (const auto* name : kSettingsDaemons)
+    {
+        const auto& root = pz::config::Config::daemonConfig(name);
+        daemons[name] = root.value("tuning", json::object());
+    }
+
+    json body;
+    body["daemons"] = std::move(daemons);
+
+    return makeResponse(http::status::ok,
+                        body.dump(),
+                        "application/json; charset=utf-8",
+                        req.version(),
+                        req.keep_alive());
+}
+
+HttpRouter::Response HttpRouter::handleSettingsSet(const Request& req)
+{
+    auto badRequest = [&](const char* error)
+    {
+        return makeResponse(http::status::bad_request,
+                            json{{"error", error}}.dump(),
+                            "application/json; charset=utf-8",
+                            req.version(),
+                            req.keep_alive());
+    };
+
+    json input;
+    try
+    {
+        input = json::parse(req.body());
+    }
+    catch (const std::exception&)
+    {
+        return badRequest("invalid JSON body");
+    }
+
+    if (!input.contains("daemon") || !input.contains("domain") || !input.contains("values"))
+    {
+        return badRequest("expected {daemon, domain, values}");
+    }
+
+    const std::string daemon = input.value("daemon", "");
+    const std::string domain = input.value("domain", "");
+    const json& values = input["values"];
+
+    if (!values.is_object())
+    {
+        return badRequest("'values' must be an object");
+    }
+
+    const bool knownDaemon = std::any_of(std::begin(kSettingsDaemons), std::end(kSettingsDaemons),
+                                         [&](const char* d) { return daemon == d; });
+    if (!knownDaemon)
+    {
+        return badRequest("unknown daemon");
+    }
+
+    if (!pz::config::Config::updateTuning(daemon, domain, values))
+    {
+        return makeResponse(http::status::internal_server_error,
+                            json{{"error", "failed to persist settings"}}.dump(),
+                            "application/json; charset=utf-8",
+                            req.version(),
+                            req.keep_alive());
+    }
+
+    LOG_INFO("Mgmtd settings updated daemon={} domain={} keys={}", daemon, domain, values.size());
+
+    // Tell the running daemon to drop its cached tuning and reload from disk,
+    // so the change applies without a restart. The daemon's pid is read from
+    // its pid file (written at boot by pz::core::Core); SIGHUP delivery is
+    // best-effort — the file write above already persisted the change, so a
+    // missed signal only delays the reload until the daemon restarts.
+    sendReloadSignal(daemon);
+
+    return makeResponse(http::status::ok,
+                        json{{"status", "ok"}}.dump(),
+                        "application/json; charset=utf-8",
+                        req.version(),
+                        req.keep_alive());
+}
+
 HttpRouter::Response HttpRouter::handleStatic(const Request& req)
 {
     if (!m_cache)
@@ -320,6 +443,34 @@ std::string HttpRouter::extractSession(const Request& req) const
     if (end == std::string::npos) end = cookies.size();
 
     return cookies.substr(pos + key.size(), end - (pos + key.size()));
+}
+
+void HttpRouter::sendReloadSignal(const std::string& daemon)
+{
+    const std::string pidFilePath = "/run/pretzel/" + daemon + ".pid";
+
+    std::ifstream pidFile(pidFilePath);
+    if (!pidFile)
+    {
+        LOG_WARN("Mgmtd reload: pid file not found for daemon={} path={}", daemon, pidFilePath);
+        return;
+    }
+
+    pid_t pid = 0;
+    pidFile >> pid;
+    if (pid <= 0)
+    {
+        LOG_WARN("Mgmtd reload: invalid pid in {}", pidFilePath);
+        return;
+    }
+
+    if (::kill(pid, SIGHUP) != 0)
+    {
+        LOG_WARN("Mgmtd reload: failed to send SIGHUP to daemon={} pid={}", daemon, pid);
+        return;
+    }
+
+    LOG_INFO("Mgmtd reload: sent SIGHUP to daemon={} pid={}", daemon, pid);
 }
 
 HttpRouter::Response HttpRouter::unauthorized(unsigned version, bool keepAlive)

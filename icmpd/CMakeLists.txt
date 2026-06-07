@@ -8,10 +8,6 @@ target_include_directories(pz-icmpd PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_definitions(pz-icmpd PRIVATE
-    PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
-)
-
 target_link_libraries(pz-icmpd PRIVATE
     pz-shared
 )

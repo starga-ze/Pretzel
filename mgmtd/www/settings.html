@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pretzel NMS — Dashboard</title>
+  <title>Pretzel NMS — Settings</title>
   <link rel="stylesheet" href="css/main.css" />
 </head>
 <body>
@@ -29,7 +29,7 @@
     <nav class="sidebar-nav">
       <div class="nav-section-label">Overview</div>
 
-      <a class="nav-item active" data-page="dashboard.html" data-tooltip="Dashboard" href="dashboard.html">
+      <a class="nav-item" data-page="dashboard.html" data-tooltip="Dashboard" href="dashboard.html">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
           <rect x="3" y="3" width="7" height="7" rx="1"/>
           <rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -90,8 +90,8 @@
 
       <div class="nav-section-label">System</div>
 
-      <div class="nav-group" id="settingsNavGroup">
-        <button type="button" class="nav-item nav-group-toggle" data-tooltip="Settings" aria-expanded="false">
+      <div class="nav-group expanded" id="settingsNavGroup">
+        <button type="button" class="nav-item nav-group-toggle" data-tooltip="Settings" aria-expanded="true">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
@@ -111,7 +111,7 @@
           </svg>
         </button>
         <div class="nav-subnav">
-          <a class="nav-subitem" data-page="settings.html" href="settings.html">
+          <a class="nav-subitem active" data-page="settings.html" href="settings.html">
             <span class="nav-label">Daemon Settings</span>
           </a>
         </div>
@@ -146,56 +146,21 @@
     </button>
   </div>
 
-  <!-- Floating action buttons -->
-  <div class="floating-actions">
-    <button class="btn btn-glass" id="refreshBtn">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" stroke-width="2.5">
-        <polyline points="23 4 23 10 17 10"/>
-        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-      </svg>
-      Refresh
-    </button>
-    <button class="btn btn-primary" id="exportBtn">Export</button>
-  </div>
-
   <!-- ══ Content ══ -->
   <div class="content-wrap">
     <main class="content-body">
 
-      <!-- Status cards -->
-      <div class="cards-grid">
-        <div class="card">
-          <div class="card-label">Uptime</div>
-          <div class="card-value muted" id="uptimeVal">--</div>
-          <div class="card-sub">seconds since boot</div>
-        </div>
-
-        <div class="card">
-          <div class="card-label">Alive Devices</div>
-          <div class="card-value muted" id="aliveVal">--</div>
-          <div class="card-sub">ICMP discovery</div>
-        </div>
-      </div>
-
-      <!-- Daemon Health (heartbeat) -->
       <div class="section-card">
         <div class="section-header">
-          <span class="section-title">Daemon Health</span>
-          <span class="hb-timestamp" id="hbTimestamp"></span>
+          <span class="section-title">Daemon Tuning</span>
+          <span class="hb-timestamp" id="settingsStatus"></span>
         </div>
-        <div class="daemon-grid" id="daemonGrid">
-          <div class="loading-row">Waiting for heartbeat data…</div>
-        </div>
-      </div>
-
-      <!-- Event Viewer -->
-      <div class="section-card">
-        <div class="section-header">
-          <span class="section-title">Event Viewer</span>
-        </div>
-        <div class="event-list" id="eventList">
-          <div class="loading-row">Loading…</div>
+        <p style="margin: 0 0 16px; color: var(--text-muted, #888); font-size: 13px;">
+          운영 튜너블 값을 조정합니다. 변경 사항은 해당 데몬의 startup-config에 즉시
+          저장되고, 데몬에 SIGHUP이 전송되어 재시작 없이 적용됩니다.
+        </p>
+        <div id="settingsGroups">
+          <div class="loading-row">Loading settings…</div>
         </div>
       </div>
 
@@ -204,6 +169,6 @@
 </div><!-- /app-shell -->
 
 <script src="js/main.js"></script>
-<script src="js/dashboard.js"></script>
+<script src="js/settings.js"></script>
 </body>
 </html>

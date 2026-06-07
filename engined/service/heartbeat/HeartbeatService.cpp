@@ -6,6 +6,7 @@
 #include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
 
+#include "config/Config.h"
 #include "util/Logger.h"
 
 #include <algorithm>
@@ -14,8 +15,24 @@
 namespace pz::engined
 {
 
-constexpr auto kPollInterval    = std::chrono::seconds(5);
-constexpr auto kResponseTimeout = std::chrono::milliseconds(2000);
+namespace
+{
+
+// Defaults match the previous hardcoded values; overridable via
+// "tuning"."heartbeat" in running-config.json (section "engined").
+std::chrono::milliseconds pollInterval()
+{
+    const auto& tuning = pz::config::Config::tuningSection("engined", "heartbeat");
+    return std::chrono::milliseconds(tuning.value("poll_interval_ms", 5000));
+}
+
+std::chrono::milliseconds responseTimeout()
+{
+    const auto& tuning = pz::config::Config::tuningSection("engined", "heartbeat");
+    return std::chrono::milliseconds(tuning.value("response_timeout_ms", 2000));
+}
+
+} // namespace
 
 const std::vector<pz::ipc::IpcDaemon>& HeartbeatService::targets()
 {
@@ -56,7 +73,7 @@ HeartbeatService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (m_roundActive)
     {
-        if (now - m_roundStartedAt >= kResponseTimeout)
+        if (now - m_roundStartedAt >= responseTimeout())
         {
             LOG_DEBUG("HeartbeatService: response timeout, finalizing round");
             markTimeoutsAsDead();
@@ -68,7 +85,7 @@ HeartbeatService::schedule(std::chrono::steady_clock::time_point now)
     }
 
     if (m_lastPollAt.time_since_epoch().count() == 0 ||
-        now - m_lastPollAt >= kPollInterval)
+        now - m_lastPollAt >= pollInterval())
     {
         m_lastPollAt = now;
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::SendHeartbeatRequests);

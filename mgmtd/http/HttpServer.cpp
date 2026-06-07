@@ -9,8 +9,33 @@
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ssl.hpp>
 
+#include <cstdlib>
+
 namespace pz::mgmtd
 {
+
+namespace
+{
+
+// Resolves the install root for read-only static assets (web frontend, etc.).
+// Defaults to the FHS-style /opt/pretzel/share install location; overridable
+// via PRETZEL_SHARE_DIR for alternate deployments/testing.
+std::string shareDir()
+{
+    const char* value = std::getenv("PRETZEL_SHARE_DIR");
+    return (value && *value) ? std::string(value) : "/opt/pretzel/share";
+}
+
+// Resolves the config root for relative cert/key paths in running-config.
+// Defaults to the FHS-style /etc/pretzel; overridable via PRETZEL_CONFIG_DIR
+// (kept in sync with pz::config::Config's resolution).
+std::string configDir()
+{
+    const char* value = std::getenv("PRETZEL_CONFIG_DIR");
+    return (value && *value) ? std::string(value) : "/etc/pretzel";
+}
+
+} // namespace
 
 HttpServer::HttpServer(std::string listenAddress,
                        std::uint16_t listenPort,
@@ -43,7 +68,7 @@ std::string HttpServer::resolvePath(const std::string& path) const
         return path;
     }
 
-    return std::string(PROJECT_ROOT) + "/" + path;
+    return configDir() + "/" + path;
 }
 
 bool HttpServer::initTlsContext()
@@ -117,7 +142,7 @@ bool HttpServer::init()
         return false;
     }
 
-    auto cache = std::make_shared<HttpCache>(std::string(PROJECT_ROOT) + "/mgmtd/www");
+    auto cache = std::make_shared<HttpCache>(shareDir() + "/mgmtd/www");
     auto router = std::make_shared<HttpRouter>(m_metricService, m_authService, m_serviceManager, cache);
 
     const auto endpoint = boost::asio::ip::tcp::endpoint(address, m_listenPort);

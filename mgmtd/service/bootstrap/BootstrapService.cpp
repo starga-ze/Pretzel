@@ -8,14 +8,41 @@
 #include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
 
+#include "config/Config.h"
+
 #include "util/Logger.h"
+
+#include <nlohmann/json.hpp>
 
 namespace pz::mgmtd
 {
 
-constexpr auto kClientHelloInterval  = std::chrono::seconds(1);
-constexpr auto kRuntimeReadyInterval = std::chrono::seconds(1);
-constexpr auto kBootstrapTimeout     = std::chrono::seconds(10);
+namespace
+{
+
+// Defaults match the previous hardcoded values; overridable via
+// "tuning"."bootstrap" in running-config.json (section "mgmtd").
+const nlohmann::json& bootstrapTuning()
+{
+    return pz::config::Config::tuningSection("mgmtd", "bootstrap");
+}
+
+std::chrono::milliseconds clientHelloInterval()
+{
+    return std::chrono::milliseconds(bootstrapTuning().value("client_hello_interval_ms", 1000));
+}
+
+std::chrono::milliseconds runtimeReadyInterval()
+{
+    return std::chrono::milliseconds(bootstrapTuning().value("runtime_ready_interval_ms", 1000));
+}
+
+std::chrono::milliseconds bootstrapTimeout()
+{
+    return std::chrono::milliseconds(bootstrapTuning().value("bootstrap_timeout_ms", 10000));
+}
+
+} // namespace
 
 BootstrapService::BootstrapService(MgmtdEventFactory* eventFactory,
                                              MgmtdActionFactory* actionFactory)
@@ -69,7 +96,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
             return nullptr;
         }
 
-        if (now - m_lastClientHelloSentAt >= kClientHelloInterval)
+        if (now - m_lastClientHelloSentAt >= clientHelloInterval())
         {
             m_lastClientHelloSentAt = now;
 
@@ -90,7 +117,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
             return nullptr;
         }
 
-        if (now - m_lastRuntimeReadySentAt >= kRuntimeReadyInterval)
+        if (now - m_lastRuntimeReadySentAt >= runtimeReadyInterval())
         {
             m_lastRuntimeReadySentAt = now;
 
@@ -280,7 +307,7 @@ bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
         return true;
     }
 
-    if (now - m_startedAt < kBootstrapTimeout)
+    if (now - m_startedAt < bootstrapTimeout())
     {
         return false;
     }

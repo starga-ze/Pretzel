@@ -1,4 +1,5 @@
 #include "router/IcmpdRxRouter.h"
+
 #include "util/Logger.h"
 
 namespace pz::icmpd

@@ -98,6 +98,7 @@ void AuthdCore::onLoop()
 
     while (!stopping())
     {
+        checkReload();
         m_process->tick();
     }
 }
