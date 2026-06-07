@@ -1,6 +1,6 @@
 #include "service/metrics/MetricService.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 MetricService::MetricService()
@@ -34,4 +34,4 @@ std::string MetricService::renderPrometheus() const
     return m_registry.renderPrometheus();
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

@@ -6,7 +6,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create()
@@ -33,7 +33,7 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(MgmtdEventDomain domain, s
     }
 }
 
-std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> msg)
+std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -43,16 +43,20 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<nf::ipc::I
 
     switch (msg->getCmd())
     {
-    case nf::ipc::IpcCmd::ServerHello:
+    case pz::ipc::IpcCmd::ServerHello:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello, std::move(msg));
 
-    case nf::ipc::IpcCmd::RuntimeStart:
+    case pz::ipc::IpcCmd::RuntimeStart:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
 
-    case nf::ipc::IpcCmd::ProbeResult:
+    case pz::ipc::IpcCmd::ProbeResult:
         return std::make_unique<ProbeEvent>(ProbeEventType::ReceiveProbeResult, std::move(msg));
 
-    case nf::ipc::IpcCmd::HeartbeatResult:
+    case pz::ipc::IpcCmd::HeartbeatRequest:
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest,
+                                               std::move(msg));
+
+    case pz::ipc::IpcCmd::HeartbeatResult:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResult,
                                                std::move(msg));
 
@@ -62,4 +66,4 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<nf::ipc::I
     }
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

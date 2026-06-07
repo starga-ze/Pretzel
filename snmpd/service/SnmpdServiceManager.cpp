@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 SnmpdServiceManager::SnmpdServiceManager(SnmpdEventFactory* eventFactory,
@@ -88,4 +88,4 @@ SnmpdTxRouter& SnmpdServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

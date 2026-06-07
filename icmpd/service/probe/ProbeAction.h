@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 class IcmpdServiceManager;
@@ -30,4 +30,4 @@ private:
     ProbeActionType m_type = ProbeActionType::Unknown;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

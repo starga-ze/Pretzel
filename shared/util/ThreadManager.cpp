@@ -5,7 +5,7 @@
 #include <sys/prctl.h>
 #include <unistd.h>
 
-namespace nf::util
+namespace pz::util
 {
 ThreadManager::~ThreadManager()
 {
@@ -78,4 +78,4 @@ void ThreadManager::stopAll()
         }
     }
 }
-} // namespace nf::util
+} // namespace pz::util

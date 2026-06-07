@@ -1,11 +1,11 @@
 #include "session/Session.h"
 
-namespace nf::session
+namespace pz::session
 {
 
 Session::Session(std::string id,
-                 nf::ipc::IpcDaemon src,
-                 nf::ipc::IpcDaemon dst)
+                 pz::ipc::IpcDaemon src,
+                 pz::ipc::IpcDaemon dst)
     : m_id(std::move(id)),
       m_src(src),
       m_dst(dst)
@@ -17,12 +17,12 @@ const std::string& Session::getId() const noexcept
     return m_id;
 }
 
-nf::ipc::IpcDaemon Session::getSrc() const noexcept
+pz::ipc::IpcDaemon Session::getSrc() const noexcept
 {
     return m_src;
 }
 
-nf::ipc::IpcDaemon Session::getDst() const noexcept
+pz::ipc::IpcDaemon Session::getDst() const noexcept
 {
     return m_dst;
 }
@@ -78,4 +78,4 @@ void Session::markTx() noexcept
     ++m_txCount;
 }
 
-} // namespace nf::session
+} // namespace pz::session

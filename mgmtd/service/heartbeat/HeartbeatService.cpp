@@ -1,20 +1,39 @@
 #include "service/heartbeat/HeartbeatService.h"
 
 #include "service/MgmtdServiceManager.h"
+#include "router/MgmtdTxRouter.h"
 
+#include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
+#include "config/Config.h"
 #include "util/Logger.h"
 
-namespace nf::mgmtd
+#include <nlohmann/json.hpp>
+
+namespace pz::mgmtd
 {
 
 void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
                                    const HeartbeatEvent& event)
 {
-    (void)serviceManager;
-
     switch (event.type())
     {
+    case HeartbeatEventType::ReceiveHeartbeatRequest:
+    {
+        const auto* msg = event.message();
+        if (!msg)
+        {
+            LOG_WARN("HeartbeatService: ReceiveHeartbeatRequest has empty message");
+            return;
+        }
+
+        pz::ipc::IpcDaemon src = msg->getSrc();
+
+        serviceManager.postAction(std::make_unique<HeartbeatAction>(
+            HeartbeatActionType::SendHeartbeatResponse, src));
+        break;
+    }
+
     case HeartbeatEventType::ReceiveHeartbeatResult:
     {
         const auto* msg = event.message();
@@ -38,12 +57,52 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
         m_hasData.store(true, std::memory_order_relaxed);
 
         LOG_DEBUG("HeartbeatService: updated heartbeat result len={}", m_latestJson.size());
+
+        // Persist the runtime-determined heartbeat snapshot as mgmtd's running-config,
+        // distinct from the static boot-time startup-config.
+        auto parsed = nlohmann::json::parse(m_latestJson, nullptr, false);
+        if (!parsed.is_discarded())
+        {
+            pz::config::Config::saveRunningConfig("mgmtd", parsed);
+        }
         break;
     }
 
     default:
         LOG_WARN("HeartbeatService: unhandled event type={}",
                  static_cast<std::uint32_t>(event.type()));
+        break;
+    }
+}
+
+void HeartbeatService::handleAction(MgmtdServiceManager& serviceManager,
+                                    const HeartbeatAction& action)
+{
+    switch (action.type())
+    {
+    case HeartbeatActionType::SendHeartbeatResponse:
+    {
+        const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
+
+        pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+            pz::ipc::IpcDaemon::Mgmtd,
+            action.dst(),
+            pz::ipc::IpcCmd::HeartbeatResponse,
+            0,
+            flag);
+
+        auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
+
+        LOG_DEBUG("HeartbeatService: Tx HeartbeatResponse dst={}",
+                  pz::ipc::IpcProtocol::daemonToStr(action.dst()));
+
+        serviceManager.txRouter().handleIpcMessage(std::move(msg));
+        break;
+    }
+
+    default:
+        LOG_WARN("HeartbeatService: unhandled action type={}",
+                 static_cast<std::uint32_t>(action.type()));
         break;
     }
 }
@@ -58,4 +117,4 @@ bool HeartbeatService::hasData() const
     return m_hasData.load(std::memory_order_relaxed);
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

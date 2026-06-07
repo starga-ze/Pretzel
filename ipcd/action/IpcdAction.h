@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 class IpcdServiceManager;
@@ -17,7 +17,7 @@ enum class IpcdActionDomain : std::uint32_t
     Bootstrap = 1
 };
 
-class IpcdAction : public nf::action::Action
+class IpcdAction : public pz::action::Action
 {
 public:
     explicit IpcdAction(IpcdActionDomain domain);
@@ -31,4 +31,4 @@ private:
     IpcdActionDomain m_domain{IpcdActionDomain::Unknown};
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

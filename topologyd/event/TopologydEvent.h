@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 class TopologydServiceManager;
@@ -17,7 +17,7 @@ enum class TopologydEventDomain : std::uint32_t
     Heartbeat = 2
 };
 
-class TopologydEvent : public nf::event::Event
+class TopologydEvent : public pz::event::Event
 {
 public:
     explicit TopologydEvent(TopologydEventDomain domain);
@@ -31,4 +31,4 @@ private:
     TopologydEventDomain m_domain{TopologydEventDomain::Unknown};
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

@@ -13,13 +13,13 @@
 #include <memory>
 #include <queue>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 class TopologydEventFactory;
 class TopologydActionFactory;
 
-class TopologydServiceManager : public nf::service::ServiceManager<TopologydEvent, TopologydAction>
+class TopologydServiceManager : public pz::service::ServiceManager<TopologydEvent, TopologydAction>
 {
 public:
     TopologydServiceManager(TopologydEventFactory* eventFactory,
@@ -50,4 +50,4 @@ private:
     std::queue<std::unique_ptr<TopologydAction>> m_actionQueue;
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

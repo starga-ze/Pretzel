@@ -5,7 +5,7 @@
 
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class HttpRouter;
@@ -35,4 +35,4 @@ private:
     std::shared_ptr<boost::asio::ssl::context> m_sslContext;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

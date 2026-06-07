@@ -5,7 +5,7 @@
 #include <cstring>
 #include <utility>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 static constexpr std::size_t kIpv4MinHeaderLen = 20;
@@ -147,4 +147,4 @@ std::size_t IcmpCodec::icmpOffset(IcmpFrameView frame)
     return 0;
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

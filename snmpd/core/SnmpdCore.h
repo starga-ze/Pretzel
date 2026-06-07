@@ -16,10 +16,10 @@
 
 #include <memory>
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
-class SnmpdCore : public nf::core::Core
+class SnmpdCore : public pz::core::Core
 {
 public:
     SnmpdCore();
@@ -30,11 +30,11 @@ protected:
     void onShutdown() override;
 
 private:
-    nf::config::LoggerConfig m_loggerConfig;
-    nf::config::IpcConfig m_ipcConfig;
+    pz::config::LoggerConfig m_loggerConfig;
+    pz::config::IpcConfig m_ipcConfig;
 
-    std::unique_ptr<nf::util::ThreadManager> m_threadManager;
-    std::unique_ptr<nf::ipc::IpcClient> m_ipcClient;
+    std::unique_ptr<pz::util::ThreadManager> m_threadManager;
+    std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
 
     std::unique_ptr<SnmpdProcess> m_process;
 
@@ -47,4 +47,4 @@ private:
     std::unique_ptr<SnmpdServiceManager> m_serviceManager;
 };
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

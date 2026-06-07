@@ -2,7 +2,7 @@
 #include "ipc/IpcServerHandler.h"
 #include "util/Logger.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 IpcdTxRouter::IpcdTxRouter(IpcServerHandler* ipcServerHandler)
@@ -10,7 +10,7 @@ IpcdTxRouter::IpcdTxRouter(IpcServerHandler* ipcServerHandler)
 {
 }
 
-void IpcdTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IpcdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -27,4 +27,4 @@ void IpcdTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     m_ipcServerHandler->egress(std::move(msg));
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

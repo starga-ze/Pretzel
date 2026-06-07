@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 class EnginedServiceManager;
@@ -18,7 +18,7 @@ enum class EnginedActionDomain : std::uint32_t
     Heartbeat = 2
 };
 
-class EnginedAction : public nf::action::Action
+class EnginedAction : public pz::action::Action
 {
 public:
     explicit EnginedAction(EnginedActionDomain domain);
@@ -32,4 +32,4 @@ private:
     EnginedActionDomain m_domain{EnginedActionDomain::Unknown};
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

@@ -10,7 +10,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 constexpr auto kClientHelloInterval  = std::chrono::seconds(1);
@@ -185,7 +185,7 @@ void BootstrapService::handleEvent(SnmpdServiceManager& serviceManager,
 void BootstrapService::handleAction(SnmpdServiceManager& serviceManager,
                                     const BootstrapAction& action)
 {
-    std::unique_ptr<nf::ipc::IpcMessage> msg = nullptr;
+    std::unique_ptr<pz::ipc::IpcMessage> msg = nullptr;
 
     switch (action.type())
     {
@@ -223,7 +223,7 @@ void BootstrapService::handleAction(SnmpdServiceManager& serviceManager,
 }
 
 void BootstrapService::onServerHello(SnmpdServiceManager& serviceManager,
-                                     const nf::ipc::IpcMessage& msg)
+                                     const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
@@ -246,7 +246,7 @@ void BootstrapService::onServerHello(SnmpdServiceManager& serviceManager,
     serviceManager.postAction(std::move(action));
 }
 
-void BootstrapService::onRuntimeStart(const nf::ipc::IpcMessage& msg)
+void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
@@ -281,22 +281,22 @@ bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
     return true;
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
+std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildClientHelloMessage() const
 {
     std::string name =
-        nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Snmpd);
+        pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Snmpd);
 
-    auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+    auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Snmpd,
-        nf::ipc::IpcDaemon::Ipcd,
-        nf::ipc::IpcCmd::ClientHello,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcCmd::ClientHello,
         0,
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(
         reinterpret_cast<const std::uint8_t*>(name.data()),
         name.size());
@@ -304,22 +304,22 @@ BootstrapService::buildClientHelloMessage() const
     return msg;
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
+std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildRuntimeReadyMessage() const
 {
     std::string name =
-        nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Snmpd);
+        pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Snmpd);
 
-    auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+    auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Snmpd,
-        nf::ipc::IpcDaemon::Ipcd,
-        nf::ipc::IpcCmd::RuntimeReady,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcCmd::RuntimeReady,
         0,
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(
         reinterpret_cast<const std::uint8_t*>(name.data()),
         name.size());
@@ -327,4 +327,4 @@ BootstrapService::buildRuntimeReadyMessage() const
     return msg;
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

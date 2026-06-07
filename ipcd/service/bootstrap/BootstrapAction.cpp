@@ -1,7 +1,7 @@
 #include "service/bootstrap/BootstrapAction.h"
 #include "service/IpcdServiceManager.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 BootstrapAction::BootstrapAction(BootstrapActionType type)
@@ -11,7 +11,7 @@ BootstrapAction::BootstrapAction(BootstrapActionType type)
 }
 
 BootstrapAction::BootstrapAction(BootstrapActionType type,
-                                         std::unique_ptr<nf::ipc::IpcMessage> request)
+                                         std::unique_ptr<pz::ipc::IpcMessage> request)
     : IpcdAction(IpcdActionDomain::Bootstrap),
       m_type(type),
       m_request(std::move(request))
@@ -23,12 +23,12 @@ BootstrapActionType BootstrapAction::type() const
     return m_type;
 }
 
-const nf::ipc::IpcMessage* BootstrapAction::request() const
+const pz::ipc::IpcMessage* BootstrapAction::request() const
 {
     return m_request.get();
 }
 
-std::unique_ptr<nf::ipc::IpcMessage> BootstrapAction::takeRequest()
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapAction::takeRequest()
 {
     return std::move(m_request);
 }
@@ -38,4 +38,4 @@ void BootstrapAction::dispatch(IpcdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

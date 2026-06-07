@@ -1,6 +1,6 @@
 #include "event/TopologydEvent.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 TopologydEvent::TopologydEvent(TopologydEventDomain domain)
@@ -13,4 +13,4 @@ TopologydEventDomain TopologydEvent::domain() const
     return m_domain;
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

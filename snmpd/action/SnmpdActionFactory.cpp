@@ -4,7 +4,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 std::unique_ptr<SnmpdAction> SnmpdActionFactory::create(SnmpdActionDomain domain, std::uint32_t type)
@@ -20,4 +20,4 @@ std::unique_ptr<SnmpdAction> SnmpdActionFactory::create(SnmpdActionDomain domain
     }
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

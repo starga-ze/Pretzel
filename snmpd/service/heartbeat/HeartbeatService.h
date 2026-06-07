@@ -3,7 +3,7 @@
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/heartbeat/HeartbeatAction.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 class SnmpdServiceManager;
@@ -21,4 +21,4 @@ public:
                       const HeartbeatAction& action);
 };
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

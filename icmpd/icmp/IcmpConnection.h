@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 enum class IcmpIoResult
@@ -75,4 +75,4 @@ private:
     std::queue<TxFrame> m_txQueue;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

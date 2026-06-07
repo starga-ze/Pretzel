@@ -6,7 +6,7 @@
 #include <thread>
 #include <vector>
 
-namespace nf::util
+namespace pz::util
 {
 
 class ThreadManager
@@ -37,4 +37,4 @@ private:
     std::mutex m_lock;
 };
 
-} // namespace nf::util
+} // namespace pz::util

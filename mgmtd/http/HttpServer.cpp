@@ -9,7 +9,7 @@
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ssl.hpp>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 HttpServer::HttpServer(std::string listenAddress,
@@ -146,4 +146,4 @@ void HttpServer::stop()
     m_ioContext.stop();
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

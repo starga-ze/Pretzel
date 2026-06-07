@@ -16,10 +16,10 @@
 
 #include <memory>
 
-namespace nf::engined
+namespace pz::engined
 {
 
-class EnginedCore : public nf::core::Core
+class EnginedCore : public pz::core::Core
 {
 public:
     EnginedCore();
@@ -30,11 +30,11 @@ protected:
     void onShutdown() override;
 
 private:
-    nf::config::LoggerConfig m_loggerConfig;
-    nf::config::IpcConfig m_ipcConfig;
+    pz::config::LoggerConfig m_loggerConfig;
+    pz::config::IpcConfig m_ipcConfig;
 
-    std::unique_ptr<nf::util::ThreadManager>  m_threadManager;
-    std::unique_ptr<nf::ipc::IpcClient>        m_ipcClient;
+    std::unique_ptr<pz::util::ThreadManager>  m_threadManager;
+    std::unique_ptr<pz::ipc::IpcClient>        m_ipcClient;
 
     std::unique_ptr<EnginedEventFactory>       m_eventFactory;
     std::unique_ptr<EnginedActionFactory>      m_actionFactory;
@@ -46,4 +46,4 @@ private:
     std::unique_ptr<EnginedProcess>            m_process;
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class MgmtdServiceManager;
@@ -14,10 +14,11 @@ class MgmtdServiceManager;
 enum class MgmtdActionDomain : std::uint32_t
 {
     Unknown   = 0,
-    Bootstrap = 1
+    Bootstrap = 1,
+    Heartbeat = 2
 };
 
-class MgmtdAction : public nf::action::Action
+class MgmtdAction : public pz::action::Action
 {
 public:
     explicit MgmtdAction(MgmtdActionDomain domain);
@@ -31,4 +32,4 @@ private:
     MgmtdActionDomain m_domain{MgmtdActionDomain::Unknown};
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

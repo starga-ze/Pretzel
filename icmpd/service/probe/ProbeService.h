@@ -14,7 +14,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 class IcmpdEventFactory;
@@ -96,4 +96,4 @@ private:
     static constexpr auto kReplyMaxWaitTimeout = std::chrono::seconds(15);
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

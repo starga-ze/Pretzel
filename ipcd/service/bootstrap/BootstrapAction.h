@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 enum class BootstrapActionType : std::uint32_t
@@ -22,17 +22,17 @@ public:
     explicit BootstrapAction(BootstrapActionType type);
 
     BootstrapAction(BootstrapActionType type,
-                        std::unique_ptr<nf::ipc::IpcMessage> request);
+                        std::unique_ptr<pz::ipc::IpcMessage> request);
 
     BootstrapActionType type() const;
-    const nf::ipc::IpcMessage* request() const;
-    std::unique_ptr<nf::ipc::IpcMessage> takeRequest();
+    const pz::ipc::IpcMessage* request() const;
+    std::unique_ptr<pz::ipc::IpcMessage> takeRequest();
 
     void dispatch(IpcdServiceManager& serviceManager) override;
 
 private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
-    std::unique_ptr<nf::ipc::IpcMessage> m_request;
+    std::unique_ptr<pz::ipc::IpcMessage> m_request;
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

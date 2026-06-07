@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 TopologydServiceManager::TopologydServiceManager(TopologydEventFactory* eventFactory,
@@ -88,4 +88,4 @@ TopologydTxRouter& TopologydServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

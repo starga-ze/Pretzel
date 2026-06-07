@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 class EnginedServiceManager;
@@ -17,7 +17,7 @@ enum class EnginedEventDomain : std::uint32_t
     Heartbeat = 2
 };
 
-class EnginedEvent : public nf::event::Event
+class EnginedEvent : public pz::event::Event
 {
 public:
     explicit EnginedEvent(EnginedEventDomain domain);
@@ -31,4 +31,4 @@ private:
     EnginedEventDomain m_domain{EnginedEventDomain::Unknown};
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

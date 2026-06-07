@@ -2,15 +2,15 @@
 #include "router/TopologydTxRouter.h"
 #include "util/Logger.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
-TopologydTxRouter::TopologydTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler)
+TopologydTxRouter::TopologydTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler)
     : m_ipcClientHandler(ipcClientHandler)
 {
 }
 
-void TopologydTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void TopologydTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -27,4 +27,4 @@ void TopologydTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> ms
     m_ipcClientHandler->egress(std::move(msg));
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

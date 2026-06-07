@@ -1,13 +1,13 @@
 """
 script/stop.py
 
-Script to safely shut down the running NF-NMS platform (nf-nms.target).
+Script to safely shut down the running Pretzel platform (pretzel.target).
 """
 
 import subprocess
 from script.utils import run_cmd
 
-TARGET = "nf-nms.target"
+TARGET = "pretzel.target"
 
 def run():
     # 1. Check if the target is currently running
@@ -15,7 +15,7 @@ def run():
     
     # Skip if not active
     if status.returncode != 0:
-        print("nf-nms.target not running")
+        print("pretzel.target not running")
         return
 
     # 2. Request target daemon to stop

@@ -9,7 +9,7 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 IpcClientHandler::IpcClientHandler(IpcClient* ipcClient) : 
@@ -17,7 +17,7 @@ IpcClientHandler::IpcClientHandler(IpcClient* ipcClient) :
 {
 }
 
-bool IpcClientHandler::handleConnect(int fd, nf::io::Epoll& epoll)
+bool IpcClientHandler::handleConnect(int fd, pz::io::Epoll& epoll)
 {
     int soError = 0;
     socklen_t len = sizeof(soError);
@@ -46,7 +46,7 @@ bool IpcClientHandler::handleConnect(int fd, nf::io::Epoll& epoll)
     return true;
 }
 
-bool IpcClientHandler::handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
+bool IpcClientHandler::handleRecv(int fd, IpcConnection& conn, pz::io::Epoll& epoll)
 {
     if (!IpcHandler::handleRecv(fd, conn, epoll))
     {
@@ -56,7 +56,7 @@ bool IpcClientHandler::handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& ep
     return true;
 }
 
-bool IpcClientHandler::handleSend(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
+bool IpcClientHandler::handleSend(int fd, IpcConnection& conn, pz::io::Epoll& epoll)
 {
     if (!IpcHandler::handleSend(fd, conn, epoll))
     {
@@ -66,7 +66,7 @@ bool IpcClientHandler::handleSend(int fd, IpcConnection& conn, nf::io::Epoll& ep
     return true;
 }
 
-bool IpcClientHandler::ingress(int fd, nf::ipc::IpcFrameView frame)
+bool IpcClientHandler::ingress(int fd, pz::ipc::IpcFrameView frame)
 {
     if (frame.empty())
     {
@@ -117,8 +117,8 @@ void IpcClientHandler::egress(std::unique_ptr<IpcMessage> msg)
     if (frame.empty())
     {
         LOG_WARN("Egress encode failed: dst={}, cmd={}, payload={}bytes",
-                nf::ipc::IpcProtocol::daemonToStr(msg->getDst()),
-                nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+                pz::ipc::IpcProtocol::daemonToStr(msg->getDst()),
+                pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
                 msg->getPayloadLen());
         return;
     }
@@ -132,9 +132,9 @@ void IpcClientHandler::egress(std::unique_ptr<IpcMessage> msg)
     }
 }
 
-void IpcClientHandler::setRxRouter(nf::router::RxRouter* rxRouter)
+void IpcClientHandler::setRxRouter(pz::router::RxRouter* rxRouter)
 {
     m_rxRouter = rxRouter;
 } 
 
-}// namespace nf::ipc
+}// namespace pz::ipc

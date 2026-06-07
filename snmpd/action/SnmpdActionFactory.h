@@ -6,10 +6,10 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
-class SnmpdActionFactory final : public nf::action::ActionFactory<SnmpdAction, SnmpdActionDomain>
+class SnmpdActionFactory final : public pz::action::ActionFactory<SnmpdAction, SnmpdActionDomain>
 {
 public:
     SnmpdActionFactory() = default;
@@ -18,4 +18,4 @@ public:
     std::unique_ptr<SnmpdAction> create(SnmpdActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

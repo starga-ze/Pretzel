@@ -9,13 +9,13 @@
 
 #include <queue>
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 class SnmpdEventFactory;
 class SnmpdActionFactory;
 
-class SnmpdServiceManager : public nf::service::ServiceManager<SnmpdEvent, SnmpdAction>
+class SnmpdServiceManager : public pz::service::ServiceManager<SnmpdEvent, SnmpdAction>
 {
 public:
     SnmpdServiceManager(SnmpdEventFactory* eventFactory,
@@ -47,4 +47,4 @@ private:
     std::queue<std::unique_ptr<SnmpdAction>> m_actionQueue;
 };
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

@@ -8,7 +8,7 @@
 #include <memory>
 #include <string>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class AuthService;
@@ -53,4 +53,4 @@ private:
     std::shared_ptr<HttpListener> m_listener;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

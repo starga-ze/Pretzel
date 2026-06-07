@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 
@@ -114,4 +114,4 @@ private:
     std::vector<std::uint8_t> m_payload;
 };
 
-} // namespace nf::ipc
+} // namespace pz::ipc

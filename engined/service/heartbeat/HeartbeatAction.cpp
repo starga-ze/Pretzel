@@ -2,7 +2,7 @@
 
 #include "service/EnginedServiceManager.h"
 
-namespace nf::engined
+namespace pz::engined
 {
 
 HeartbeatAction::HeartbeatAction(HeartbeatActionType type)
@@ -12,7 +12,7 @@ HeartbeatAction::HeartbeatAction(HeartbeatActionType type)
 }
 
 HeartbeatAction::HeartbeatAction(HeartbeatActionType type,
-                                 nf::ipc::IpcDaemon dst)
+                                 pz::ipc::IpcDaemon dst)
     : EnginedAction(EnginedActionDomain::Heartbeat),
       m_type(type),
       m_dst(dst)
@@ -37,7 +37,7 @@ HeartbeatActionType HeartbeatAction::type() const
     return m_type;
 }
 
-nf::ipc::IpcDaemon HeartbeatAction::dst() const
+pz::ipc::IpcDaemon HeartbeatAction::dst() const
 {
     return m_dst;
 }
@@ -47,4 +47,4 @@ const std::string& HeartbeatAction::resultJson() const
     return m_resultJson;
 }
 
-} // namespace nf::engined
+} // namespace pz::engined

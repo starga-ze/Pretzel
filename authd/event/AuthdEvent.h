@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::authd
+namespace pz::authd
 {
 
 class AuthdServiceManager;
@@ -17,7 +17,7 @@ enum class AuthdEventDomain : std::uint32_t
     Heartbeat = 2
 };
 
-class AuthdEvent : public nf::event::Event
+class AuthdEvent : public pz::event::Event
 {
 public:
     explicit AuthdEvent(AuthdEventDomain domain);
@@ -31,4 +31,4 @@ private:
     AuthdEventDomain m_domain{AuthdEventDomain::Unknown};
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

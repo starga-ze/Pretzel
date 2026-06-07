@@ -6,7 +6,7 @@
 
 #include <sys/epoll.h>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 IcmpEngine::IcmpEngine()
@@ -151,7 +151,7 @@ bool IcmpEngine::initSocket()
     if (m_socket)
         return true;
 
-    m_socket = std::make_unique<nf::socket::IcmpSocket>();
+    m_socket = std::make_unique<pz::socket::IcmpSocket>();
     if (!m_socket)
     {
         LOG_ERROR("IcmpEngine: socket allocation failed");
@@ -256,4 +256,4 @@ void IcmpEngine::handleEvent(int fd, std::uint32_t events)
     }
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

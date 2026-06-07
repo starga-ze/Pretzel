@@ -12,7 +12,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 BootstrapService::BootstrapService(IpcdEventFactory* eventFactory,
@@ -45,11 +45,11 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
         }
 
         LOG_INFO("BootstrapService: ReceiveClientHello src={}",
-                 nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+                 pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
         auto action = std::make_unique<BootstrapAction>(
             BootstrapActionType::SendServerHello,
-            std::make_unique<nf::ipc::IpcMessage>(*msg));
+            std::make_unique<pz::ipc::IpcMessage>(*msg));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -65,11 +65,11 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
         }
 
         LOG_INFO("BootstrapService: ReceiveSyncRequest src={}",
-                 nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+                 pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
         auto action = std::make_unique<BootstrapAction>(
             BootstrapActionType::SendSyncResponse,
-            std::make_unique<nf::ipc::IpcMessage>(*msg));
+            std::make_unique<pz::ipc::IpcMessage>(*msg));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -85,7 +85,7 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
         }
 
         LOG_INFO("BootstrapService: ReceiveRuntimeReady src={}",
-                 nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+                 pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
         if (m_ipcServerHandler)
         {
@@ -142,39 +142,39 @@ void BootstrapService::handleAction(IpcdServiceManager& serviceManager,
     }
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
-BootstrapService::buildServerHello(const nf::ipc::IpcMessage& req) const
+std::unique_ptr<pz::ipc::IpcMessage>
+BootstrapService::buildServerHello(const pz::ipc::IpcMessage& req) const
 {
-    const std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Ipcd);
+    const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Ipcd);
 
-    const auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Response);
+    const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Ipcd,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Ipcd,
         req.getSrc(),
-        nf::ipc::IpcCmd::ServerHello,
+        pz::ipc::IpcCmd::ServerHello,
         req.getSeqNo(),
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
     return msg;
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
-BootstrapService::buildSyncResponse(const nf::ipc::IpcMessage& req) const
+std::unique_ptr<pz::ipc::IpcMessage>
+BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
 {
-    const auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Response);
+    const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Ipcd,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Ipcd,
         req.getSrc(),
-        nf::ipc::IpcCmd::SyncResponse,
+        pz::ipc::IpcCmd::SyncResponse,
         req.getSeqNo(),
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
     nlohmann::json payloadJson;
     payloadJson["daemons"] = nlohmann::json::array();
@@ -185,7 +185,7 @@ BootstrapService::buildSyncResponse(const nf::ipc::IpcMessage& req) const
 
         for (const auto& [daemon, state] : runtimeTable)
         {
-            if (daemon == nf::ipc::IpcDaemon::Engined)
+            if (daemon == pz::ipc::IpcDaemon::Engined)
             {
                 continue;
             }
@@ -196,7 +196,7 @@ BootstrapService::buildSyncResponse(const nf::ipc::IpcMessage& req) const
             }
 
             payloadJson["daemons"].push_back({
-                {"daemon", nf::ipc::IpcProtocol::daemonToStr(daemon)},
+                {"daemon", pz::ipc::IpcProtocol::daemonToStr(daemon)},
                 {"ready", state.ready}
             });
         }
@@ -208,4 +208,4 @@ BootstrapService::buildSyncResponse(const nf::ipc::IpcMessage& req) const
     return msg;
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

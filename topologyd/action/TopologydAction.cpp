@@ -1,6 +1,6 @@
 #include "action/TopologydAction.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 TopologydAction::TopologydAction(TopologydActionDomain domain)
@@ -13,4 +13,4 @@ TopologydActionDomain TopologydAction::domain() const
     return m_domain;
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

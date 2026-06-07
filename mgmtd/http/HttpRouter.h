@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class AuthService;
@@ -57,4 +57,4 @@ private:
     std::shared_ptr<HttpCache> m_cache;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

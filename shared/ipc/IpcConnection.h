@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 enum class IoResult
@@ -26,10 +26,10 @@ public:
 
     int fd() const noexcept { return m_fd; }
 
-    nf::algorithm::ByteRingBuffer& rx() noexcept { return m_rx; }
-    nf::algorithm::ByteRingBuffer& tx() noexcept { return m_tx; }
-    const nf::algorithm::ByteRingBuffer& rx() const noexcept { return m_rx; }
-    const nf::algorithm::ByteRingBuffer& tx() const noexcept { return m_tx; }
+    pz::algorithm::ByteRingBuffer& rx() noexcept { return m_rx; }
+    pz::algorithm::ByteRingBuffer& tx() noexcept { return m_tx; }
+    const pz::algorithm::ByteRingBuffer& rx() const noexcept { return m_rx; }
+    const pz::algorithm::ByteRingBuffer& tx() const noexcept { return m_tx; }
 
     IoResult recv(int& outErrno);
 
@@ -40,8 +40,8 @@ public:
 
 private:
     int m_fd{-1};
-    nf::algorithm::ByteRingBuffer m_rx;
-    nf::algorithm::ByteRingBuffer m_tx;
+    pz::algorithm::ByteRingBuffer m_rx;
+    pz::algorithm::ByteRingBuffer m_tx;
 };
 
-} // namespace nf::ipc
+} // namespace pz::ipc

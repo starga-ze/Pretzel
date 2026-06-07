@@ -13,13 +13,13 @@
 #include <memory>
 #include <queue>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 class EnginedEventFactory;
 class EnginedActionFactory;
 
-class EnginedServiceManager : public nf::service::ServiceManager<EnginedEvent, EnginedAction>
+class EnginedServiceManager : public pz::service::ServiceManager<EnginedEvent, EnginedAction>
 {
 public:
     EnginedServiceManager(EnginedEventFactory* eventFactory,
@@ -50,4 +50,4 @@ private:
     std::queue<std::unique_ptr<EnginedAction>> m_actionQueue;
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

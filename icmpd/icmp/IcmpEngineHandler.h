@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 class IcmpEngine;
@@ -21,8 +21,8 @@ class IcmpEngineHandler final
 public:
     explicit IcmpEngineHandler(IcmpEngine* icmpEngine);
 
-    bool handleRecv(int fd, IcmpConnection& conn, nf::io::Epoll& epoll);
-    bool handleSend(int fd, IcmpConnection& conn, nf::io::Epoll& epoll);
+    bool handleRecv(int fd, IcmpConnection& conn, pz::io::Epoll& epoll);
+    bool handleSend(int fd, IcmpConnection& conn, pz::io::Epoll& epoll);
 
     bool ingress(int fd,
                  const std::string& srcIp,
@@ -40,4 +40,4 @@ private:
     IcmpCodec m_codec;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-namespace nf::session
+namespace pz::session
 {
 
 enum class SessionState : std::uint8_t
@@ -20,15 +20,15 @@ class Session
 {
 public:
     Session(std::string id,
-            nf::ipc::IpcDaemon src,
-            nf::ipc::IpcDaemon dst);
+            pz::ipc::IpcDaemon src,
+            pz::ipc::IpcDaemon dst);
 
     ~Session() = default;
 
     const std::string& getId() const noexcept;
 
-    nf::ipc::IpcDaemon getSrc() const noexcept;
-    nf::ipc::IpcDaemon getDst() const noexcept;
+    pz::ipc::IpcDaemon getSrc() const noexcept;
+    pz::ipc::IpcDaemon getDst() const noexcept;
 
     SessionState getState() const noexcept;
     bool isEstablished() const noexcept;
@@ -47,8 +47,8 @@ public:
 private:
     std::string m_id;
 
-    nf::ipc::IpcDaemon m_src;
-    nf::ipc::IpcDaemon m_dst;
+    pz::ipc::IpcDaemon m_src;
+    pz::ipc::IpcDaemon m_dst;
 
     SessionState m_state { SessionState::Init };
 
@@ -57,4 +57,4 @@ private:
     std::uint32_t m_lastSeqNo { 0 };
 };
 
-} // namespace nf::session
+} // namespace pz::session

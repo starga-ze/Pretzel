@@ -5,7 +5,7 @@
 
 #include <boost/asio/ssl.hpp>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 HttpsSession::HttpsSession(tcp::socket socket,
@@ -113,4 +113,4 @@ void HttpsSession::onShutdown(beast::error_code ec)
     }
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

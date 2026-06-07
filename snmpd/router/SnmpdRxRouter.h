@@ -5,16 +5,16 @@
 #include "event/SnmpdEventFactory.h"
 #include "service/SnmpdServiceManager.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
-class SnmpdRxRouter : public nf::router::RxRouter
+class SnmpdRxRouter : public pz::router::RxRouter
 {
 public:
     SnmpdRxRouter(SnmpdEventFactory* eventFactory);
     ~SnmpdRxRouter() override = default;
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
     void setServiceManager(SnmpdServiceManager* serviceManager);
 
@@ -23,4 +23,4 @@ private:
     SnmpdEventFactory* m_eventFactory = nullptr;
 };
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

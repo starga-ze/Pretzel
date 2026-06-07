@@ -3,7 +3,7 @@
 #include <optional>
 #include <string>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class HttpCache
@@ -28,4 +28,4 @@ private:
     std::string m_baseDir;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

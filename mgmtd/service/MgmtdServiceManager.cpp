@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory,
@@ -124,4 +124,4 @@ void MgmtdServiceManager::setAliveDevices(std::uint32_t count)
     LOG_DEBUG("MgmtdServiceManager: aliveDevices updated count={}", count);
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

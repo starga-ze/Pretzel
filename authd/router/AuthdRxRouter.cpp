@@ -1,7 +1,7 @@
 #include "router/AuthdRxRouter.h"
 #include "util/Logger.h"
 
-namespace nf::authd
+namespace pz::authd
 {
 
 AuthdRxRouter::AuthdRxRouter(AuthdEventFactory* eventFactory) :
@@ -9,7 +9,7 @@ AuthdRxRouter::AuthdRxRouter(AuthdEventFactory* eventFactory) :
 {
 }
 
-void AuthdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void AuthdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {
@@ -33,4 +33,4 @@ void AuthdRxRouter::setServiceManager(AuthdServiceManager* serviceManager)
     m_serviceManager = serviceManager;
 }
 
-} // namespace nf::authd
+} // namespace pz::authd

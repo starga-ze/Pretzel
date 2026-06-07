@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class MgmtdServiceManager;
@@ -18,7 +18,7 @@ enum class MgmtdEventDomain : std::uint32_t
     Heartbeat = 3
 };
 
-class MgmtdEvent : public nf::event::Event
+class MgmtdEvent : public pz::event::Event
 {
 public:
     explicit MgmtdEvent(MgmtdEventDomain domain);
@@ -32,4 +32,4 @@ private:
     MgmtdEventDomain m_domain{MgmtdEventDomain::Unknown};
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

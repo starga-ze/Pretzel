@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-namespace nf::authd
+namespace pz::authd
 {
 
 enum class HeartbeatActionType : std::uint32_t
@@ -17,16 +17,16 @@ enum class HeartbeatActionType : std::uint32_t
 class HeartbeatAction final : public AuthdAction
 {
 public:
-    HeartbeatAction(HeartbeatActionType type, nf::ipc::IpcDaemon dst);
+    HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst);
 
     HeartbeatActionType type() const;
-    nf::ipc::IpcDaemon dst() const;
+    pz::ipc::IpcDaemon dst() const;
 
     void dispatch(AuthdServiceManager& serviceManager) override;
 
 private:
     HeartbeatActionType m_type{HeartbeatActionType::Unknown};
-    nf::ipc::IpcDaemon m_dst{nf::ipc::IpcDaemon::Unknown};
+    pz::ipc::IpcDaemon m_dst{pz::ipc::IpcDaemon::Unknown};
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

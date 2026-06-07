@@ -16,7 +16,7 @@
 #include <memory>
 #include <string>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 struct HttpConfig
@@ -29,7 +29,7 @@ struct HttpConfig
     std::string keyFile;
 };
 
-class MgmtdCore : public nf::core::Core
+class MgmtdCore : public pz::core::Core
 {
 public:
     MgmtdCore();
@@ -47,11 +47,11 @@ private:
     bool loadAuthConfig();
 
 private:
-    nf::config::LoggerConfig m_loggerConfig;
-    nf::config::IpcConfig m_ipcConfig;
+    pz::config::LoggerConfig m_loggerConfig;
+    pz::config::IpcConfig m_ipcConfig;
     HttpConfig m_httpConfig;
 
-    std::unique_ptr<nf::ipc::IpcClient>  m_ipcClient;
+    std::unique_ptr<pz::ipc::IpcClient>  m_ipcClient;
     std::unique_ptr<MgmtdEventFactory>   m_eventFactory;
     std::unique_ptr<MgmtdActionFactory>  m_actionFactory;
     std::unique_ptr<MgmtdTxRouter>       m_txRouter;
@@ -61,4 +61,4 @@ private:
     std::unique_ptr<MgmtdProcess>        m_process;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

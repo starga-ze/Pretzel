@@ -4,7 +4,7 @@
 #include <csignal>
 #include <iostream>
 
-namespace nf::core
+namespace pz::core
 {
 
 std::atomic<bool> Core::m_running{true};
@@ -49,4 +49,4 @@ bool Core::stopping() const
     return !m_running.load();
 }
 
-} // namespace nf::core
+} // namespace pz::core

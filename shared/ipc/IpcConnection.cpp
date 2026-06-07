@@ -6,7 +6,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 IpcConnection::IpcConnection(int fd, std::size_t rxBuf, std::size_t txBuf)
@@ -107,4 +107,4 @@ bool IpcConnection::write(const std::vector<std::uint8_t>& data)
     return write(data.data(), data.size());
 }
 
-} // namespace nf::ipc
+} // namespace pz::ipc

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace nf::socket
+namespace pz::socket
 {
 
 class IcmpSocket final
@@ -28,4 +28,4 @@ private:
     int m_fd {-1};
 };
 
-} // namespace nf::socket
+} // namespace pz::socket

@@ -1,7 +1,7 @@
 #include "router/IcmpdRxRouter.h"
 #include "util/Logger.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 IcmpdRxRouter::IcmpdRxRouter(IcmpdEventFactory* eventFactory) :
@@ -9,7 +9,7 @@ IcmpdRxRouter::IcmpdRxRouter(IcmpdEventFactory* eventFactory) :
 {
 }
 
-void IcmpdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IcmpdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {
@@ -46,4 +46,4 @@ void IcmpdRxRouter::setServiceManager(IcmpdServiceManager* serviceManager)
     m_serviceManager = serviceManager;
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

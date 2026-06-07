@@ -1,7 +1,7 @@
 #include "service/bootstrap/BootstrapAction.h"
 #include "service/SnmpdServiceManager.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 BootstrapAction::BootstrapAction(BootstrapActionType type) :
@@ -20,4 +20,4 @@ void BootstrapAction::dispatch(SnmpdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

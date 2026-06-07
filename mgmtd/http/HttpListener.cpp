@@ -6,7 +6,7 @@
 
 #include <functional>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 HttpListener::HttpListener(boost::asio::io_context& ioContext,
@@ -105,4 +105,4 @@ void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
     doAccept();
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

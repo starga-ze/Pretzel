@@ -6,7 +6,7 @@
 
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class HttpRouter;
@@ -36,5 +36,5 @@ private:
     std::shared_ptr<void> m_responseHolder;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd
 

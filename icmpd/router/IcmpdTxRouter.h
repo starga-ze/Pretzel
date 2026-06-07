@@ -5,21 +5,21 @@
 #include "icmp/IcmpEngineHandler.h"
 #include "icmp/IcmpPacket.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
-class IcmpdTxRouter : public nf::router::TxRouter
+class IcmpdTxRouter : public pz::router::TxRouter
 {
 public:
-    IcmpdTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler, IcmpEngineHandler* icmpEngineHandler);
+    IcmpdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler, IcmpEngineHandler* icmpEngineHandler);
     ~IcmpdTxRouter() override = default;
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
     void handleIcmpPacket(std::unique_ptr<IcmpPacket> packet, std::string dstIp);
 
 private:
-    nf::ipc::IpcClientHandler* m_ipcClientHandler;
+    pz::ipc::IpcClientHandler* m_ipcClientHandler;
     IcmpEngineHandler* m_icmpEngineHandler;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

@@ -1,7 +1,7 @@
 #include "service/bootstrap/BootstrapAction.h"
 #include "service/AuthdServiceManager.h"
 
-namespace nf::authd
+namespace pz::authd
 {
 
 BootstrapAction::BootstrapAction(BootstrapActionType type) :
@@ -20,4 +20,4 @@ void BootstrapAction::dispatch(AuthdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace nf::authd
+} // namespace pz::authd

@@ -5,18 +5,18 @@
 
 #include <memory>
 
-namespace nf::authd
+namespace pz::authd
 {
 
-class AuthdEventFactory final : public nf::event::EventFactory<AuthdEvent, AuthdEventDomain>
+class AuthdEventFactory final : public pz::event::EventFactory<AuthdEvent, AuthdEventDomain>
 {
 public:
     AuthdEventFactory() = default;
     ~AuthdEventFactory() override = default;
 
     std::unique_ptr<AuthdEvent> create() override;
-    std::unique_ptr<AuthdEvent> create(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    std::unique_ptr<AuthdEvent> create(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
     std::unique_ptr<AuthdEvent> create(AuthdEventDomain domain, std::uint32_t type) override;
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

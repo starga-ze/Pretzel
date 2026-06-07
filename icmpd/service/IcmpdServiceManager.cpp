@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 IcmpdServiceManager::IcmpdServiceManager(IcmpdEventFactory* eventFactory, 
@@ -14,7 +14,8 @@ IcmpdServiceManager::IcmpdServiceManager(IcmpdEventFactory* eventFactory,
     m_actionFactory(actionFactory),
     m_txRouter(txRouter),
     m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-    m_probeService(std::make_unique<ProbeService>(m_eventFactory, m_actionFactory))
+    m_probeService(std::make_unique<ProbeService>(m_eventFactory, m_actionFactory)),
+    m_heartbeatService(std::make_unique<HeartbeatService>())
 {
 }
 
@@ -89,9 +90,14 @@ ProbeService& IcmpdServiceManager::probeService()
     return *m_probeService;
 }
 
+HeartbeatService& IcmpdServiceManager::heartbeatService()
+{
+    return *m_heartbeatService;
+}
+
 IcmpdTxRouter& IcmpdServiceManager::txRouter()
 {
     return *m_txRouter;
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

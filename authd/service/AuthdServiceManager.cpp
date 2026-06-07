@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-namespace nf::authd
+namespace pz::authd
 {
 
 AuthdServiceManager::AuthdServiceManager(AuthdEventFactory* eventFactory,
@@ -88,4 +88,4 @@ AuthdTxRouter& AuthdServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace nf::authd
+} // namespace pz::authd

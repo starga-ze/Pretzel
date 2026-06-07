@@ -4,7 +4,7 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
-namespace nf::util
+namespace pz::util
 {
 
 class Logger
@@ -26,7 +26,7 @@ private:
     static void setThreadName();
 };
 
-} // namespace nf::util
+} // namespace pz::util
 
 #ifdef _WIN32
 #define __FILENAME__ (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
@@ -35,7 +35,7 @@ private:
 #endif
 
 #define LOG_INTERNAL(level, format, ...)                                                             \
-    nf::util::Logger::GetLogger()->log(spdlog::source_loc{__FILENAME__, __LINE__, SPDLOG_FUNCTION},  \
+    pz::util::Logger::GetLogger()->log(spdlog::source_loc{__FILENAME__, __LINE__, SPDLOG_FUNCTION},  \
             level, format, ##__VA_ARGS__)
 
 #define LOG_DEBUG(...) LOG_INTERNAL(spdlog::level::debug, __VA_ARGS__)

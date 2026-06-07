@@ -7,13 +7,13 @@
 
 #include <chrono>
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
-class SnmpdProcess : public nf::process::Process
+class SnmpdProcess : public pz::process::Process
 {
 public:
-    SnmpdProcess(nf::ipc::IpcClient* ipcClient,
+    SnmpdProcess(pz::ipc::IpcClient* ipcClient,
                  SnmpdServiceManager* serviceManager);
     ~SnmpdProcess() override = default;
 
@@ -21,8 +21,8 @@ public:
     void tick() override;
 
 private:
-    nf::ipc::IpcClient* m_ipcClient;
+    pz::ipc::IpcClient* m_ipcClient;
     SnmpdServiceManager* m_serviceManager;
 };
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

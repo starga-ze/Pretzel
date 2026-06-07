@@ -1,0 +1,5 @@
+[Unit]
+Description=Pretzel Platform
+
+[Install]
+WantedBy=multi-user.target

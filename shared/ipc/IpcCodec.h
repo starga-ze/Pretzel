@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 struct IpcFrameView
@@ -46,4 +46,4 @@ public:
     IpcPeekResult peekFrameSize(const std::uint8_t* data, std::size_t len, std::size_t& outFrameSize) const;
 };
 
-} // namespace nf::ipc
+} // namespace pz::ipc

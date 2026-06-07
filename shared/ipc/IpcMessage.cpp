@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 IpcMessage::IpcMessage()
@@ -210,4 +210,4 @@ std::string IpcMessage::dump() const
     return oss.str();
 }
 
-} // namespace nf::ipc
+} // namespace pz::ipc
