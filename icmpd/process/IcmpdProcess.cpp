@@ -1,13 +1,13 @@
 #include "process/IcmpdProcess.h"
 #include "util/Logger.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 constexpr int kIpcClientEngineTimeoutMs = 10;
 constexpr int kIcmpEngineTimeoutMs = 10;
 
-IcmpdProcess::IcmpdProcess(nf::ipc::IpcClient* ipcClientEngine, 
+IcmpdProcess::IcmpdProcess(pz::ipc::IpcClient* ipcClientEngine, 
         IcmpEngine* icmpEngine,
         IcmpdServiceManager* serviceManager) : 
     m_ipcClientEngine(ipcClientEngine), 
@@ -46,4 +46,4 @@ void IcmpdProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

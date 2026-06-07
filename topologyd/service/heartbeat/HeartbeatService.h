@@ -3,7 +3,7 @@
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/heartbeat/HeartbeatAction.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 class TopologydServiceManager;
@@ -21,4 +21,4 @@ public:
                       const HeartbeatAction& action);
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

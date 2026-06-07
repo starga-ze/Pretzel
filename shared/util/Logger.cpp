@@ -9,7 +9,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <vector>
 
-namespace nf::util
+namespace pz::util
 {
 
 class short_level_flag : public spdlog::custom_flag_formatter
@@ -114,7 +114,7 @@ void Logger::Init(const std::string& logger_name, const std::string& log_filepat
     spdlog::set_default_logger(s_logger);
 
     /* Spdlog Level */
-    spdlog::set_level(spdlog::level::info);
+    spdlog::set_level(spdlog::level::debug);
 
     auto console_fmt = std::make_unique<spdlog::pattern_formatter>();
     console_fmt->add_flag<short_level_flag>('!');
@@ -145,4 +145,4 @@ void Logger::setThreadName()
     ThreadManager::setName("spdlog");
 }
 
-} // namespace nf::util
+} // namespace pz::util

@@ -7,10 +7,10 @@
 
 #include <sys/epoll.h>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
-bool IpcHandler::handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
+bool IpcHandler::handleRecv(int fd, IpcConnection& conn, pz::io::Epoll& epoll)
 {
     (void)epoll;
 
@@ -39,7 +39,7 @@ bool IpcHandler::handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
     return drainRxFrames(fd, conn);
 }
 
-bool IpcHandler::handleSend(int fd, IpcConnection& conn, nf::io::Epoll& epoll)
+bool IpcHandler::handleSend(int fd, IpcConnection& conn, pz::io::Epoll& epoll)
 {
     int ioErrno = 0;
     const IoResult rc = conn.send(ioErrno);
@@ -186,4 +186,4 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
     }
 }
 
-} // namespace nf::ipc
+} // namespace pz::ipc

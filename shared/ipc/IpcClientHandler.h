@@ -5,7 +5,7 @@
 #include "router/RxRouter.h"
 #include "router/TxRouter.h"
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 class IpcClient;
@@ -16,18 +16,18 @@ public:
     IpcClientHandler(IpcClient* ipcClient);
     ~IpcClientHandler() override = default;
 
-    bool handleConnect(int fd, nf::io::Epoll& epoll);
-    bool handleRecv(int fd, IpcConnection& conn, nf::io::Epoll& epoll);
-    bool handleSend(int fd, IpcConnection& conn, nf::io::Epoll& epoll);
+    bool handleConnect(int fd, pz::io::Epoll& epoll);
+    bool handleRecv(int fd, IpcConnection& conn, pz::io::Epoll& epoll);
+    bool handleSend(int fd, IpcConnection& conn, pz::io::Epoll& epoll);
 
-    bool ingress(int fd, nf::ipc::IpcFrameView frame) override;
+    bool ingress(int fd, pz::ipc::IpcFrameView frame) override;
     void egress(std::unique_ptr<IpcMessage> msg) override;
 
-    void setRxRouter(nf::router::RxRouter* rxRouter);
+    void setRxRouter(pz::router::RxRouter* rxRouter);
 
 private:
     IpcClient* m_ipcClient = nullptr;
-    nf::router::RxRouter* m_rxRouter = nullptr;
+    pz::router::RxRouter* m_rxRouter = nullptr;
 };
 
-} // namespace nf::ipc
+} // namespace pz::ipc

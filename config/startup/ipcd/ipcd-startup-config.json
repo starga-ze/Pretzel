@@ -1,0 +1,32 @@
+{
+  "daemon_name": "pz-ipcd",
+
+  "logger": {
+    "name": "pz-ipcd",
+    "file": "/var/log/pretzel/ipcd.log",
+    "max_file_size": 5242880,
+    "max_files": 100
+  },
+
+  "ipc": {
+    "socket_path": "/run/pretzel/ipcd.sock",
+    "max_connections": 128,
+    "max_frame_size": 65536,
+    "rx_buffer_size": 65536,
+    "tx_buffer_size": 65536
+  },
+
+  "router": {
+    "allow_unknown_dst": false
+  },
+
+  "daemon_map": {
+    "ipcd": 1,
+    "engined": 2,
+    "mgmtd": 3,
+    "authd": 4,
+    "snmpd": 5,
+    "icmpd": 6,
+    "topologyd": 7
+  }
+}

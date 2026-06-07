@@ -5,7 +5,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::engined
+namespace pz::engined
 {
 
 std::unique_ptr<EnginedEvent> EnginedEventFactory::create()
@@ -29,7 +29,7 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(EnginedEventDomain dom
     }
 }
 
-std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> msg)
+std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -39,16 +39,16 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<nf::ip
 
     switch (msg->getCmd())
     {
-    case nf::ipc::IpcCmd::ServerHello:
+    case pz::ipc::IpcCmd::ServerHello:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello, std::move(msg));
 
-    case nf::ipc::IpcCmd::SyncResponse:
+    case pz::ipc::IpcCmd::SyncResponse:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveSyncResponse, std::move(msg));
 
-    case nf::ipc::IpcCmd::RuntimeStart:
+    case pz::ipc::IpcCmd::RuntimeStart:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
 
-    case nf::ipc::IpcCmd::HeartbeatResponse:
+    case pz::ipc::IpcCmd::HeartbeatResponse:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResponse,
                                                std::move(msg));
 
@@ -58,4 +58,4 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<nf::ip
     }
 }
 
-} // namespace nf::engined
+} // namespace pz::engined

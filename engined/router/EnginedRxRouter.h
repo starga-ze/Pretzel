@@ -5,21 +5,21 @@
 #include "event/EnginedEventFactory.h"
 #include "service/EnginedServiceManager.h"
 
-namespace nf::engined
+namespace pz::engined
 {
 
-class EnginedRxRouter : public nf::router::RxRouter
+class EnginedRxRouter : public pz::router::RxRouter
 {
 public:
     EnginedRxRouter(EnginedEventFactory* eventFactory,
                     EnginedServiceManager* serviceManager);
     ~EnginedRxRouter() override = default;
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
 private:
     EnginedEventFactory* m_eventFactory{nullptr};
     EnginedServiceManager* m_serviceManager{nullptr};
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

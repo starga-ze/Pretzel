@@ -1,12 +1,13 @@
 #pragma once
 
 #include "service/heartbeat/HeartbeatEvent.h"
+#include "service/heartbeat/HeartbeatAction.h"
 
 #include <atomic>
 #include <cstdint>
 #include <string>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class MgmtdServiceManager;
@@ -20,6 +21,9 @@ public:
     void handleEvent(MgmtdServiceManager& serviceManager,
                      const HeartbeatEvent& event);
 
+    void handleAction(MgmtdServiceManager& serviceManager,
+                      const HeartbeatAction& action);
+
     std::string latestJson() const;
     bool hasData() const;
 
@@ -28,4 +32,4 @@ private:
     std::string m_latestJson;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

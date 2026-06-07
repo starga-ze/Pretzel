@@ -5,14 +5,14 @@
 
 #include <memory>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
-class TopologydActionFactory : public nf::action::ActionFactory<TopologydAction, TopologydActionDomain>
+class TopologydActionFactory : public pz::action::ActionFactory<TopologydAction, TopologydActionDomain>
 {
 public:
     std::unique_ptr<TopologydAction> create(TopologydActionDomain domain,
                                             std::uint32_t type) override;
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

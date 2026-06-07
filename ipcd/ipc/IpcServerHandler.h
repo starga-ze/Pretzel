@@ -11,7 +11,7 @@
 #include <memory>
 #include <unordered_map>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 class IpcServer;
@@ -22,55 +22,55 @@ struct RuntimeState
     bool ready {false};
 };
 
-class IpcServerHandler : public nf::ipc::IpcHandler
+class IpcServerHandler : public pz::ipc::IpcHandler
 {
 public:
-    explicit IpcServerHandler(IpcServer* ipcServer, const nf::config::IpcConfig& cfg);
+    explicit IpcServerHandler(IpcServer* ipcServer, const pz::config::IpcConfig& cfg);
     ~IpcServerHandler() override = default;
 
     void handleAccept(
-        nf::socket::UnixDomainSocket& listener,
-        std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
-        nf::io::Epoll& epoll);
+        pz::socket::UnixDomainSocket& listener,
+        std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
+        pz::io::Epoll& epoll);
 
     bool handleRecv(
         int fd,
-        std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
-        nf::io::Epoll& epoll);
+        std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
+        pz::io::Epoll& epoll);
 
     bool handleSend(
         int fd,
-        std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
-        nf::io::Epoll& epoll);
+        std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
+        pz::io::Epoll& epoll);
 
     void closeConnection(
         int fd,
-        std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>>& connections,
-        nf::io::Epoll& epoll);
+        std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
+        pz::io::Epoll& epoll);
 
-    bool ingress(int fd, nf::ipc::IpcFrameView frame) override;
-    void egress(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    bool ingress(int fd, pz::ipc::IpcFrameView frame) override;
+    void egress(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
-    void setRxRouter(nf::router::RxRouter* rxRouter);
+    void setRxRouter(pz::router::RxRouter* rxRouter);
 
-    void markRuntimeReady(nf::ipc::IpcDaemon daemon, bool ready = true);
-    const std::unordered_map<nf::ipc::IpcDaemon, RuntimeState>& getRuntimeTable() const;
+    void markRuntimeReady(pz::ipc::IpcDaemon daemon, bool ready = true);
+    const std::unordered_map<pz::ipc::IpcDaemon, RuntimeState>& getRuntimeTable() const;
 
 private:
-    bool bindRoute(nf::ipc::IpcDaemon daemon, int fd);
-    int findRoute(nf::ipc::IpcDaemon daemon) const;
+    bool bindRoute(pz::ipc::IpcDaemon daemon, int fd);
+    int findRoute(pz::ipc::IpcDaemon daemon) const;
     void removeRoute(int fd);
 
-    void unicast(std::unique_ptr<nf::ipc::IpcMessage> msg);
-    void broadcast(std::unique_ptr<nf::ipc::IpcMessage> msg);
-    bool sendFrame(int fd, const std::unique_ptr<nf::ipc::IpcMessage>& msg);
+    void unicast(std::unique_ptr<pz::ipc::IpcMessage> msg);
+    void broadcast(std::unique_ptr<pz::ipc::IpcMessage> msg);
+    bool sendFrame(int fd, const std::unique_ptr<pz::ipc::IpcMessage>& msg);
 
     IpcServer* m_ipcServer = nullptr;
-    nf::router::RxRouter* m_rxRouter = nullptr;
+    pz::router::RxRouter* m_rxRouter = nullptr;
 
-    nf::config::IpcConfig m_cfg;
+    pz::config::IpcConfig m_cfg;
 
-    std::unordered_map<nf::ipc::IpcDaemon, RuntimeState> m_runtimeTable;
+    std::unordered_map<pz::ipc::IpcDaemon, RuntimeState> m_runtimeTable;
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

@@ -1,0 +1,18 @@
+[Unit]
+Description=Pretzel Node Exporter
+After=network.target
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/opt/pretzel/bin/node_exporter \
+  --web.listen-address=0.0.0.0:9100
+
+StandardOutput=append:/var/log/pretzel/node_exporter.log
+StandardError=append:/var/log/pretzel/node_exporter.log
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=pretzel.target

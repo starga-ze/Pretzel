@@ -7,13 +7,13 @@
 
 #include <chrono>
 
-namespace nf::authd
+namespace pz::authd
 {
 
-class AuthdProcess : public nf::process::Process
+class AuthdProcess : public pz::process::Process
 {
 public:
-    AuthdProcess(nf::ipc::IpcClient* ipcClient,
+    AuthdProcess(pz::ipc::IpcClient* ipcClient,
                  AuthdServiceManager* serviceManager);
     ~AuthdProcess() override = default;
 
@@ -21,8 +21,8 @@ public:
     void tick() override;
 
 private:
-    nf::ipc::IpcClient* m_ipcClient;
+    pz::ipc::IpcClient* m_ipcClient;
     AuthdServiceManager* m_serviceManager;
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

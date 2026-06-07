@@ -5,7 +5,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(IcmpdActionDomain domain, std::uint32_t type)
@@ -24,4 +24,4 @@ std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(IcmpdActionDomain domain
     }
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

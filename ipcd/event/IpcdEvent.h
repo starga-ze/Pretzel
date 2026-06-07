@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 class IpcdServiceManager;
@@ -16,7 +16,7 @@ enum class IpcdEventDomain : std::uint32_t
     Bootstrap = 1
 };
 
-class IpcdEvent : public nf::event::Event
+class IpcdEvent : public pz::event::Event
 {
 public:
     explicit IpcdEvent(IpcdEventDomain domain);
@@ -30,4 +30,4 @@ private:
     IpcdEventDomain m_domain{IpcdEventDomain::Unknown};
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

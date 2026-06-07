@@ -6,7 +6,7 @@
 #include <chrono>
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class MgmtdServiceManager;
@@ -45,15 +45,15 @@ public:
 
 private:
     void onServerHello(MgmtdServiceManager& serviceManager,
-                       const nf::ipc::IpcMessage& msg);
+                       const pz::ipc::IpcMessage& msg);
 
-    void onRuntimeStart(const nf::ipc::IpcMessage& msg);
+    void onRuntimeStart(const pz::ipc::IpcMessage& msg);
 
     bool checkTimeout(std::chrono::steady_clock::time_point now,
                       const char* stateName);
 
-    std::unique_ptr<nf::ipc::IpcMessage> buildClientHelloMessage() const;
-    std::unique_ptr<nf::ipc::IpcMessage> buildRuntimeReadyMessage() const;
+    std::unique_ptr<pz::ipc::IpcMessage> buildClientHelloMessage() const;
+    std::unique_ptr<pz::ipc::IpcMessage> buildRuntimeReadyMessage() const;
 
 private:
     MgmtdEventFactory* m_eventFactory{nullptr};
@@ -66,4 +66,4 @@ private:
     std::chrono::steady_clock::time_point m_lastRuntimeReadySentAt{};
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

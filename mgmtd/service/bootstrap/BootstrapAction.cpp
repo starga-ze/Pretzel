@@ -1,7 +1,7 @@
 #include "service/bootstrap/BootstrapAction.h"
 #include "service/MgmtdServiceManager.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 BootstrapAction::BootstrapAction(BootstrapActionType type)
@@ -20,4 +20,4 @@ void BootstrapAction::dispatch(MgmtdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

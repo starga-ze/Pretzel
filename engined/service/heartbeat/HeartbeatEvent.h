@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 enum class HeartbeatEventType : std::uint32_t
@@ -24,17 +24,17 @@ public:
     explicit HeartbeatEvent(HeartbeatEventType type);
 
     HeartbeatEvent(HeartbeatEventType type,
-                   std::unique_ptr<nf::ipc::IpcMessage> message);
+                   std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(EnginedServiceManager& serviceManager) override;
 
     HeartbeatEventType type() const;
-    const nf::ipc::IpcMessage* message() const;
-    std::unique_ptr<nf::ipc::IpcMessage> takeMessage();
+    const pz::ipc::IpcMessage* message() const;
+    std::unique_ptr<pz::ipc::IpcMessage> takeMessage();
 
 private:
     HeartbeatEventType m_type{HeartbeatEventType::Unknown};
-    std::unique_ptr<nf::ipc::IpcMessage> m_message;
+    std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

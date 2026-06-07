@@ -2,7 +2,7 @@
 
 #include <memory>
 
-using namespace nf::snmpd;
+using namespace pz::snmpd;
 
 int main()
 {

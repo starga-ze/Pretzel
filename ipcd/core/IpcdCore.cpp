@@ -1,7 +1,7 @@
 #include "IpcdCore.h"
 #include "util/Logger.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 IpcdCore::IpcdCore() : Core("ipcd")
@@ -26,7 +26,7 @@ bool IpcdCore::onInit()
     m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
-    nf::util::Logger::Init(
+    pz::util::Logger::Init(
             m_loggerConfig.name,
             m_loggerConfig.file,
             m_loggerConfig.maxFileSize,
@@ -41,7 +41,7 @@ bool IpcdCore::onInit()
         return false;
     }
 
-    m_ipcServer = std::make_unique<IpcServer>(m_ipcConfig, nf::ipc::IpcDaemon::Ipcd);
+    m_ipcServer = std::make_unique<IpcServer>(m_ipcConfig, pz::ipc::IpcDaemon::Ipcd);
     if (!m_ipcServer->init())
     {
         LOG_ERROR("IpcServer init failed");
@@ -113,7 +113,7 @@ void IpcdCore::onShutdown()
 
     LOG_INFO("All threads terminated successfully");
 
-    nf::util::Logger::Shutdown();
+    pz::util::Logger::Shutdown();
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

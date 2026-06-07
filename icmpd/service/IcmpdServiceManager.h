@@ -4,15 +4,16 @@
 
 #include "service/bootstrap/BootstrapService.h"
 #include "service/probe/ProbeService.h"
+#include "service/heartbeat/HeartbeatService.h"
 
 #include "router/IcmpdTxRouter.h"
 
 #include <queue>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
-class IcmpdServiceManager : public nf::service::ServiceManager<IcmpdEvent, IcmpdAction>
+class IcmpdServiceManager : public pz::service::ServiceManager<IcmpdEvent, IcmpdAction>
 {
 public:
     IcmpdServiceManager(IcmpdEventFactory* eventFactory, 
@@ -29,6 +30,7 @@ public:
 
     BootstrapService& bootstrapService();
     ProbeService& probeService();
+    HeartbeatService& heartbeatService();
 
     IcmpdTxRouter& txRouter();
 
@@ -39,9 +41,10 @@ private:
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<ProbeService> m_probeService;
+    std::unique_ptr<HeartbeatService> m_heartbeatService;
 
     std::queue<std::unique_ptr<IcmpdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<IcmpdAction>> m_actionQueue;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

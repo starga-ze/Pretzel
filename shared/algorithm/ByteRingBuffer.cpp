@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace nf::algorithm
+namespace pz::algorithm
 {
 
 ByteRingBuffer::ByteRingBuffer(size_t capacity) : m_buffer(capacity)
@@ -116,4 +116,4 @@ void ByteRingBuffer::clear()
     m_size = 0;
 }
 
-} // namespace nf::algorithm
+} // namespace pz::algorithm

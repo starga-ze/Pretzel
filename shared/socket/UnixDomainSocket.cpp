@@ -11,7 +11,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-namespace nf::socket
+namespace pz::socket
 {
 
 UnixDomainSocket::UnixDomainSocket(std::string socketPath)
@@ -218,4 +218,4 @@ bool UnixDomainSocket::listenSocket()
     return true;
 }
 
-} // namespace nf::socket
+} // namespace pz::socket

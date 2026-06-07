@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::authd
+namespace pz::authd
 {
 
 class AuthdServiceManager;
@@ -18,7 +18,7 @@ enum class AuthdActionDomain : std::uint32_t
     Heartbeat = 2
 };
 
-class AuthdAction : public nf::action::Action
+class AuthdAction : public pz::action::Action
 {
 public:
     explicit AuthdAction(AuthdActionDomain domain);
@@ -32,4 +32,4 @@ private:
     AuthdActionDomain m_domain{AuthdActionDomain::Unknown};
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

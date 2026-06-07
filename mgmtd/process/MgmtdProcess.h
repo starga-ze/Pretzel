@@ -2,21 +2,21 @@
 
 #include "process/Process.h"
 
-namespace nf::ipc
+namespace pz::ipc
 {
 class IpcClient;
 }
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class HttpServer;
 class MgmtdServiceManager;
 
-class MgmtdProcess : public nf::process::Process
+class MgmtdProcess : public pz::process::Process
 {
 public:
-    MgmtdProcess(nf::ipc::IpcClient* ipcClient,
+    MgmtdProcess(pz::ipc::IpcClient* ipcClient,
                  HttpServer* httpServer,
                  MgmtdServiceManager* serviceManager);
     ~MgmtdProcess() override = default;
@@ -25,9 +25,9 @@ public:
     void tick() override;
 
 private:
-    nf::ipc::IpcClient* m_ipcClient {nullptr};
+    pz::ipc::IpcClient* m_ipcClient {nullptr};
     HttpServer* m_httpServer {nullptr};
     MgmtdServiceManager* m_serviceManager {nullptr};
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

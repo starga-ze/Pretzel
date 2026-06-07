@@ -8,7 +8,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 IcmpConnection::IcmpConnection(int fd,
@@ -226,4 +226,4 @@ std::size_t IcmpConnection::txQueueSize() const noexcept
     return m_txQueue.size();
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

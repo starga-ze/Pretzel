@@ -16,10 +16,10 @@
 
 #include <memory>
 
-namespace nf::authd
+namespace pz::authd
 {
 
-class AuthdCore : public nf::core::Core
+class AuthdCore : public pz::core::Core
 {
 public:
     AuthdCore();
@@ -30,11 +30,11 @@ protected:
     void onShutdown() override;
 
 private:
-    nf::config::LoggerConfig m_loggerConfig;
-    nf::config::IpcConfig m_ipcConfig;
+    pz::config::LoggerConfig m_loggerConfig;
+    pz::config::IpcConfig m_ipcConfig;
 
-    std::unique_ptr<nf::util::ThreadManager> m_threadManager;
-    std::unique_ptr<nf::ipc::IpcClient> m_ipcClient;
+    std::unique_ptr<pz::util::ThreadManager> m_threadManager;
+    std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
 
     std::unique_ptr<AuthdProcess> m_process;
 
@@ -47,4 +47,4 @@ private:
     std::unique_ptr<AuthdServiceManager> m_serviceManager;
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

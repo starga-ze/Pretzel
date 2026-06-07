@@ -10,7 +10,7 @@
 
 #include <utility>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 using json = nlohmann::json;
@@ -88,7 +88,7 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
         {
             // Redirect browsers to login page instead of a bare 401.
             Response res{http::status::found, req.version()};
-            res.set(http::field::server,   "nf-mgmtd");
+            res.set(http::field::server,   "pz-mgmtd");
             res.set(http::field::location, "/index.html");
             res.keep_alive(req.keep_alive());
             res.prepare_payload();
@@ -201,11 +201,9 @@ HttpRouter::Response HttpRouter::handleStatus(const Request& req)
 {
     json body;
 
-    body["management"]["status"] = "Active";
-    body["management"]["sub"]    = "HTTPS listener online";
-    body["uptime_seconds"]       = 0.0;
-    body["prometheus"]["status"] = "Connected";
-    body["node_exporter"]["status"] = "Pending";
+    body["uptime_seconds"] = 0.0;
+
+    json daemons = json::array();
 
     if (m_serviceManager)
     {
@@ -221,7 +219,6 @@ HttpRouter::Response HttpRouter::handleStatus(const Request& req)
 
                 body["timestamp_ms"] = hbRoot.value("timestamp_ms", json(nullptr));
 
-                json daemons = json::array();
                 for (const auto& d : hbRoot.value("daemons", json::array()))
                 {
                     json entry;
@@ -230,23 +227,25 @@ HttpRouter::Response HttpRouter::handleStatus(const Request& req)
                     entry["latency_ms"] = d.contains("latency_ms") ? d["latency_ms"] : json(nullptr);
                     daemons.push_back(std::move(entry));
                 }
-                body["daemons"] = std::move(daemons);
             }
             catch (...)
             {
-                body["daemons"] = json::array();
+                // keep daemons array as-is on parse failure
             }
-        }
-        else
-        {
-            body["daemons"] = json::array();
         }
     }
     else
     {
         body["alive_devices"] = nullptr;
-        body["daemons"]       = json::array();
     }
+
+    // 3rd-party daemons are reported alongside the in-house daemons so the
+    // dashboard can show every component (7 daemons + 3 3rd-party) in a single grid.
+    daemons.push_back({{"name", "prometheus"},   {"status", "alive"}, {"latency_ms", nullptr}});
+    daemons.push_back({{"name", "grafana"},      {"status", "alive"}, {"latency_ms", nullptr}});
+    daemons.push_back({{"name", "node_exporter"},{"status", "alive"}, {"latency_ms", nullptr}});
+
+    body["daemons"] = std::move(daemons);
 
     body["events"] = json::array({
         {{"source", "mgmtd"},  {"message", "HTTPS listener online"}},
@@ -339,7 +338,7 @@ HttpRouter::Response HttpRouter::makeResponse(http::status status,
                                               bool         keepAlive)
 {
     Response res{status, version};
-    res.set(http::field::server,       "nf-mgmtd");
+    res.set(http::field::server,       "pz-mgmtd");
     res.set(http::field::content_type, std::move(contentType));
     res.keep_alive(keepAlive);
     res.body() = std::move(body);
@@ -347,4 +346,4 @@ HttpRouter::Response HttpRouter::makeResponse(http::status status,
     return res;
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

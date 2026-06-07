@@ -1,7 +1,7 @@
 #include "IcmpdCore.h"
 #include "util/Logger.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 IcmpdCore::IcmpdCore() : 
@@ -29,7 +29,7 @@ bool IcmpdCore::onInit()
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
     /* Logger init */
-    nf::util::Logger::Init(
+    pz::util::Logger::Init(
             m_loggerConfig.name,
             m_loggerConfig.file,
             m_loggerConfig.maxFileSize,
@@ -38,7 +38,7 @@ bool IcmpdCore::onInit()
     LOG_INFO("Icmpd onInit()...");
 
     /* ThreadManager init */
-    m_threadManager = std::make_unique<nf::util::ThreadManager>();
+    m_threadManager = std::make_unique<pz::util::ThreadManager>();
     if (!m_threadManager)
     {
         LOG_ERROR("ThreadManager init failed");
@@ -46,7 +46,7 @@ bool IcmpdCore::onInit()
     }
 
     /* Ipc init */
-    m_ipcClient = std::make_unique<nf::ipc::IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Icmpd);
+    m_ipcClient = std::make_unique<pz::ipc::IpcClient>(m_ipcConfig, pz::ipc::IpcDaemon::Icmpd);
 
     if (!m_ipcClient->init())
     {
@@ -128,7 +128,7 @@ void IcmpdCore::onShutdown()
 
     LOG_INFO("All threads terminated successfully");
 
-    nf::util::Logger::Shutdown();
+    pz::util::Logger::Shutdown();
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

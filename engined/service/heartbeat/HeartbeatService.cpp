@@ -8,24 +8,37 @@
 
 #include "util/Logger.h"
 
+#include <algorithm>
 #include <nlohmann/json.hpp>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 constexpr auto kPollInterval    = std::chrono::seconds(5);
 constexpr auto kResponseTimeout = std::chrono::milliseconds(2000);
 
-const std::vector<nf::ipc::IpcDaemon>& HeartbeatService::targets()
+const std::vector<pz::ipc::IpcDaemon>& HeartbeatService::targets()
 {
-    static const std::vector<nf::ipc::IpcDaemon> kTargets = {
-        nf::ipc::IpcDaemon::Authd,
-        nf::ipc::IpcDaemon::Icmpd,
-        nf::ipc::IpcDaemon::Snmpd,
-        nf::ipc::IpcDaemon::Topologyd,
-        nf::ipc::IpcDaemon::Mgmtd,
+    static const std::vector<pz::ipc::IpcDaemon> kTargets = {
+        pz::ipc::IpcDaemon::Authd,
+        pz::ipc::IpcDaemon::Icmpd,
+        pz::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcDaemon::Topologyd,
+        pz::ipc::IpcDaemon::Mgmtd,
     };
     return kTargets;
+}
+
+// Engined runs the heartbeat round itself and Ipcd is the IPC broker every
+// request/response travels through, so neither can be probed over IPC like
+// the other daemons. They are reported as alive locally instead.
+const std::vector<pz::ipc::IpcDaemon>& HeartbeatService::selfReported()
+{
+    static const std::vector<pz::ipc::IpcDaemon> kSelfReported = {
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcDaemon::Engined,
+    };
+    return kSelfReported;
 }
 
 void HeartbeatService::start()
@@ -125,19 +138,19 @@ void HeartbeatService::handleAction(EnginedServiceManager& serviceManager,
     {
     case HeartbeatActionType::SendHeartbeatRequest:
     {
-        const auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+        const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-        nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-            nf::ipc::IpcDaemon::Engined,
+        pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+            pz::ipc::IpcDaemon::Engined,
             action.dst(),
-            nf::ipc::IpcCmd::HeartbeatRequest,
+            pz::ipc::IpcCmd::HeartbeatRequest,
             0,
             flag);
 
-        auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+        auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
         LOG_DEBUG("HeartbeatService: Tx HeartbeatRequest dst={}",
-                  nf::ipc::IpcProtocol::daemonToStr(action.dst()));
+                  pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
         break;
@@ -147,16 +160,16 @@ void HeartbeatService::handleAction(EnginedServiceManager& serviceManager,
     {
         const auto& jsonStr = action.resultJson();
 
-        const auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+        const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-        nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-            nf::ipc::IpcDaemon::Engined,
-            nf::ipc::IpcDaemon::Mgmtd,
-            nf::ipc::IpcCmd::HeartbeatResult,
+        pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+            pz::ipc::IpcDaemon::Engined,
+            pz::ipc::IpcDaemon::Mgmtd,
+            pz::ipc::IpcCmd::HeartbeatResult,
             0,
             flag);
 
-        auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+        auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
         msg->setPayload(
             reinterpret_cast<const std::uint8_t*>(jsonStr.data()),
             jsonStr.size());
@@ -175,15 +188,15 @@ void HeartbeatService::handleAction(EnginedServiceManager& serviceManager,
 }
 
 void HeartbeatService::onHeartbeatResponse(EnginedServiceManager& serviceManager,
-                                           const nf::ipc::IpcMessage& msg)
+                                           const pz::ipc::IpcMessage& msg)
 {
-    const nf::ipc::IpcDaemon src = msg.getSrc();
+    const pz::ipc::IpcDaemon src = msg.getSrc();
 
     auto it = m_daemonMap.find(src);
     if (it == m_daemonMap.end())
     {
         LOG_WARN("HeartbeatService: unexpected response from daemon={}",
-                 nf::ipc::IpcProtocol::daemonToStr(src));
+                 pz::ipc::IpcProtocol::daemonToStr(src));
         return;
     }
 
@@ -192,7 +205,7 @@ void HeartbeatService::onHeartbeatResponse(EnginedServiceManager& serviceManager
     if (!entry.pending)
     {
         LOG_DEBUG("HeartbeatService: duplicate response from daemon={}",
-                  nf::ipc::IpcProtocol::daemonToStr(src));
+                  pz::ipc::IpcProtocol::daemonToStr(src));
         return;
     }
 
@@ -206,7 +219,7 @@ void HeartbeatService::onHeartbeatResponse(EnginedServiceManager& serviceManager
     --m_pendingCount;
 
     LOG_DEBUG("HeartbeatService: response from {} latency={}ms",
-              nf::ipc::IpcProtocol::daemonToStr(src), latency);
+              pz::ipc::IpcProtocol::daemonToStr(src), latency);
 
     if (m_pendingCount <= 0)
     {
@@ -227,7 +240,7 @@ void HeartbeatService::markTimeoutsAsDead()
             entry.alive     = false;
             entry.latencyMs = -1;
             LOG_DEBUG("HeartbeatService: daemon={} timed out",
-                      nf::ipc::IpcProtocol::daemonToStr(daemon));
+                      pz::ipc::IpcProtocol::daemonToStr(daemon));
         }
     }
 }
@@ -243,20 +256,32 @@ std::string HeartbeatService::buildResultJson() const
     root["timestamp_ms"] = nowMs;
     root["daemons"]      = json::array();
 
-    static const std::vector<nf::ipc::IpcDaemon> kOrder = {
-        nf::ipc::IpcDaemon::Authd,
-        nf::ipc::IpcDaemon::Icmpd,
-        nf::ipc::IpcDaemon::Snmpd,
-        nf::ipc::IpcDaemon::Topologyd,
-        nf::ipc::IpcDaemon::Mgmtd,
+    static const std::vector<pz::ipc::IpcDaemon> kOrder = {
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcDaemon::Engined,
+        pz::ipc::IpcDaemon::Authd,
+        pz::ipc::IpcDaemon::Icmpd,
+        pz::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcDaemon::Topologyd,
+        pz::ipc::IpcDaemon::Mgmtd,
     };
+
+    const auto& self = selfReported();
 
     for (const auto daemon : kOrder)
     {
-        const auto it = m_daemonMap.find(daemon);
-
         json entry;
-        entry["name"] = nf::ipc::IpcProtocol::daemonToStr(daemon);
+        entry["name"] = pz::ipc::IpcProtocol::daemonToStr(daemon);
+
+        if (std::find(self.begin(), self.end(), daemon) != self.end())
+        {
+            entry["status"]     = "alive";
+            entry["latency_ms"] = 0;
+            root["daemons"].push_back(std::move(entry));
+            continue;
+        }
+
+        const auto it = m_daemonMap.find(daemon);
 
         if (it != m_daemonMap.end() && it->second.alive)
         {
@@ -275,4 +300,4 @@ std::string HeartbeatService::buildResultJson() const
     return root.dump();
 }
 
-} // namespace nf::engined
+} // namespace pz::engined

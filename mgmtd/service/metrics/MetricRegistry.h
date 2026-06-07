@@ -5,7 +5,7 @@
 #include <mutex>
 #include <string>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class MetricRegistry
@@ -22,4 +22,4 @@ private:
     std::map<std::string, std::uint64_t> m_counters;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

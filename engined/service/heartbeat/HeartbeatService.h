@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 class EnginedServiceManager;
@@ -41,15 +41,16 @@ private:
     };
 
     void onHeartbeatResponse(EnginedServiceManager& serviceManager,
-                             const nf::ipc::IpcMessage& msg);
+                             const pz::ipc::IpcMessage& msg);
 
     void markTimeoutsAsDead();
 
     std::string buildResultJson() const;
 
-    static const std::vector<nf::ipc::IpcDaemon>& targets();
+    static const std::vector<pz::ipc::IpcDaemon>& targets();
+    static const std::vector<pz::ipc::IpcDaemon>& selfReported();
 
-    std::unordered_map<nf::ipc::IpcDaemon, DaemonEntry> m_daemonMap;
+    std::unordered_map<pz::ipc::IpcDaemon, DaemonEntry> m_daemonMap;
 
     std::chrono::steady_clock::time_point m_lastPollAt{};
     std::chrono::steady_clock::time_point m_roundStartedAt{};
@@ -58,4 +59,4 @@ private:
     int  m_pendingCount{0};
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

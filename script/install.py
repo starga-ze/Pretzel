@@ -17,6 +17,7 @@ from script.utils import (
     BOOST_VERSION, BOOST_VERSION_UNDERSCORE, BOOST_DIR, BOOST_INSTALL, BOOST_TAR, BOOST_SRC_PATH,
     JSON_VERSION, JSON_DIR, JSON_INSTALL, JSON_TAR, JSON_SRC_PATH,
     PROMETHEUS_VERSION, PROMETHEUS_DIR, PROMETHEUS_TAR, PROMETHEUS_SRC_PATH,
+    NODE_EXPORTER_VERSION, NODE_EXPORTER_DIR, NODE_EXPORTER_TAR, NODE_EXPORTER_SRC_PATH,
 )
 
 def install_openssl():
@@ -95,6 +96,16 @@ def install_prometheus():
     url = f"https://github.com/prometheus/prometheus/releases/download/v{PROMETHEUS_VERSION}/prometheus-{PROMETHEUS_VERSION}.linux-amd64.tar.gz"
     download_and_extract(url, PROMETHEUS_TAR, PROMETHEUS_DIR, "Extracting Prometheus")
     print("[*] Prometheus installation complete.")
+
+def install_node_exporter():
+    """Downloads the Node Exporter binary for host metrics collection (pre-compiled binary distribution)."""
+    if os.path.exists(os.path.join(NODE_EXPORTER_SRC_PATH, "node_exporter")):
+        print("[*] Node Exporter already downloaded and extracted, skipping...")
+        return
+
+    url = f"https://github.com/prometheus/node_exporter/releases/download/v{NODE_EXPORTER_VERSION}/node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
+    download_and_extract(url, NODE_EXPORTER_TAR, NODE_EXPORTER_DIR, "Extracting Node Exporter")
+    print("[*] Node Exporter installation complete.")
 
 def is_grafana_installed():
     """Checks whether Grafana is already installed."""
@@ -213,6 +224,7 @@ def run():
     install_boost()
     install_json()
     install_prometheus()
+    install_node_exporter()
     install_grafana()
     
     print("[*] All dependencies installed successfully.")

@@ -1,7 +1,7 @@
 """
 script/utils.py
 
-Defines global constants (paths, versions, etc.) and common utility functions for the NF-NMS project.
+Defines global constants (paths, versions, etc.) and common utility functions for the Pretzel project.
 Contains core utilities relied upon by other scripts (install, build, start, etc.).
 """
 
@@ -56,6 +56,11 @@ PROMETHEUS_VERSION = "3.5.0"
 PROMETHEUS_DIR = os.path.join(THIRD_PARTY_DIR, "prometheus")
 PROMETHEUS_TAR = os.path.join(PROMETHEUS_DIR, f"prometheus-{PROMETHEUS_VERSION}.linux-amd64.tar.gz")
 PROMETHEUS_SRC_PATH = os.path.join(PROMETHEUS_DIR, f"prometheus-{PROMETHEUS_VERSION}.linux-amd64")
+
+NODE_EXPORTER_VERSION = "1.8.2"
+NODE_EXPORTER_DIR = os.path.join(THIRD_PARTY_DIR, "node_exporter")
+NODE_EXPORTER_TAR = os.path.join(NODE_EXPORTER_DIR, f"node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64.tar.gz")
+NODE_EXPORTER_SRC_PATH = os.path.join(NODE_EXPORTER_DIR, f"node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64")
 
 # Detect CPU cores for build optimization
 NUM_CORES = os.cpu_count() or 1

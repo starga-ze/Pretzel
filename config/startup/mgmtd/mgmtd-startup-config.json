@@ -1,0 +1,32 @@
+{
+    "daemon_name": "pz-mgmtd",
+
+    "logger": {
+        "name": "pz-mgmtd",
+        "file": "/var/log/pretzel/mgmtd.log",
+        "max_file_size": 5242880,
+        "max_files": 10
+    },
+  
+    "ipc": {
+        "socket_path": "/run/pretzel/ipcd.sock",
+        "max_connections": 128,
+        "max_frame_size": 65536,
+        "rx_buffer_size": 65536,
+        "tx_buffer_size": 65536
+    },
+  
+    "http": {
+        "listen_address": "0.0.0.0",
+        "listen_port": 443,
+        "tls_enabled": true,
+        "cert_file": "/etc/pretzel/cert/server.crt",
+        "key_file": "/etc/pretzel/cert/server.key"
+    },
+  
+    "admin": {
+        "username": "admin",
+        "password_hash": "",
+        "salt": ""
+    }
+}

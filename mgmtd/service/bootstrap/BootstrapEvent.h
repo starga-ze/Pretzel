@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 enum class BootstrapEventType : std::uint32_t
@@ -24,17 +24,17 @@ public:
     explicit BootstrapEvent(BootstrapEventType type);
 
     BootstrapEvent(BootstrapEventType type,
-                        std::unique_ptr<nf::ipc::IpcMessage> message);
+                        std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(MgmtdServiceManager& serviceManager) override;
 
     BootstrapEventType type() const;
-    const nf::ipc::IpcMessage* message() const;
-    std::unique_ptr<nf::ipc::IpcMessage> takeMessage();
+    const pz::ipc::IpcMessage* message() const;
+    std::unique_ptr<pz::ipc::IpcMessage> takeMessage();
 
 private:
     BootstrapEventType m_type{BootstrapEventType::Unknown};
-    std::unique_ptr<nf::ipc::IpcMessage> m_message;
+    std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

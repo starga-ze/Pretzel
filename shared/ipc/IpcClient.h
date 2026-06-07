@@ -18,7 +18,7 @@
 
 #include <sys/epoll.h>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 class IpcClient
@@ -32,7 +32,7 @@ public:
     };
 
 public:
-    IpcClient(const nf::config::IpcConfig& cfg, IpcDaemon selfId);
+    IpcClient(const pz::config::IpcConfig& cfg, IpcDaemon selfId);
     ~IpcClient();
 
     IpcClient(const IpcClient&) = delete;
@@ -64,13 +64,13 @@ private:
     static constexpr int MAX_EVENTS = 32;
 
 private:
-    nf::config::IpcConfig m_cfg;
+    pz::config::IpcConfig m_cfg;
     IpcDaemon m_selfId;
 
-    nf::io::Epoll m_epoll;
+    pz::io::Epoll m_epoll;
     std::vector<epoll_event> m_events;
 
-    std::unique_ptr<nf::socket::UnixDomainSocket> m_socket;
+    std::unique_ptr<pz::socket::UnixDomainSocket> m_socket;
     std::unique_ptr<IpcConnection> m_conn;
 
     IpcCodec m_codec;
@@ -81,4 +81,4 @@ private:
     State m_state {State::Disconnected};
 };
 
-} // namespace nf::ipc
+} // namespace pz::ipc

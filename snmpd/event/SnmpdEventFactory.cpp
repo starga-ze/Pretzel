@@ -5,7 +5,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create()
@@ -29,7 +29,7 @@ std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(SnmpdEventDomain domain, s
     }
 }
 
-std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> msg)
+std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -39,13 +39,13 @@ std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(std::unique_ptr<nf::ipc::I
 
     switch (msg->getCmd())
     {
-    case nf::ipc::IpcCmd::ServerHello:
+    case pz::ipc::IpcCmd::ServerHello:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello, std::move(msg));
 
-    case nf::ipc::IpcCmd::RuntimeStart:
+    case pz::ipc::IpcCmd::RuntimeStart:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
 
-    case nf::ipc::IpcCmd::HeartbeatRequest:
+    case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
     default:
@@ -54,4 +54,4 @@ std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(std::unique_ptr<nf::ipc::I
     }
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

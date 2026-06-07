@@ -1,0 +1,25 @@
+[Unit]
+Description=PZ Engine Daemon
+
+After=pz-ipcd.service
+Requires=pz-ipcd.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/opt/pretzel/bin/pz-engined
+
+Restart=always
+RestartSec=3
+
+LimitNOFILE=1048576
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pz-engined
+
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=pretzel.target

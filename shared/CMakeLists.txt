@@ -2,16 +2,16 @@ file(GLOB_RECURSE SHARED_SRC_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
 )
 
-add_library(nf-shared ${SHARED_SRC_FILES})
+add_library(pz-shared ${SHARED_SRC_FILES})
 
-target_compile_definitions(nf-shared PUBLIC
+target_compile_definitions(pz-shared PUBLIC
     PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 
-target_include_directories(nf-shared PUBLIC
+target_include_directories(pz-shared PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(nf-shared PUBLIC
+target_link_libraries(pz-shared PUBLIC
     spdlog::spdlog
     nlohmann_json::nlohmann_json
 )

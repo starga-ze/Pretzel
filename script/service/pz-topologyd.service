@@ -1,0 +1,22 @@
+[Unit]
+Description=PZ Topology Daemon
+
+After=pz-ipcd.service
+Requires=pz-ipcd.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/opt/pretzel/bin/pz-topologyd
+
+Restart=always
+RestartSec=3
+
+LimitNOFILE=65536
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pz-topologyd
+
+[Install]
+WantedBy=pretzel.target

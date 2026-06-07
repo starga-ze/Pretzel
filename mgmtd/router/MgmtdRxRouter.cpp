@@ -3,7 +3,7 @@
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 MgmtdRxRouter::MgmtdRxRouter(MgmtdEventFactory* eventFactory,
@@ -13,7 +13,7 @@ MgmtdRxRouter::MgmtdRxRouter(MgmtdEventFactory* eventFactory,
 {
 }
 
-void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {
@@ -28,12 +28,12 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     }
 
     LOG_DEBUG("MgmtdRxRouter: recv cmd={} src={}",
-              nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
-              nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+              pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+              pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
     std::unique_ptr<MgmtdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

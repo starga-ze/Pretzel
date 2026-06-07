@@ -4,7 +4,7 @@
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 TopologydRxRouter::TopologydRxRouter(TopologydEventFactory* eventFactory)
@@ -12,7 +12,7 @@ TopologydRxRouter::TopologydRxRouter(TopologydEventFactory* eventFactory)
 {
 }
 
-void TopologydRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void TopologydRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {
@@ -27,8 +27,8 @@ void TopologydRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> ms
     }
 
     LOG_DEBUG("TopologydRxRouter: recv cmd={} src={}",
-              nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
-              nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+              pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+              pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
     auto event = m_eventFactory->create(std::move(msg));
 
@@ -40,4 +40,4 @@ void TopologydRxRouter::setServiceManager(TopologydServiceManager* serviceManage
     m_serviceManager = serviceManager;
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

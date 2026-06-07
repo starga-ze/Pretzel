@@ -5,7 +5,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class AuthService
@@ -50,4 +50,4 @@ private:
     std::uint64_t m_sessionTtlSec {1800};
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

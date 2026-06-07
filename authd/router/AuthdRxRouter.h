@@ -5,16 +5,16 @@
 #include "event/AuthdEventFactory.h"
 #include "service/AuthdServiceManager.h"
 
-namespace nf::authd
+namespace pz::authd
 {
 
-class AuthdRxRouter : public nf::router::RxRouter
+class AuthdRxRouter : public pz::router::RxRouter
 {
 public:
     AuthdRxRouter(AuthdEventFactory* eventFactory);
     ~AuthdRxRouter() override = default;
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
     void setServiceManager(AuthdServiceManager* serviceManager);
 
@@ -23,4 +23,4 @@ private:
     AuthdEventFactory* m_eventFactory = nullptr;
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

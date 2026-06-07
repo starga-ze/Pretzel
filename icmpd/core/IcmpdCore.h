@@ -17,10 +17,10 @@
 
 #include <memory>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
-class IcmpdCore : public nf::core::Core
+class IcmpdCore : public pz::core::Core
 {
 public:
     IcmpdCore();
@@ -31,11 +31,11 @@ protected:
     void onShutdown() override;
 
 private:
-    nf::config::LoggerConfig m_loggerConfig;
-    nf::config::IpcConfig m_ipcConfig;
+    pz::config::LoggerConfig m_loggerConfig;
+    pz::config::IpcConfig m_ipcConfig;
 
-    std::unique_ptr<nf::util::ThreadManager> m_threadManager;
-    std::unique_ptr<nf::ipc::IpcClient> m_ipcClient;
+    std::unique_ptr<pz::util::ThreadManager> m_threadManager;
+    std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
     std::unique_ptr<IcmpEngine> m_icmpEngine;
 
     std::unique_ptr<IcmpdProcess> m_process;
@@ -50,4 +50,4 @@ private:
 
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

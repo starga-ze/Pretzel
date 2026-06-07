@@ -1,7 +1,7 @@
 #include "router/SnmpdRxRouter.h"
 #include "util/Logger.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 SnmpdRxRouter::SnmpdRxRouter(SnmpdEventFactory* eventFactory) :
@@ -9,7 +9,7 @@ SnmpdRxRouter::SnmpdRxRouter(SnmpdEventFactory* eventFactory) :
 {
 }
 
-void SnmpdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void SnmpdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {
@@ -33,4 +33,4 @@ void SnmpdRxRouter::setServiceManager(SnmpdServiceManager* serviceManager)
     m_serviceManager = serviceManager;
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

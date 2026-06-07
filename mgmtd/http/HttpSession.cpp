@@ -3,7 +3,7 @@
 #include "http/HttpRouter.h"
 #include "util/Logger.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 HttpSession::HttpSession(tcp::socket socket, std::shared_ptr<HttpRouter> router)
@@ -79,5 +79,5 @@ void HttpSession::doClose()
     m_socket.shutdown(tcp::socket::shutdown_send, ec);
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd
 

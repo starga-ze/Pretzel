@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 enum class IcmpType : std::uint8_t
@@ -25,4 +25,4 @@ public:
     static const char* codeToStr(IcmpType type, IcmpCode code);
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

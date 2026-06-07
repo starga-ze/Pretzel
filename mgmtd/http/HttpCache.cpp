@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 namespace
@@ -74,4 +74,4 @@ bool HttpCache::safeTarget(const std::string& target)
     return !target.empty() && target.front() == '/' && target.find("..") == std::string::npos;
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

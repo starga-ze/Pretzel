@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 enum class ProbeEventType : std::uint32_t
@@ -21,17 +21,17 @@ public:
     explicit ProbeEvent(ProbeEventType type);
 
     ProbeEvent(ProbeEventType type,
-                    std::unique_ptr<nf::ipc::IpcMessage> message);
+                    std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(MgmtdServiceManager& serviceManager) override;
 
     ProbeEventType type() const;
-    const nf::ipc::IpcMessage* message() const;
-    std::unique_ptr<nf::ipc::IpcMessage> takeMessage();
+    const pz::ipc::IpcMessage* message() const;
+    std::unique_ptr<pz::ipc::IpcMessage> takeMessage();
 
 private:
     ProbeEventType m_type{ProbeEventType::Unknown};
-    std::unique_ptr<nf::ipc::IpcMessage> m_message;
+    std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

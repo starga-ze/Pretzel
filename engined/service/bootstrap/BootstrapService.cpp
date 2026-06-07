@@ -13,7 +13,7 @@
 #include <nlohmann/json.hpp>
 #include <vector>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 constexpr auto kClientHelloInterval = std::chrono::seconds(1);
@@ -214,7 +214,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
 void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
                                            const BootstrapAction& action)
 {
-    std::unique_ptr<nf::ipc::IpcMessage> msg = nullptr;
+    std::unique_ptr<pz::ipc::IpcMessage> msg = nullptr;
 
     switch (action.type())
     {
@@ -263,7 +263,7 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
 }
 
 void BootstrapService::onServerHello(EnginedServiceManager& serviceManager,
-                                            const nf::ipc::IpcMessage& msg)
+                                            const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
@@ -286,7 +286,7 @@ void BootstrapService::onServerHello(EnginedServiceManager& serviceManager,
     serviceManager.postAction(std::move(action));
 }
 
-void BootstrapService::onSyncResponse(const nf::ipc::IpcMessage& msg)
+void BootstrapService::onSyncResponse(const pz::ipc::IpcMessage& msg)
 {
     if (m_state != State::WaitSync)
     {
@@ -338,17 +338,17 @@ void BootstrapService::initProcessMap()
 {
     m_processMap.clear();
 
-    m_processMap[nf::ipc::IpcDaemon::Ipcd]     = true;
-    m_processMap[nf::ipc::IpcDaemon::Engined]  = true;
+    m_processMap[pz::ipc::IpcDaemon::Ipcd]     = true;
+    m_processMap[pz::ipc::IpcDaemon::Engined]  = true;
 
-    m_processMap[nf::ipc::IpcDaemon::Authd]    = false;
-    m_processMap[nf::ipc::IpcDaemon::Icmpd]    = false;
-    m_processMap[nf::ipc::IpcDaemon::Snmpd]    = false;
-    m_processMap[nf::ipc::IpcDaemon::Topologyd]= false;
-    m_processMap[nf::ipc::IpcDaemon::Mgmtd]    = false;
+    m_processMap[pz::ipc::IpcDaemon::Authd]    = false;
+    m_processMap[pz::ipc::IpcDaemon::Icmpd]    = false;
+    m_processMap[pz::ipc::IpcDaemon::Snmpd]    = false;
+    m_processMap[pz::ipc::IpcDaemon::Topologyd]= false;
+    m_processMap[pz::ipc::IpcDaemon::Mgmtd]    = false;
 }
 
-bool BootstrapService::updateProcessMap(const nf::ipc::IpcMessage& msg)
+bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
 {
     const auto& payload = msg.getPayload();
     if (payload.empty())
@@ -383,7 +383,7 @@ bool BootstrapService::updateProcessMap(const nf::ipc::IpcMessage& msg)
             const std::string daemonName = item["daemon"].get<std::string>();
             const bool ready = item["ready"].get<bool>();
 
-            const nf::ipc::IpcDaemon daemon = nf::ipc::IpcProtocol::strToDaemon(daemonName);
+            const pz::ipc::IpcDaemon daemon = pz::ipc::IpcProtocol::strToDaemon(daemonName);
 
             auto it = m_processMap.find(daemon);
             if (it == m_processMap.end())
@@ -404,7 +404,7 @@ bool BootstrapService::updateProcessMap(const nf::ipc::IpcMessage& msg)
     return true;
 }
 
-bool BootstrapService::isProcessReady(nf::ipc::IpcDaemon daemon) const
+bool BootstrapService::isProcessReady(pz::ipc::IpcDaemon daemon) const
 {
     const auto it = m_processMap.find(daemon);
     if (it == m_processMap.end())
@@ -430,7 +430,7 @@ bool BootstrapService::isAllProcessReady() const
         if (!ready)
         {
             LOG_WARN("BootstrapService: daemon not ready daemon={}",
-                     nf::ipc::IpcProtocol::daemonToStr(daemon));
+                     pz::ipc::IpcProtocol::daemonToStr(daemon));
 
             allReady = false;
         }
@@ -441,14 +441,14 @@ bool BootstrapService::isAllProcessReady() const
 
 void BootstrapService::dumpProcessMap() const
 {
-    static const std::vector<nf::ipc::IpcDaemon> dumpOrder = {
-        nf::ipc::IpcDaemon::Ipcd,
-        nf::ipc::IpcDaemon::Engined,
-        nf::ipc::IpcDaemon::Authd,
-        nf::ipc::IpcDaemon::Icmpd,
-        nf::ipc::IpcDaemon::Mgmtd,
-        nf::ipc::IpcDaemon::Snmpd,
-        nf::ipc::IpcDaemon::Topologyd,
+    static const std::vector<pz::ipc::IpcDaemon> dumpOrder = {
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcDaemon::Engined,
+        pz::ipc::IpcDaemon::Authd,
+        pz::ipc::IpcDaemon::Icmpd,
+        pz::ipc::IpcDaemon::Mgmtd,
+        pz::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcDaemon::Topologyd,
     };
 
     std::string dump;
@@ -463,7 +463,7 @@ void BootstrapService::dumpProcessMap() const
         }
 
         dump += "  - ";
-        dump += nf::ipc::IpcProtocol::daemonToStr(daemon);
+        dump += pz::ipc::IpcProtocol::daemonToStr(daemon);
         dump += " : ";
         dump += it->second ? "ready" : "not-ready";
         dump += "\n";
@@ -472,64 +472,64 @@ void BootstrapService::dumpProcessMap() const
     LOG_DEBUG("{}", dump);
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
+std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildClientHelloMessage() const
 {
-    const std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Engined);
+    const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Engined);
 
-    const auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+    const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Engined,
-        nf::ipc::IpcDaemon::Ipcd,
-        nf::ipc::IpcCmd::ClientHello,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Engined,
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcCmd::ClientHello,
         0,
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
     return msg;
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
+std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildSyncRequestMessage() const
 {
-    const std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Engined);
+    const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Engined);
 
-    const auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+    const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Engined,
-        nf::ipc::IpcDaemon::Ipcd,
-        nf::ipc::IpcCmd::SyncRequest,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Engined,
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcCmd::SyncRequest,
         0,
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
     return msg;
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
+std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildRuntimeStartMessage() const
 {
-    const std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Engined);
+    const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Engined);
 
-    const auto flag = nf::ipc::IpcProtocol::orFlag(nf::ipc::IpcFlag::Request, nf::ipc::IpcFlag::Broadcast);
+    const auto flag = pz::ipc::IpcProtocol::orFlag(pz::ipc::IpcFlag::Request, pz::ipc::IpcFlag::Broadcast);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Engined,
-        nf::ipc::IpcDaemon::Broadcast,
-        nf::ipc::IpcCmd::RuntimeStart,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Engined,
+        pz::ipc::IpcDaemon::Broadcast,
+        pz::ipc::IpcCmd::RuntimeStart,
         0,
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
     return msg;
 }
 
-} // namespace nf::engined
+} // namespace pz::engined

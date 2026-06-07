@@ -1,12 +1,12 @@
 #include "process/AuthdProcess.h"
 #include "util/Logger.h"
 
-namespace nf::authd
+namespace pz::authd
 {
 
 constexpr int kIpcClientTimeoutMs = 10;
 
-AuthdProcess::AuthdProcess(nf::ipc::IpcClient* ipcClient,
+AuthdProcess::AuthdProcess(pz::ipc::IpcClient* ipcClient,
                            AuthdServiceManager* serviceManager) :
     m_ipcClient(ipcClient),
     m_serviceManager(serviceManager)
@@ -41,4 +41,4 @@ void AuthdProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace nf::authd
+} // namespace pz::authd

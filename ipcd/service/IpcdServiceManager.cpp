@@ -2,7 +2,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 IpcdServiceManager::IpcdServiceManager(IpcdEventFactory* eventFactory,
@@ -74,4 +74,4 @@ IpcdTxRouter& IpcdServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

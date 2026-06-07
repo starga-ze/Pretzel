@@ -1,7 +1,7 @@
 #include "process/IpcdProcess.h"
 #include "util/Logger.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 constexpr int kIpcServerTimeoutMs = 10;
@@ -40,4 +40,4 @@ void IpcdProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

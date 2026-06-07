@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 class IcmpHeader final
@@ -85,4 +85,4 @@ private:
     std::vector<std::uint8_t> m_payload;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

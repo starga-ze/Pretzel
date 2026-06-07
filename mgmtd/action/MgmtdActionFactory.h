@@ -6,10 +6,10 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
-class MgmtdActionFactory final : public nf::action::ActionFactory<MgmtdAction, MgmtdActionDomain>
+class MgmtdActionFactory final : public pz::action::ActionFactory<MgmtdAction, MgmtdActionDomain>
 {
 public:
     MgmtdActionFactory() = default;
@@ -18,4 +18,4 @@ public:
     std::unique_ptr<MgmtdAction> create(MgmtdActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

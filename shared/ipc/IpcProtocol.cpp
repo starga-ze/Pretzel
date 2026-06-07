@@ -2,7 +2,7 @@
 
 #include <arpa/inet.h>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 std::uint8_t IpcProtocol::toFlag(IpcFlag flag) noexcept
@@ -116,7 +116,7 @@ std::string IpcProtocol::flagsToStr(std::uint8_t flags)
     return out;
 }
 
-nf::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
+pz::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
 {
     if (daemon == "ipcd")
     {
@@ -161,4 +161,4 @@ nf::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
     return IpcDaemon::Unknown;
 }
 
-} // namespace nf::ipc
+} // namespace pz::ipc

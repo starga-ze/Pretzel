@@ -1,0 +1,22 @@
+[Unit]
+Description=Pretzel Prometheus
+After=network.target pz-mgmtd.service
+Wants=pz-mgmtd.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/opt/pretzel/bin/prometheus \
+  --config.file=/etc/pretzel/prometheus/prometheus.yml \
+  --storage.tsdb.path=/var/lib/pretzel/prometheus \
+  --web.listen-address=0.0.0.0:9090 \
+  --web.config.file=/etc/pretzel/prometheus/web.yml
+
+StandardOutput=append:/var/log/pretzel/prometheus.log
+StandardError=append:/var/log/pretzel/prometheus.log
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=pretzel.target

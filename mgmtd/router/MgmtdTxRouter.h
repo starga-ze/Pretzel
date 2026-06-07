@@ -4,19 +4,19 @@
 #include "ipc/IpcClientHandler.h"
 #include "ipc/IpcMessage.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
-class MgmtdTxRouter : public nf::router::TxRouter
+class MgmtdTxRouter : public pz::router::TxRouter
 {
 public:
-    explicit MgmtdTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler);
+    explicit MgmtdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler);
     ~MgmtdTxRouter() override = default;
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
 private:
-    nf::ipc::IpcClientHandler* m_ipcClientHandler = nullptr;
+    pz::ipc::IpcClientHandler* m_ipcClientHandler = nullptr;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

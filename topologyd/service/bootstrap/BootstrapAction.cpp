@@ -2,7 +2,7 @@
 
 #include "service/TopologydServiceManager.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 BootstrapAction::BootstrapAction(BootstrapActionType type)
@@ -21,4 +21,4 @@ BootstrapActionType BootstrapAction::type() const
     return m_type;
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

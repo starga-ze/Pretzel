@@ -5,7 +5,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 std::unique_ptr<TopologydEvent> TopologydEventFactory::create()
@@ -31,7 +31,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(TopologydEventDoma
 }
 
 std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
-    std::unique_ptr<nf::ipc::IpcMessage> msg)
+    std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -41,15 +41,15 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
 
     switch (msg->getCmd())
     {
-    case nf::ipc::IpcCmd::ServerHello:
+    case pz::ipc::IpcCmd::ServerHello:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello,
                                                std::move(msg));
 
-    case nf::ipc::IpcCmd::RuntimeStart:
+    case pz::ipc::IpcCmd::RuntimeStart:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart,
                                                std::move(msg));
 
-    case nf::ipc::IpcCmd::HeartbeatRequest:
+    case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest,
                                                std::move(msg));
 
@@ -59,4 +59,4 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
     }
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

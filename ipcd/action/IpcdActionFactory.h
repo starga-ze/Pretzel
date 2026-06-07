@@ -6,10 +6,10 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
-class IpcdActionFactory final : public nf::action::ActionFactory<IpcdAction, IpcdActionDomain>
+class IpcdActionFactory final : public pz::action::ActionFactory<IpcdAction, IpcdActionDomain>
 {
 public:
     IpcdActionFactory() = default;
@@ -18,4 +18,4 @@ public:
     std::unique_ptr<IpcdAction> create(IpcdActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

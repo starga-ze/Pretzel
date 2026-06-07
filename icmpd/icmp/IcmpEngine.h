@@ -13,7 +13,7 @@
 
 #include <sys/epoll.h>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 class IcmpEngine final
@@ -55,12 +55,12 @@ private:
 
     bool m_initialized {false};
 
-    nf::io::Epoll m_epoll;
+    pz::io::Epoll m_epoll;
     std::vector<epoll_event> m_events;
 
-    std::unique_ptr<nf::socket::IcmpSocket> m_socket;
+    std::unique_ptr<pz::socket::IcmpSocket> m_socket;
     std::unique_ptr<IcmpConnection> m_conn;
     std::unique_ptr<IcmpEngineHandler> m_handler;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

@@ -1,7 +1,7 @@
 #include "service/probe/ProbeEvent.h"
 #include "service/MgmtdServiceManager.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 ProbeEvent::ProbeEvent(ProbeEventType type)
@@ -11,7 +11,7 @@ ProbeEvent::ProbeEvent(ProbeEventType type)
 }
 
 ProbeEvent::ProbeEvent(ProbeEventType type,
-                                  std::unique_ptr<nf::ipc::IpcMessage> message)
+                                  std::unique_ptr<pz::ipc::IpcMessage> message)
     : MgmtdEvent(MgmtdEventDomain::Probe),
       m_type(type),
       m_message(std::move(message))
@@ -28,14 +28,14 @@ ProbeEventType ProbeEvent::type() const
     return m_type;
 }
 
-const nf::ipc::IpcMessage* ProbeEvent::message() const
+const pz::ipc::IpcMessage* ProbeEvent::message() const
 {
     return m_message.get();
 }
 
-std::unique_ptr<nf::ipc::IpcMessage> ProbeEvent::takeMessage()
+std::unique_ptr<pz::ipc::IpcMessage> ProbeEvent::takeMessage()
 {
     return std::move(m_message);
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

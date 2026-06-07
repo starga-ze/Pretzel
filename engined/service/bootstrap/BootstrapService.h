@@ -9,7 +9,7 @@
 #include <memory>
 #include <unordered_map>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 class EnginedServiceManager;
@@ -48,22 +48,22 @@ public:
 
 private:
     void onServerHello(EnginedServiceManager& serviceManager,
-                       const nf::ipc::IpcMessage& msg);
+                       const pz::ipc::IpcMessage& msg);
 
-    void onSyncResponse(const nf::ipc::IpcMessage& msg);
+    void onSyncResponse(const pz::ipc::IpcMessage& msg);
 
     bool checkTimeout(std::chrono::steady_clock::time_point now,
                       const char* stateName);
 
     void initProcessMap();
-    bool updateProcessMap(const nf::ipc::IpcMessage& msg);
-    bool isProcessReady(nf::ipc::IpcDaemon daemon) const;
+    bool updateProcessMap(const pz::ipc::IpcMessage& msg);
+    bool isProcessReady(pz::ipc::IpcDaemon daemon) const;
     bool isAllProcessReady() const;
     void dumpProcessMap() const;
 
-    std::unique_ptr<nf::ipc::IpcMessage> buildClientHelloMessage() const;
-    std::unique_ptr<nf::ipc::IpcMessage> buildSyncRequestMessage() const;
-    std::unique_ptr<nf::ipc::IpcMessage> buildRuntimeStartMessage() const;
+    std::unique_ptr<pz::ipc::IpcMessage> buildClientHelloMessage() const;
+    std::unique_ptr<pz::ipc::IpcMessage> buildSyncRequestMessage() const;
+    std::unique_ptr<pz::ipc::IpcMessage> buildRuntimeStartMessage() const;
 
 private:
     EnginedEventFactory* m_eventFactory{nullptr};
@@ -75,7 +75,7 @@ private:
     std::chrono::steady_clock::time_point m_lastClientHelloSentAt{};
     std::chrono::steady_clock::time_point m_lastSyncRequestSentAt{};
 
-    std::unordered_map<nf::ipc::IpcDaemon, bool> m_processMap;
+    std::unordered_map<pz::ipc::IpcDaemon, bool> m_processMap;
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

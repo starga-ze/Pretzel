@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 enum class BootstrapEventType : std::uint32_t
@@ -24,18 +24,18 @@ public:
     explicit BootstrapEvent(BootstrapEventType type);
 
     BootstrapEvent(BootstrapEventType type, 
-            std::unique_ptr<nf::ipc::IpcMessage> message);
+            std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(IcmpdServiceManager& serviceManager) override;
 
     BootstrapEventType type() const;
-    const nf::ipc::IpcMessage* message() const;
-    std::unique_ptr<nf::ipc::IpcMessage> takeMessage();
+    const pz::ipc::IpcMessage* message() const;
+    std::unique_ptr<pz::ipc::IpcMessage> takeMessage();
 
 private:
-    std::unique_ptr<nf::ipc::IpcMessage> m_message;
+    std::unique_ptr<pz::ipc::IpcMessage> m_message;
     BootstrapEventType m_type{BootstrapEventType::Unknown};
 
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

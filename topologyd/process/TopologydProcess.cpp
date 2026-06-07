@@ -1,12 +1,12 @@
 #include "process/TopologydProcess.h"
 #include "util/Logger.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 constexpr int kIpcClientTimeoutMs = 10;
 
-TopologydProcess::TopologydProcess(nf::ipc::IpcClient* ipcClient,
+TopologydProcess::TopologydProcess(pz::ipc::IpcClient* ipcClient,
                                    TopologydServiceManager* serviceManager)
     : m_ipcClient(ipcClient),
       m_serviceManager(serviceManager)
@@ -41,4 +41,4 @@ void TopologydProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

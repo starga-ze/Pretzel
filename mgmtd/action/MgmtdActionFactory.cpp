@@ -4,7 +4,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 std::unique_ptr<MgmtdAction> MgmtdActionFactory::create(MgmtdActionDomain domain, std::uint32_t type)
@@ -20,4 +20,4 @@ std::unique_ptr<MgmtdAction> MgmtdActionFactory::create(MgmtdActionDomain domain
     }
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

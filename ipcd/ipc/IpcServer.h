@@ -19,13 +19,13 @@
 
 #include <sys/epoll.h>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 class IpcServer
 {
 public:
-    explicit IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId);
+    explicit IpcServer(const pz::config::IpcConfig& cfg, pz::ipc::IpcDaemon selfId);
     ~IpcServer();
 
     IpcServer(const IpcServer&) = delete;
@@ -46,21 +46,21 @@ private:
 
     void handleEvent(int fd, std::uint32_t events);
 
-    std::unique_ptr<nf::socket::UnixDomainSocket> m_listener;
+    std::unique_ptr<pz::socket::UnixDomainSocket> m_listener;
 
-    nf::config::IpcConfig m_cfg;
-    nf::ipc::IpcDaemon m_selfId;
+    pz::config::IpcConfig m_cfg;
+    pz::ipc::IpcDaemon m_selfId;
 
-    nf::io::Epoll m_epoll;
+    pz::io::Epoll m_epoll;
     std::vector<epoll_event> m_events;
 
     std::unique_ptr<IpcServerHandler> m_handler;
 
-    nf::ipc::IpcCodec m_codec;
-    std::unordered_map<int, std::unique_ptr<nf::ipc::IpcConnection>> m_connections;
+    pz::ipc::IpcCodec m_codec;
+    std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>> m_connections;
 
     std::atomic<bool> m_running{false};
     bool m_initialized{false};
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

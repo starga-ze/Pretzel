@@ -8,10 +8,10 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
-IpcClient::IpcClient(const nf::config::IpcConfig& cfg, IpcDaemon selfId)
+IpcClient::IpcClient(const pz::config::IpcConfig& cfg, IpcDaemon selfId)
     : m_cfg(cfg),
       m_selfId(selfId),
       m_events(MAX_EVENTS),
@@ -132,7 +132,7 @@ bool IpcClient::initSocket()
     if (m_socket)
         return true;
 
-    m_socket = std::make_unique<nf::socket::UnixDomainSocket>(m_cfg.socketPath);
+    m_socket = std::make_unique<pz::socket::UnixDomainSocket>(m_cfg.socketPath);
     if (!m_socket)
     {
         LOG_ERROR("IpcClient: socket allocation failed");
@@ -145,7 +145,7 @@ bool IpcClient::initSocket()
 bool IpcClient::connectServer()
 {
     const auto rc = m_socket->connect();
-    if (rc == nf::socket::UnixDomainSocket::ConnectResult::Failed)
+    if (rc == pz::socket::UnixDomainSocket::ConnectResult::Failed)
     {
         LOG_ERROR("IpcClient: connect failed path={}", m_cfg.socketPath);
         return false;
@@ -163,7 +163,7 @@ bool IpcClient::connectServer()
         return false;
     }
 
-    if (rc == nf::socket::UnixDomainSocket::ConnectResult::Connected)
+    if (rc == pz::socket::UnixDomainSocket::ConnectResult::Connected)
     {
         m_state = State::Connected;
 
@@ -287,4 +287,4 @@ IpcClientHandler* IpcClient::handler()
     return m_handler.get();
 }
 
-} // namespace nf::ipc
+} // namespace pz::ipc

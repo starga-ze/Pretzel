@@ -5,18 +5,18 @@
 
 #include <memory>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
-class MgmtdEventFactory final : public nf::event::EventFactory<MgmtdEvent, MgmtdEventDomain>
+class MgmtdEventFactory final : public pz::event::EventFactory<MgmtdEvent, MgmtdEventDomain>
 {
 public:
     MgmtdEventFactory() = default;
     ~MgmtdEventFactory() override = default;
 
     std::unique_ptr<MgmtdEvent> create() override;
-    std::unique_ptr<MgmtdEvent> create(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    std::unique_ptr<MgmtdEvent> create(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
     std::unique_ptr<MgmtdEvent> create(MgmtdEventDomain domain, std::uint32_t type) override;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

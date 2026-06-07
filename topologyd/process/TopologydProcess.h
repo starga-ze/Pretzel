@@ -5,13 +5,13 @@
 #include "ipc/IpcClient.h"
 #include "service/TopologydServiceManager.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
-class TopologydProcess : public nf::process::Process
+class TopologydProcess : public pz::process::Process
 {
 public:
-    TopologydProcess(nf::ipc::IpcClient* ipcClient,
+    TopologydProcess(pz::ipc::IpcClient* ipcClient,
                      TopologydServiceManager* serviceManager);
     ~TopologydProcess() override = default;
 
@@ -19,8 +19,8 @@ public:
     void tick() override;
 
 private:
-    nf::ipc::IpcClient*      m_ipcClient{nullptr};
+    pz::ipc::IpcClient*      m_ipcClient{nullptr};
     TopologydServiceManager* m_serviceManager{nullptr};
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

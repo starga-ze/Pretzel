@@ -4,7 +4,7 @@
 
 #include <chrono>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory,
@@ -91,4 +91,4 @@ EnginedTxRouter& EnginedServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace nf::engined
+} // namespace pz::engined

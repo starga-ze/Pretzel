@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 class IcmpdServiceManager;
@@ -14,10 +14,11 @@ enum class IcmpdEventDomain : std::uint32_t
 {
     Unknown = 0,
     Bootstrap = 1,
-    Probe = 2
+    Probe = 2,
+    Heartbeat = 3
 };
 
-class IcmpdEvent : public nf::event::Event
+class IcmpdEvent : public pz::event::Event
 {
 public:
     explicit IcmpdEvent(IcmpdEventDomain domain);
@@ -31,4 +32,4 @@ private:
     IcmpdEventDomain m_domain{IcmpdEventDomain::Unknown};
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

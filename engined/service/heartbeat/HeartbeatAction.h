@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 enum class HeartbeatActionType : std::uint32_t
@@ -22,7 +22,7 @@ public:
     explicit HeartbeatAction(HeartbeatActionType type);
 
     HeartbeatAction(HeartbeatActionType type,
-                    nf::ipc::IpcDaemon dst);
+                    pz::ipc::IpcDaemon dst);
 
     HeartbeatAction(HeartbeatActionType type,
                     std::string resultJson);
@@ -30,13 +30,13 @@ public:
     void dispatch(EnginedServiceManager& serviceManager) override;
 
     HeartbeatActionType type() const;
-    nf::ipc::IpcDaemon dst() const;
+    pz::ipc::IpcDaemon dst() const;
     const std::string& resultJson() const;
 
 private:
     HeartbeatActionType m_type{HeartbeatActionType::Unknown};
-    nf::ipc::IpcDaemon  m_dst{nf::ipc::IpcDaemon::Unknown};
+    pz::ipc::IpcDaemon  m_dst{pz::ipc::IpcDaemon::Unknown};
     std::string         m_resultJson;
 };
 
-} // namespace nf::engined
+} // namespace pz::engined
