@@ -102,9 +102,48 @@
     });
   }
 
+  // Expandable sidebar groups (e.g. "Settings" -> "Daemon Settings"). Expand
+  // state is remembered per-group in localStorage, and a group auto-expands
+  // when one of its sub-items is the current page so the active section stays
+  // visible across navigations/reloads.
+  function initNavGroups() {
+    const groups  = document.querySelectorAll('.nav-group');
+    const current = location.pathname.split('/').pop() || 'index.html';
+
+    groups.forEach(group => {
+      const toggle   = group.querySelector('.nav-group-toggle');
+      const subnav   = group.querySelector('.nav-subnav');
+      const subitems = group.querySelectorAll('.nav-subitem[data-page]');
+      if (!toggle || !subnav) return;
+
+      const key = `navGroupExpanded:${group.id || toggle.textContent.trim()}`;
+
+      function setExpanded(value) {
+        group.classList.toggle('expanded', value);
+        toggle.setAttribute('aria-expanded', String(value));
+      }
+
+      const hasActiveChild = Array.from(subitems).some(i => i.dataset.page === current);
+      const saved = localStorage.getItem(key);
+      const expanded = hasActiveChild || saved === 'true' || group.classList.contains('expanded');
+      setExpanded(expanded);
+
+      toggle.addEventListener('click', () => {
+        const next = !group.classList.contains('expanded');
+        setExpanded(next);
+        localStorage.setItem(key, String(next));
+      });
+
+      subitems.forEach(item => {
+        if (item.dataset.page === current) item.classList.add('active');
+      });
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initSidebar();
     initNav();
+    initNavGroups();
   });
 
   /* ── Shared utils ── */

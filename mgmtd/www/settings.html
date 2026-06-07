@@ -150,22 +150,72 @@
   <div class="content-wrap">
     <main class="content-body">
 
-      <div class="section-card">
-        <div class="section-header">
-          <span class="section-title">Daemon Tuning</span>
-          <span class="hb-timestamp" id="settingsStatus"></span>
+      <!-- Page header -->
+      <div class="settings-page-header">
+        <div>
+          <h1 class="settings-title">Daemon Settings</h1>
+          <p class="settings-subtitle">
+            운영 튜너블 값을 조정합니다. 변경 사항은 스테이징된 후, <strong>Commit</strong> 시
+            running-config에 일괄 반영되고 각 데몬에 SIGHUP이 전송되어 재시작 없이 적용됩니다.
+          </p>
         </div>
-        <p style="margin: 0 0 16px; color: var(--text-muted, #888); font-size: 13px;">
-          운영 튜너블 값을 조정합니다. 변경 사항은 해당 데몬의 startup-config에 즉시
-          저장되고, 데몬에 SIGHUP이 전송되어 재시작 없이 적용됩니다.
-        </p>
-        <div id="settingsGroups">
-          <div class="loading-row">Loading settings…</div>
+        <div class="settings-search-wrap">
+          <svg class="settings-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="text" id="settingsSearch" class="settings-search-input"
+                 placeholder="Search daemons, domains, or keys…" autocomplete="off" />
         </div>
+      </div>
+
+      <div id="settingsStatus" class="settings-status"></div>
+
+      <!-- Daemon settings groups -->
+      <div id="settingsGroups" class="settings-groups">
+        <div class="loading-row">Loading settings…</div>
       </div>
 
     </main>
   </div>
+
+  <!-- Sticky staged-changes bar -->
+  <div class="staged-bar" id="stagedBar">
+    <div class="staged-bar-info">
+      <span class="staged-count" id="stagedCount">0</span>
+      <span class="staged-label">pending change(s)</span>
+    </div>
+    <div class="staged-bar-actions">
+      <button class="btn btn-ghost" id="discardBtn">Discard all</button>
+      <button class="btn btn-primary" id="reviewBtn">Review &amp; Commit</button>
+    </div>
+  </div>
+
+  <!-- Review & Commit modal -->
+  <div class="modal-overlay" id="reviewOverlay">
+    <div class="modal" id="reviewModal">
+      <div class="modal-header">
+        <span class="modal-title">Review changes</span>
+        <button class="modal-close" id="reviewCloseBtn" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">
+          아래 변경 사항이 해당 데몬의 running-config에 저장되고, 영향을 받는 데몬에
+          SIGHUP이 전송되어 무중단 적용됩니다.
+        </p>
+        <div id="reviewList" class="review-list"></div>
+      </div>
+      <div class="modal-footer">
+        <span class="modal-status" id="commitStatus"></span>
+        <div class="modal-footer-actions">
+          <button class="btn btn-ghost" id="reviewCancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="commitBtn">Commit changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /app-shell -->
 
 <script src="js/main.js"></script>
