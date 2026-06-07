@@ -2,7 +2,7 @@
 
 #include <cstring>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 std::vector<std::uint8_t>
@@ -132,4 +132,4 @@ IpcPeekResult IpcCodec::peekFrameSize(const std::uint8_t* data, std::size_t len,
     return IpcPeekResult::Ok;
 }
 
-} // namespace nf::ipc
+} // namespace pz::ipc

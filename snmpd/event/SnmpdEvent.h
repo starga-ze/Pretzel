@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 class SnmpdServiceManager;
@@ -17,7 +17,7 @@ enum class SnmpdEventDomain : std::uint32_t
     Heartbeat = 2
 };
 
-class SnmpdEvent : public nf::event::Event
+class SnmpdEvent : public pz::event::Event
 {
 public:
     explicit SnmpdEvent(SnmpdEventDomain domain);
@@ -31,4 +31,4 @@ private:
     SnmpdEventDomain m_domain{SnmpdEventDomain::Unknown};
 };
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

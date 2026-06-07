@@ -1,0 +1,22 @@
+[Unit]
+Description=PZ ICMP Daemon
+
+After=pz-ipcd.service
+Requires=pz-ipcd.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/opt/pretzel/bin/pz-icmpd
+
+Restart=always
+RestartSec=3
+
+LimitNOFILE=65536
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pz-icmpd
+
+[Install]
+WantedBy=pretzel.target

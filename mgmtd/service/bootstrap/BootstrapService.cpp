@@ -10,7 +10,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 constexpr auto kClientHelloInterval  = std::chrono::seconds(1);
@@ -191,7 +191,7 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
 void BootstrapService::handleAction(MgmtdServiceManager& serviceManager,
                                          const BootstrapAction& action)
 {
-    std::unique_ptr<nf::ipc::IpcMessage> msg = nullptr;
+    std::unique_ptr<pz::ipc::IpcMessage> msg = nullptr;
 
     switch (action.type())
     {
@@ -233,7 +233,7 @@ void BootstrapService::handleAction(MgmtdServiceManager& serviceManager,
 }
 
 void BootstrapService::onServerHello(MgmtdServiceManager& serviceManager,
-                                          const nf::ipc::IpcMessage& msg)
+                                          const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
@@ -256,7 +256,7 @@ void BootstrapService::onServerHello(MgmtdServiceManager& serviceManager,
     serviceManager.postAction(std::move(action));
 }
 
-void BootstrapService::onRuntimeStart(const nf::ipc::IpcMessage& msg)
+void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
@@ -291,44 +291,44 @@ bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
     return true;
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
+std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildClientHelloMessage() const
 {
-    const std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Mgmtd);
+    const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Mgmtd);
 
-    const auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+    const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Mgmtd,
-        nf::ipc::IpcDaemon::Ipcd,
-        nf::ipc::IpcCmd::ClientHello,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Mgmtd,
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcCmd::ClientHello,
         0,
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
     return msg;
 }
 
-std::unique_ptr<nf::ipc::IpcMessage>
+std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildRuntimeReadyMessage() const
 {
-    const std::string name = nf::ipc::IpcProtocol::daemonToStr(nf::ipc::IpcDaemon::Mgmtd);
+    const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Mgmtd);
 
-    const auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request);
+    const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-        nf::ipc::IpcDaemon::Mgmtd,
-        nf::ipc::IpcDaemon::Ipcd,
-        nf::ipc::IpcCmd::RuntimeReady,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Mgmtd,
+        pz::ipc::IpcDaemon::Ipcd,
+        pz::ipc::IpcCmd::RuntimeReady,
         0,
         flag);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
     return msg;
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

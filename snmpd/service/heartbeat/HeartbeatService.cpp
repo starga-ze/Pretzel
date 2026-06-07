@@ -8,7 +8,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 void HeartbeatService::handleEvent(SnmpdServiceManager& serviceManager,
@@ -25,7 +25,7 @@ void HeartbeatService::handleEvent(SnmpdServiceManager& serviceManager,
             return;
         }
 
-        nf::ipc::IpcDaemon src = msg->getSrc();
+        pz::ipc::IpcDaemon src = msg->getSrc();
 
         auto action = std::make_unique<HeartbeatAction>(
             HeartbeatActionType::SendHeartbeatResponse,
@@ -49,19 +49,19 @@ void HeartbeatService::handleAction(SnmpdServiceManager& serviceManager,
     {
     case HeartbeatActionType::SendHeartbeatResponse:
     {
-        auto flag = nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Response);
+        auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
 
-        nf::ipc::IpcHeader header = nf::ipc::IpcHeader::build(
-            nf::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+            pz::ipc::IpcDaemon::Snmpd,
             action.dst(),
-            nf::ipc::IpcCmd::HeartbeatResponse,
+            pz::ipc::IpcCmd::HeartbeatResponse,
             0,
             flag);
 
-        auto msg = std::make_unique<nf::ipc::IpcMessage>(std::move(header));
+        auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
         LOG_DEBUG("HeartbeatService: Tx HeartbeatResponse dst={}",
-                  nf::ipc::IpcProtocol::daemonToStr(action.dst()));
+                  pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
         break;
@@ -74,4 +74,4 @@ void HeartbeatService::handleAction(SnmpdServiceManager& serviceManager,
     }
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

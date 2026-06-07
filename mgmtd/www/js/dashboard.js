@@ -9,19 +9,21 @@
   let refs = {};
 
   const DAEMON_META = {
-    authd:     { label: 'Auth',     icon: '🔐' },
-    icmpd:     { label: 'ICMP',     icon: '📡' },
-    snmpd:     { label: 'SNMP',     icon: '📊' },
-    topologyd: { label: 'Topology', icon: '🗺️' },
-    mgmtd:     { label: 'Mgmt',     icon: '🖥️' },
+    ipcd:          { label: 'IPC',          icon: '🔌', raw: 'pz-ipcd' },
+    engined:       { label: 'Engine',       icon: '⚙️', raw: 'pz-engined' },
+    authd:         { label: 'Auth',         icon: '🔐', raw: 'pz-authd' },
+    icmpd:         { label: 'ICMP',         icon: '📡', raw: 'pz-icmpd' },
+    snmpd:         { label: 'SNMP',         icon: '📊', raw: 'pz-snmpd' },
+    topologyd:     { label: 'Topology',     icon: '🗺️', raw: 'pz-topologyd' },
+    mgmtd:         { label: 'Mgmt',         icon: '🖥️', raw: 'pz-mgmtd' },
+    prometheus:    { label: 'Prometheus',   icon: '📈', raw: 'prometheus' },
+    grafana:       { label: 'Grafana',      icon: '📉', raw: 'grafana' },
+    node_exporter: { label: 'Node Exporter',icon: '🖧', raw: 'node_exporter' },
   };
 
   function resolveRefs() {
     refs = {
-      mgmtStatus:  document.getElementById('mgmtStatus'),
-      mgmtSub:     document.getElementById('mgmtSub'),
       uptimeVal:   document.getElementById('uptimeVal'),
-      promStatus:  document.getElementById('promStatus'),
       aliveVal:    document.getElementById('aliveVal'),
       daemonGrid:  document.getElementById('daemonGrid'),
       eventList:   document.getElementById('eventList'),
@@ -38,12 +40,6 @@
     } catch {
       return null;
     }
-  }
-
-  function setStatus(el, text, cls) {
-    if (!el) return;
-    el.textContent = text;
-    el.className   = 'card-value ' + (cls || '');
   }
 
   /* ── Daemon card ── */
@@ -71,7 +67,7 @@
     /* raw name sub-label */
     const raw = document.createElement('div');
     raw.className   = 'daemon-card-raw';
-    raw.textContent = 'nf-' + daemon.name;
+    raw.textContent = meta.raw || daemon.name;
 
     /* status badge */
     const badge = document.createElement('div');
@@ -141,22 +137,12 @@
     const data = await fetchJSON('/api/status');
     if (!data) return;
 
-    setStatus(refs.mgmtStatus,
-              data.management?.status || '--',
-              data.management?.status === 'Active' ? 'green' : 'orange');
-
-    if (refs.mgmtSub) refs.mgmtSub.textContent = data.management?.sub || '';
-
     if (refs.uptimeVal) {
       const s = data.uptime_seconds;
       refs.uptimeVal.textContent = (s != null)
         ? (window.NMS?.utils?.formatUptime(s) ?? s)
         : '--';
     }
-
-    setStatus(refs.promStatus,
-              data.prometheus?.status || '--',
-              data.prometheus?.status === 'Connected' ? 'green' : 'orange');
 
     if (refs.aliveVal) {
       refs.aliveVal.textContent = data.alive_devices ?? '--';

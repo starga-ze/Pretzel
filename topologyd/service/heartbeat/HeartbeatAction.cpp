@@ -2,10 +2,10 @@
 
 #include "service/TopologydServiceManager.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
-HeartbeatAction::HeartbeatAction(HeartbeatActionType type, nf::ipc::IpcDaemon dst)
+HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst)
     : TopologydAction(TopologydActionDomain::Heartbeat),
       m_type(type),
       m_dst(dst)
@@ -22,9 +22,9 @@ HeartbeatActionType HeartbeatAction::type() const
     return m_type;
 }
 
-nf::ipc::IpcDaemon HeartbeatAction::dst() const
+pz::ipc::IpcDaemon HeartbeatAction::dst() const
 {
     return m_dst;
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

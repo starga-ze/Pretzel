@@ -4,7 +4,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 std::unique_ptr<IpcdAction> IpcdActionFactory::create(IpcdActionDomain domain, std::uint32_t type)
@@ -20,4 +20,4 @@ std::unique_ptr<IpcdAction> IpcdActionFactory::create(IpcdActionDomain domain, s
     }
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 class TopologydServiceManager;
@@ -18,7 +18,7 @@ enum class TopologydActionDomain : std::uint32_t
     Heartbeat = 2
 };
 
-class TopologydAction : public nf::action::Action
+class TopologydAction : public pz::action::Action
 {
 public:
     explicit TopologydAction(TopologydActionDomain domain);
@@ -32,4 +32,4 @@ private:
     TopologydActionDomain m_domain{TopologydActionDomain::Unknown};
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

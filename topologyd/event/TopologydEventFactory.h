@@ -6,15 +6,15 @@
 
 #include <memory>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
-class TopologydEventFactory : public nf::event::EventFactory<TopologydEvent, TopologydEventDomain>
+class TopologydEventFactory : public pz::event::EventFactory<TopologydEvent, TopologydEventDomain>
 {
 public:
     std::unique_ptr<TopologydEvent> create() override;
     std::unique_ptr<TopologydEvent> create(TopologydEventDomain domain, std::uint32_t type) override;
-    std::unique_ptr<TopologydEvent> create(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    std::unique_ptr<TopologydEvent> create(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

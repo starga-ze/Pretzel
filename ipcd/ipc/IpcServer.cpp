@@ -6,10 +6,10 @@
 
 #include <sys/epoll.h>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
-IpcServer::IpcServer(const nf::config::IpcConfig& cfg, nf::ipc::IpcDaemon selfId) : 
+IpcServer::IpcServer(const pz::config::IpcConfig& cfg, pz::ipc::IpcDaemon selfId) : 
     m_cfg(cfg), 
     m_selfId(selfId), 
     m_events(MAX_EVENTS), 
@@ -42,7 +42,7 @@ bool IpcServer::init()
     m_initialized = true;
 
     LOG_INFO("IpcServer initialized path={}, self={}", m_cfg.socketPath, 
-            nf::ipc::IpcProtocol::daemonToStr(m_selfId));
+            pz::ipc::IpcProtocol::daemonToStr(m_selfId));
     return true;
 }
 
@@ -118,7 +118,7 @@ bool IpcServer::initEpoll()
 
 bool IpcServer::initListenSocket()
 {
-    m_listener = std::make_unique<nf::socket::UnixDomainSocket>(m_cfg.socketPath);
+    m_listener = std::make_unique<pz::socket::UnixDomainSocket>(m_cfg.socketPath);
     if (!m_listener)
     {
         LOG_ERROR("IpcServer: listener allocation failed");
@@ -201,4 +201,4 @@ IpcServerHandler* IpcServer::handler()
     return m_handler.get();
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace nf::ipc
+namespace pz::ipc
 {
 
 inline constexpr std::uint8_t IPC_PROTOCOL_VERSION = 1;
@@ -92,4 +92,4 @@ public:
     static IpcDaemon strToDaemon(const std::string& daemon) noexcept;
 };
 
-} // namespace nf::ipc
+} // namespace pz::ipc

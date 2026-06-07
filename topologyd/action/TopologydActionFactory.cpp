@@ -5,7 +5,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 std::unique_ptr<TopologydAction> TopologydActionFactory::create(TopologydActionDomain domain,
@@ -19,7 +19,7 @@ std::unique_ptr<TopologydAction> TopologydActionFactory::create(TopologydActionD
     case TopologydActionDomain::Heartbeat:
         return std::make_unique<HeartbeatAction>(
             static_cast<HeartbeatActionType>(type),
-            nf::ipc::IpcDaemon::Unknown);
+            pz::ipc::IpcDaemon::Unknown);
 
     default:
         LOG_WARN("TopologydActionFactory: unhandled domain={}",
@@ -28,4 +28,4 @@ std::unique_ptr<TopologydAction> TopologydActionFactory::create(TopologydActionD
     }
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

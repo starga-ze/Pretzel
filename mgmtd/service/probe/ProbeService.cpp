@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #include <cstring>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
@@ -48,4 +48,4 @@ void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
     }
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

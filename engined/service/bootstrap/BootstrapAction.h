@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace nf::engined
+namespace pz::engined
 {
 
 enum class BootstrapActionType : std::uint32_t
@@ -28,4 +28,4 @@ private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

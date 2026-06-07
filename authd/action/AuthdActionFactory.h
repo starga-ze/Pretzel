@@ -6,10 +6,10 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::authd
+namespace pz::authd
 {
 
-class AuthdActionFactory final : public nf::action::ActionFactory<AuthdAction, AuthdActionDomain>
+class AuthdActionFactory final : public pz::action::ActionFactory<AuthdAction, AuthdActionDomain>
 {
 public:
     AuthdActionFactory() = default;
@@ -18,4 +18,4 @@ public:
     std::unique_ptr<AuthdAction> create(AuthdActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

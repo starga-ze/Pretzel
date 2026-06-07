@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 enum class BootstrapActionType : std::uint32_t
@@ -27,4 +27,4 @@ private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

@@ -5,7 +5,7 @@
 
 #include <memory>
 
-namespace nf::action
+namespace pz::action
 {
 
 template <typename ActionT, typename DomainT> class ActionFactory
@@ -17,4 +17,4 @@ public:
     virtual std::unique_ptr<ActionT> create(DomainT domain, std::uint32_t type) = 0;
 };
 
-} // namespace nf::action
+} // namespace pz::action

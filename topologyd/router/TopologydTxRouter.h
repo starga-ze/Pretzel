@@ -6,18 +6,18 @@
 
 #include <memory>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
-class TopologydTxRouter : public nf::router::TxRouter
+class TopologydTxRouter : public pz::router::TxRouter
 {
 public:
-    explicit TopologydTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler);
+    explicit TopologydTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler);
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
 private:
-    nf::ipc::IpcClientHandler* m_ipcClientHandler{nullptr};
+    pz::ipc::IpcClientHandler* m_ipcClientHandler{nullptr};
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

@@ -8,7 +8,7 @@
 #include <chrono>
 #include <memory>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 class TopologydServiceManager;
@@ -47,15 +47,15 @@ public:
 
 private:
     void onServerHello(TopologydServiceManager& serviceManager,
-                       const nf::ipc::IpcMessage& msg);
+                       const pz::ipc::IpcMessage& msg);
 
-    void onRuntimeStart(const nf::ipc::IpcMessage& msg);
+    void onRuntimeStart(const pz::ipc::IpcMessage& msg);
 
     bool checkTimeout(std::chrono::steady_clock::time_point now,
                       const char* stateName);
 
-    std::unique_ptr<nf::ipc::IpcMessage> buildClientHelloMessage() const;
-    std::unique_ptr<nf::ipc::IpcMessage> buildRuntimeReadyMessage() const;
+    std::unique_ptr<pz::ipc::IpcMessage> buildClientHelloMessage() const;
+    std::unique_ptr<pz::ipc::IpcMessage> buildRuntimeReadyMessage() const;
 
 private:
     TopologydEventFactory*  m_eventFactory{nullptr};
@@ -68,4 +68,4 @@ private:
     std::chrono::steady_clock::time_point m_lastRuntimeReadySentAt{};
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

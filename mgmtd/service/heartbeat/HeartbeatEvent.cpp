@@ -2,7 +2,7 @@
 
 #include "service/MgmtdServiceManager.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type)
@@ -12,7 +12,7 @@ HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type)
 }
 
 HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type,
-                               std::unique_ptr<nf::ipc::IpcMessage> message)
+                               std::unique_ptr<pz::ipc::IpcMessage> message)
     : MgmtdEvent(MgmtdEventDomain::Heartbeat),
       m_type(type),
       m_message(std::move(message))
@@ -29,9 +29,9 @@ HeartbeatEventType HeartbeatEvent::type() const
     return m_type;
 }
 
-const nf::ipc::IpcMessage* HeartbeatEvent::message() const
+const pz::ipc::IpcMessage* HeartbeatEvent::message() const
 {
     return m_message.get();
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

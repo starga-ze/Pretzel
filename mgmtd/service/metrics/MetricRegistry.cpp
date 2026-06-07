@@ -6,7 +6,7 @@
 
 #include <sstream>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 void MetricRegistry::setGauge(const std::string& name, double value)
@@ -43,4 +43,4 @@ std::string MetricRegistry::renderPrometheus() const
     return out.str();
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

@@ -1,6 +1,6 @@
 #include "action/IcmpdAction.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 IcmpdAction::IcmpdAction(IcmpdActionDomain domain)
@@ -14,4 +14,4 @@ IcmpdActionDomain IcmpdAction::domain() const
 }
 
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

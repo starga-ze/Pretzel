@@ -1,0 +1,26 @@
+[Unit]
+Description=PZ IPC Daemon
+After=network.target
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/opt/pretzel/bin/pz-ipcd
+
+Restart=always
+RestartSec=2
+
+LimitNOFILE=1048576
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pz-ipcd
+
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+RuntimeDirectory=pretzel
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=pretzel.target

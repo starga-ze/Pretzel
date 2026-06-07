@@ -12,13 +12,13 @@
 #include <memory>
 #include <queue>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 class IpcdEventFactory;
 class IpcdActionFactory;
 
-class IpcdServiceManager : public nf::service::ServiceManager<IpcdEvent, IpcdAction>
+class IpcdServiceManager : public pz::service::ServiceManager<IpcdEvent, IpcdAction>
 {
 public:
     IpcdServiceManager(IpcdEventFactory* eventFactory,
@@ -48,4 +48,4 @@ private:
     std::queue<std::unique_ptr<IpcdAction>> m_actionQueue;
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

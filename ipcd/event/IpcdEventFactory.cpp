@@ -4,7 +4,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 std::unique_ptr<IpcdEvent> IpcdEventFactory::create()
@@ -25,7 +25,7 @@ std::unique_ptr<IpcdEvent> IpcdEventFactory::create(IpcdEventDomain domain, std:
     }
 }
 
-std::unique_ptr<IpcdEvent> IpcdEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> msg)
+std::unique_ptr<IpcdEvent> IpcdEventFactory::create(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -35,13 +35,13 @@ std::unique_ptr<IpcdEvent> IpcdEventFactory::create(std::unique_ptr<nf::ipc::Ipc
 
     switch (msg->getCmd())
     {
-    case nf::ipc::IpcCmd::ClientHello:
+    case pz::ipc::IpcCmd::ClientHello:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveClientHello, std::move(msg));
 
-    case nf::ipc::IpcCmd::SyncRequest:
+    case pz::ipc::IpcCmd::SyncRequest:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveSyncRequest, std::move(msg));
 
-    case nf::ipc::IpcCmd::RuntimeReady:
+    case pz::ipc::IpcCmd::RuntimeReady:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeReady, std::move(msg));
 
     default:
@@ -49,4 +49,4 @@ std::unique_ptr<IpcdEvent> IpcdEventFactory::create(std::unique_ptr<nf::ipc::Ipc
     }
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

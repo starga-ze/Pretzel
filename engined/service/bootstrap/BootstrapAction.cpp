@@ -1,7 +1,7 @@
 #include "service/bootstrap/BootstrapAction.h"
 #include "service/EnginedServiceManager.h"
 
-namespace nf::engined
+namespace pz::engined
 {
 
 BootstrapAction::BootstrapAction(BootstrapActionType type)
@@ -20,4 +20,4 @@ void BootstrapAction::dispatch(EnginedServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace nf::engined
+} // namespace pz::engined

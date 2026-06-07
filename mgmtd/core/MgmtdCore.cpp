@@ -6,7 +6,7 @@
 #include <chrono>
 #include <thread>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 MgmtdCore::MgmtdCore()
@@ -21,7 +21,7 @@ bool MgmtdCore::onInit()
         return false;
     }
 
-    nf::util::Logger::Init(m_loggerConfig.name,
+    pz::util::Logger::Init(m_loggerConfig.name,
                            m_loggerConfig.file,
                            m_loggerConfig.maxFileSize,
                            m_loggerConfig.maxFiles);
@@ -33,7 +33,7 @@ bool MgmtdCore::onInit()
         return false;
     }
 
-    m_ipcClient = std::make_unique<nf::ipc::IpcClient>(m_ipcConfig, nf::ipc::IpcDaemon::Mgmtd);
+    m_ipcClient = std::make_unique<pz::ipc::IpcClient>(m_ipcConfig, pz::ipc::IpcDaemon::Mgmtd);
     if (!m_ipcClient->init())
     {
         LOG_WARN("Mgmtd IpcClient init failed. Continue with HTTP metrics only.");
@@ -119,7 +119,7 @@ void MgmtdCore::onShutdown()
         m_httpServer->stop();
     }
 
-    nf::util::Logger::Shutdown();
+    pz::util::Logger::Shutdown();
 }
 
 bool MgmtdCore::loadLoggerConfig()
@@ -128,16 +128,16 @@ bool MgmtdCore::loadLoggerConfig()
 
     if (!cfg.contains("logger"))
     {
-        m_loggerConfig.name = "nf-mgmtd";
-        m_loggerConfig.file = "/tmp/nf-mgmtd.log";
+        m_loggerConfig.name = "pz-mgmtd";
+        m_loggerConfig.file = "/tmp/pz-mgmtd.log";
         m_loggerConfig.maxFileSize = 5 * 1024 * 1024;
         m_loggerConfig.maxFiles = 10;
         return true;
     }
 
     const auto& log = cfg["logger"];
-    m_loggerConfig.name = log.value("name", "nf-mgmtd");
-    m_loggerConfig.file = log.value("file", "/tmp/nf-mgmtd.log");
+    m_loggerConfig.name = log.value("name", "pz-mgmtd");
+    m_loggerConfig.file = log.value("file", "/tmp/pz-mgmtd.log");
     m_loggerConfig.maxFileSize = log.value("max_file_size", 5 * 1024 * 1024);
     m_loggerConfig.maxFiles = log.value("max_files", 10);
     return true;
@@ -203,4 +203,4 @@ bool MgmtdCore::loadAuthConfig()
     return true;
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

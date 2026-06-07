@@ -5,7 +5,7 @@
 #include <atomic>
 #include <string>
 
-namespace nf::core
+namespace pz::core
 {
 
 class Core
@@ -23,7 +23,7 @@ protected:
 
     bool stopping() const;
 
-    nf::config::Config m_config;
+    pz::config::Config m_config;
 
 private:
     static void signalHandler(int signum);
@@ -34,4 +34,4 @@ private:
     static std::atomic<bool> m_running;
 };
 
-} // namespace nf::core
+} // namespace pz::core

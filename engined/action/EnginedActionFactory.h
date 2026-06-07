@@ -6,10 +6,10 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::engined
+namespace pz::engined
 {
 
-class EnginedActionFactory final : public nf::action::ActionFactory<EnginedAction, EnginedActionDomain>
+class EnginedActionFactory final : public pz::action::ActionFactory<EnginedAction, EnginedActionDomain>
 {
 public:
     EnginedActionFactory() = default;
@@ -18,4 +18,4 @@ public:
     std::unique_ptr<EnginedAction> create(EnginedActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace nf::engined
+} // namespace pz::engined

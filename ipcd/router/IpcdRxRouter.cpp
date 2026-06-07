@@ -3,7 +3,7 @@
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
 IpcdRxRouter::IpcdRxRouter(IpcdEventFactory* eventFactory,
@@ -15,7 +15,7 @@ IpcdRxRouter::IpcdRxRouter(IpcdEventFactory* eventFactory,
 {
 }
 
-void IpcdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager || !m_txRouter)
     {
@@ -32,16 +32,16 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     }
 
     LOG_DEBUG("IpcdRxRouter: recv cmd={} src={}",
-              nf::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
-              nf::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+              pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+              pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
-    const nf::ipc::IpcCmd cmd = msg->getCmd();
+    const pz::ipc::IpcCmd cmd = msg->getCmd();
 
     switch (cmd)
     {
-    case nf::ipc::IpcCmd::ClientHello:
-    case nf::ipc::IpcCmd::SyncRequest:
-    case nf::ipc::IpcCmd::RuntimeReady:
+    case pz::ipc::IpcCmd::ClientHello:
+    case pz::ipc::IpcCmd::SyncRequest:
+    case pz::ipc::IpcCmd::RuntimeReady:
     {
         std::unique_ptr<IpcdEvent> event = m_eventFactory->create(std::move(msg));
         m_serviceManager->postEvent(std::move(event));
@@ -49,10 +49,10 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     }
 
     default:
-        LOG_DEBUG("IpcdRxRouter: bypass routing cmd={}", nf::ipc::IpcProtocol::cmdToStr(cmd));
+        LOG_DEBUG("IpcdRxRouter: bypass routing cmd={}", pz::ipc::IpcProtocol::cmdToStr(cmd));
         m_txRouter->handleIpcMessage(std::move(msg));
         break;
     }
 }
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

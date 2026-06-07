@@ -1,12 +1,12 @@
 #include "process/SnmpdProcess.h"
 #include "util/Logger.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 constexpr int kIpcClientTimeoutMs = 10;
 
-SnmpdProcess::SnmpdProcess(nf::ipc::IpcClient* ipcClient,
+SnmpdProcess::SnmpdProcess(pz::ipc::IpcClient* ipcClient,
                            SnmpdServiceManager* serviceManager) :
     m_ipcClient(ipcClient),
     m_serviceManager(serviceManager)
@@ -41,4 +41,4 @@ void SnmpdProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

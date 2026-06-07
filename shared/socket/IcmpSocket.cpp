@@ -8,7 +8,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-namespace nf::socket
+namespace pz::socket
 {
 
 IcmpSocket::~IcmpSocket()
@@ -78,4 +78,4 @@ bool IcmpSocket::setNonBlocking(int fd)
     return ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
-} // namespace nf::socket
+} // namespace pz::socket

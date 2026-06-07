@@ -1,0 +1,20 @@
+[Unit]
+Description=Pretzel Grafana
+After=pz-prometheus.service
+Wants=pz-prometheus.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/usr/share/grafana/bin/grafana server \
+  --config=/etc/pretzel/grafana/grafana.ini \
+  --homepath=/usr/share/grafana
+
+StandardOutput=append:/var/log/pretzel/grafana.log
+StandardError=append:/var/log/pretzel/grafana.log
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=pretzel.target

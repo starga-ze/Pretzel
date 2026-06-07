@@ -2,7 +2,7 @@
 
 #include "service/TopologydServiceManager.h"
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type)
@@ -12,7 +12,7 @@ HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type)
 }
 
 HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type,
-                               std::unique_ptr<nf::ipc::IpcMessage> message)
+                               std::unique_ptr<pz::ipc::IpcMessage> message)
     : TopologydEvent(TopologydEventDomain::Heartbeat),
       m_type(type),
       m_message(std::move(message))
@@ -29,14 +29,14 @@ HeartbeatEventType HeartbeatEvent::type() const
     return m_type;
 }
 
-const nf::ipc::IpcMessage* HeartbeatEvent::message() const
+const pz::ipc::IpcMessage* HeartbeatEvent::message() const
 {
     return m_message.get();
 }
 
-std::unique_ptr<nf::ipc::IpcMessage> HeartbeatEvent::takeMessage()
+std::unique_ptr<pz::ipc::IpcMessage> HeartbeatEvent::takeMessage()
 {
     return std::move(m_message);
 }
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

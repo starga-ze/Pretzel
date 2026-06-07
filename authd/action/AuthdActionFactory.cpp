@@ -4,7 +4,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::authd
+namespace pz::authd
 {
 
 std::unique_ptr<AuthdAction> AuthdActionFactory::create(AuthdActionDomain domain, std::uint32_t type)
@@ -20,4 +20,4 @@ std::unique_ptr<AuthdAction> AuthdActionFactory::create(AuthdActionDomain domain
     }
 }
 
-} // namespace nf::authd
+} // namespace pz::authd

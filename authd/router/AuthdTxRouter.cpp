@@ -1,15 +1,15 @@
 #include "router/AuthdTxRouter.h"
 #include "util/Logger.h"
 
-namespace nf::authd
+namespace pz::authd
 {
 
-AuthdTxRouter::AuthdTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler) :
+AuthdTxRouter::AuthdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler) :
     m_ipcClientHandler(ipcClientHandler)
 {
 }
 
-void AuthdTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void AuthdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -26,4 +26,4 @@ void AuthdTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     m_ipcClientHandler->egress(std::move(msg));
 }
 
-} // namespace nf::authd
+} // namespace pz::authd

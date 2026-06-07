@@ -15,14 +15,14 @@
 
 #include <memory>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
-using LoggerConfig = nf::config::LoggerConfig;
-using IpcConfig = nf::config::IpcConfig;
-using ThreadManager = nf::util::ThreadManager;
+using LoggerConfig = pz::config::LoggerConfig;
+using IpcConfig = pz::config::IpcConfig;
+using ThreadManager = pz::util::ThreadManager;
 
-class IpcdCore : public nf::core::Core
+class IpcdCore : public pz::core::Core
 {
 public:
     IpcdCore();
@@ -49,4 +49,4 @@ private:
     std::unique_ptr<IpcdProcess> m_process;
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

@@ -6,10 +6,10 @@
 #include "service/IpcdServiceManager.h"
 #include "router/IpcdTxRouter.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
-class IpcdRxRouter : public nf::router::RxRouter
+class IpcdRxRouter : public pz::router::RxRouter
 {
 public:
     IpcdRxRouter(IpcdEventFactory* eventFactory,
@@ -17,7 +17,7 @@ public:
                  IpcdTxRouter* txRouter);
     ~IpcdRxRouter() override = default;
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
 private:
     IpcdEventFactory* m_eventFactory{nullptr};
@@ -25,4 +25,4 @@ private:
     IpcdTxRouter* m_txRouter{nullptr};
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

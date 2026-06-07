@@ -5,7 +5,7 @@
 #include "service/MgmtdServiceManager.h"
 #include "util/Logger.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 namespace
@@ -13,7 +13,7 @@ namespace
 constexpr int kIpcClientTimeoutMs = 10;
 }
 
-MgmtdProcess::MgmtdProcess(nf::ipc::IpcClient* ipcClient,
+MgmtdProcess::MgmtdProcess(pz::ipc::IpcClient* ipcClient,
                            HttpServer* httpServer,
                            MgmtdServiceManager* serviceManager)
     : m_ipcClient(ipcClient),
@@ -59,4 +59,4 @@ void MgmtdProcess::tick()
     }
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

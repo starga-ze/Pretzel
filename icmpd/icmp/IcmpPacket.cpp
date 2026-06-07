@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 IcmpHeader::IcmpHeader(IcmpType type, IcmpCode code, std::uint16_t identifier, std::uint16_t sequence)
@@ -195,4 +195,4 @@ std::string IcmpPacket::dump() const
     return oss.str();
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

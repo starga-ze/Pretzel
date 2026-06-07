@@ -6,17 +6,17 @@
 
 #include <memory>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
 class TopologydServiceManager;
 
-class TopologydRxRouter : public nf::router::RxRouter
+class TopologydRxRouter : public pz::router::RxRouter
 {
 public:
     explicit TopologydRxRouter(TopologydEventFactory* eventFactory);
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
     void setServiceManager(TopologydServiceManager* serviceManager);
 
@@ -25,4 +25,4 @@ private:
     TopologydServiceManager*  m_serviceManager{nullptr};
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

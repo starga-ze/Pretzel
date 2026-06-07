@@ -1,5 +1,0 @@
-[Unit]
-Description=NF NMS Platform
-
-[Install]
-WantedBy=multi-user.target

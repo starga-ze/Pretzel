@@ -5,7 +5,7 @@
 #include <chrono>
 #include <string>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class MetricService
@@ -24,4 +24,4 @@ private:
     std::chrono::steady_clock::time_point m_lastTickAt;
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

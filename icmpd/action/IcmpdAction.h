@@ -6,7 +6,7 @@
 #include <memory>
 #include <cstdint>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 class IcmpdServiceManager;
@@ -15,10 +15,11 @@ enum class IcmpdActionDomain : std::uint32_t
 {
     Unknown = 0,
     Bootstrap = 1,
-    Probe = 2
+    Probe = 2,
+    Heartbeat = 3
 };
 
-class IcmpdAction : public nf::action::Action
+class IcmpdAction : public pz::action::Action
 {
 public:
     explicit IcmpdAction(IcmpdActionDomain domain);
@@ -32,4 +33,4 @@ private:
     IcmpdActionDomain m_domain{IcmpdActionDomain::Unknown};
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

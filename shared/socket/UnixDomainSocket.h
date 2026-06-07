@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace nf::socket
+namespace pz::socket
 {
 
 class UnixDomainSocket
@@ -49,4 +49,4 @@ private:
     bool m_shouldUnlinkOnClose {false};
 };
 
-} // namespace nf::socket
+} // namespace pz::socket

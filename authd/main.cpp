@@ -2,7 +2,7 @@
 
 #include <memory>
 
-using namespace nf::authd;
+using namespace pz::authd;
 
 int main()
 {

@@ -2,10 +2,11 @@
 
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/probe/ProbeEvent.h"
+#include "service/heartbeat/HeartbeatEvent.h"
 
 #include "util/Logger.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create()
@@ -29,7 +30,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(IcmpdEventDomain domain, s
     }
 }
 
-std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<nf::ipc::IpcMessage> msg)
+std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -39,12 +40,15 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<nf::ipc::I
 
     switch (msg->getCmd())
     {
-    case nf::ipc::IpcCmd::ServerHello:
+    case pz::ipc::IpcCmd::ServerHello:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello, std::move(msg));
 
-    case nf::ipc::IpcCmd::RuntimeStart:
+    case pz::ipc::IpcCmd::RuntimeStart:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
-    
+
+    case pz::ipc::IpcCmd::HeartbeatRequest:
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
+
     default:
         LOG_WARN("IcmpdEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));
         return nullptr;
@@ -81,4 +85,4 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp,
     return nullptr;
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

@@ -1,0 +1,22 @@
+[Unit]
+Description=PZ Management Daemon
+
+After=pz-ipcd.service
+Requires=pz-ipcd.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/opt/pretzel/bin/pz-mgmtd
+
+Restart=always
+RestartSec=3
+
+LimitNOFILE=65536
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pz-mgmtd
+
+[Install]
+WantedBy=pretzel.target

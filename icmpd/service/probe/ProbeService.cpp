@@ -16,7 +16,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 ProbeService::ProbeService(IcmpdEventFactory* eventFactory,
@@ -421,7 +421,7 @@ bool ProbeService::canAcceptReply() const
 
 std::unique_ptr<IcmpPacket> ProbeService::buildEchoRequestPacket(std::uint16_t sequence) const
 {
-    const std::string payload = "nf-icmpd-probe";
+    const std::string payload = "pz-icmpd-probe";
 
     IcmpHeader header = IcmpHeader::buildEchoRequest(m_identifier, sequence);
 
@@ -472,11 +472,11 @@ void ProbeService::sendProbeResult(IcmpdServiceManager& serviceManager)
     // payload: alive count를 4바이트 big-endian으로 인코딩
     const std::uint32_t aliveNet = htonl(m_lastAliveCount);
 
-    auto msg = std::make_unique<nf::ipc::IpcMessage>();
-    msg->setSrc(nf::ipc::IpcDaemon::Icmpd);
-    msg->setDst(nf::ipc::IpcDaemon::Mgmtd);
-    msg->setCmd(nf::ipc::IpcCmd::ProbeResult);
-    msg->setFlags(nf::ipc::IpcProtocol::toFlag(nf::ipc::IpcFlag::Request));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Icmpd);
+    msg->setDst(pz::ipc::IpcDaemon::Mgmtd);
+    msg->setCmd(pz::ipc::IpcCmd::ProbeResult);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(&aliveNet), sizeof(aliveNet));
 
     LOG_INFO("ProbeService: sending ProbeResult to mgmtd alive={}", m_lastAliveCount);
@@ -505,4 +505,4 @@ std::string ProbeService::hostU32ToIpv4(std::uint32_t value)
     return std::string(buf);
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

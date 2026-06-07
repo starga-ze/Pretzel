@@ -9,21 +9,21 @@
 
 #include <openssl/rand.h>
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
-void IpcdSessionManager::handleMessage(const nf::ipc::IpcMessage& msg)
+void IpcdSessionManager::handleMessage(const pz::ipc::IpcMessage& msg)
 {
-    nf::session::Session* session = findSession(msg.getSrc(), msg.getDst());
+    pz::session::Session* session = findSession(msg.getSrc(), msg.getDst());
 
     if (session == nullptr)
     {
-        if (msg.getCmd() != nf::ipc::IpcCmd::ClientHello)
+        if (msg.getCmd() != pz::ipc::IpcCmd::ClientHello)
         {
             LOG_WARN("Session not found. first message must be ClientHello, src={}, dst={}, cmd={}",
-                     nf::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
-                     nf::ipc::IpcProtocol::daemonToStr(msg.getDst()),
-                     nf::ipc::IpcProtocol::cmdToStr(msg.getCmd()));
+                     pz::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
+                     pz::ipc::IpcProtocol::daemonToStr(msg.getDst()),
+                     pz::ipc::IpcProtocol::cmdToStr(msg.getCmd()));
             return;
         }
 
@@ -31,33 +31,33 @@ void IpcdSessionManager::handleMessage(const nf::ipc::IpcMessage& msg)
         if (session == nullptr)
         {
             LOG_ERROR("Failed to create session, src={}, dst={}",
-                      nf::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
-                      nf::ipc::IpcProtocol::daemonToStr(msg.getDst()));
+                      pz::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
+                      pz::ipc::IpcProtocol::daemonToStr(msg.getDst()));
             return;
         }
 
         LOG_INFO("Session created, sessionId={}, src={}, dst={}",
                  session->getId(),
-                 nf::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
-                 nf::ipc::IpcProtocol::daemonToStr(msg.getDst()));
+                 pz::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
+                 pz::ipc::IpcProtocol::daemonToStr(msg.getDst()));
     }
     else
     {
-        if (msg.getCmd() == nf::ipc::IpcCmd::ClientHello)
+        if (msg.getCmd() == pz::ipc::IpcCmd::ClientHello)
         {
             LOG_WARN("Session already exists, ClientHello message will be drop, src={}, dst={}, cmd={}",
-                    nf::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
-                    nf::ipc::IpcProtocol::daemonToStr(msg.getDst()),
-                    nf::ipc::IpcProtocol::cmdToStr(msg.getCmd()));
+                    pz::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
+                    pz::ipc::IpcProtocol::daemonToStr(msg.getDst()),
+                    pz::ipc::IpcProtocol::cmdToStr(msg.getCmd()));
             return;
         }
     }
 
     LOG_INFO("Session found, sessionId={}, src={}, dst={}, cmd={}",
              session->getId(),
-             nf::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
-             nf::ipc::IpcProtocol::daemonToStr(msg.getDst()),
-             nf::ipc::IpcProtocol::cmdToStr(msg.getCmd()));
+             pz::ipc::IpcProtocol::daemonToStr(msg.getSrc()),
+             pz::ipc::IpcProtocol::daemonToStr(msg.getDst()),
+             pz::ipc::IpcProtocol::cmdToStr(msg.getCmd()));
 
     /*
      * TODO:
@@ -70,7 +70,7 @@ void IpcdSessionManager::handleMessage(const nf::ipc::IpcMessage& msg)
 
 }
 
-nf::session::Session* IpcdSessionManager::findSession(const std::string& sessionId)
+pz::session::Session* IpcdSessionManager::findSession(const std::string& sessionId)
 {
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end())
@@ -79,9 +79,9 @@ nf::session::Session* IpcdSessionManager::findSession(const std::string& session
     return it->second.get();
 }
 
-nf::session::Session* IpcdSessionManager::findSession(
-    nf::ipc::IpcDaemon src,
-    nf::ipc::IpcDaemon dst)
+pz::session::Session* IpcdSessionManager::findSession(
+    pz::ipc::IpcDaemon src,
+    pz::ipc::IpcDaemon dst)
 {
     const auto pairKey = makePairKey(src, dst);
 
@@ -92,17 +92,17 @@ nf::session::Session* IpcdSessionManager::findSession(
     return findSession(it->second);
 }
 
-nf::session::Session* IpcdSessionManager::createSession(
-    nf::ipc::IpcDaemon src,
-    nf::ipc::IpcDaemon dst)
+pz::session::Session* IpcdSessionManager::createSession(
+    pz::ipc::IpcDaemon src,
+    pz::ipc::IpcDaemon dst)
 {
     const auto pairKey = makePairKey(src, dst);
 
     if (m_pairToSessionId.find(pairKey) != m_pairToSessionId.end())
     {
         LOG_WARN("Session pair already exists, src={}, dst={}",
-                 nf::ipc::IpcProtocol::daemonToStr(src),
-                 nf::ipc::IpcProtocol::daemonToStr(dst));
+                 pz::ipc::IpcProtocol::daemonToStr(src),
+                 pz::ipc::IpcProtocol::daemonToStr(dst));
         return nullptr;
     }
 
@@ -117,13 +117,13 @@ nf::session::Session* IpcdSessionManager::createSession(
             return nullptr;
     }
 
-    auto session = std::make_unique<nf::session::Session>(
+    auto session = std::make_unique<pz::session::Session>(
         sessionId,
         src,
         dst
     );
 
-    nf::session::Session* raw = session.get();
+    pz::session::Session* raw = session.get();
 
     m_sessions.emplace(sessionId, std::move(session));
     m_pairToSessionId.emplace(pairKey, sessionId);
@@ -141,8 +141,8 @@ void IpcdSessionManager::removeSession(const std::string& sessionId)
 
     LOG_INFO("Session removed, sessionId={}, src={}, dst={}",
              it->second->getId(),
-             nf::ipc::IpcProtocol::daemonToStr(it->second->getSrc()),
-             nf::ipc::IpcProtocol::daemonToStr(it->second->getDst()));
+             pz::ipc::IpcProtocol::daemonToStr(it->second->getSrc()),
+             pz::ipc::IpcProtocol::daemonToStr(it->second->getDst()));
 
     m_pairToSessionId.erase(pairKey);
     m_sessions.erase(it);
@@ -157,8 +157,8 @@ void IpcdSessionManager::clear()
 }
 
 std::string IpcdSessionManager::makePairKey(
-    nf::ipc::IpcDaemon src,
-    nf::ipc::IpcDaemon dst)
+    pz::ipc::IpcDaemon src,
+    pz::ipc::IpcDaemon dst)
 {
     return std::to_string(static_cast<int>(src)) + ":" +
            std::to_string(static_cast<int>(dst));

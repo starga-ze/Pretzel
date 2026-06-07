@@ -2,7 +2,7 @@
 
 #include "service/probe/ProbeEvent.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class MgmtdServiceManager;
@@ -17,4 +17,4 @@ public:
                      const ProbeEvent& event);
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

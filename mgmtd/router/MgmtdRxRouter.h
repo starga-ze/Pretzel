@@ -5,21 +5,21 @@
 #include "event/MgmtdEventFactory.h"
 #include "service/MgmtdServiceManager.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
-class MgmtdRxRouter : public nf::router::RxRouter
+class MgmtdRxRouter : public pz::router::RxRouter
 {
 public:
     MgmtdRxRouter(MgmtdEventFactory* eventFactory,
                   MgmtdServiceManager* serviceManager);
     ~MgmtdRxRouter() override = default;
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
 private:
     MgmtdEventFactory* m_eventFactory{nullptr};
     MgmtdServiceManager* m_serviceManager{nullptr};
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

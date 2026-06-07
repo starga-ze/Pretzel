@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 class SnmpdServiceManager;
@@ -18,7 +18,7 @@ enum class SnmpdActionDomain : std::uint32_t
     Heartbeat = 2
 };
 
-class SnmpdAction : public nf::action::Action
+class SnmpdAction : public pz::action::Action
 {
 public:
     explicit SnmpdAction(SnmpdActionDomain domain);
@@ -32,4 +32,4 @@ private:
     SnmpdActionDomain m_domain{SnmpdActionDomain::Unknown};
 };
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

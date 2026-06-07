@@ -5,7 +5,7 @@
 
 #include "util/Logger.h"
 
-namespace nf::engined
+namespace pz::engined
 {
 
 std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain domain, std::uint32_t type)
@@ -18,7 +18,7 @@ std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain 
     case EnginedActionDomain::Heartbeat:
         return std::make_unique<HeartbeatAction>(
             static_cast<HeartbeatActionType>(type),
-            nf::ipc::IpcDaemon::Unknown);
+            pz::ipc::IpcDaemon::Unknown);
 
     default:
         LOG_WARN("EnginedActionFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
@@ -26,4 +26,4 @@ std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain 
     }
 }
 
-} // namespace nf::engined
+} // namespace pz::engined

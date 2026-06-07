@@ -3,19 +3,19 @@
 #include "router/TxRouter.h"
 #include "ipc/IpcClientHandler.h"
 
-namespace nf::authd
+namespace pz::authd
 {
 
-class AuthdTxRouter : public nf::router::TxRouter
+class AuthdTxRouter : public pz::router::TxRouter
 {
 public:
-    explicit AuthdTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler);
+    explicit AuthdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler);
     ~AuthdTxRouter() override = default;
 
-    void handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg) override;
+    void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
 private:
-    nf::ipc::IpcClientHandler* m_ipcClientHandler;
+    pz::ipc::IpcClientHandler* m_ipcClientHandler;
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

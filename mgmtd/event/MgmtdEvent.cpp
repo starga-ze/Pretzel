@@ -1,6 +1,6 @@
 #include "event/MgmtdEvent.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 MgmtdEvent::MgmtdEvent(MgmtdEventDomain domain) : m_domain(domain)
@@ -12,4 +12,4 @@ MgmtdEventDomain MgmtdEvent::domain() const
     return m_domain;
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

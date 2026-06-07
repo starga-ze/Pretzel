@@ -1,7 +1,7 @@
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/SnmpdServiceManager.h"
 
-namespace nf::snmpd
+namespace pz::snmpd
 {
 
 HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type) :
@@ -10,7 +10,7 @@ HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type) :
 {
 }
 
-HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<nf::ipc::IpcMessage> message) :
+HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<pz::ipc::IpcMessage> message) :
     SnmpdEvent(SnmpdEventDomain::Heartbeat),
     m_message(std::move(message)),
     m_type(type)
@@ -27,14 +27,14 @@ HeartbeatEventType HeartbeatEvent::type() const
     return m_type;
 }
 
-const nf::ipc::IpcMessage* HeartbeatEvent::message() const
+const pz::ipc::IpcMessage* HeartbeatEvent::message() const
 {
     return m_message.get();
 }
 
-std::unique_ptr<nf::ipc::IpcMessage> HeartbeatEvent::takeMessage()
+std::unique_ptr<pz::ipc::IpcMessage> HeartbeatEvent::takeMessage()
 {
     return std::move(m_message);
 }
 
-} // namespace nf::snmpd
+} // namespace pz::snmpd

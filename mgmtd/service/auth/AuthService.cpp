@@ -7,7 +7,7 @@
 #include <random>
 #include <sstream>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 bool AuthService::load(const std::string& username,
@@ -112,4 +112,4 @@ std::string AuthService::generateSessionId()
     return oss.str();
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

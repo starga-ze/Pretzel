@@ -19,13 +19,13 @@
 #include <optional>
 #include <queue>
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
 class MgmtdEventFactory;
 class MgmtdActionFactory;
 
-class MgmtdServiceManager : public nf::service::ServiceManager<MgmtdEvent, MgmtdAction>
+class MgmtdServiceManager : public pz::service::ServiceManager<MgmtdEvent, MgmtdAction>
 {
 public:
     MgmtdServiceManager(MgmtdEventFactory* eventFactory,
@@ -67,4 +67,4 @@ private:
     std::atomic<std::int64_t> m_aliveDevices{-1};
 };
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd

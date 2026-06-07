@@ -1,6 +1,6 @@
 #pragma once
 
-namespace nf::process
+namespace pz::process
 {
 
 class Process
@@ -13,4 +13,4 @@ public:
     virtual void tick() = 0;
 };
 
-} // namespace nf::process
+} // namespace pz::process

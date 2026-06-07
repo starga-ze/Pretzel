@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace nf::algorithm
+namespace pz::algorithm
 {
 
 class ByteRingBuffer
@@ -39,4 +39,4 @@ private:
     size_t m_size = 0;
 };
 
-} // namespace nf::algorithm
+} // namespace pz::algorithm

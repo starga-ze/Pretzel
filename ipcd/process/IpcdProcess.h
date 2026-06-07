@@ -5,10 +5,10 @@
 #include "ipc/IpcServer.h"
 #include "service/IpcdServiceManager.h"
 
-namespace nf::ipcd
+namespace pz::ipcd
 {
 
-class IpcdProcess : public nf::process::Process
+class IpcdProcess : public pz::process::Process
 {
 public:
     IpcdProcess(IpcServer* ipcServer, IpcdServiceManager* serviceManager);
@@ -22,4 +22,4 @@ private:
     IpcdServiceManager* m_serviceManager{nullptr};
 };
 
-} // namespace nf::ipcd
+} // namespace pz::ipcd

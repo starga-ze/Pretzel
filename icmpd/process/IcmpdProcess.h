@@ -8,13 +8,13 @@
 
 #include <chrono>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
-class IcmpdProcess : public nf::process::Process
+class IcmpdProcess : public pz::process::Process
 {
 public:
-    IcmpdProcess(nf::ipc::IpcClient* ipcClientEngine, 
+    IcmpdProcess(pz::ipc::IpcClient* ipcClientEngine, 
             IcmpEngine* icmpEngine, IcmpdServiceManager* serviceManager);
     ~IcmpdProcess() override = default;
 
@@ -22,9 +22,9 @@ public:
     void tick() override;
 
 private:
-    nf::ipc::IpcClient* m_ipcClientEngine;
+    pz::ipc::IpcClient* m_ipcClientEngine;
     IcmpEngine* m_icmpEngine;
     IcmpdServiceManager* m_serviceManager;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

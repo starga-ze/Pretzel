@@ -1,7 +1,7 @@
 #include "service/bootstrap/BootstrapAction.h"
 #include "service/IcmpdServiceManager.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 BootstrapAction::BootstrapAction(BootstrapActionType type)
@@ -20,4 +20,4 @@ void BootstrapAction::dispatch(IcmpdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

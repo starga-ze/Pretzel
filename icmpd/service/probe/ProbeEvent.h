@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 class IcmpdServiceManager;
@@ -42,4 +42,4 @@ private:
     std::unique_ptr<IcmpPacket> m_packet;
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

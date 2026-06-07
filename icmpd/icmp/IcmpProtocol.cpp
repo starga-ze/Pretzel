@@ -1,6 +1,6 @@
 #include "icmp/IcmpProtocol.h"
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 const char* IcmpProtocol::typeToStr(IcmpType type)
@@ -31,4 +31,4 @@ const char* IcmpProtocol::codeToStr(IcmpType type, IcmpCode code)
     return "Unknown";
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

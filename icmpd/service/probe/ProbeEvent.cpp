@@ -5,7 +5,7 @@
 
 #include <utility>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 ProbeEvent::ProbeEvent(ProbeEventType type)
@@ -44,4 +44,4 @@ void ProbeEvent::dispatch(IcmpdServiceManager& serviceManager)
     serviceManager.probeService().handleEvent(serviceManager, *this);
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

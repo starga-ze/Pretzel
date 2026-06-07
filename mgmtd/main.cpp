@@ -2,7 +2,7 @@
 
 #include <memory>
 
-using namespace nf::mgmtd;
+using namespace pz::mgmtd;
 
 int main()
 {

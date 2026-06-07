@@ -6,7 +6,7 @@
 
 #include <sys/epoll.h>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 IcmpEngineHandler::IcmpEngineHandler(IcmpEngine* icmpEngine)
@@ -16,7 +16,7 @@ IcmpEngineHandler::IcmpEngineHandler(IcmpEngine* icmpEngine)
 
 bool IcmpEngineHandler::handleRecv(int fd,
                                    IcmpConnection& conn,
-                                   nf::io::Epoll& epoll)
+                                   pz::io::Epoll& epoll)
 {
     (void)epoll;
 
@@ -61,7 +61,7 @@ bool IcmpEngineHandler::handleRecv(int fd,
 
 bool IcmpEngineHandler::handleSend(int fd,
                                    IcmpConnection& conn,
-                                   nf::io::Epoll& epoll)
+                                   pz::io::Epoll& epoll)
 {
     int outErrno = 0;
     const auto rc = conn.send(outErrno);
@@ -178,4 +178,4 @@ void IcmpEngineHandler::setRxRouter(IcmpdRxRouter* rxRouter)
     m_rxRouter = rxRouter;
 }
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

@@ -7,7 +7,7 @@
 #include <memory>
 #include <vector>
 
-namespace nf::icmpd
+namespace pz::icmpd
 {
 
 struct IcmpFrameView
@@ -49,4 +49,4 @@ private:
     static std::size_t icmpOffset(IcmpFrameView frame);
 };
 
-} // namespace nf::icmpd
+} // namespace pz::icmpd

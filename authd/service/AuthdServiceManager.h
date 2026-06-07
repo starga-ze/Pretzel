@@ -9,13 +9,13 @@
 
 #include <queue>
 
-namespace nf::authd
+namespace pz::authd
 {
 
 class AuthdEventFactory;
 class AuthdActionFactory;
 
-class AuthdServiceManager : public nf::service::ServiceManager<AuthdEvent, AuthdAction>
+class AuthdServiceManager : public pz::service::ServiceManager<AuthdEvent, AuthdAction>
 {
 public:
     AuthdServiceManager(AuthdEventFactory* eventFactory,
@@ -47,4 +47,4 @@ private:
     std::queue<std::unique_ptr<AuthdAction>> m_actionQueue;
 };
 
-} // namespace nf::authd
+} // namespace pz::authd

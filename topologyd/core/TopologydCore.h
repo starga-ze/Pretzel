@@ -16,10 +16,10 @@
 
 #include <memory>
 
-namespace nf::topologyd
+namespace pz::topologyd
 {
 
-class TopologydCore : public nf::core::Core
+class TopologydCore : public pz::core::Core
 {
 public:
     TopologydCore();
@@ -30,11 +30,11 @@ protected:
     void onShutdown() override;
 
 private:
-    nf::config::LoggerConfig m_loggerConfig;
-    nf::config::IpcConfig    m_ipcConfig;
+    pz::config::LoggerConfig m_loggerConfig;
+    pz::config::IpcConfig    m_ipcConfig;
 
-    std::unique_ptr<nf::util::ThreadManager>   m_threadManager;
-    std::unique_ptr<nf::ipc::IpcClient>         m_ipcClient;
+    std::unique_ptr<pz::util::ThreadManager>   m_threadManager;
+    std::unique_ptr<pz::ipc::IpcClient>         m_ipcClient;
 
     std::unique_ptr<TopologydEventFactory>      m_eventFactory;
     std::unique_ptr<TopologydActionFactory>     m_actionFactory;
@@ -46,4 +46,4 @@ private:
     std::unique_ptr<TopologydProcess>           m_process;
 };
 
-} // namespace nf::topologyd
+} // namespace pz::topologyd

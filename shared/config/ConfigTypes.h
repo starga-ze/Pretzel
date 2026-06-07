@@ -3,7 +3,7 @@
 #include <string>
 #include <cstdint>
 
-namespace nf::config
+namespace pz::config
 {
 
 struct LoggerConfig

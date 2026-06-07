@@ -3,15 +3,15 @@
 
 #include "util/Logger.h"
 
-namespace nf::mgmtd
+namespace pz::mgmtd
 {
 
-MgmtdTxRouter::MgmtdTxRouter(nf::ipc::IpcClientHandler* ipcClientHandler)
+MgmtdTxRouter::MgmtdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler)
     : m_ipcClientHandler(ipcClientHandler)
 {
 }
 
-void MgmtdTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
+void MgmtdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -28,4 +28,4 @@ void MgmtdTxRouter::handleIpcMessage(std::unique_ptr<nf::ipc::IpcMessage> msg)
     m_ipcClientHandler->egress(std::move(msg));
 }
 
-} // namespace nf::mgmtd
+} // namespace pz::mgmtd
