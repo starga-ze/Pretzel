@@ -594,7 +594,7 @@ html, body {
 .status-pill {
   font-size: 10px; font-weight: 700;
   font-family: var(--font-mono);
-  padding: 2px 9px; border-radius: 20px; letter-spacing: .06em;
+  padding: 2px 9px; border-radius: 6px; letter-spacing: .06em;
 }
 .status-pill.up   { background: #dcfce7; color: #15803d; }
 .status-pill.wait { background: #fff7ed; color: #c2410c; }
@@ -889,6 +889,25 @@ html, body {
 }
 .section-card .btn-ghost:hover,
 .modal .btn-ghost:hover { background: var(--surface-2); }
+
+/* Icon-only button — uniform white bg, square-rounded */
+.btn-icon-only {
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  color: var(--text-muted) !important;
+}
+.btn-icon-only:hover:not(:disabled) {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  background: var(--surface) !important;
+}
 
 /* Review & Commit modal */
 .modal-overlay {
@@ -1497,7 +1516,7 @@ html, body {
   font: inherit;
   font-size: 12px;
   font-weight: 600;
-  border-radius: 20px;
+  border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-muted);
@@ -1539,7 +1558,7 @@ html, body {
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
 .status-dot.alive { background: var(--green); }
 .status-dot.dead  { background: var(--red); }
-.status-badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.status-badge { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; }
 .status-badge.alive { background: rgba(16,185,129,.15); color: var(--green); }
 .status-badge.dead  { background: rgba(239,68,68,.12);  color: var(--red); }
 .devices-count-badge {
@@ -1548,7 +1567,7 @@ html, body {
   color: var(--text-muted);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 6px;
   padding: 4px 12px;
 }
 .muted { color: var(--text-muted); }
@@ -1591,6 +1610,12 @@ html, body {
   border-radius: 8px;
   position: relative;
   color: var(--text-muted);
+  /* Keep rounded corners even when native select popup is open */
+  overflow: visible;
+}
+.lv-select-wrap:focus-within {
+  border-color: var(--accent);
+  border-radius: 8px;
 }
 .lv-select-wrap svg:first-child { flex-shrink: 0; }
 .lv-select {
@@ -1606,6 +1631,126 @@ html, body {
   padding-right: 16px;
 }
 .select-chevron { position: absolute; right: 8px; pointer-events: none; color: var(--text-muted); }
+
+/* ── Custom dropdown ─────────────────────────────── */
+.lv-dd-wrap {
+  position: relative;
+}
+
+/* Trigger button */
+.lv-dd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 34px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color var(--tr), background var(--tr);
+  white-space: nowrap;
+  user-select: none;
+}
+.lv-dd-btn:hover { border-color: var(--accent); }
+.lv-dd-btn.lv-dd-active {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+/* Chevron rotation when open */
+.lv-dd-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform var(--tr);
+  margin-left: 2px;
+}
+.lv-dd-btn.lv-dd-active .lv-dd-chevron { transform: rotate(180deg); }
+
+/* Label */
+.lv-dd-label {
+  flex: 1;
+  text-align: left;
+  color: var(--text);
+}
+
+/* Color dot inside level dropdown button */
+.lv-level-dot {
+  display: none;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Dropdown list panel */
+.lv-dd-list {
+  display: none;
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  z-index: 300;
+  min-width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.13);
+  padding: 4px;
+  list-style: none;
+  margin: 0;
+  overflow: hidden;
+}
+.lv-dd-list.lv-dd-open { display: block; }
+/* Flip upward when near bottom of viewport */
+.lv-dd-list.lv-dd-up {
+  top: auto;
+  bottom: calc(100% + 5px);
+}
+
+/* Individual item */
+.lv-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--tr), color var(--tr);
+  white-space: nowrap;
+}
+.lv-dd-item:hover { background: var(--bg); }
+.lv-dd-item.lv-dd-selected {
+  background: rgba(249,115,22,.1);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Dot indicator inside list items (level dropdown) */
+.lv-dd-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Date range — disabled/upcoming state */
+.lv-date-disabled .lv-date-btn {
+  opacity: 0.42;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.lv-date-disabled .lv-date-btn::after {
+  content: '(soon)';
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 4px;
+  font-weight: 500;
+}
 
 /* Search */
 .lv-search-wrap {
@@ -1673,51 +1818,23 @@ html, body {
 }
 .lv-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-/* Level filter bar */
-.lv-filterbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px 8px 0 0;
-  flex-shrink: 0;
-}
-.lv-level-tabs { display: flex; gap: 2px; }
-.lv-level-tab {
-  padding: 4px 12px;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  border: none;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--tr);
-}
-.lv-level-tab:hover  { background: var(--bg); color: var(--text); }
-.lv-level-tab.active { background: var(--bg); color: var(--text); }
-.lv-tab-crit.active  { color: #dc2626; background: rgba(220,38,38,.09); }
-.lv-tab-error.active { color: #ea580c; background: rgba(234,88,12,.09); }
-.lv-tab-warn.active  { color: #d97706; background: rgba(217,119,6,.09); }
-.lv-tab-info.active  { color: #2563eb; background: rgba(37,99,235,.09); }
-.lv-tab-debug.active { color: #7c3aed; background: rgba(124,58,237,.09); }
-
-.lv-stats { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+/* Combined filter bar — service tabs | divider | level tabs | stats */
+/* Stats — sits in topbar-left next to title */
+.lv-stats     { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; padding-top: 2px; }
 .lv-stats-sep { margin: 0 4px; }
+
+/* Level select-wrap legacy — kept for compat */
+.lv-level-select-wrap { gap: 7px; }
 
 /* Table */
 .lv-table-wrap {
   flex: 1;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-top: none;
-  border-radius: 0 0 8px 8px;
+  border-radius: 8px;
   background: var(--surface);
   min-height: 0;
+  position: relative;
 }
 .lv-table {
   width: 100%;
@@ -1756,15 +1873,15 @@ html, body {
 .lv-td-time   { padding: 5px 16px 5px 12px; white-space: nowrap; }
 .lv-td-daemon { padding: 5px 16px 5px 12px; }
 .lv-td-loc    { padding: 5px 16px 5px 12px; white-space: nowrap; }
-.lv-td-msg    { padding: 5px 12px; word-break: break-all; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }
+.lv-td-msg    { padding: 5px 12px; word-break: break-word; font-size: 12.5px; line-height: 1.6; color: var(--text); letter-spacing: .01em; }
 
 .lv-time  { color: var(--text-muted); font-family: var(--font-mono); font-size: 11.5px; }
 .lv-muted { color: var(--text-muted); opacity: .5; }
 .lv-loc   {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-muted);
-  opacity: .75;
+  color: var(--text);
+  opacity: 1;
   display: inline-block;
   max-width: 190px;
   overflow: hidden;
@@ -1798,11 +1915,12 @@ html, body {
   white-space: nowrap;
   min-width: 44px;
 }
+/* Level badge colours: INFO=green DEBUG=blue WARN=amber ERROR=red */
 .lv-badge-crit  { background: rgba(220,38,38,.12);  color: #dc2626;  border: 1px solid rgba(220,38,38,.25); }
-.lv-badge-error { background: rgba(234,88,12,.12);  color: #ea580c;  border: 1px solid rgba(234,88,12,.25); }
-.lv-badge-warn  { background: rgba(217,119,6,.12);  color: #d97706;  border: 1px solid rgba(217,119,6,.25); }
-.lv-badge-info  { background: rgba(37,99,235,.09);  color: #2563eb;  border: 1px solid rgba(37,99,235,.2);  }
-.lv-badge-debug { background: rgba(124,58,237,.09); color: #7c3aed;  border: 1px solid rgba(124,58,237,.2); }
+.lv-badge-error { background: rgba(239,68,68,.12);  color: #ef4444;  border: 1px solid rgba(239,68,68,.3);  }
+.lv-badge-warn  { background: rgba(245,158,11,.12); color: #f59e0b;  border: 1px solid rgba(245,158,11,.3); }
+.lv-badge-info  { background: rgba(34,197,94,.11);  color: #16a34a;  border: 1px solid rgba(34,197,94,.3);  }
+.lv-badge-debug { background: rgba(59,130,246,.11); color: #3b82f6;  border: 1px solid rgba(59,130,246,.3); }
 .lv-badge-trace { background: rgba(107,114,128,.1); color: #6b7280;  border: 1px solid var(--border); }
 
 /* Row tint by level */
@@ -1826,48 +1944,314 @@ html, body {
 .log-output  { display: none; }
 .loading-row.error { color: var(--red); }
 
-/* Refresh button with label + spin */
-.lv-refresh-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 12px;
-  width: auto;
-  min-width: 80px;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.lv-refresh-label { color: var(--text); }
+/* Refresh button — icon only, spin on loading */
+.lv-refresh-btn { /* inherits btn-icon-only styles */ }
 .lv-refreshing svg { animation: lv-spin 0.7s linear infinite; }
 @keyframes lv-spin { to { transform: rotate(360deg); } }
-.lv-refreshing .lv-refresh-label { color: var(--text-muted); }
 
 /* Progress bar */
-.lv-progress-wrap {
+/* Loading overlay — sits on top of the table area */
+.lv-loading-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+.lv-loading-overlay.visible { display: flex; }
+.lv-loading-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.lv-spinner {
+  color: var(--accent);
+  animation: lv-spin 0.75s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(249,115,22,.35));
+}
+.lv-loading-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: .01em;
+}
+
+/* ══════════════════════════════════════
+   DATE FILTER — log-viewer
+══════════════════════════════════════ */
+.lv-date-wrap { position: relative; }
+
+.lv-date-btn {
   display: flex;
   align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: all var(--tr);
+  white-space: nowrap;
+}
+.lv-date-btn:hover   { border-color: var(--accent); color: var(--accent); }
+.lv-date-btn.active  { border-color: var(--accent); color: var(--accent); background: rgba(249,115,22,.06); }
+.lv-date-chevron     { transition: transform var(--tr); }
+.lv-date-btn.active .lv-date-chevron { transform: rotate(180deg); }
+.lv-date-label       { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Calendar range dropdown */
+.lv-cal-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 200;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.14);
+  padding: 14px;
+  flex-direction: column;
   gap: 10px;
-  margin-bottom: 8px;
+  min-width: 560px;
 }
-.lv-progress-bar {
+.lv-cal-dropdown.visible { display: flex; }
+
+/* Range header row */
+.lv-range-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.lv-range-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text-muted);
   flex: 1;
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
+  text-align: center;
 }
-.lv-progress-fill {
-  height: 100%;
+/* Two panels side by side */
+.lv-range-panels {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.lv-range-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lv-range-sep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  padding-top: 80px;
+  font-size: 18px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.lv-cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.lv-cal-month {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.lv-cal-nav {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all var(--tr);
+}
+.lv-cal-nav:hover { border-color: var(--accent); color: var(--accent); }
+
+.lv-cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+}
+.lv-cal-weekdays span {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+.lv-cal-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.lv-cal-day {
+  aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--tr);
+}
+.lv-cal-day:not(.empty):hover { background: var(--bg); color: var(--text); }
+.lv-cal-day.selected {
   background: var(--accent);
-  border-radius: 2px;
-  transition: width 0.1s linear;
-  width: 0%;
+  color: #fff;
+  font-weight: 700;
 }
-.lv-progress-label {
-  font-size: 11.5px;
+.lv-cal-day.empty { cursor: default; }
+
+.lv-cal-time {
+  display: flex;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.lv-cal-time-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lv-cal-time-group label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.lv-cal-time-sel {
+  width: 100%;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  appearance: none;
+  cursor: pointer;
+}
+.lv-cal-time-sel:focus { outline: none; border-color: var(--accent); }
+
+.lv-cal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.lv-cal-clear {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--tr);
+}
+.lv-cal-clear:hover { border-color: var(--red); color: var(--red); }
+.lv-cal-apply { padding: 5px 14px; font-size: 12px; }
+
+/* ══════════════════════════════════════
+   PAGINATION — log-viewer
+══════════════════════════════════════ */
+.lv-table-outer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.lv-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+/* Nav buttons: <<<  <<  <  >  >>  >>> */
+.lv-page-nav {
+  height: 28px;
+  padding: 0 7px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--tr);
+  letter-spacing: -.5px;
+  white-space: nowrap;
+}
+.lv-page-nav:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.lv-page-nav:disabled { opacity: .3; cursor: default; }
+
+/* Page input + /total */
+.lv-page-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 4px;
+}
+.lv-page-input {
+  width: 46px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  outline: none;
+  transition: border-color var(--tr);
+  /* hide spinner arrows */
+  -moz-appearance: textfield;
+}
+.lv-page-input::-webkit-outer-spin-button,
+.lv-page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.lv-page-input:focus { border-color: var(--accent); }
+.lv-page-total {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
-  min-width: 110px;
 }
 
 /* ══════════════════════════════════════

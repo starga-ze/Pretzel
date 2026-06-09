@@ -653,12 +653,19 @@ std::string queryParam(const std::string& target, const std::string& key)
 }
 
 // Read last N lines of a file efficiently
+// maxLines <= 0 means read the entire file
 std::vector<std::string> tailFile(const std::string& path, int maxLines)
 {
     std::ifstream f(path);
     if (!f.is_open()) return {};
-    std::deque<std::string> lines;
     std::string line;
+    if (maxLines <= 0)
+    {
+        std::vector<std::string> all;
+        while (std::getline(f, line)) all.push_back(line);
+        return all;
+    }
+    std::deque<std::string> lines;
     while (std::getline(f, line))
     {
         lines.push_back(line);
@@ -678,9 +685,12 @@ HttpRouter::Response HttpRouter::handleLogs(const Request& req)
 {
     const std::string target(req.target());
     std::string daemon  = queryParam(target, "daemon");
+    // lines not present → read entire file (maxLines = 0)
     const int   maxLines = [&]{
         const auto s = queryParam(target, "lines");
-        return s.empty() ? 200 : std::max(1, std::min(2000, std::stoi(s)));
+        if (s.empty()) return 0;
+        const int n = std::stoi(s);
+        return (n <= 0) ? 0 : n;
     }();
 
     // Validate daemon name (prevent path traversal)
