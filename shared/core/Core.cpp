@@ -1,16 +1,22 @@
 #include "Core.h"
 #include "util/Logger.h"
 
+#include <cerrno>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <dirent.h>
+#include <fstream>
 #include <iostream>
 #include <unistd.h>
+#include <vector>
 
 namespace pz::core
 {
 
 std::atomic<bool> Core::m_running{true};
-std::atomic<bool> Core::m_reloadRequested{false};
+std::atomic<bool> Core::m_reload{false};
 
 Core::Core(std::string name) : m_name(std::move(name))
 {
@@ -52,7 +58,7 @@ void Core::signalHandler(int signum)
 {
     if (signum == SIGHUP)
     {
-        m_reloadRequested = true;
+        m_reload = true;
         return;
     }
     m_running = false;
@@ -63,9 +69,14 @@ bool Core::stopping() const
     return !m_running.load();
 }
 
+void Core::scheduleReload()
+{
+    ::kill(::getpid(), SIGHUP);
+}
+
 void Core::checkReload()
 {
-    if (!m_reloadRequested.exchange(false))
+    if (!m_reload.exchange(false))
     {
         return;
     }
@@ -77,6 +88,60 @@ void Core::checkReload()
 
 void Core::onReload()
 {
+    LOG_INFO("{}: config reload — restarting process", m_name);
+
+    // Reconstruct original argv from /proc/self/cmdline (null-separated tokens).
+    std::vector<std::string> argStrings;
+    {
+        std::ifstream f("/proc/self/cmdline");
+        std::string token;
+        while (std::getline(f, token, '\0'))
+        {
+            if (!token.empty())
+                argStrings.push_back(std::move(token));
+        }
+    }
+
+    if (argStrings.empty())
+    {
+        LOG_ERROR("{}: restart aborted — could not read /proc/self/cmdline", m_name);
+        return;
+    }
+
+    std::vector<char*> argv;
+    argv.reserve(argStrings.size() + 1);
+    for (auto& s : argStrings)
+        argv.push_back(s.data());
+    argv.push_back(nullptr);
+
+    removePidFile();
+
+    // Close all fds above stderr before exec. execv inherits open fds by
+    // default; if the IPC socket stays open, ipcd never sees the disconnect
+    // and blocks the reconnect attempt as a "route hijack".
+    if (DIR* dir = ::opendir("/proc/self/fd"))
+    {
+        const int dfd = ::dirfd(dir);
+        struct dirent* ent;
+        while ((ent = ::readdir(dir)) != nullptr)
+        {
+            if (ent->d_name[0] == '.') continue;
+            const int fd = std::atoi(ent->d_name);
+            if (fd > 2 && fd != dfd)
+                ::close(fd);
+        }
+        ::closedir(dir);
+    }
+    else
+    {
+        for (int fd = 3; fd < 1024; ++fd)
+            ::close(fd);
+    }
+
+    ::execv("/proc/self/exe", argv.data());
+
+    // execv only returns on failure.
+    LOG_ERROR("{}: execv failed: {}", m_name, std::strerror(errno));
 }
 
 void Core::writePidFile()

@@ -112,7 +112,7 @@
         </button>
         <div class="nav-subnav">
           <a class="nav-subitem active" data-page="settings.html" href="settings.html">
-            <span class="nav-label">Daemon Settings</span>
+            <span class="nav-label">Runtime Config</span>
           </a>
         </div>
       </div>
@@ -150,29 +150,53 @@
   <div class="content-wrap">
     <main class="content-body">
 
-      <!-- Page header -->
-      <div class="settings-page-header">
-        <div>
-          <h1 class="settings-title">Daemon Settings</h1>
+      <!-- Page toolbar -->
+      <div class="settings-toolbar">
+        <div class="settings-toolbar-left">
+          <h1 class="settings-title">Runtime Parameters</h1>
           <p class="settings-subtitle">
-            운영 튜너블 값을 조정합니다. 변경 사항은 스테이징된 후, <strong>Commit</strong> 시
-            running-config에 일괄 반영되고 각 데몬에 SIGHUP이 전송되어 재시작 없이 적용됩니다.
+            Tune operational parameters for running services. Changes are staged locally,
+            then <strong>committed</strong> as a batch — config is persisted and each affected
+            service is restarted to apply.
           </p>
         </div>
+        <div class="settings-toolbar-right">
+          <div class="commit-pending-badge" id="commitPendingBadge">
+            <span class="commit-pending-dot"></span>
+            <span id="commitPendingCount">0</span> pending
+          </div>
+          <button class="btn btn-ghost" id="discardBtn">Discard</button>
+          <button class="btn btn-primary" id="reviewBtn" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Commit
+          </button>
+        </div>
+      </div>
+
+      <!-- Scope + search bar -->
+      <div class="settings-scope-bar">
+        <span class="scope-bar-label">Scope</span>
+        <div class="scope-selector" id="scopeSelector">
+          <button class="scope-chip active" data-scope="all">All Services</button>
+        </div>
+        <div class="scope-bar-sep"></div>
         <div class="settings-search-wrap">
-          <svg class="settings-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none"
+          <svg class="settings-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="11" cy="11" r="7"/>
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <input type="text" id="settingsSearch" class="settings-search-input"
-                 placeholder="Search daemons, domains, or keys…" autocomplete="off" />
+                 placeholder="Search services, domains, or keys…" autocomplete="off" />
         </div>
       </div>
 
       <div id="settingsStatus" class="settings-status"></div>
 
-      <!-- Daemon settings groups -->
+      <!-- Settings groups -->
       <div id="settingsGroups" class="settings-groups">
         <div class="loading-row">Loading settings…</div>
       </div>
@@ -180,37 +204,76 @@
     </main>
   </div>
 
-  <!-- Sticky staged-changes bar -->
-  <div class="staged-bar" id="stagedBar">
-    <div class="staged-bar-info">
-      <span class="staged-count" id="stagedCount">0</span>
-      <span class="staged-label">pending change(s)</span>
-    </div>
-    <div class="staged-bar-actions">
-      <button class="btn btn-ghost" id="discardBtn">Discard all</button>
-      <button class="btn btn-primary" id="reviewBtn">Review &amp; Commit</button>
-    </div>
-  </div>
-
-  <!-- Review & Commit modal -->
+  <!-- Commit modal — queue + JSON diff -->
   <div class="modal-overlay" id="reviewOverlay">
-    <div class="modal" id="reviewModal">
+    <div class="modal modal-commit" id="reviewModal">
+
       <div class="modal-header">
-        <span class="modal-title">Review changes</span>
-        <button class="modal-close" id="reviewCloseBtn" aria-label="Close">✕</button>
+        <div class="modal-header-left">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          <span class="modal-title">Deploy Changes</span>
+        </div>
+        <button class="modal-close" id="reviewCloseBtn" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
-      <div class="modal-body">
-        <p class="modal-hint">
-          아래 변경 사항이 해당 데몬의 running-config에 저장되고, 영향을 받는 데몬에
-          SIGHUP이 전송되어 무중단 적용됩니다.
-        </p>
-        <div id="reviewList" class="review-list"></div>
+
+      <!-- Progress bar -->
+      <div class="commit-progress-track" id="commitProgressTrack">
+        <div class="commit-progress-fill" id="commitProgressFill"></div>
       </div>
+
+      <div class="modal-split">
+
+        <!-- Left: commit queue -->
+        <div class="commit-queue-panel">
+          <div class="panel-header">
+            <span class="panel-title">Commit Queue</span>
+            <span class="panel-badge" id="queueTotalBadge">0</span>
+          </div>
+          <div class="commit-queue-list" id="commitQueueList">
+            <div class="loading-row" style="padding:20px 16px">No changes staged.</div>
+          </div>
+        </div>
+
+        <!-- Right: JSON diff viewer -->
+        <div class="commit-diff-panel">
+          <div class="panel-header">
+            <span class="panel-title">JSON Diff</span>
+            <span class="panel-hint" id="diffPanelHint">Select a queue item</span>
+          </div>
+          <div class="diff-viewer" id="diffViewer">
+            <div class="diff-placeholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.5" opacity=".3">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span>Select a queue item to preview the JSON diff</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /modal-split -->
+
       <div class="modal-footer">
         <span class="modal-status" id="commitStatus"></span>
         <div class="modal-footer-actions">
           <button class="btn btn-ghost" id="reviewCancelBtn">Cancel</button>
-          <button class="btn btn-primary" id="commitBtn">Commit changes</button>
+          <button class="btn btn-primary" id="commitBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Deploy All
+          </button>
         </div>
       </div>
     </div>

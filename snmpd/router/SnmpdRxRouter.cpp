@@ -1,5 +1,7 @@
 #include "router/SnmpdRxRouter.h"
 
+#include "core/Core.h"
+#include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
 namespace pz::snmpd
@@ -21,6 +23,13 @@ void SnmpdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     if (!msg)
     {
         LOG_WARN("IpcMessage is empty");
+        return;
+    }
+
+    if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReload)
+    {
+        LOG_INFO("SnmpdRxRouter: ConfigReload received — scheduling restart");
+        pz::core::Core::scheduleReload();
         return;
     }
 

@@ -1,6 +1,7 @@
 #include "router/TopologydRxRouter.h"
 
 #include "service/TopologydServiceManager.h"
+#include "core/Core.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
@@ -29,6 +30,13 @@ void TopologydRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> ms
     LOG_DEBUG("TopologydRxRouter: recv cmd={} src={}",
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+
+    if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReload)
+    {
+        LOG_INFO("TopologydRxRouter: ConfigReload received — scheduling restart");
+        pz::core::Core::scheduleReload();
+        return;
+    }
 
     auto event = m_eventFactory->create(std::move(msg));
 

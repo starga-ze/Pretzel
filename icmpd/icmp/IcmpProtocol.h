@@ -9,6 +9,7 @@ enum class IcmpType : std::uint8_t
 {
     EchoReply              = 0,
     DestinationUnreachable = 3,
+    Redirect               = 5,
     EchoRequest            = 8,
     TimeExceeded           = 11,
 };

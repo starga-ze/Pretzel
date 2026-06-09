@@ -1,5 +1,7 @@
 #include "router/AuthdRxRouter.h"
 
+#include "core/Core.h"
+#include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
 namespace pz::authd
@@ -21,6 +23,13 @@ void AuthdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     if (!msg)
     {
         LOG_WARN("IpcMessage is empty");
+        return;
+    }
+
+    if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReload)
+    {
+        LOG_INFO("AuthdRxRouter: ConfigReload received — scheduling restart");
+        pz::core::Core::scheduleReload();
         return;
     }
 

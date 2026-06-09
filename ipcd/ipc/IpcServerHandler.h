@@ -20,6 +20,7 @@ struct RuntimeState
 {
     int fd {-1};
     bool ready {false};
+    uint32_t generation {0};  // incremented on every new connection (bindRoute rebind)
 };
 
 class IpcServerHandler : public pz::ipc::IpcHandler

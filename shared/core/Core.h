@@ -16,22 +16,27 @@ public:
 
     void run();
 
+    // Schedules a reload for the current process by sending SIGHUP to itself.
+    // Safe to call from any thread (e.g. an IPC RxRouter). The main loop
+    // picks it up on the next checkReload() call.
+    static void scheduleReload();
+
 protected:
     virtual bool onInit() = 0;
     virtual void onLoop() = 0;
     virtual void onShutdown() = 0;
 
     // Called when a SIGHUP reload request has been picked up from the main
-    // loop. Default implementation drops the cached running-config so the
-    // next tuningSection()/daemonConfig() lookup re-reads it from disk.
-    // Daemons needing extra reload work (re-arming timers, etc.) can override.
+    // loop. Default implementation invalidates the config cache, then
+    // re-execs the current process via /proc/self/exe so the daemon
+    // restarts cleanly with the new running-config.
+    // Override in sub-classes that need teardown before the exec.
     virtual void onReload();
 
     bool stopping() const;
 
-    // Polls and clears the SIGHUP-set reload flag, invoking onReload() when
-    // set. Daemons should call this once per onLoop() iteration alongside
-    // stopping(), e.g. `while (!stopping()) { checkReload(); ... }`.
+    // Polls and clears the reload flag, invoking onReload() (which re-execs
+    // the process) when set. Daemons call this once per onLoop() iteration.
     void checkReload();
 
     pz::config::Config m_config;
@@ -47,7 +52,7 @@ private:
     std::string m_pidFilePath;
 
     static std::atomic<bool> m_running;
-    static std::atomic<bool> m_reloadRequested;
+    static std::atomic<bool> m_reload;
 };
 
 } // namespace pz::core

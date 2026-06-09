@@ -11,6 +11,8 @@ const char* IcmpProtocol::typeToStr(IcmpType type)
         return "EchoReply";
     case IcmpType::DestinationUnreachable:
         return "DestinationUnreachable";
+    case IcmpType::Redirect:
+        return "Redirect";
     case IcmpType::EchoRequest:
         return "EchoRequest";
     case IcmpType::TimeExceeded:

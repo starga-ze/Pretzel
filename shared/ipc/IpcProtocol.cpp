@@ -74,7 +74,9 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::HeartbeatRequest:  return "HeartbeatRequest";
     case IpcCmd::HeartbeatResponse: return "HeartbeatResponse";
     case IpcCmd::HeartbeatResult:   return "HeartbeatResult";
-    default:                        return "Unknown";
+    case IpcCmd::ConfigReload:        return "ConfigReload";
+    case IpcCmd::ConfigReloadRequest: return "ConfigReloadRequest";
+    default:                          return "Unknown";
     }
 }
 

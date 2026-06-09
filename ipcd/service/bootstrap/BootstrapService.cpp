@@ -196,8 +196,9 @@ BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
             }
 
             payloadJson["daemons"].push_back({
-                {"daemon", pz::ipc::IpcProtocol::daemonToStr(daemon)},
-                {"ready", state.ready}
+                {"daemon",      pz::ipc::IpcProtocol::daemonToStr(daemon)},
+                {"ready",       state.ready},
+                {"generation",  state.generation}
             });
         }
     }

@@ -69,9 +69,9 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp,
     switch (packet->type())
     {
     case IcmpType::EchoRequest:
-        return nullptr;
-
     case IcmpType::DestinationUnreachable:
+    case IcmpType::Redirect:
+    case IcmpType::TimeExceeded:
         return nullptr;
 
     case IcmpType::EchoReply:

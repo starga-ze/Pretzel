@@ -13,6 +13,8 @@
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
+#include <set>
+#include <string>
 #include <vector>
 
 namespace pz::engined
@@ -329,7 +331,7 @@ void BootstrapService::onSyncResponse(const pz::ipc::IpcMessage& msg)
 
     if (!isAllProcessReady())
     {
-        LOG_DEBUG("BootstrapService: icmpd or mgmtd not ready, waiting Sync...");
+        LOG_DEBUG("BootstrapService: service daemons not all ready, waiting Sync...");
         dumpProcessMap();
         return;
     }
@@ -363,14 +365,35 @@ void BootstrapService::initProcessMap()
 {
     m_processMap.clear();
 
-    m_processMap[pz::ipc::IpcDaemon::Ipcd]     = true;
-    m_processMap[pz::ipc::IpcDaemon::Engined]  = true;
+    // Only the service-layer daemons that engined must wait for.
+    // ipcd and mgmtd are infrastructure: always up, never in SyncResponse,
+    // and their readiness is not gated here.
+    // requiredGeneration=0 at cold-start means any first-connect (gen>=1)
+    // is accepted — no prior baseline to compare against.
+    m_processMap[pz::ipc::IpcDaemon::Authd]    = {false, 0, 0};
+    m_processMap[pz::ipc::IpcDaemon::Icmpd]    = {false, 0, 0};
+    m_processMap[pz::ipc::IpcDaemon::Snmpd]    = {false, 0, 0};
+    m_processMap[pz::ipc::IpcDaemon::Topologyd]= {false, 0, 0};
+}
 
-    m_processMap[pz::ipc::IpcDaemon::Authd]    = false;
-    m_processMap[pz::ipc::IpcDaemon::Icmpd]    = false;
-    m_processMap[pz::ipc::IpcDaemon::Snmpd]    = false;
-    m_processMap[pz::ipc::IpcDaemon::Topologyd]= false;
-    m_processMap[pz::ipc::IpcDaemon::Mgmtd]    = false;
+void BootstrapService::scheduleServiceReload()
+{
+    // After sending ConfigReload to service daemons, re-enter WaitSync.
+    // Set requiredGeneration = knownGeneration + 1 for each daemon so that
+    // a daemon still alive from the previous cycle (same generation) is
+    // rejected until it has disconnected and reconnected (new generation).
+    for (auto& [daemon, ps] : m_processMap)
+    {
+        ps.ready              = false;
+        ps.requiredGeneration = ps.knownGeneration + 1;
+        // knownGeneration is preserved — it's the baseline for the "+1"
+    }
+
+    m_state = State::WaitSync;
+    m_startedAt = std::chrono::steady_clock::now();
+    m_lastSyncRequestSentAt = {};
+
+    LOG_INFO("BootstrapService: service-layer reload — re-entering WaitSync");
 }
 
 bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
@@ -396,6 +419,8 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
             return false;
         }
 
+        std::set<pz::ipc::IpcDaemon> reported;
+
         for (const auto& item : root["daemons"])
         {
             if (!item.contains("daemon") || !item.contains("ready") ||
@@ -406,9 +431,11 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
             }
 
             const std::string daemonName = item["daemon"].get<std::string>();
-            const bool ready = item["ready"].get<bool>();
-
+            const bool        ready      = item["ready"].get<bool>();
+            const uint32_t    generation = item.value("generation", 0u);
             const pz::ipc::IpcDaemon daemon = pz::ipc::IpcProtocol::strToDaemon(daemonName);
+
+            reported.insert(daemon);
 
             auto it = m_processMap.find(daemon);
             if (it == m_processMap.end())
@@ -417,7 +444,36 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
                 continue;
             }
 
-            it->second = ready;
+            ProcessState& ps = it->second;
+            ps.knownGeneration = generation;
+
+            if (!ready)
+            {
+                ps.ready = false;
+            }
+            else if (generation >= ps.requiredGeneration)
+            {
+                // ready=true AND fresh enough generation — accept.
+                ps.ready = true;
+            }
+            else
+            {
+                // ready=true but stale generation: daemon is still alive from
+                // the previous cycle; wait for it to disconnect and reconnect.
+                ps.ready = false;
+                LOG_DEBUG("BootstrapService: {} ready but stale gen={} required={}",
+                          daemonName, generation, ps.requiredGeneration);
+            }
+        }
+
+        // Daemons absent from SyncResponse have fd<0 (disconnected from ipcd).
+        // Mark not-ready; their generation will increment on next reconnect.
+        for (auto& [daemon, ps] : m_processMap)
+        {
+            if (reported.find(daemon) == reported.end())
+            {
+                ps.ready = false;
+            }
         }
     }
     catch (const std::exception& e)
@@ -437,26 +493,26 @@ bool BootstrapService::isProcessReady(pz::ipc::IpcDaemon daemon) const
         return false;
     }
 
-    return it->second;
+    return it->second.ready;
 }
 
 bool BootstrapService::isAllProcessReady() const
 {
-    bool allReady = true;
-
     if (m_processMap.empty())
     {
         LOG_WARN("BootstrapService: process map is empty");
         return false;
     }
 
-    for (const auto& [daemon, ready] : m_processMap)
-    {
-        if (!ready)
-        {
-            LOG_WARN("BootstrapService: daemon not ready daemon={}",
-                     pz::ipc::IpcProtocol::daemonToStr(daemon));
+    bool allReady = true;
 
+    for (const auto& [daemon, ps] : m_processMap)
+    {
+        if (!ps.ready)
+        {
+            LOG_WARN("BootstrapService: daemon not ready daemon={} gen={} required={}",
+                     pz::ipc::IpcProtocol::daemonToStr(daemon),
+                     ps.knownGeneration, ps.requiredGeneration);
             allReady = false;
         }
     }
@@ -467,11 +523,8 @@ bool BootstrapService::isAllProcessReady() const
 void BootstrapService::dumpProcessMap() const
 {
     static const std::vector<pz::ipc::IpcDaemon> dumpOrder = {
-        pz::ipc::IpcDaemon::Ipcd,
-        pz::ipc::IpcDaemon::Engined,
         pz::ipc::IpcDaemon::Authd,
         pz::ipc::IpcDaemon::Icmpd,
-        pz::ipc::IpcDaemon::Mgmtd,
         pz::ipc::IpcDaemon::Snmpd,
         pz::ipc::IpcDaemon::Topologyd,
     };
@@ -490,8 +543,12 @@ void BootstrapService::dumpProcessMap() const
         dump += "  - ";
         dump += pz::ipc::IpcProtocol::daemonToStr(daemon);
         dump += " : ";
-        dump += it->second ? "ready" : "not-ready";
-        dump += "\n";
+        dump += it->second.ready ? "ready" : "not-ready";
+        dump += " (gen=";
+        dump += std::to_string(it->second.knownGeneration);
+        dump += " required=";
+        dump += std::to_string(it->second.requiredGeneration);
+        dump += ")\n";
     }
 
     LOG_DEBUG("{}", dump);

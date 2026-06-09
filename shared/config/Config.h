@@ -7,10 +7,10 @@ namespace pz::config
 {
 
 // All daemons share a single canonical config file (config/running-config.json),
-// keyed by daemon name at the top level — there is no separate "startup-config"
-// snapshot. The file is read at boot and re-read on SIGHUP (see pz::core::Core),
-// so the persisted file is always what's "running". This also maps cleanly onto
-// a future DB-backed config: swap the file I/O for DB reads/writes and keep the
+// keyed by daemon name at the top level. The file is read at boot and cached;
+// after mgmtd persists a change it broadcasts IpcCmd::ConfigReload, which causes
+// every daemon to restart and re-read the file. This also maps cleanly onto a
+// future DB-backed config: swap the file I/O for DB reads/writes and keep the
 // same caching/reload flow.
 class Config
 {
@@ -38,17 +38,15 @@ public:
     static const nlohmann::json& daemonConfig(const std::string& daemonName);
 
     // Merges `values` into running-config[daemonName]."tuning"."<domain>" on disk
-    // (read-modify-write of the single consolidated file) and drops the cached
-    // copy so the next access re-reads it. Used by mgmtd to persist settings
-    // changes; the owning daemon must still be told to reload — mgmtd does this
-    // by sending SIGHUP to the daemon's pid (read from /run/pretzel/<daemon>.pid).
+    // (read-modify-write of the single consolidated file) and updates the cache.
+    // Used by mgmtd's commit handler; after all changes are written mgmtd
+    // broadcasts IpcCmd::ConfigReload so every daemon restarts and re-reads.
     static bool updateTuning(const std::string& daemonName,
                              const std::string& domain,
                              const nlohmann::json& values);
 
     // Drops the cached running-config so the next tuningSection()/daemonConfig()
-    // call re-reads it from disk. Called by pz::core::Core when the daemon
-    // receives SIGHUP (see Core::checkReload()/onReload()).
+    // call re-reads it from disk. Called by Core::checkReload() before onReload().
     static void invalidateConfigCache();
 
 private:

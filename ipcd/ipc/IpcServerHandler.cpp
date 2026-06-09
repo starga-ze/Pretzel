@@ -257,7 +257,6 @@ void IpcServerHandler::broadcast(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
         if (daemon == msg->getSrc() ||
             daemon == pz::ipc::IpcDaemon::Ipcd ||
-            daemon == pz::ipc::IpcDaemon::Engined ||
             daemon == pz::ipc::IpcDaemon::Broadcast)
         {
             continue;
@@ -315,14 +314,14 @@ bool IpcServerHandler::bindRoute(pz::ipc::IpcDaemon daemon, int fd)
     if (it == m_runtimeTable.end())
     {
         RuntimeState state;
-        state.fd = fd;
-        state.ready = false;
+        state.fd         = fd;
+        state.ready      = false;
+        state.generation = 1;
 
         m_runtimeTable.emplace(daemon, state);
 
-        LOG_DEBUG("Runtime route added: daemon={}, fd={}, entry={}",
-                  pz::ipc::IpcProtocol::daemonToStr(daemon),
-                  fd,
+        LOG_DEBUG("Runtime route added: daemon={} fd={} gen=1 total={}",
+                  pz::ipc::IpcProtocol::daemonToStr(daemon), fd,
                   m_runtimeTable.size());
         return true;
     }
@@ -331,28 +330,26 @@ bool IpcServerHandler::bindRoute(pz::ipc::IpcDaemon daemon, int fd)
 
     if (state.fd == fd)
     {
-        LOG_TRACE("Runtime route unchanged: daemon={}, fd={}, ready={}",
+        LOG_TRACE("Runtime route unchanged: daemon={} fd={} ready={} gen={}",
                   pz::ipc::IpcProtocol::daemonToStr(daemon),
-                  fd,
-                  state.ready);
+                  fd, state.ready, state.generation);
         return true;
     }
 
     if (state.fd >= 0 && state.fd != fd)
     {
         LOG_ERROR("Runtime route hijack attempt blocked: daemon={} oldFd={} newFd={}",
-                  pz::ipc::IpcProtocol::daemonToStr(daemon),
-                  state.fd,
-                  fd);
+                  pz::ipc::IpcProtocol::daemonToStr(daemon), state.fd, fd);
         return false;
     }
 
-    state.fd = fd;
+    // Rebind after disconnect: new connection, new generation.
+    state.fd    = fd;
     state.ready = false;
+    state.generation++;
 
-    LOG_DEBUG("Runtime route rebound: daemon={}, fd={}, ready=false",
-              pz::ipc::IpcProtocol::daemonToStr(daemon),
-              fd);
+    LOG_DEBUG("Runtime route rebound: daemon={} fd={} ready=false gen={}",
+              pz::ipc::IpcProtocol::daemonToStr(daemon), fd, state.generation);
 
     return true;
 }

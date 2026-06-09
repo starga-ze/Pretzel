@@ -36,6 +36,12 @@ public:
 
     void start();
 
+    // Called when engined receives ConfigReloadRequest from mgmtd.
+    // Re-enters WaitSync without restarting the process: engined invalidates
+    // its own config cache in-place and waits for service daemons to cycle
+    // through disconnect → reconnect before sending a new RuntimeStart.
+    void scheduleServiceReload();
+
     std::unique_ptr<EnginedEvent> schedule(std::chrono::steady_clock::time_point now);
 
     bool isReady() const;
@@ -75,7 +81,20 @@ private:
     std::chrono::steady_clock::time_point m_lastClientHelloSentAt{};
     std::chrono::steady_clock::time_point m_lastSyncRequestSentAt{};
 
-    std::unordered_map<pz::ipc::IpcDaemon, bool> m_processMap;
+    // Per-daemon readiness tracked by connection generation.
+    // knownGeneration: last generation seen in a SyncResponse.
+    // requiredGeneration: minimum generation to accept as "ready".
+    //   - Cold start: 0 (accept any generation, even the very first connect).
+    //   - Reload: knownGeneration+1 at the time of reload (requires a fresh
+    //     reconnect after the ConfigReload was dispatched).
+    struct ProcessState
+    {
+        bool     ready             = false;
+        uint32_t knownGeneration   = 0;
+        uint32_t requiredGeneration = 0;
+    };
+
+    std::unordered_map<pz::ipc::IpcDaemon, ProcessState> m_processMap;
 };
 
 } // namespace pz::engined
