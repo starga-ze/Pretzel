@@ -75,7 +75,7 @@ bool IcmpEngine::sendPacket(std::unique_ptr<IcmpPacket> packet,
 {
     if (!m_handler)
     {
-        LOG_FATAL("IcmpEngineHandler is nullptr");
+        LOG_ERROR("IcmpEngineHandler is nullptr");
         return false;
     }
 
@@ -128,7 +128,7 @@ IcmpEngineHandler* IcmpEngine::handler()
 {
     if (!m_handler)
     {
-        LOG_FATAL("IcmpEngineHandler is nullptr");
+        LOG_ERROR("IcmpEngineHandler is nullptr");
         return nullptr;
     }
 

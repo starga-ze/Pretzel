@@ -52,7 +52,7 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
 {
     const std::string target(req.target());
 
-    LOG_INFO("Mgmtd HTTP request method={} target={}", req.method_string(), target);
+    LOG_TRACE("Mgmtd HTTP request method={} target={}", req.method_string(), target);
 
     // ── Public API routes (no auth required) ──────────────────────────────
     if (target == "/metrics" && req.method() == http::verb::get)

@@ -101,13 +101,13 @@ void IpcClientHandler::egress(std::unique_ptr<IpcMessage> msg)
 {
     if (!msg)
     {
-        LOG_WARN("Egress message is nullptr");
+        LOG_ERROR("Egress message is nullptr");
         return;
     }
 
     if (!m_ipcClient)
     {
-        LOG_FATAL("IpcClient is nullptr");
+        LOG_ERROR("IpcClient is nullptr");
         return;
     }
 

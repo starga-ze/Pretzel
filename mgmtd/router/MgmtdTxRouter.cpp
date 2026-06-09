@@ -21,7 +21,7 @@ void MgmtdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
     if (!m_ipcClientHandler)
     {
-        LOG_FATAL("MgmtdTxRouter: IpcClientHandler is nullptr");
+        LOG_ERROR("MgmtdTxRouter: IpcClientHandler is nullptr");
         return;
     }
 

@@ -20,7 +20,7 @@ void TopologydTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> ms
 
     if (!m_ipcClientHandler)
     {
-        LOG_FATAL("TopologydTxRouter: IpcClientHandler is nullptr");
+        LOG_ERROR("TopologydTxRouter: IpcClientHandler is nullptr");
         return;
     }
 

@@ -13,13 +13,13 @@ void SnmpdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
-        LOG_WARN("Message is nullptr");
+        LOG_ERROR("Message is nullptr");
         return;
     }
 
     if (!m_ipcClientHandler)
     {
-        LOG_FATAL("IpcClientHandler is nullptr");
+        LOG_ERROR("IpcClientHandler is nullptr");
         return;
     }
 

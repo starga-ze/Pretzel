@@ -43,4 +43,3 @@ private:
 #define LOG_INFO(...) LOG_INTERNAL(spdlog::level::info, __VA_ARGS__)
 #define LOG_WARN(...) LOG_INTERNAL(spdlog::level::warn, __VA_ARGS__)
 #define LOG_ERROR(...) LOG_INTERNAL(spdlog::level::err, __VA_ARGS__)
-#define LOG_FATAL(...) LOG_INTERNAL(spdlog::level::critical, __VA_ARGS__)

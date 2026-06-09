@@ -156,7 +156,7 @@ void IcmpEngineHandler::egress(std::unique_ptr<IcmpPacket> packet,
 
     if (!m_icmpEngine)
     {
-        LOG_FATAL("IcmpEngine is nullptr");
+        LOG_ERROR("IcmpEngine is nullptr");
         return;
     }
 

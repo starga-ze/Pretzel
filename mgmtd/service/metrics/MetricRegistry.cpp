@@ -23,7 +23,6 @@ void MetricRegistry::incCounter(const std::string& name, std::uint64_t delta)
 
 std::string MetricRegistry::renderPrometheus() const
 {
-    LOG_INFO("renderPrometheus");
     std::lock_guard<std::mutex> lock(m_mutex);
 
     std::ostringstream out;

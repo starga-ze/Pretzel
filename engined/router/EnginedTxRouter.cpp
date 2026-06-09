@@ -20,7 +20,7 @@ void EnginedTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
     if (!m_ipcClientHandler)
     {
-        LOG_FATAL("EnginedTxRouter: IpcClientHandler is nullptr");
+        LOG_ERROR("EnginedTxRouter: IpcClientHandler is nullptr");
         return;
     }
 

@@ -36,9 +36,6 @@ public:
         case spdlog::level::err:
             color_code = "\033[31m";
             break; // Red
-        case spdlog::level::critical:
-            color_code = "\033[31m";
-            break; // Bright Red
         default:
             color_code = "\033[0m";
             break;
@@ -62,9 +59,6 @@ public:
             break;
         case spdlog::level::err:
             lvl = "ERROR";
-            break;
-        case spdlog::level::critical:
-            lvl = "CRIT";
             break;
         default:
             lvl = "unkn";

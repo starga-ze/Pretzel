@@ -19,7 +19,7 @@ void AuthdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
     if (!m_ipcClientHandler)
     {
-        LOG_FATAL("IpcClientHandler is nullptr");
+        LOG_ERROR("IpcClientHandler is nullptr");
         return;
     }
 

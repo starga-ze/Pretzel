@@ -334,7 +334,7 @@ IpcClientHandler* IpcClient::handler()
 {
     if(!m_handler)
     {
-        LOG_FATAL("IpcClientHandler is nullptr");
+        LOG_ERROR("IpcClientHandler is nullptr");
         return nullptr;
     }
     return m_handler.get();
