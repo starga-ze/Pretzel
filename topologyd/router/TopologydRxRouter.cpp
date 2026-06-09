@@ -17,23 +17,23 @@ void TopologydRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> ms
 {
     if (!m_serviceManager)
     {
-        LOG_ERROR("TopologydRxRouter: ServiceManager is nullptr");
+        LOG_ERROR("Topologyd RxRouter: service manager is not initialized");
         return;
     }
 
     if (!msg)
     {
-        LOG_WARN("TopologydRxRouter: IpcMessage is nullptr");
+        LOG_WARN("Topologyd RxRouter: received null IPC message — skipping");
         return;
     }
 
-    LOG_DEBUG("TopologydRxRouter: recv cmd={} src={}",
+    LOG_DEBUG("recv cmd={} src={}",
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
     if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReload)
     {
-        LOG_INFO("TopologydRxRouter: ConfigReload received — scheduling restart");
+        LOG_INFO("config reload received — scheduling daemon restart");
         pz::core::Core::scheduleReload();
         return;
     }

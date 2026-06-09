@@ -32,19 +32,19 @@ bool IpcdCore::onInit()
             m_loggerConfig.maxFileSize,
             m_loggerConfig.maxFiles);
 
-    LOG_INFO("IpcdCore onInit()...");
+    LOG_INFO("ipcd: starting up");
 
     m_threadManager = std::make_unique<ThreadManager>();
     if (!m_threadManager)
     {
-        LOG_ERROR("IpcdCore dependency failed");
+        LOG_ERROR("dependency check failed");
         return false;
     }
 
     m_ipcServer = std::make_unique<IpcServer>(m_ipcConfig, pz::ipc::IpcDaemon::Ipcd);
     if (!m_ipcServer->init())
     {
-        LOG_ERROR("IpcServer init failed");
+        LOG_ERROR("failed to initialize IPC server");
         return false;
     }
 
@@ -61,7 +61,7 @@ bool IpcdCore::onInit()
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("IpcdServiceManager init failed");
+        LOG_ERROR("failed to initialize service manager");
         return false;
     }
 
@@ -72,14 +72,14 @@ bool IpcdCore::onInit()
 
     if (!m_rxRouter)
     {
-        LOG_ERROR("IpcdRxRouter init failed");
+        LOG_ERROR("failed to initialize RX router");
         return false;
     }
 
     m_process = std::make_unique<IpcdProcess>(m_ipcServer.get(), m_serviceManager.get());
     if (!m_process)
     {
-        LOG_ERROR("IpcdProcess init failed");
+        LOG_ERROR("failed to initialize process");
         return false;
     }
 
@@ -92,7 +92,7 @@ void IpcdCore::onLoop()
 {
     if (!m_process->start())
     {
-        LOG_ERROR("Process Start Failed...");
+        LOG_ERROR("process failed to start");
         return;
     }
 
@@ -105,14 +105,14 @@ void IpcdCore::onLoop()
 
 void IpcdCore::onShutdown()
 {
-    LOG_INFO("IpcdCore shutdown...");
+    LOG_INFO("ipcd: shutting down");
 
     if (m_threadManager)
     {
         m_threadManager->stopAll();
     }
 
-    LOG_INFO("All threads terminated successfully");
+    LOG_INFO("all threads stopped");
 
     pz::util::Logger::Shutdown();
 }

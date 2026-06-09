@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,26 +8,21 @@
 </head>
 <body>
 <div class="app-shell" id="appShell">
-
   <aside class="sidebar" id="sidebar"><!-- populated by main.js --></aside>
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <div class="rail-toggle" id="railToggle">
     <button class="rail-toggle-btn" id="railToggleBtn" aria-label="Open sidebar">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-        <line x1="3" y1="6"  x2="21" y2="6"/>
-        <line x1="3" y1="12" x2="21" y2="12"/>
-        <line x1="3" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6"  x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
       </svg>
     </button>
   </div>
-
   <div class="content-wrap">
     <main class="content-body">
-
       <div class="page-header">
         <div>
           <h1 class="page-title">Devices</h1>
-          <p class="page-subtitle">ICMP 스캔으로 발견된 네트워크 장비 목록</p>
+          <p class="page-subtitle">Network devices discovered via ICMP probe</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <span class="devices-count-badge" id="devicesBadge">-- devices</span>
@@ -40,42 +35,37 @@
           </button>
         </div>
       </div>
-
-      <!-- Filter bar -->
       <div class="table-toolbar">
         <div class="table-search-wrap">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input type="text" id="deviceSearch" class="table-search-input" placeholder="IP, 호스트명, 장비명 검색…" />
+          <input type="text" id="deviceSearch" class="table-search-input" placeholder="Search by IP, hostname, device name…" />
         </div>
         <div class="table-filter-group">
-          <button class="table-filter-chip active" data-filter="all">전체</button>
+          <button class="table-filter-chip active" data-filter="all">All</button>
           <button class="table-filter-chip" data-filter="alive">Alive</button>
           <button class="table-filter-chip" data-filter="dead">Dead</button>
         </div>
       </div>
-
-      <!-- Device table -->
       <div class="section-card" style="padding:0;overflow:hidden">
         <table class="device-table" id="deviceTable">
           <thead>
             <tr>
               <th class="col-status"></th>
-              <th class="col-ip">IP 주소</th>
-              <th class="col-hostname">호스트명</th>
-              <th class="col-device">장비명</th>
-              <th class="col-vendor">벤더</th>
-              <th class="col-status-text">상태</th>
+              <th class="col-ip">IP Address</th>
+              <th class="col-hostname">Hostname</th>
+              <th class="col-device">Device Name</th>
+              <th class="col-vendor">Vendor</th>
+              <th class="col-status-text">Status</th>
               <th class="col-latency">Latency</th>
             </tr>
           </thead>
           <tbody id="deviceTableBody">
-            <tr><td colspan="7" class="loading-row">장비 목록 로드 중…</td></tr>
+            <tr><td colspan="7" class="loading-row">Loading devices…</td></tr>
           </tbody>
         </table>
       </div>
-
     </main>
   </div>
 </div>

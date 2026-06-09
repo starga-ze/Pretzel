@@ -33,12 +33,12 @@ bool EnginedCore::onInit()
             m_loggerConfig.maxFileSize,
             m_loggerConfig.maxFiles);
 
-    LOG_INFO("EnginedCore onInit()...");
+    LOG_INFO("engined: starting up");
 
     m_threadManager = std::make_unique<pz::util::ThreadManager>();
     if (!m_threadManager)
     {
-        LOG_ERROR("ThreadManager init failed");
+        LOG_ERROR("failed to initialize thread manager");
         return false;
     }
 
@@ -46,7 +46,7 @@ bool EnginedCore::onInit()
 
     if (!m_ipcClient->init())
     {
-        LOG_ERROR("IpcClient init failed");
+        LOG_ERROR("failed to initialize IPC client");
         return false;
     }
 
@@ -62,7 +62,7 @@ bool EnginedCore::onInit()
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("EnginedServiceManager init failed");
+        LOG_ERROR("failed to initialize service manager");
         return false;
     }
 
@@ -70,7 +70,7 @@ bool EnginedCore::onInit()
 
     if (!m_rxRouter)
     {
-        LOG_ERROR("EnginedRxRouter init failed");
+        LOG_ERROR("failed to initialize RX router");
         return false;
     }
 
@@ -78,7 +78,7 @@ bool EnginedCore::onInit()
 
     if (!m_process)
     {
-        LOG_ERROR("EnginedProcess init failed");
+        LOG_ERROR("failed to initialize process");
         return false;
     }
 
@@ -91,7 +91,7 @@ void EnginedCore::onLoop()
 {
     if (!m_process->start())
     {
-        LOG_ERROR("Process Start Failed...");
+        LOG_ERROR("process failed to start");
         return;
     }
 
@@ -104,14 +104,14 @@ void EnginedCore::onLoop()
 
 void EnginedCore::onShutdown()
 {
-    LOG_INFO("EnginedCore onShutdown()...");
+    LOG_INFO("shutting down");
 
     if (m_threadManager)
     {
         m_threadManager->stopAll();
     }
 
-    LOG_INFO("All threads terminated successfully");
+    LOG_INFO("all threads stopped");
 
     pz::util::Logger::Shutdown();
 }

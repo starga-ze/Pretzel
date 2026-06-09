@@ -1,8 +1,8 @@
-/* login.js — 로그인 페이지 동작 */
+/* login.js — login page behaviour */
 (function () {
   'use strict';
 
-  /* SVG 경로: 눈 아이콘 (보임 / 숨김) */
+  /* SVG paths: eye icon (visible / hidden) */
   const EYE_OPEN  = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
   const EYE_SLASH = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>'
                   + '<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>'
@@ -17,7 +17,7 @@
     pwToggle.addEventListener('click', () => {
       const isHidden = pwInput.type === 'password';
       pwInput.type   = isHidden ? 'text' : 'password';
-      /* SVG 내부 경로만 교체 — XSS 위험 없음 (상수값만 사용) */
+      /* Replace inner SVG path only — safe, constant values */
       eyeIcon.innerHTML = isHidden ? EYE_SLASH : EYE_OPEN;
     });
   }
@@ -32,7 +32,7 @@
   function showError(msg) {
     const err = document.getElementById('loginError');
     if (!err) return;
-    err.textContent = msg; /* textContent 사용 → XSS 안전 */
+    err.textContent = msg; /* textContent — XSS safe */
     err.classList.add('visible');
   }
 
@@ -60,7 +60,7 @@
       const res = await fetch('/api/login', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        /* 세션 쿠키는 서버가 HttpOnly로 설정 — 클라이언트에서 저장 불필요 */
+        /* Session cookie is set HttpOnly server-side — no client storage needed */
         body:    JSON.stringify({ username, password }),
       });
 
@@ -81,7 +81,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     initPasswordToggle();
     document.getElementById('loginBtn')?.addEventListener('click', doLogin);
-    /* Enter 키로 로그인 — 폼 전체에 적용 */
+    /* Submit on Enter — applies to the whole page */
     document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   });
 }());

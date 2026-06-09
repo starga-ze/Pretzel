@@ -75,7 +75,7 @@ HeartbeatService::schedule(std::chrono::steady_clock::time_point now)
     {
         if (now - m_roundStartedAt >= responseTimeout())
         {
-            LOG_DEBUG("HeartbeatService: response timeout, finalizing round");
+            LOG_DEBUG("response timeout, finalizing round");
             markTimeoutsAsDead();
             m_roundActive  = false;
             m_pendingCount = 0;
@@ -117,7 +117,7 @@ void HeartbeatService::handleEvent(EnginedServiceManager& serviceManager,
                 HeartbeatActionType::SendHeartbeatRequest, daemon));
         }
 
-        LOG_DEBUG("HeartbeatService: sent requests to {} daemons", m_pendingCount);
+        LOG_DEBUG("sent requests to {} daemons", m_pendingCount);
         break;
     }
 
@@ -126,7 +126,7 @@ void HeartbeatService::handleEvent(EnginedServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("HeartbeatService: ReceiveHeartbeatResponse has empty message");
+            LOG_WARN("ReceiveHeartbeatResponse has empty message");
             return;
         }
 
@@ -142,7 +142,7 @@ void HeartbeatService::handleEvent(EnginedServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("HeartbeatService: unhandled event type={}",
+        LOG_WARN("unhandled event type={}",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -166,7 +166,7 @@ void HeartbeatService::handleAction(EnginedServiceManager& serviceManager,
 
         auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-        LOG_DEBUG("HeartbeatService: Tx HeartbeatRequest dst={}",
+        LOG_DEBUG("Tx HeartbeatRequest dst={}",
                   pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
@@ -191,14 +191,14 @@ void HeartbeatService::handleAction(EnginedServiceManager& serviceManager,
             reinterpret_cast<const std::uint8_t*>(jsonStr.data()),
             jsonStr.size());
 
-        LOG_DEBUG("HeartbeatService: Tx HeartbeatResult to mgmtd");
+        LOG_DEBUG("Tx HeartbeatResult to mgmtd");
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
         break;
     }
 
     default:
-        LOG_WARN("HeartbeatService: unhandled action type={}",
+        LOG_WARN("unhandled action type={}",
                  static_cast<std::uint32_t>(action.type()));
         break;
     }
@@ -212,7 +212,7 @@ void HeartbeatService::onHeartbeatResponse(EnginedServiceManager& serviceManager
     auto it = m_daemonMap.find(src);
     if (it == m_daemonMap.end())
     {
-        LOG_WARN("HeartbeatService: unexpected response from daemon={}",
+        LOG_WARN("unexpected response from daemon={}",
                  pz::ipc::IpcProtocol::daemonToStr(src));
         return;
     }
@@ -221,7 +221,7 @@ void HeartbeatService::onHeartbeatResponse(EnginedServiceManager& serviceManager
 
     if (!entry.pending)
     {
-        LOG_DEBUG("HeartbeatService: duplicate response from daemon={}",
+        LOG_DEBUG("duplicate response from daemon={}",
                   pz::ipc::IpcProtocol::daemonToStr(src));
         return;
     }
@@ -235,7 +235,7 @@ void HeartbeatService::onHeartbeatResponse(EnginedServiceManager& serviceManager
     entry.latencyMs = latency;
     --m_pendingCount;
 
-    LOG_DEBUG("HeartbeatService: response from {} latency={}ms",
+    LOG_DEBUG("response from {} latency={}ms",
               pz::ipc::IpcProtocol::daemonToStr(src), latency);
 
     if (m_pendingCount <= 0)
@@ -256,7 +256,7 @@ void HeartbeatService::markTimeoutsAsDead()
             entry.pending   = false;
             entry.alive     = false;
             entry.latencyMs = -1;
-            LOG_DEBUG("HeartbeatService: daemon={} timed out",
+            LOG_DEBUG("daemon={} timed out",
                       pz::ipc::IpcProtocol::daemonToStr(daemon));
         }
     }

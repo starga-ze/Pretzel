@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace pz::icmpd
@@ -57,9 +58,23 @@ std::chrono::milliseconds replyMaxWaitTimeout()
     return std::chrono::milliseconds(probeTuning().value("reply_max_wait_timeout_ms", 15000));
 }
 
-std::string probeScanCidr()
+// Returns comma-separated CIDR list as individual strings.
+std::vector<std::string> probeScanCidrs()
 {
-    return probeTuning().value("scan_cidr", std::string("192.168.0.0/23"));
+    const std::string raw = probeTuning().value("scan_cidr", std::string("192.168.0.0/23"));
+    std::vector<std::string> result;
+    std::stringstream ss(raw);
+    std::string token;
+    while (std::getline(ss, token, ','))
+    {
+        const auto b = token.find_first_not_of(" \t");
+        const auto e = token.find_last_not_of(" \t");
+        if (b != std::string::npos)
+            result.push_back(token.substr(b, e - b + 1));
+    }
+    if (result.empty())
+        result.push_back("192.168.0.0/23");
+    return result;
 }
 
 // Comma-separated list of IPs to exclude from probe targets.
@@ -97,14 +112,14 @@ void ProbeService::start()
     for (const auto& ip : probeExcludedIps())
         m_localIps.insert(ip);
 
-    LOG_INFO("ProbeService start");
+    LOG_INFO("probe service started");
 }
 
 std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
-        LOG_ERROR("ProbeService: EventFactory is nullptr");
+        LOG_ERROR("EventFactory is not initialized");
         return nullptr;
     }
 
@@ -174,7 +189,7 @@ void ProbeService::handleEvent(IcmpdServiceManager& serviceManager, const ProbeE
 {
     if (!m_actionFactory)
     {
-        LOG_ERROR("ProbeService: ActionFactory is nullptr");
+        LOG_ERROR("ActionFactory is not initialized");
         return;
     }
 
@@ -220,7 +235,7 @@ void ProbeService::handleEvent(IcmpdServiceManager& serviceManager, const ProbeE
 
     default:
     {
-        LOG_DEBUG("ProbeService: unhandled event type={}",
+        LOG_DEBUG("unhandled event type={}",
                   static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -236,7 +251,7 @@ void ProbeService::handleAction(IcmpdServiceManager& serviceManager,
     {
         if (m_state == State::Sending || m_state == State::WaitingReplies)
         {
-            LOG_DEBUG("ProbeService: skip StartProbe while active state={}",
+            LOG_DEBUG("skip StartProbe while active state={}",
                       static_cast<int>(m_state));
             return;
         }
@@ -249,7 +264,7 @@ void ProbeService::handleAction(IcmpdServiceManager& serviceManager,
     {
         if (m_state != State::Sending)
         {
-            LOG_DEBUG("ProbeService: skip SendProbeBatch state={}",
+            LOG_DEBUG("skip SendProbeBatch state={}",
                       static_cast<int>(m_state));
             return;
         }
@@ -266,7 +281,7 @@ void ProbeService::handleAction(IcmpdServiceManager& serviceManager,
 
     default:
     {
-        LOG_DEBUG("ProbeService: unhandled action type={}",
+        LOG_DEBUG("unhandled action type={}",
                   static_cast<std::uint32_t>(action.type()));
         break;
     }
@@ -277,7 +292,21 @@ void ProbeService::beginProbeSession()
 {
     m_identifier = static_cast<std::uint16_t>(::getpid() & 0xffff);
 
-    m_targets = buildIpv4Targets(probeScanCidr());
+    // Build targets from all configured CIDRs, deduplicating by IP.
+    const auto cidrs = probeScanCidrs();
+    std::unordered_map<std::string, bool> seen;
+    m_targets.clear();
+
+    for (const auto& cidr : cidrs)
+    {
+        auto cidrTargets = buildIpv4Targets(cidr);
+        for (auto& t : cidrTargets)
+        {
+            if (seen.emplace(t.ip, true).second)
+                m_targets.push_back(std::move(t));
+        }
+    }
+
     m_targetIndexByIp.clear();
 
     const std::size_t generatedCount = m_targets.size();
@@ -307,18 +336,19 @@ void ProbeService::beginProbeSession()
     m_lastReplyAt = {};
     m_state = State::Sending;
 
+    // Build comma-joined CIDR string for the log line.
+    std::string cidrList;
+    for (std::size_t i = 0; i < cidrs.size(); ++i)
+    {
+        if (i) cidrList += ',';
+        cidrList += cidrs[i];
+    }
+
     LOG_INFO("Start probe, (cidr={} generated={} targets={} excluded_local={})",
-             probeScanCidr(),
+             cidrList,
              generatedCount,
              m_targets.size(),
              generatedCount - m_targets.size());
-
-    if (!m_targets.empty())
-    {
-        LOG_DEBUG("ProbeService: target range first={} last={}",
-                  m_targets.front().ip,
-                  m_targets.back().ip);
-    }
 }
 
 void ProbeService::sendProbeBatch(IcmpdServiceManager& serviceManager)
@@ -331,7 +361,7 @@ void ProbeService::sendProbeBatch(IcmpdServiceManager& serviceManager)
     {
         auto& target = m_targets[m_nextSendIndex];
 
-        LOG_TRACE("ProbeService: send echo request dst={} seq={}",
+        LOG_TRACE("send echo request dst={} seq={}",
                   target.ip,
                   target.sequence);
 
@@ -344,7 +374,7 @@ void ProbeService::sendProbeBatch(IcmpdServiceManager& serviceManager)
 
     m_lastBatchSentAt = now;
 
-    LOG_DEBUG("ProbeService: sent batch count={} progress={}/{}",
+    LOG_DEBUG("sent batch count={} progress={}/{}",
               sentCount,
               m_nextSendIndex,
               m_targets.size());
@@ -357,13 +387,13 @@ void ProbeService::onEchoReply(const ProbeEvent& event)
     auto it = m_targetIndexByIp.find(srcIp);
     if (it == m_targetIndexByIp.end())
     {
-        LOG_TRACE("ProbeService: ignore echo reply from unknown ip={}", srcIp);
+        LOG_TRACE("ignore echo reply from unknown ip={}", srcIp);
         return;
     }
 
     if (!canAcceptReply())
     {
-        LOG_DEBUG("ProbeService: late echo reply ignored src={} state={}",
+        LOG_DEBUG("late echo reply ignored src={} state={}",
                   srcIp,
                   static_cast<int>(m_state));
         return;
@@ -372,7 +402,7 @@ void ProbeService::onEchoReply(const ProbeEvent& event)
     const auto* packet = event.packet();
     if (!packet)
     {
-        LOG_WARN("ProbeService: ignore echo reply with null packet src={}", srcIp);
+        LOG_WARN("ignore echo reply with null packet src={}", srcIp);
         return;
     }
 
@@ -380,7 +410,7 @@ void ProbeService::onEchoReply(const ProbeEvent& event)
 
     if (packet->identifier() != m_identifier)
     {
-        LOG_TRACE("ProbeService: ignore echo reply id mismatch src={} recv={} expected={}",
+        LOG_TRACE("ignore echo reply id mismatch src={} recv={} expected={}",
                   srcIp,
                   packet->identifier(),
                   m_identifier);
@@ -389,7 +419,7 @@ void ProbeService::onEchoReply(const ProbeEvent& event)
 
     if (packet->sequence() != target.sequence)
     {
-        LOG_TRACE("ProbeService: ignore echo reply seq mismatch src={} recv={} expected={}",
+        LOG_TRACE("ignore echo reply seq mismatch src={} recv={} expected={}",
                   srcIp,
                   packet->sequence(),
                   target.sequence);
@@ -403,14 +433,14 @@ void ProbeService::onEchoReply(const ProbeEvent& event)
 
     target.alive = true;
 
-    LOG_DEBUG("ProbeService: reachable ip={}", srcIp);
+    LOG_DEBUG("reachable ip={}", srcIp);
 }
 
 void ProbeService::completeProbeSession()
 {
     if (m_state != State::WaitingReplies)
     {
-        LOG_DEBUG("ProbeService: skip complete state={}", static_cast<int>(m_state));
+        LOG_DEBUG("skip complete state={}", static_cast<int>(m_state));
         return;
     }
 
@@ -439,7 +469,7 @@ void ProbeService::completeProbeSession()
                  now - m_probeStartedAt).count());
 
     for (const auto& ip : aliveIps)
-        LOG_DEBUG("ProbeService: reachable ip={}", ip);
+        LOG_DEBUG("reachable ip={}", ip);
 
     m_lastProbeCompletedAt = now;
     m_state = State::Idle;
@@ -554,7 +584,7 @@ void ProbeService::sendProbeResult(IcmpdServiceManager& serviceManager)
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(payloadStr.data()), payloadStr.size());
 
-    LOG_INFO("ProbeService: sending ProbeResult to mgmtd alive={}", m_lastAliveCount);
+    LOG_INFO("sending ProbeResult to mgmtd alive={}", m_lastAliveCount);
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }

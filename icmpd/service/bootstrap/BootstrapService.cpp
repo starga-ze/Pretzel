@@ -58,7 +58,7 @@ void BootstrapService::start()
     m_lastClientHelloSentAt = {};
     m_lastRuntimeReadySentAt = {};
 
-    LOG_INFO("BootstrapService start...");
+    LOG_INFO("bootstrap started");
 }
 
 std::unique_ptr<IcmpdEvent>
@@ -66,7 +66,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
-        LOG_ERROR("BootstrapService: eventFactory is nullptr");
+        LOG_ERROR("bootstrap: event factory is not initialized");
         return nullptr;
     }
 
@@ -82,7 +82,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         m_state = State::WaitServerHello;
         m_lastClientHelloSentAt = now;
 
-        LOG_DEBUG("BootstrapService: schedule SendClientHello");
+        LOG_DEBUG("bootstrap: scheduling ClientHello");
 
         return m_eventFactory->create(
             IcmpdEventDomain::Bootstrap,
@@ -100,7 +100,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastClientHelloSentAt = now;
 
-            LOG_DEBUG("BootstrapService: schedule Re-SendClientHello");
+            LOG_DEBUG("bootstrap: retrying ClientHello");
 
             return m_eventFactory->create(
                 IcmpdEventDomain::Bootstrap,
@@ -121,7 +121,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastRuntimeReadySentAt = now;
 
-            LOG_DEBUG("BootstrapService: schedule Re-SendRuntimeReady");
+            LOG_DEBUG("bootstrap: retrying RuntimeReady");
 
             return m_eventFactory->create(
                 IcmpdEventDomain::Bootstrap,
@@ -134,7 +134,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
     case State::Ready:
     {
         m_state = State::Running;
-        LOG_INFO("BootstrapService: state change to Running");
+        LOG_INFO("bootstrap: state changed to Running");
         return nullptr;
     }
 
@@ -156,7 +156,7 @@ void BootstrapService::handleEvent(IcmpdServiceManager& serviceManager,
 {
     if (!m_actionFactory)
     {
-        LOG_ERROR("BootstrapService: actionFactory is nullptr");
+        LOG_ERROR("bootstrap: action factory is not initialized");
         return;
     }
 
@@ -177,7 +177,7 @@ void BootstrapService::handleEvent(IcmpdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("BootstrapService: ReceiveServerHello has empty message");
+            LOG_WARN("bootstrap: received empty ServerHello");
             return;
         }
 
@@ -200,7 +200,7 @@ void BootstrapService::handleEvent(IcmpdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("BootstrapService: ReceiveRuntimeStart has empty message");
+            LOG_WARN("bootstrap: received empty RuntimeStart");
             return;
         }
 
@@ -209,7 +209,7 @@ void BootstrapService::handleEvent(IcmpdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("BootstrapService: unhandled event type={}",
+        LOG_WARN("unhandled event type={}",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -226,12 +226,12 @@ void BootstrapService::handleAction(IcmpdServiceManager& serviceManager,
     {
         if (m_state != State::WaitServerHello)
         {
-            LOG_DEBUG("BootstrapService: skip SendClientHello action state={}",
+            LOG_DEBUG("skip SendClientHello action state={}",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_INFO("BootstrapService: Tx ClientHello, waiting ServerHello");
+        LOG_INFO("bootstrap: sent ClientHello, awaiting ServerHello");
         msg = buildClientHelloMessage();
         break;
     }
@@ -240,18 +240,18 @@ void BootstrapService::handleAction(IcmpdServiceManager& serviceManager,
     {
         if (m_state != State::WaitRuntimeStart)
         {
-            LOG_DEBUG("BootstrapService: skip SendRuntimeReady action state={}",
+            LOG_DEBUG("skip SendRuntimeReady action state={}",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_INFO("BootstrapService: Tx RuntimeReady, waiting RuntimeStart");
+        LOG_INFO("bootstrap: sent RuntimeReady, awaiting RuntimeStart");
         msg = buildRuntimeReadyMessage();
         break;
     }
 
     default:
-        LOG_WARN("BootstrapService: unhandled action type={}",
+        LOG_WARN("unhandled action type={}",
                  static_cast<std::uint32_t>(action.type()));
         return;
     }
@@ -274,7 +274,7 @@ void BootstrapService::onServerHello(IcmpdServiceManager& serviceManager,
     m_state = State::WaitRuntimeStart;
     m_lastRuntimeReadySentAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("BootstrapService: state change to WaitRuntimeStart");
+    LOG_INFO("bootstrap: state changed to WaitRuntimeStart");
 
     auto action = m_actionFactory->create(
         IcmpdActionDomain::Bootstrap,
@@ -296,7 +296,7 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 
     m_state = State::Ready;
 
-    LOG_INFO("BootstrapService: state change to Ready");
+    LOG_INFO("bootstrap: state changed to Ready");
 }
 
 bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
@@ -312,7 +312,7 @@ bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
         return false;
     }
 
-    LOG_ERROR("BootstrapService: bootstrap timeout state={}", stateName);
+    LOG_ERROR("bootstrap: timed out — state={}", stateName);
 
     m_state = State::Failed;
     return true;

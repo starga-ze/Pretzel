@@ -29,7 +29,7 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
 {
     if (!m_actionFactory)
     {
-        LOG_ERROR("BootstrapService: actionFactory is nullptr");
+        LOG_ERROR("bootstrap: action factory is not initialized");
         return;
     }
 
@@ -40,11 +40,11 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("BootstrapService: ReceiveClientHello has empty message");
+            LOG_WARN("bootstrap: received empty ClientHello");
             return;
         }
 
-        LOG_INFO("BootstrapService: ReceiveClientHello src={}",
+        LOG_INFO("ReceiveClientHello src={}",
                  pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
         auto action = std::make_unique<BootstrapAction>(
@@ -60,11 +60,11 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("BootstrapService: ReceiveSyncRequest has empty message");
+            LOG_WARN("bootstrap: received empty SyncRequest");
             return;
         }
 
-        LOG_INFO("BootstrapService: ReceiveSyncRequest src={}",
+        LOG_INFO("ReceiveSyncRequest src={}",
                  pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
         auto action = std::make_unique<BootstrapAction>(
@@ -80,11 +80,11 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("BootstrapService: ReceiveRuntimeReady has empty message");
+            LOG_WARN("bootstrap: received empty RuntimeReady");
             return;
         }
 
-        LOG_INFO("BootstrapService: ReceiveRuntimeReady src={}",
+        LOG_INFO("ReceiveRuntimeReady src={}",
                  pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
         if (m_ipcServerHandler)
@@ -96,7 +96,7 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("BootstrapService: unhandled event type={}",
+        LOG_WARN("unhandled event type={}",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -112,7 +112,7 @@ void BootstrapService::handleAction(IpcdServiceManager& serviceManager,
         const auto* req = action.request();
         if (!req)
         {
-            LOG_WARN("BootstrapService: SendServerHello has no request");
+            LOG_WARN("bootstrap: SendServerHello — no pending request");
             return;
         }
 
@@ -126,7 +126,7 @@ void BootstrapService::handleAction(IpcdServiceManager& serviceManager,
         const auto* req = action.request();
         if (!req)
         {
-            LOG_WARN("BootstrapService: SendSyncResponse has no request");
+            LOG_WARN("bootstrap: SendSyncResponse — no pending request");
             return;
         }
 
@@ -136,7 +136,7 @@ void BootstrapService::handleAction(IpcdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("BootstrapService: unhandled action type={}",
+        LOG_WARN("unhandled action type={}",
                  static_cast<std::uint32_t>(action.type()));
         break;
     }

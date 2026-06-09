@@ -24,25 +24,25 @@ bool IpcClientHandler::handleConnect(int fd, pz::io::Epoll& epoll)
 
     if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) != 0)
     {
-        LOG_ERROR("IpcClientHandler: getsockopt(SO_ERROR) failed fd={} errno={} ({})", 
+        LOG_ERROR("getsockopt(SO_ERROR) failed fd={} errno={} ({})", 
                 fd, errno, std::strerror(errno));
         return false;
     }
 
     if (soError != 0)
     {
-        LOG_ERROR("IpcClientHandler: connect failed fd={} so_error={} ({})", fd, soError, 
+        LOG_ERROR("connect failed fd={} so_error={} ({})", fd, soError, 
                 std::strerror(soError));
         return false;
     }
 
     if (!epoll.mod(fd, EPOLLIN | EPOLLRDHUP))
     {
-        LOG_ERROR("IpcClientHandler: epoll mod after connect failed fd={}", fd);
+        LOG_ERROR("epoll mod after connect failed fd={}", fd);
         return false;
     }
 
-    LOG_INFO("IpcClientHandler: connected fd={}", fd);
+    LOG_INFO("connected fd={}", fd);
     return true;
 }
 
@@ -70,7 +70,7 @@ bool IpcClientHandler::ingress(int fd, pz::ipc::IpcFrameView frame)
 {
     if (frame.empty())
     {
-        LOG_WARN("IpcClientHandler: ingress frame is empty fd={}", fd);
+        LOG_WARN("ingress frame is empty fd={}", fd);
         return false;
     }
 
@@ -79,14 +79,14 @@ bool IpcClientHandler::ingress(int fd, pz::ipc::IpcFrameView frame)
     const auto rc = m_codec.decode(frame, msg);
     if (rc != IpcDecodeResult::Ok)
     {
-        LOG_ERROR("IpcClientHandler: ingress decode failed fd={} rc={} frameSize={}", fd, static_cast<int>(rc),
+        LOG_ERROR("ingress decode failed fd={} rc={} frameSize={}", fd, static_cast<int>(rc),
                   frame.size);
         return false;
     }
 
     if (!msg)
     {
-        LOG_ERROR("IpcClientHandler: ingress decode returned null message fd={} frameSize={}", fd, frame.size);
+        LOG_ERROR("ingress decode returned null message fd={} frameSize={}", fd, frame.size);
         return false;
     }
 
@@ -101,13 +101,13 @@ void IpcClientHandler::egress(std::unique_ptr<IpcMessage> msg)
 {
     if (!msg)
     {
-        LOG_ERROR("Egress message is nullptr");
+        LOG_ERROR("Egress message is not initialized");
         return;
     }
 
     if (!m_ipcClient)
     {
-        LOG_ERROR("IpcClient is nullptr");
+        LOG_ERROR("IpcClient is not initialized");
         return;
     }
 

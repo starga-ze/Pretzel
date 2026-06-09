@@ -122,13 +122,13 @@ void MgmtdServiceManager::startReload()
 {
     m_reloadStartedAt = std::chrono::steady_clock::now();
     m_reloadStatus.store(static_cast<int>(ReloadStatus::Reloading), std::memory_order_release);
-    LOG_INFO("MgmtdServiceManager: reload started");
+    LOG_INFO("reload started");
 }
 
 void MgmtdServiceManager::completeReload()
 {
     m_reloadStatus.store(static_cast<int>(ReloadStatus::Complete), std::memory_order_release);
-    LOG_INFO("MgmtdServiceManager: reload complete elapsed={}ms", reloadElapsedMs());
+    LOG_INFO("reload complete elapsed={}ms", reloadElapsedMs());
 }
 
 MgmtdServiceManager::ReloadStatus MgmtdServiceManager::reloadStatus() const
@@ -147,7 +147,7 @@ std::int64_t MgmtdServiceManager::reloadElapsedMs() const
 void MgmtdServiceManager::setAliveDevices(std::uint32_t count)
 {
     m_aliveDevices.store(static_cast<std::int64_t>(count), std::memory_order_relaxed);
-    LOG_DEBUG("MgmtdServiceManager: aliveDevices updated count={}", count);
+    LOG_DEBUG("aliveDevices updated count={}", count);
 }
 
 std::vector<std::string> MgmtdServiceManager::aliveIps() const

@@ -24,7 +24,7 @@ std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(SnmpdEventDomain domain, s
         return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
 
     default:
-        LOG_WARN("SnmpdEventFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -33,7 +33,7 @@ std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(std::unique_ptr<pz::ipc::I
 {
     if (!msg)
     {
-        LOG_WARN("SnmpdEventFactory: null message");
+        LOG_DEBUG("Snmpd event factory: received empty message — skipping");
         return nullptr;
     }
 
@@ -49,7 +49,7 @@ std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(std::unique_ptr<pz::ipc::I
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
     default:
-        LOG_WARN("SnmpdEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 }

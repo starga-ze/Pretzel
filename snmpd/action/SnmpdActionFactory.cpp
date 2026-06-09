@@ -15,7 +15,7 @@ std::unique_ptr<SnmpdAction> SnmpdActionFactory::create(SnmpdActionDomain domain
         return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
 
     default:
-        LOG_WARN("SnmpdActionFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }

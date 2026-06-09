@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -27,8 +27,8 @@
   <div class="content-wrap">
     <main class="content-body">
 
-      <!-- Page toolbar -->
-      <div class="settings-toolbar">
+      <!-- Page header -->
+      <div class="settings-page-header">
         <div class="settings-toolbar-left">
           <h1 class="settings-title" id="pageTitle"></h1>
           <p class="settings-subtitle" id="pageSubtitle"></p>
@@ -36,7 +36,7 @@
         <div class="settings-toolbar-right">
           <div class="commit-pending-badge" id="commitPendingBadge">
             <span class="commit-pending-dot"></span>
-            <span id="commitPendingCount">0</span> pending
+            <span id="commitPendingCount">0</span> unsaved
           </div>
           <button class="btn btn-ghost" id="discardBtn">Discard</button>
           <button class="btn btn-primary" id="reviewBtn" disabled>
@@ -51,18 +51,17 @@
 
       <div id="settingsStatus" class="settings-status"></div>
 
-      <!-- Settings groups -->
+      <!-- Settings body -->
       <div id="settingsGroups" class="settings-groups">
-        <div class="loading-row">Loading settings…</div>
+        <div class="loading-row">Loading…</div>
       </div>
 
     </main>
   </div>
 
-  <!-- Commit modal — queue + JSON diff -->
+  <!-- ══ Commit modal ══ -->
   <div class="modal-overlay" id="reviewOverlay">
     <div class="modal modal-commit" id="reviewModal">
-
       <div class="modal-header">
         <div class="modal-header-left">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -74,20 +73,14 @@
         <button class="modal-close" id="reviewCloseBtn" aria-label="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       </div>
-
-      <!-- Progress bar -->
       <div class="commit-progress-track" id="commitProgressTrack">
         <div class="commit-progress-fill" id="commitProgressFill"></div>
       </div>
-
       <div class="modal-split">
-
-        <!-- Left: commit queue -->
         <div class="commit-queue-panel">
           <div class="panel-header">
             <span class="panel-title">Commit Queue</span>
@@ -97,8 +90,6 @@
             <div class="loading-row" style="padding:20px 16px">No changes staged.</div>
           </div>
         </div>
-
-        <!-- Right: JSON diff viewer -->
         <div class="commit-diff-panel">
           <div class="panel-header">
             <span class="panel-title">JSON Diff</span>
@@ -115,9 +106,7 @@
             </div>
           </div>
         </div>
-
-      </div><!-- /modal-split -->
-
+      </div>
       <div class="modal-footer">
         <span class="modal-status" id="commitStatus"></span>
         <div class="modal-footer-actions">
@@ -128,6 +117,54 @@
               <polyline points="20 6 9 17 4 12"/>
             </svg>
             Deploy All
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ List Editor Modal ══ -->
+  <div class="modal-overlay le-overlay" id="listEditorOverlay">
+    <div class="modal le-modal" id="listEditorModal">
+      <div class="modal-header">
+        <div class="modal-header-left">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+            <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+            <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+          </svg>
+          <span class="modal-title" id="listEditorTitle">Edit Entries</span>
+        </div>
+        <button class="modal-close" id="listEditorCloseBtn" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="le-body">
+        <p class="le-hint" id="listEditorHint"></p>
+        <div class="le-items-panel" id="listEditorItems">
+          <div class="le-empty">No entries. Add one below.</div>
+        </div>
+        <div class="le-add-row">
+          <input type="text" class="le-add-input" id="listEditorInput" placeholder="Enter value…" />
+          <button class="btn btn-primary le-add-btn" id="listEditorAddBtn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <span></span>
+        <div class="modal-footer-actions">
+          <button class="btn btn-ghost" id="listEditorCancelBtn">Cancel</button>
+          <button class="btn btn-primary" id="listEditorSaveBtn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Save
           </button>
         </div>
       </div>

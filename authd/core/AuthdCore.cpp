@@ -33,12 +33,12 @@ bool AuthdCore::onInit()
             m_loggerConfig.maxFileSize,
             m_loggerConfig.maxFiles);
 
-    LOG_INFO("AuthdCore onInit()...");
+    LOG_INFO("authd: starting up");
 
     m_threadManager = std::make_unique<pz::util::ThreadManager>();
     if (!m_threadManager)
     {
-        LOG_ERROR("ThreadManager init failed");
+        LOG_ERROR("failed to initialize thread manager");
         return false;
     }
 
@@ -46,7 +46,7 @@ bool AuthdCore::onInit()
 
     if (!m_ipcClient->init())
     {
-        LOG_ERROR("IpcClient init failed");
+        LOG_ERROR("failed to initialize IPC client");
         return false;
     }
 
@@ -58,7 +58,7 @@ bool AuthdCore::onInit()
 
     if (!m_txRouter or !m_rxRouter)
     {
-        LOG_ERROR("IpcRouter init failed");
+        LOG_ERROR("failed to initialize IPC router");
         return false;
     }
 
@@ -69,7 +69,7 @@ bool AuthdCore::onInit()
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("Service init failed");
+        LOG_ERROR("failed to initialize service manager");
         return false;
     }
 
@@ -77,7 +77,7 @@ bool AuthdCore::onInit()
 
     if (!m_process)
     {
-        LOG_ERROR("Process init failed");
+        LOG_ERROR("failed to initialize process");
         return false;
     }
 
@@ -92,7 +92,7 @@ void AuthdCore::onLoop()
 {
     if (!m_process->start())
     {
-        LOG_ERROR("Process Start Failed...");
+        LOG_ERROR("process failed to start");
         return;
     }
 
@@ -105,14 +105,14 @@ void AuthdCore::onLoop()
 
 void AuthdCore::onShutdown()
 {
-    LOG_INFO("AuthdCore onShutdown()...");
+    LOG_INFO("shutting down");
 
     if (m_threadManager)
     {
         m_threadManager->stopAll();
     }
 
-    LOG_INFO("All threads terminated successfully");
+    LOG_INFO("all threads stopped");
 
     pz::util::Logger::Shutdown();
 }

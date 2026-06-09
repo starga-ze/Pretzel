@@ -86,7 +86,7 @@ private:
     std::chrono::steady_clock::time_point m_lastReplyAt {};
 
     std::uint16_t m_identifier = 0;
-    std::uint32_t m_lastAliveCount = 0;  // 마지막 probe 사이클의 alive device 수
+    std::uint32_t m_lastAliveCount = 0;  // number of alive devices from the last probe cycle
 };
 
 } // namespace pz::icmpd

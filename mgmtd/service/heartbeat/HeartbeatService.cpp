@@ -23,7 +23,7 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("HeartbeatService: ReceiveHeartbeatRequest has empty message");
+            LOG_WARN("heartbeat: received empty request");
             return;
         }
 
@@ -39,14 +39,14 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("HeartbeatService: ReceiveHeartbeatResult has empty message");
+            LOG_WARN("ReceiveHeartbeatResult has empty message");
             return;
         }
 
         const auto& payload = msg->getPayload();
         if (payload.empty())
         {
-            LOG_WARN("HeartbeatService: HeartbeatResult payload is empty");
+            LOG_WARN("HeartbeatResult payload is empty");
             return;
         }
 
@@ -56,7 +56,7 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
 
         m_hasData.store(true, std::memory_order_relaxed);
 
-        LOG_DEBUG("HeartbeatService: updated heartbeat result len={}", m_latestJson.size());
+        LOG_DEBUG("updated heartbeat result len={}", m_latestJson.size());
 
         // Persist the runtime-determined heartbeat snapshot as mgmtd's running-config,
         // distinct from the operational running-config.
@@ -69,7 +69,7 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("HeartbeatService: unhandled event type={}",
+        LOG_WARN("unhandled event type={}",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -93,7 +93,7 @@ void HeartbeatService::handleAction(MgmtdServiceManager& serviceManager,
 
         auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-        LOG_DEBUG("HeartbeatService: Tx HeartbeatResponse dst={}",
+        LOG_DEBUG("Tx HeartbeatResponse dst={}",
                   pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
@@ -101,7 +101,7 @@ void HeartbeatService::handleAction(MgmtdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("HeartbeatService: unhandled action type={}",
+        LOG_WARN("unhandled action type={}",
                  static_cast<std::uint32_t>(action.type()));
         break;
     }

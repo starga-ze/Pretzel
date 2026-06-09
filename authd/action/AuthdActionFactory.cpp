@@ -15,7 +15,7 @@ std::unique_ptr<AuthdAction> AuthdActionFactory::create(AuthdActionDomain domain
         return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
 
     default:
-        LOG_WARN("AuthdActionFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }

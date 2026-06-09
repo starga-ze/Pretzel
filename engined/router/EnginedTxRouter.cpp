@@ -14,13 +14,13 @@ void EnginedTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
-        LOG_WARN("EnginedTxRouter: message is nullptr");
+        LOG_WARN("message is not initialized");
         return;
     }
 
     if (!m_ipcClientHandler)
     {
-        LOG_ERROR("EnginedTxRouter: IpcClientHandler is nullptr");
+        LOG_ERROR("Engined TxRouter: IPC client handler is not initialized");
         return;
     }
 

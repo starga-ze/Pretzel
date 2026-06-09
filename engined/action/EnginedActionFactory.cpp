@@ -21,7 +21,7 @@ std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain 
             pz::ipc::IpcDaemon::Unknown);
 
     default:
-        LOG_WARN("EnginedActionFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }

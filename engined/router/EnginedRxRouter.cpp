@@ -19,23 +19,23 @@ void EnginedRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {
-        LOG_ERROR("EnginedRxRouter: ServiceManager is nullptr");
+        LOG_ERROR("Engined RxRouter: service manager is not initialized");
         return;
     }
 
     if (!msg)
     {
-        LOG_WARN("EnginedRxRouter: IpcMessage is nullptr");
+        LOG_WARN("Engined RxRouter: received null IPC message — skipping");
         return;
     }
 
-    LOG_DEBUG("EnginedRxRouter: recv cmd={} src={}",
+    LOG_DEBUG("recv cmd={} src={}",
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
     if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReloadRequest)
     {
-        LOG_INFO("EnginedRxRouter: ConfigReloadRequest from mgmtd — fanning out to service layer");
+        LOG_INFO("ConfigReloadRequest from mgmtd — fanning out to service layer");
 
         static constexpr pz::ipc::IpcDaemon kServiceDaemons[] = {
             pz::ipc::IpcDaemon::Authd,
@@ -52,7 +52,7 @@ void EnginedRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
             cfgMsg->setCmd(pz::ipc::IpcCmd::ConfigReload);
             cfgMsg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
             m_serviceManager->txRouter().handleIpcMessage(std::move(cfgMsg));
-            LOG_INFO("EnginedRxRouter: ConfigReload sent to {}", pz::ipc::IpcProtocol::daemonToStr(dst));
+            LOG_INFO("ConfigReload sent to {}", pz::ipc::IpcProtocol::daemonToStr(dst));
         }
 
         // Engined does not restart itself: it is the orchestrator and must

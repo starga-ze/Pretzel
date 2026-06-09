@@ -26,7 +26,7 @@ bool MgmtdCore::onInit()
                            m_loggerConfig.maxFileSize,
                            m_loggerConfig.maxFiles);
 
-    LOG_INFO("MgmtdCore onInit()...");
+    LOG_INFO("mgmtd: starting up");
 
     if (!loadIpcConfig() || !loadHttpConfig())
     {
@@ -36,7 +36,7 @@ bool MgmtdCore::onInit()
     m_ipcClient = std::make_unique<pz::ipc::IpcClient>(m_ipcConfig, pz::ipc::IpcDaemon::Mgmtd);
     if (!m_ipcClient->init())
     {
-        LOG_WARN("Mgmtd IpcClient init failed. Continue with HTTP metrics only.");
+        LOG_WARN("IPC client unavailable — running in metrics-only mode");
         m_ipcClient.reset();
     }
 
@@ -53,7 +53,7 @@ bool MgmtdCore::onInit()
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("Mgmtd service manager init failed");
+        LOG_ERROR("failed to initialize service manager");
         return false;
     }
 
@@ -79,7 +79,7 @@ bool MgmtdCore::onInit()
                                                 m_serviceManager.get());
     if (!m_httpServer || !m_httpServer->init())
     {
-        LOG_ERROR("Mgmtd HttpServer init failed");
+        LOG_ERROR("failed to initialize HTTP server");
         return false;
     }
 
@@ -88,7 +88,7 @@ bool MgmtdCore::onInit()
                                                m_serviceManager.get());
     if (!m_process)
     {
-        LOG_ERROR("Mgmtd process init failed");
+        LOG_ERROR("failed to initialize process");
         return false;
     }
 
@@ -99,7 +99,7 @@ void MgmtdCore::onLoop()
 {
     if (!m_process->start())
     {
-        LOG_ERROR("Mgmtd process start failed");
+        LOG_ERROR("failed to start process");
         return;
     }
 
@@ -113,7 +113,7 @@ void MgmtdCore::onLoop()
 
 void MgmtdCore::onShutdown()
 {
-    LOG_INFO("MgmtdCore onShutdown()...");
+    LOG_INFO("shutting down");
 
     if (m_httpServer)
     {

@@ -14,13 +14,13 @@ void IpcdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
-        LOG_WARN("IpcdTxRouter: message is nullptr");
+        LOG_WARN("message is not initialized");
         return;
     }
 
     if (!m_ipcServerHandler)
     {
-        LOG_ERROR("IpcdTxRouter: IpcServerHandler is nullptr");
+        LOG_ERROR("IpcServerHandler is not initialized");
         return;
     }
 

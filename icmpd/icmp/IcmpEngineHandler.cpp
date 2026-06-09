@@ -30,17 +30,17 @@ bool IcmpEngineHandler::handleRecv(int fd,
         break;
 
     case IcmpIoResult::BufferFull:
-        LOG_WARN("IcmpEngineHandler: rx queue full fd={} queued={}",
+        LOG_WARN("rx queue full fd={} queued={}",
                  fd,
                  conn.rxQueueSize());
         break;
 
     case IcmpIoResult::PeerClosed:
-        LOG_WARN("IcmpEngineHandler: recv peer closed fd={}", fd);
+        LOG_WARN("recv peer closed fd={}", fd);
         return false;
 
     case IcmpIoResult::Error:
-        LOG_WARN("IcmpEngineHandler: recv failed fd={} errno={}", fd, outErrno);
+        LOG_WARN("recv failed fd={} errno={}", fd, outErrno);
         return false;
     }
 
@@ -75,15 +75,15 @@ bool IcmpEngineHandler::handleSend(int fd,
         return true;
 
     case IcmpIoResult::BufferFull:
-        LOG_WARN("IcmpEngineHandler: unexpected tx buffer full fd={}", fd);
+        LOG_WARN("unexpected tx buffer full fd={}", fd);
         return true;
 
     case IcmpIoResult::PeerClosed:
-        LOG_WARN("IcmpEngineHandler: send peer closed fd={}", fd);
+        LOG_WARN("send peer closed fd={}", fd);
         return false;
 
     case IcmpIoResult::Error:
-        LOG_WARN("IcmpEngineHandler: send failed fd={} errno={}", fd, outErrno);
+        LOG_WARN("send failed fd={} errno={}", fd, outErrno);
         return false;
     }
 
@@ -91,7 +91,7 @@ bool IcmpEngineHandler::handleSend(int fd,
     {
         if (!epoll.mod(fd, EPOLLIN | EPOLLRDHUP))
         {
-            LOG_ERROR("IcmpEngineHandler: epoll mod remove EPOLLOUT failed fd={}", fd);
+            LOG_ERROR("epoll mod remove EPOLLOUT failed fd={}", fd);
             return false;
         }
     }
@@ -105,7 +105,7 @@ bool IcmpEngineHandler::ingress(int fd,
 {
     if (frame.empty())
     {
-        LOG_WARN("IcmpEngineHandler: ingress packet is empty fd={} src={}", fd, srcIp);
+        LOG_WARN("ingress packet is empty fd={} src={}", fd, srcIp);
         return false;
     }
 
@@ -113,7 +113,7 @@ bool IcmpEngineHandler::ingress(int fd,
     const auto rc = m_codec.decode(frame, packet);
     if (rc != IcmpDecodeResult::Ok)
     {
-        LOG_WARN("IcmpEngineHandler: ingress decode failed fd={} src={} rc={} size={}",
+        LOG_WARN("ingress decode failed fd={} src={} rc={} size={}",
                  fd,
                  srcIp,
                  static_cast<int>(rc),
@@ -123,7 +123,7 @@ bool IcmpEngineHandler::ingress(int fd,
 
     if (!packet)
     {
-        LOG_WARN("IcmpEngineHandler: ingress decode returned nullptr fd={} src={}", fd, srcIp);
+        LOG_WARN("ingress decode returned nullptr fd={} src={}", fd, srcIp);
         return true;
     }
 
@@ -131,7 +131,7 @@ bool IcmpEngineHandler::ingress(int fd,
 
     if (!m_rxRouter)
     {
-        LOG_WARN("IcmpEngineHandler: rxRouter is nullptr, drop packet src={}", srcIp);
+        LOG_WARN("rxRouter is nullptr, drop packet src={}", srcIp);
         return true;
     }
 
@@ -144,19 +144,19 @@ void IcmpEngineHandler::egress(std::unique_ptr<IcmpPacket> packet,
 {
     if (!packet)
     {
-        LOG_WARN("IcmpEngineHandler: egress packet is nullptr dst={}", dstIp);
+        LOG_WARN("egress packet is nullptr dst={}", dstIp);
         return;
     }
 
     if (dstIp.empty())
     {
-        LOG_WARN("IcmpEngineHandler: egress dstIp is empty");
+        LOG_WARN("egress dstIp is empty");
         return;
     }
 
     if (!m_icmpEngine)
     {
-        LOG_ERROR("IcmpEngine is nullptr");
+        LOG_ERROR("IcmpEngine is not initialized");
         return;
     }
 
@@ -165,12 +165,12 @@ void IcmpEngineHandler::egress(std::unique_ptr<IcmpPacket> packet,
     std::vector<std::uint8_t> frame = m_codec.encode(packet);
     if (frame.empty())
     {
-        LOG_WARN("IcmpEngineHandler: encode failed dst={}", dstIp);
+        LOG_WARN("encode failed dst={}", dstIp);
         return;
     }
 
     if (!m_icmpEngine->enqueueFrame(std::move(frame), std::move(dstIp)))
-        LOG_WARN("IcmpEngineHandler: egress enqueue failed");
+        LOG_WARN("egress enqueue failed");
 }
 
 void IcmpEngineHandler::setRxRouter(IcmpdRxRouter* rxRouter)

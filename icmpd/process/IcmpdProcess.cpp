@@ -20,13 +20,13 @@ bool IcmpdProcess::start()
 {
     if (!m_ipcClientEngine)
     {
-        LOG_ERROR("IpcClient is nullptr");
+        LOG_ERROR("IpcClient is not initialized");
         return false;
     }
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("ServiceManager is nullptr");
+        LOG_ERROR("ServiceManager is not initialized");
         return false;
     }
 

@@ -77,7 +77,7 @@ int UnixDomainSocket::accept()
         if (!setNonBlocking(fd))
         {
             const int savedErrno = errno;
-            LOG_ERROR("UnixDomainSocket: setNonBlocking accepted fd failed fd={} errno={}",
+            LOG_ERROR("setNonBlocking accepted fd failed fd={} errno={}",
                       fd,
                       savedErrno);
             ::close(fd);
@@ -106,7 +106,7 @@ UnixDomainSocket::ConnectResult UnixDomainSocket::connect()
 
     if (m_socketPath.size() >= sizeof(addr.sun_path))
     {
-        LOG_ERROR("UnixDomainSocket: socket path too long path={}", m_socketPath);
+        LOG_ERROR("socket path too long path={}", m_socketPath);
         close();
         errno = ENAMETOOLONG;
         return ConnectResult::Failed;
@@ -117,17 +117,17 @@ UnixDomainSocket::ConnectResult UnixDomainSocket::connect()
     const int rc = ::connect(m_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
     if (rc == 0)
     {
-        LOG_INFO("UnixDomainSocket: connected immediately path={} fd={}", m_socketPath, m_fd);
+        LOG_INFO("connected immediately path={} fd={}", m_socketPath, m_fd);
         return ConnectResult::Connected;
     }
 
     if (errno == EINPROGRESS)
     {
-        LOG_INFO("UnixDomainSocket: connect in progress path={} fd={}", m_socketPath, m_fd);
+        LOG_INFO("connect in progress path={} fd={}", m_socketPath, m_fd);
         return ConnectResult::InProgress;
     }
 
-    LOG_ERROR("UnixDomainSocket: connect failed path={} errno={}", m_socketPath, errno);
+    LOG_ERROR("connect failed path={} errno={}", m_socketPath, errno);
     close();
     return ConnectResult::Failed;
 }
@@ -161,13 +161,13 @@ bool UnixDomainSocket::createSocket()
     m_fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
     if (m_fd < 0)
     {
-        LOG_ERROR("UnixDomainSocket: socket(AF_UNIX) failed errno={}", errno);
+        LOG_ERROR("socket(AF_UNIX) failed errno={}", errno);
         return false;
     }
 
     if (!setNonBlocking(m_fd))
     {
-        LOG_ERROR("UnixDomainSocket: setNonBlocking failed fd={} errno={}", m_fd, errno);
+        LOG_ERROR("setNonBlocking failed fd={} errno={}", m_fd, errno);
         ::close(m_fd);
         m_fd = -1;
         return false;
@@ -192,7 +192,7 @@ bool UnixDomainSocket::bindSocket()
 
     if (m_socketPath.size() >= sizeof(addr.sun_path))
     {
-        LOG_ERROR("UnixDomainSocket: socket path too long path={}", m_socketPath);
+        LOG_ERROR("socket path too long path={}", m_socketPath);
         return false;
     }
 
@@ -200,7 +200,7 @@ bool UnixDomainSocket::bindSocket()
 
     if (::bind(m_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0)
     {
-        LOG_ERROR("UnixDomainSocket: bind failed path={} errno={}", m_socketPath, errno);
+        LOG_ERROR("bind failed path={} errno={}", m_socketPath, errno);
         return false;
     }
 
@@ -211,7 +211,7 @@ bool UnixDomainSocket::listenSocket()
 {
     if (::listen(m_fd, LISTEN_BACKLOG) != 0)
     {
-        LOG_ERROR("UnixDomainSocket: listen failed fd={} errno={}", m_fd, errno);
+        LOG_ERROR("listen failed fd={} errno={}", m_fd, errno);
         return false;
     }
 

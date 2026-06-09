@@ -34,7 +34,7 @@ static constexpr const char* kPublicPages[] = {
     "/index.html",
     "/css/main.css",
     "/js/main.js",
-    "/js/login.js",  // 로그인 페이지에서 세션 없이 로드되어야 함
+    "/js/login.js",  // loaded on the login page without a session
 };
 
 HttpRouter::HttpRouter(MetricService*             metricService,
@@ -330,6 +330,7 @@ constexpr const char* kSettingsDaemons[] = {
 // at runtime and not shown in the Settings UI.
 constexpr const char* kHiddenDomains[] = {
     "ipc_connect",
+    "bootstrap",
 };
 
 } // namespace

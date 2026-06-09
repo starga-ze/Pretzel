@@ -34,7 +34,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<pz::ipc::I
 {
     if (!msg)
     {
-        LOG_WARN("IcmpdEventFactory: null message");
+        LOG_DEBUG("Icmpd event factory: received empty message — skipping");
         return nullptr;
     }
 
@@ -50,7 +50,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<pz::ipc::I
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
     default:
-        LOG_WARN("IcmpdEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 
@@ -62,7 +62,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp,
 {
     if (!packet)
     {
-        LOG_WARN("IcmpdEventFactory: null packet");
+        LOG_WARN("null packet");
         return nullptr;
     }
 

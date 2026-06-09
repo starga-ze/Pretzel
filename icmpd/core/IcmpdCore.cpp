@@ -41,7 +41,7 @@ bool IcmpdCore::onInit()
     m_threadManager = std::make_unique<pz::util::ThreadManager>();
     if (!m_threadManager)
     {
-        LOG_ERROR("ThreadManager init failed");
+        LOG_ERROR("failed to initialize thread manager");
         return false;
     }
 
@@ -50,7 +50,7 @@ bool IcmpdCore::onInit()
 
     if (!m_ipcClient->init())
     {
-        LOG_ERROR("IpcClient init failed");
+        LOG_ERROR("failed to initialize IPC client");
         return false;
     }
 
@@ -73,7 +73,7 @@ bool IcmpdCore::onInit()
 
     if (!m_txRouter or !m_rxRouter)
     {
-        LOG_ERROR("IpcRouter init failed");
+        LOG_ERROR("failed to initialize IPC router");
         return false;
     }
 
@@ -81,7 +81,7 @@ bool IcmpdCore::onInit()
     m_serviceManager = std::make_unique<IcmpdServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
     if (!m_serviceManager)
     {
-        LOG_ERROR("Service init failed");
+        LOG_ERROR("failed to initialize service manager");
         return false;
     }
 
@@ -90,7 +90,7 @@ bool IcmpdCore::onInit()
 
     if (!m_process)
     {
-        LOG_ERROR("Process init failed");
+        LOG_ERROR("failed to initialize process");
         return false;
     }
 
@@ -107,7 +107,7 @@ void IcmpdCore::onLoop()
 {
     if (!m_process->start())
     {
-        LOG_ERROR("Process Start Failed...");
+        LOG_ERROR("process failed to start");
         return;
     }
 
@@ -120,14 +120,14 @@ void IcmpdCore::onLoop()
 
 void IcmpdCore::onShutdown()
 {
-    LOG_INFO("IcmpdCore onShutdown()...");
+    LOG_INFO("shutting down");
 
     if (m_threadManager)
     {
         m_threadManager->stopAll();
     }
 
-    LOG_INFO("All threads terminated successfully");
+    LOG_INFO("all threads stopped");
 
     pz::util::Logger::Shutdown();
 }

@@ -80,7 +80,7 @@ bool HttpServer::initTlsContext()
 
     if (m_certFile.empty() || m_keyFile.empty())
     {
-        LOG_ERROR("Mgmtd HTTPS enabled but cert_file or key_file is empty");
+        LOG_ERROR("certificate or key path is not configured");
         return false;
     }
 

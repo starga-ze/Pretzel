@@ -1,21 +1,18 @@
-/* log-viewer.js  –  table-based log viewer */
+/* log-viewer.js */
 (function () {
   'use strict';
 
-  // ── state ──────────────────────────────────────────────────
-  let allRows     = [];   // parsed {time, daemon, level, msg, raw}
+  // Service daemons exposed to users (ipcd / mgmtd excluded — infra only)
+  const SERVICE_DAEMONS = ['engined', 'authd', 'icmpd', 'snmpd', 'topologyd'];
+
+  let allRows     = [];
   let activeLevel = '';
   let searchKw    = '';
-  let autoRefresh = true;
-  let refreshTimer = null;
-  const REFRESH_MS = 5000;
 
-  // ── level detection ────────────────────────────────────────
-  const LEVEL_ORDER = ['CRITICAL','CRIT','ERROR','WARN','WARNING','INFO','DEBUG','TRACE'];
+  // ── Level metadata ────────────────────────────────────────
+  const LEVEL_ORDER = ['ERROR', 'WARN', 'WARNING', 'INFO', 'DEBUG', 'TRACE'];
 
   const LEVEL_META = {
-    'CRITICAL': { cls: 'lv-badge-crit',  label: 'CRIT'  },
-    'CRIT':     { cls: 'lv-badge-crit',  label: 'CRIT'  },
     'ERROR':    { cls: 'lv-badge-error', label: 'ERROR' },
     'WARN':     { cls: 'lv-badge-warn',  label: 'WARN'  },
     'WARNING':  { cls: 'lv-badge-warn',  label: 'WARN'  },
@@ -24,12 +21,35 @@
     'TRACE':    { cls: 'lv-badge-trace', label: 'TRACE' },
   };
 
+  // ── ANSI escape code stripper ─────────────────────────────
+  // Matches ESC [ ... m  and  ESC ] ... ST  and standalone ESC sequences
+  const RE_ANSI = /\x1b\[[0-9;]*[mGKHFABCDJsur]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[=><NOMHFEl0-9]/g;
+
+  function stripAnsi(s) {
+    return s.replace(RE_ANSI, '');
+  }
+
+  // ── Log line parser ───────────────────────────────────────
+  // Typical spdlog format:
+  //   [2025-06-09 12:34:56.789] [pz-icmpd] [info] [ProbeService.cpp:347] sending ProbeResult …
+  //
+  // Parsed fields:
+  //   time  → "2025-06-09 12:34:56.789"
+  //   level → "INFO"
+  //   loc   → "ProbeService.cpp:347"   (from the optional [file:line] bracket)
+  //   msg   → "sending ProbeResult …"  (clean message body after the location tag)
+
+  // Matches the spdlog file format:  [timestamp][LEVEL][file.cpp:line] message
+  // Pattern: "[%Y-%m-%d %H:%M:%S.%e][%!][%s:%#] %v"  (%! = custom short-level flag)
+  const RE_SPDLOG = /^\[(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)\]\s*\[(critical|error|warn(?:ing)?|info|debug|trace)\]\s*(?:\[([^\]]+\.\w+:\d+)\]\s*)?(.*)/i;
+
+  // Fallback: location bracket anywhere in the line
+  const RE_LOC_ANYWHERE = /\[([A-Za-z0-9_]+\.\w+:\d+)\]/;
+
   function detectLevel(line) {
     for (const key of LEVEL_ORDER) {
-      if (line.includes(`[${key}]`) || line.includes(` ${key} `) || line.includes(`:${key}:`))
-        return key;
+      if (line.includes(`[${key}]`) || line.includes(`[${key.toLowerCase()}]`)) return key;
     }
-    // uppercase scan
     const up = line.toUpperCase();
     for (const key of LEVEL_ORDER) {
       if (up.includes(key)) return key;
@@ -37,38 +57,128 @@
     return 'INFO';
   }
 
-  // ── parse raw log line ──────────────────────────────────────
-  // Tries to extract timestamp from beginning: "2025-01-01 12:34:56.789 [INFO] msg"
-  // or "[2025-01-01 12:34:56] [INFO] msg"
-  const RE_TS = /^(\[?(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:\.\d+)?)\]?)\s*/;
-
   function parseLine(raw, daemonHint) {
-    let time = '';
-    let rest = raw;
-    const m = raw.match(RE_TS);
+    const clean = stripAnsi(raw);
+    const m = clean.match(RE_SPDLOG);
     if (m) {
-      time = m[2];
-      rest = raw.slice(m[0].length);
+      const level = m[2].toUpperCase().replace('WARNING', 'WARN');
+      const loc   = m[3] ? m[3].trim() : '';
+      const msg   = m[4] ? m[4].trim() : '';
+      return { time: m[1], daemon: daemonHint, level, loc, msg, raw: clean };
     }
-    const level = detectLevel(raw);
-    // strip level tag from message
-    let msg = rest
-      .replace(/\[(CRITICAL|CRIT|ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE)\]/gi, '')
+    // Fallback: try to extract timestamp at start
+    const RE_TS = /^(\[?(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:\.\d+)?)\]?)\s*/;
+    const tm = clean.match(RE_TS);
+    const time  = tm ? tm[2] : '';
+    const rest  = tm ? clean.slice(tm[0].length) : clean;
+    const level = detectLevel(clean);
+    // Try to pull location from anywhere in the line
+    const locM = rest.match(RE_LOC_ANYWHERE);
+    const loc  = locM ? locM[1] : '';
+    // Strip level tag and location bracket from message
+    const msg = rest
+      .replace(/\[(error|warn(?:ing)?|info|debug|trace|critical)\]/gi, '')
+      .replace(RE_LOC_ANYWHERE, '')
       .trim();
-    return { time, daemon: daemonHint, level, msg: msg || rest.trim(), raw };
+    return { time, daemon: daemonHint, level, loc, msg: msg || rest, raw: clean };
   }
 
-  // ── render filtered rows ────────────────────────────────────
+  // ── Rendering helpers ─────────────────────────────────────
   function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   function highlight(s, kw) {
     if (!kw) return escHtml(s);
-    const re = new RegExp(`(${kw.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi');
+    const re = new RegExp(`(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
     return escHtml(s).replace(re, '<mark class="lv-mark">$1</mark>');
   }
 
+  // ── Progress bar helpers ──────────────────────────────────
+  function showProgress(label) {
+    const wrap = document.getElementById('lvProgressWrap');
+    const fill = document.getElementById('lvProgressFill');
+    const lbl  = document.getElementById('lvProgressLabel');
+    if (wrap) wrap.style.display = 'flex';
+    if (fill) fill.style.width = '0%';
+    if (lbl)  lbl.textContent = label || 'Rendering…';
+  }
+
+  function setProgress(pct) {
+    const fill = document.getElementById('lvProgressFill');
+    if (fill) fill.style.width = `${Math.min(100, pct)}%`;
+    const lbl = document.getElementById('lvProgressLabel');
+    if (lbl) lbl.textContent = `Rendering… ${Math.round(pct)}%`;
+  }
+
+  function hideProgress() {
+    const wrap = document.getElementById('lvProgressWrap');
+    if (wrap) {
+      const fill = document.getElementById('lvProgressFill');
+      if (fill) fill.style.width = '100%';
+      setTimeout(() => { wrap.style.display = 'none'; }, 300);
+    }
+  }
+
+  // ── Chunked render to avoid UI freeze ────────────────────
+  const CHUNK_SIZE = 200;
+
+  function renderChunked(filtered, kw) {
+    const tbody = document.getElementById('logTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="lv-placeholder">No matching log entries.</td></tr>';
+      hideProgress();
+      return;
+    }
+
+    showProgress('Rendering… 0%');
+
+    let idx = 0;
+    const total = filtered.length;
+
+    function processChunk() {
+      const end = Math.min(idx + CHUNK_SIZE, total);
+      const frag = document.createDocumentFragment();
+
+      for (; idx < end; idx++) {
+        const r = filtered[idx];
+        const meta = LEVEL_META[r.level] || LEVEL_META['INFO'];
+        const tr = document.createElement('tr');
+        tr.className = `lv-row lv-row-${meta.cls.split('-')[2] || 'info'}`;
+
+        tr.innerHTML =
+          `<td class="lv-td-lv"><span class="lv-badge ${meta.cls}">${meta.label}</span></td>` +
+          `<td class="lv-td-time"><span class="lv-time">${r.time ? escHtml(r.time) : '<span class="lv-muted">—</span>'}</span></td>` +
+          `<td class="lv-td-daemon">${r.daemon ? `<span class="lv-daemon-chip">${escHtml(r.daemon)}</span>` : ''}</td>` +
+          `<td class="lv-td-loc">${r.loc ? `<span class="lv-loc">${escHtml(r.loc)}</span>` : '<span class="lv-muted">—</span>'}</td>` +
+          `<td class="lv-td-msg">${highlight(r.msg || r.raw, kw)}</td>`;
+
+        frag.appendChild(tr);
+      }
+
+      tbody.appendChild(frag);
+      setProgress((idx / total) * 100);
+
+      if (idx < total) {
+        requestAnimationFrame(processChunk);
+      } else {
+        hideProgress();
+        // Scroll to bottom
+        const wrap = document.querySelector('.lv-table-wrap');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      }
+    }
+
+    requestAnimationFrame(processChunk);
+  }
+
+  // ── Filter + render ───────────────────────────────────────
   function render() {
     const kw = searchKw.toLowerCase();
     const normLevel = activeLevel.toUpperCase();
@@ -76,122 +186,80 @@
     const filtered = allRows.filter(r => {
       if (normLevel) {
         const rl = r.level.toUpperCase();
-        // CRIT filter matches CRITICAL/CRIT; WARN matches WARN/WARNING
-        if (normLevel === 'CRIT'  && rl !== 'CRITICAL' && rl !== 'CRIT')   return false;
-        if (normLevel === 'WARN'  && rl !== 'WARN'     && rl !== 'WARNING') return false;
-        if (normLevel !== 'CRIT' && normLevel !== 'WARN' && rl !== normLevel) return false;
+        if (normLevel === 'WARN' && rl !== 'WARN' && rl !== 'WARNING') return false;
+        if (normLevel !== 'WARN' && rl !== normLevel) return false;
       }
       if (kw && !r.raw.toLowerCase().includes(kw)) return false;
       return true;
     });
 
-    // stats
     document.getElementById('lv-count-total').textContent    = allRows.length.toLocaleString();
     document.getElementById('lv-count-filtered').textContent = filtered.length.toLocaleString();
 
-    const tbody = document.getElementById('logTbody');
-    if (!tbody) return;
-
-    if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="lv-placeholder">일치하는 로그가 없습니다.</td></tr>';
-      return;
-    }
-
-    const rows = filtered.map(r => {
-      const meta = LEVEL_META[r.level] || LEVEL_META['INFO'];
-      const badge  = `<span class="lv-badge ${meta.cls}">${meta.label}</span>`;
-      const timeCell = r.time
-        ? `<span class="lv-time">${escHtml(r.time)}</span>`
-        : '<span class="lv-time lv-muted">—</span>';
-      const daemonCell = r.daemon
-        ? `<span class="lv-daemon-chip">${escHtml(r.daemon)}</span>`
-        : '';
-      const msgCell = highlight(r.msg || r.raw, kw);
-      return `<tr class="lv-row lv-row-${meta.cls.split('-')[2] || 'info'}">
-        <td class="lv-td-lv">${badge}</td>
-        <td class="lv-td-time">${timeCell}</td>
-        <td class="lv-td-daemon">${daemonCell}</td>
-        <td class="lv-td-msg">${msgCell}</td>
-      </tr>`;
-    });
-
-    tbody.innerHTML = rows.join('');
-
-    // auto-scroll to bottom
-    const wrap = document.querySelector('.lv-table-wrap');
-    if (wrap) wrap.scrollTop = wrap.scrollHeight;
+    renderChunked(filtered, kw);
   }
 
-  // ── fetch ───────────────────────────────────────────────────
+  // ── Refresh button spin animation ─────────────────────────
+  function setRefreshing(on) {
+    const btn = document.getElementById('refreshBtn');
+    if (!btn) return;
+    btn.classList.toggle('lv-refreshing', on);
+    btn.disabled = on;
+  }
+
+  // ── Fetch ─────────────────────────────────────────────────
   async function load() {
+    setRefreshing(true);
+
     const lines  = parseInt(document.getElementById('logLines')?.value  || '200');
     const daemon = document.getElementById('daemonSelect')?.value || '';
 
-    const url = daemon
-      ? `/api/logs?daemon=${encodeURIComponent(daemon)}&lines=${lines}`
-      : `/api/logs?lines=${lines}`;
+    // Only fetch service daemons (never ipcd / mgmtd)
+    const fetchDaemons = daemon ? [daemon] : SERVICE_DAEMONS;
 
     try {
-      const data = await window.NMS.utils.fetchJSON(url);
-      if (!data) return;
-
-      allRows = [];
-
       if (daemon) {
-        const rawLines = data.lines || [];
-        allRows = rawLines.map(l => parseLine(l, daemon));
+        // Single daemon
+        const data = await window.NMS.utils.fetchJSON(`/api/logs?daemon=${encodeURIComponent(daemon)}&lines=${lines}`);
+        if (!data) return;
+        allRows = (data.lines || []).map(l => parseLine(l, daemon));
       } else {
-        const daemons = data.daemons || {};
-        for (const [d, dlines] of Object.entries(daemons)) {
-          for (const l of dlines) {
-            allRows.push(parseLine(l, d));
-          }
+        // All service daemons in parallel
+        const results = await Promise.all(
+          fetchDaemons.map(d =>
+            window.NMS.utils.fetchJSON(`/api/logs?daemon=${encodeURIComponent(d)}&lines=${lines}`)
+              .then(data => ({ d, lines: data?.lines || [] }))
+              .catch(() => ({ d, lines: [] }))
+          )
+        );
+        allRows = [];
+        for (const { d, lines: dlines } of results) {
+          for (const l of dlines) allRows.push(parseLine(l, d));
         }
-        // Sort best-effort by raw line (timestamp prefix tends to sort correctly)
         allRows.sort((a, b) => (a.time || a.raw) < (b.time || b.raw) ? -1 : 1);
       }
 
       render();
     } catch (e) {
       const tbody = document.getElementById('logTbody');
-      if (tbody) tbody.innerHTML = `<tr><td colspan="4" class="lv-placeholder lv-err">로드 실패: ${escHtml(String(e))}</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="5" class="lv-placeholder lv-err">Failed to load: ${escHtml(String(e))}</td></tr>`;
+    } finally {
+      setRefreshing(false);
     }
   }
 
-  // ── auto-refresh ─────────────────────────────────────────────
-  function startAutoRefresh() {
-    stopAutoRefresh();
-    if (autoRefresh) refreshTimer = setInterval(load, REFRESH_MS);
-  }
-  function stopAutoRefresh() {
-    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-  }
-
-  // ── init ─────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
 
-    // Refresh
     document.getElementById('refreshBtn')?.addEventListener('click', load);
-
-    // Clear
-    document.getElementById('clearBtn')?.addEventListener('click', () => {
-      allRows = [];
-      render();
-    });
-
-    // Lines
     document.getElementById('logLines')?.addEventListener('change', load);
-
-    // Daemon
     document.getElementById('daemonSelect')?.addEventListener('change', load);
 
-    // Search
     document.getElementById('logSearch')?.addEventListener('input', e => {
       searchKw = e.target.value.trim();
       render();
     });
 
-    // Level filter tabs
     document.getElementById('levelFilter')?.addEventListener('click', e => {
       const btn = e.target.closest('.lv-level-tab');
       if (!btn) return;
@@ -201,20 +269,6 @@
       render();
     });
 
-    // Auto-refresh toggle
-    const autoChk = document.getElementById('autoRefresh');
-    const dot      = document.getElementById('autoRefreshDot');
-    const lbl      = document.getElementById('autoRefreshLabel');
-    document.getElementById('autoToggle')?.addEventListener('click', () => {
-      autoRefresh = !autoRefresh;
-      autoChk.checked = autoRefresh;
-      dot.classList.toggle('lv-dot-live', autoRefresh);
-      lbl.textContent = autoRefresh ? 'Live' : 'Paused';
-      autoRefresh ? startAutoRefresh() : stopAutoRefresh();
-    });
-    if (dot) dot.classList.add('lv-dot-live');
-
     load();
-    startAutoRefresh();
   });
 }());

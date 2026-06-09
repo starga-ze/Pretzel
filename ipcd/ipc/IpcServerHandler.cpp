@@ -40,13 +40,13 @@ void IpcServerHandler::handleAccept(
                 break;
             }
 
-            LOG_ERROR("IpcServerHandler: accept failed errno={}", errno);
+            LOG_ERROR("accept failed errno={}", errno);
             break;
         }
 
         if (connections.size() >= static_cast<std::size_t>(m_cfg.maxConnections))
         {
-            LOG_WARN("IpcServerHandler: max connections reached max={} fd={}",
+            LOG_WARN("max connections reached max={} fd={}",
                      m_cfg.maxConnections,
                      fd);
             ::close(fd);
@@ -60,21 +60,21 @@ void IpcServerHandler::handleAccept(
 
         if (!conn)
         {
-            LOG_ERROR("IpcServerHandler: connection allocation failed fd={}", fd);
+            LOG_ERROR("connection allocation failed fd={}", fd);
             ::close(fd);
             continue;
         }
 
         if (!epoll.add(fd, EPOLLIN | EPOLLRDHUP))
         {
-            LOG_ERROR("IpcServerHandler: epoll add connection failed fd={}", fd);
+            LOG_ERROR("epoll add connection failed fd={}", fd);
             ::close(fd);
             continue;
         }
 
         connections.emplace(fd, std::move(conn));
 
-        LOG_INFO("IpcServerHandler: accepted connection fd={} total={}",
+        LOG_INFO("accepted connection fd={} total={}",
                  fd,
                  connections.size());
     }
@@ -149,7 +149,7 @@ bool IpcServerHandler::ingress(int fd, pz::ipc::IpcFrameView frame)
 
     if (!m_rxRouter)
     {
-        LOG_WARN("RxRouter is nullptr");
+        LOG_WARN("RxRouter is not initialized");
         return false;
     }
 
@@ -192,13 +192,13 @@ void IpcServerHandler::egress(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
-        LOG_WARN("Egress message is nullptr");
+        LOG_WARN("Egress message is not initialized");
         return;
     }
 
     if (!m_ipcServer)
     {
-        LOG_ERROR("ipcServer is nullptr");
+        LOG_ERROR("ipcServer is not initialized");
         return;
     }
 
@@ -280,7 +280,7 @@ bool IpcServerHandler::sendFrame(
 {
     if (!msg)
     {
-        LOG_WARN("sendFrame message is nullptr");
+        LOG_WARN("sendFrame message is not initialized");
         return false;
     }
 

@@ -36,7 +36,7 @@ bool IcmpEngine::init()
 
     if (!m_epoll.add(m_socket->fd(), EPOLLIN | EPOLLRDHUP))
     {
-        LOG_ERROR("IcmpEngine: epoll add failed fd={}", m_socket->fd());
+        LOG_ERROR("epoll add failed fd={}", m_socket->fd());
         closeConnection();
         return false;
     }
@@ -55,7 +55,7 @@ bool IcmpEngine::poll(int timeoutMs)
         if (errno == EINTR)
             return true;
 
-        LOG_WARN("IcmpEngine: epoll wait failed errno={}", errno);
+        LOG_WARN("epoll wait failed errno={}", errno);
         return false;
     }
 
@@ -75,7 +75,7 @@ bool IcmpEngine::sendPacket(std::unique_ptr<IcmpPacket> packet,
 {
     if (!m_handler)
     {
-        LOG_ERROR("IcmpEngineHandler is nullptr");
+        LOG_ERROR("IcmpEngineHandler is not initialized");
         return false;
     }
 
@@ -88,25 +88,25 @@ bool IcmpEngine::enqueueFrame(std::vector<std::uint8_t> frame,
 {
     if (frame.empty())
     {
-        LOG_WARN("IcmpEngine: enqueue rejected, frame is empty dst={}", dstIp);
+        LOG_WARN("enqueue rejected, frame is empty dst={}", dstIp);
         return false;
     }
 
     if (!m_socket || !m_conn || m_socket->fd() < 0)
     {
-        LOG_WARN("IcmpEngine: enqueue rejected, socket is not opened dst={}", dstIp);
+        LOG_WARN("enqueue rejected, socket is not opened dst={}", dstIp);
         return false;
     }
 
     if (!m_conn->write(std::move(frame), std::move(dstIp)))
     {
-        LOG_WARN("IcmpEngine: tx queue full or invalid frame");
+        LOG_WARN("ICMP engine: tx queue full or invalid frame");
         return false;
     }
 
     if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP))
     {
-        LOG_ERROR("IcmpEngine: epoll mod add EPOLLOUT failed fd={}", m_socket->fd());
+        LOG_ERROR("epoll mod add EPOLLOUT failed fd={}", m_socket->fd());
         closeConnection();
         return false;
     }
@@ -128,7 +128,7 @@ IcmpEngineHandler* IcmpEngine::handler()
 {
     if (!m_handler)
     {
-        LOG_ERROR("IcmpEngineHandler is nullptr");
+        LOG_ERROR("IcmpEngineHandler is not initialized");
         return nullptr;
     }
 
@@ -139,7 +139,7 @@ bool IcmpEngine::initEpoll()
 {
     if (!m_epoll.init())
     {
-        LOG_ERROR("IcmpEngine: epoll init failed");
+        LOG_ERROR("ICMP engine: epoll init failed");
         return false;
     }
 
@@ -154,13 +154,13 @@ bool IcmpEngine::initSocket()
     m_socket = std::make_unique<pz::socket::IcmpSocket>();
     if (!m_socket)
     {
-        LOG_ERROR("IcmpEngine: socket allocation failed");
+        LOG_ERROR("ICMP engine: socket allocation failed");
         return false;
     }
 
     if (!m_socket->open())
     {
-        LOG_ERROR("IcmpEngine: socket open failed");
+        LOG_ERROR("ICMP engine: socket open failed");
         m_socket.reset();
         return false;
     }
@@ -175,14 +175,14 @@ bool IcmpEngine::initConnection()
 
     if (!m_socket || m_socket->fd() < 0)
     {
-        LOG_ERROR("IcmpEngine: connection init failed, socket is not opened");
+        LOG_ERROR("ICMP engine: connection init failed, socket is not opened");
         return false;
     }
 
     m_conn = std::make_unique<IcmpConnection>(m_socket->fd());
     if (!m_conn)
     {
-        LOG_ERROR("IcmpEngine: connection allocation failed");
+        LOG_ERROR("ICMP engine: connection allocation failed");
         return false;
     }
 
@@ -216,13 +216,13 @@ void IcmpEngine::handleEvent(int fd, std::uint32_t events)
 
     if (!m_socket || fd != m_socket->fd())
     {
-        LOG_WARN("IcmpEngine: unknown fd event fd={} events=0x{:x}", fd, events);
+        LOG_WARN("unknown fd event fd={} events=0x{:x}", fd, events);
         return;
     }
 
     if (!m_conn)
     {
-        LOG_WARN("IcmpEngine: event ignored, connection is nullptr fd={} events=0x{:x}",
+        LOG_WARN("event ignored, connection is nullptr fd={} events=0x{:x}",
                  fd,
                  events);
         return;
@@ -230,7 +230,7 @@ void IcmpEngine::handleEvent(int fd, std::uint32_t events)
 
     if (isClose)
     {
-        LOG_INFO("IcmpEngine: socket close event fd={} events=0x{:x}", fd, events);
+        LOG_INFO("socket close event fd={} events=0x{:x}", fd, events);
         closeConnection();
         return;
     }
@@ -239,7 +239,7 @@ void IcmpEngine::handleEvent(int fd, std::uint32_t events)
     {
         if (!m_handler->handleRecv(fd, *m_conn, m_epoll))
         {
-            LOG_WARN("IcmpEngine: recv handling failed fd={}", fd);
+            LOG_WARN("recv handling failed fd={}", fd);
             closeConnection();
             return;
         }
@@ -249,7 +249,7 @@ void IcmpEngine::handleEvent(int fd, std::uint32_t events)
     {
         if (!m_handler->handleSend(fd, *m_conn, m_epoll))
         {
-            LOG_WARN("IcmpEngine: send handling failed fd={}", fd);
+            LOG_WARN("send handling failed fd={}", fd);
             closeConnection();
             return;
         }

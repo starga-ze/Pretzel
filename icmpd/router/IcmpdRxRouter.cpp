@@ -16,19 +16,19 @@ void IcmpdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {
-        LOG_ERROR("ServiceManager is nullptr");
+        LOG_ERROR("ServiceManager is not initialized");
         return;
     }
 
     if (!msg)
     {
-        LOG_WARN("IpcMessage is empty");
+        LOG_WARN("received empty IPC message — skipping");
         return;
     }
 
     if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReload)
     {
-        LOG_INFO("IcmpdRxRouter: ConfigReload received — scheduling restart");
+        LOG_INFO("config reload received — scheduling daemon restart");
         pz::core::Core::scheduleReload();
         return;
     }
@@ -43,7 +43,7 @@ void IcmpdRxRouter::handleIcmpPacket(const std::string& srcIp,
 {
     if (!packet)
     {
-        LOG_WARN("IcmpdRxRouter: ICMP packet is nullptr src={}", srcIp);
+        LOG_WARN("ICMP packet is nullptr src={}", srcIp);
         return;
     }
 

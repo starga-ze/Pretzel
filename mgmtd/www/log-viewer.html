@@ -47,15 +47,13 @@
           </div>
 
           <!-- Daemon selector -->
-          <div class="lv-select-wrap" id="daemonSelectWrap">
+          <div class="lv-select-wrap">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
             </svg>
             <select id="daemonSelect" class="lv-select">
-              <option value="">All Daemons</option>
-              <option value="ipcd">ipcd</option>
+              <option value="">All Services</option>
               <option value="engined">engined</option>
-              <option value="mgmtd">mgmtd</option>
               <option value="authd">authd</option>
               <option value="icmpd">icmpd</option>
               <option value="snmpd">snmpd</option>
@@ -76,36 +74,29 @@
 
           <div class="lv-divider"></div>
 
-          <!-- Auto-refresh toggle -->
-          <label class="lv-auto-toggle" id="autoToggle" title="자동 갱신">
-            <span class="lv-auto-dot" id="autoRefreshDot"></span>
-            <input type="checkbox" id="autoRefresh" checked style="display:none" />
-            <span id="autoRefreshLabel">Live</span>
-          </label>
-
           <!-- Refresh -->
-          <button class="lv-icon-btn" id="refreshBtn" title="Refresh">
+          <button class="lv-icon-btn lv-refresh-btn" id="refreshBtn" title="Refresh">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <polyline points="23 4 23 10 17 10"/>
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
-          </button>
-
-          <!-- Clear -->
-          <button class="lv-icon-btn" id="clearBtn" title="Clear">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
-              <path d="M9 6V4h6v2"/>
-            </svg>
+            <span class="lv-refresh-label">Refresh</span>
           </button>
         </div>
+      </div>
+
+      <!-- ── Render progress bar (hidden by default) ── -->
+      <div class="lv-progress-wrap" id="lvProgressWrap" style="display:none">
+        <div class="lv-progress-bar">
+          <div class="lv-progress-fill" id="lvProgressFill"></div>
+        </div>
+        <span class="lv-progress-label" id="lvProgressLabel">Rendering…</span>
       </div>
 
       <!-- ── Level filter bar ── -->
       <div class="lv-filterbar">
         <div class="lv-level-tabs" id="levelFilter">
           <button class="lv-level-tab active" data-level="">ALL</button>
-          <button class="lv-level-tab lv-tab-crit"  data-level="CRIT">CRITICAL</button>
           <button class="lv-level-tab lv-tab-error" data-level="ERROR">ERROR</button>
           <button class="lv-level-tab lv-tab-warn"  data-level="WARN">WARN</button>
           <button class="lv-level-tab lv-tab-info"  data-level="INFO">INFO</button>
@@ -125,18 +116,20 @@
             <col class="lv-col-lv" />
             <col class="lv-col-time" />
             <col class="lv-col-daemon" />
+            <col class="lv-col-loc" />
             <col class="lv-col-msg" />
           </colgroup>
           <thead>
             <tr>
               <th>Level</th>
               <th>Timestamp</th>
-              <th>Daemon</th>
+              <th>Service</th>
+              <th>Location</th>
               <th>Message</th>
             </tr>
           </thead>
           <tbody id="logTbody">
-            <tr><td colspan="4" class="lv-placeholder">로그 로드 중…</td></tr>
+            <tr><td colspan="5" class="lv-placeholder">Loading logs…</td></tr>
           </tbody>
         </table>
       </div>

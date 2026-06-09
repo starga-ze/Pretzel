@@ -17,13 +17,13 @@ bool TopologydProcess::start()
 {
     if (!m_ipcClient)
     {
-        LOG_ERROR("TopologydProcess: IpcClient is nullptr");
+        LOG_ERROR("Topologyd process: IPC client is not initialized");
         return false;
     }
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("TopologydProcess: ServiceManager is nullptr");
+        LOG_ERROR("Topologyd process: service manager is not initialized");
         return false;
     }
 

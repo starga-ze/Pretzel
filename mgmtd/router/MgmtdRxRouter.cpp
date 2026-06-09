@@ -17,23 +17,23 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager)
     {
-        LOG_ERROR("MgmtdRxRouter: ServiceManager is nullptr");
+        LOG_ERROR("Mgmtd RxRouter: service manager is not initialized");
         return;
     }
 
     if (!msg)
     {
-        LOG_WARN("MgmtdRxRouter: IpcMessage is nullptr");
+        LOG_WARN("Mgmtd RxRouter: received null IPC message — skipping");
         return;
     }
 
-    LOG_DEBUG("MgmtdRxRouter: recv cmd={} src={}",
+    LOG_DEBUG("recv cmd={} src={}",
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
     if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReloadResponse)
     {
-        LOG_INFO("MgmtdRxRouter: ConfigReloadResponse — service layer reload complete");
+        LOG_INFO("config reload acknowledged by engined");
         m_serviceManager->completeReload();
         return;
     }

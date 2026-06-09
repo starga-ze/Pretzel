@@ -16,13 +16,13 @@ bool EnginedProcess::start()
 {
     if (!m_ipcClient)
     {
-        LOG_ERROR("EnginedProcess: IpcClient is nullptr");
+        LOG_ERROR("Engined process: IPC client is not initialized");
         return false;
     }
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("EnginedProcess: ServiceManager is nullptr");
+        LOG_ERROR("Engined process: service manager is not initialized");
         return false;
     }
 

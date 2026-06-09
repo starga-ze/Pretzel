@@ -24,7 +24,7 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(EnginedEventDomain dom
         return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
 
     default:
-        LOG_WARN("EnginedEventFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -33,7 +33,7 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
 {
     if (!msg)
     {
-        LOG_WARN("EnginedEventFactory: null message");
+        LOG_DEBUG("Engined event factory: received empty message — skipping");
         return nullptr;
     }
 
@@ -53,7 +53,7 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
                                                std::move(msg));
 
     default:
-        LOG_WARN("EnginedEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 }

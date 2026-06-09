@@ -600,7 +600,7 @@ html, body {
 .status-pill.wait { background: #fff7ed; color: #c2410c; }
 .status-pill.down { background: #fee2e2; color: #991b1b; }
 
-/* 로딩 플레이스홀더 (API 응답 전 표시) */
+/* Loading placeholder (shown before API response) */
 .loading-row {
   padding: 14px 16px;
   font-size: 12px;
@@ -1726,8 +1726,9 @@ html, body {
   table-layout: fixed;
 }
 .lv-col-lv     { width: 72px; }
-.lv-col-time   { width: 160px; }
-.lv-col-daemon { width: 90px; }
+.lv-col-time   { width: 186px; }
+.lv-col-daemon { width: 96px; }
+.lv-col-loc    { width: 200px; }
 .lv-col-msg    { width: auto; }
 
 .lv-table thead th {
@@ -1752,12 +1753,25 @@ html, body {
 .lv-table tbody tr:hover { background: var(--bg); }
 
 .lv-td-lv     { padding: 5px 12px; }
-.lv-td-time   { padding: 5px 12px; white-space: nowrap; }
-.lv-td-daemon { padding: 5px 12px; }
+.lv-td-time   { padding: 5px 16px 5px 12px; white-space: nowrap; }
+.lv-td-daemon { padding: 5px 16px 5px 12px; }
+.lv-td-loc    { padding: 5px 16px 5px 12px; white-space: nowrap; }
 .lv-td-msg    { padding: 5px 12px; word-break: break-all; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }
 
 .lv-time  { color: var(--text-muted); font-family: var(--font-mono); font-size: 11.5px; }
 .lv-muted { color: var(--text-muted); opacity: .5; }
+.lv-loc   {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: .75;
+  display: inline-block;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 
 .lv-daemon-chip {
   display: inline-block;
@@ -1792,8 +1806,7 @@ html, body {
 .lv-badge-trace { background: rgba(107,114,128,.1); color: #6b7280;  border: 1px solid var(--border); }
 
 /* Row tint by level */
-.lv-row-crit  { background: rgba(220,38,38,.03);  }
-.lv-row-error { background: rgba(234,88,12,.02);  }
+.lv-row-error { background: rgba(234,88,12,.025); }
 .lv-row-warn  { background: rgba(217,119,6,.02);  }
 
 /* Search highlight */
@@ -1812,6 +1825,219 @@ html, body {
 .log-toolbar { display: none; }
 .log-output  { display: none; }
 .loading-row.error { color: var(--red); }
+
+/* Refresh button with label + spin */
+.lv-refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px;
+  width: auto;
+  min-width: 80px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.lv-refresh-label { color: var(--text); }
+.lv-refreshing svg { animation: lv-spin 0.7s linear infinite; }
+@keyframes lv-spin { to { transform: rotate(360deg); } }
+.lv-refreshing .lv-refresh-label { color: var(--text-muted); }
+
+/* Progress bar */
+.lv-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.lv-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.lv-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+  width: 0%;
+}
+.lv-progress-label {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 110px;
+}
+
+/* ══════════════════════════════════════
+   LIST EDITOR — settings.html
+══════════════════════════════════════ */
+
+/* Overlay re-uses .modal-overlay; add specificity for positioning */
+.le-overlay { z-index: 1100; }
+
+.le-modal {
+  width: 460px;
+  max-width: calc(100vw - 40px);
+  border-radius: var(--radius);
+}
+
+.le-body {
+  padding: 16px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.le-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Items panel */
+.le-items-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  min-height: 80px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.le-empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.le-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--tr);
+}
+.le-item:last-child { border-bottom: none; }
+.le-item:hover      { background: var(--bg); }
+
+.le-item-idx {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.le-item-val {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.le-item-del {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--tr);
+}
+.le-item-del:hover { background: rgba(220,38,38,.1); color: var(--red); }
+
+/* Add row */
+.le-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.le-add-input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+  outline: none;
+  transition: border-color var(--tr);
+}
+.le-add-input:focus { border-color: var(--accent); }
+
+.le-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  padding: 7px 14px;
+  font-size: 12.5px;
+}
+
+/* Tag display in settings field */
+.settings-field-list { align-items: flex-start; }
+.settings-field-grid-list { gap: 16px; }
+
+.le-tags-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: 1;
+  min-height: 28px;
+  align-items: center;
+}
+
+.le-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 5px;
+  background: rgba(249,115,22,.1);
+  border: 1px solid rgba(249,115,22,.25);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.le-tag-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.le-edit-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--tr);
+  flex-shrink: 0;
+}
+.le-edit-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(249,115,22,.06); }
 
 /* ══════════════════════════════════════
    COMING SOON page

@@ -20,7 +20,7 @@ std::unique_ptr<IpcdEvent> IpcdEventFactory::create(IpcdEventDomain domain, std:
         return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
 
     default:
-        LOG_WARN("IpcdEventFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -29,7 +29,7 @@ std::unique_ptr<IpcdEvent> IpcdEventFactory::create(std::unique_ptr<pz::ipc::Ipc
 {
     if (!msg)
     {
-        LOG_WARN("IpcdEventFactory: null message");
+        LOG_DEBUG("Ipcd event factory: received empty message — skipping");
         return nullptr;
     }
 

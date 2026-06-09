@@ -13,13 +13,13 @@ void AuthdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
-        LOG_WARN("Message is nullptr");
+        LOG_WARN("Message is not initialized");
         return;
     }
 
     if (!m_ipcClientHandler)
     {
-        LOG_ERROR("IpcClientHandler is nullptr");
+        LOG_ERROR("IpcClientHandler is not initialized");
         return;
     }
 

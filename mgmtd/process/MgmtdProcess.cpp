@@ -26,13 +26,13 @@ bool MgmtdProcess::start()
 {
     if (!m_httpServer)
     {
-        LOG_ERROR("MgmtdProcess: HttpServer is nullptr");
+        LOG_ERROR("mgmtd: HTTP server is not initialized");
         return false;
     }
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("MgmtdProcess: ServiceManager is nullptr");
+        LOG_ERROR("Mgmtd process: service manager is not initialized");
         return false;
     }
 

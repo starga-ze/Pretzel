@@ -17,54 +17,66 @@
     general: {
       label:    'General',
       title:    'General',
-      subtitle: '서비스 전반에 걸친 기본 동작 설정입니다.',
+      subtitle: 'Global service behavior and health-check parameters.',
       daemons:  ['engined'],
       domains:  ['heartbeat'],
     },
     icmp: {
       label:    'ICMP',
       title:    'ICMP Probe',
-      subtitle: '네트워크 장비 생존 여부를 확인하는 ICMP Ping 스캔 설정입니다.',
+      subtitle: 'Configure scan ranges, excluded IPs, and probe timing for ICMP ping discovery.',
       daemons:  ['icmpd'],
       domains:  ['probe'],
     },
     snmp: {
       label:    'SNMP',
       title:    'SNMP',
-      subtitle: 'SNMP 폴링 및 커뮤니티 설정입니다.',
+      subtitle: 'SNMP polling intervals and community string settings.',
       daemons:  ['snmpd'],
       domains:  [],
     },
     lldp: {
       label:    'LLDP',
       title:    'LLDP',
-      subtitle: '인접 장비 자동 탐색(LLDP) 설정입니다.',
+      subtitle: 'Link Layer Discovery Protocol neighbor detection settings.',
       daemons:  [],
       domains:  [],
     },
-    topology: {
-      label:    'Topology',
-      title:    '토폴로지 탐색',
-      subtitle: '네트워크 토폴로지 자동 구성 설정입니다.',
-      daemons:  ['topologyd'],
+    users: {
+      label:    'Users',
+      title:    'User Management',
+      subtitle: 'Manage login accounts and access permissions.',
+      daemons:  [],
       domains:  [],
     },
   };
 
   // Keys that are free-form strings (rendered as text input, not number)
+  // Keys rendered with the list-editor modal instead of a plain text input
+  const LIST_KEYS = new Set(['scan_cidr', 'excluded_ips']);
   const STRING_KEYS = new Set(['scan_cidr', 'excluded_ips']);
 
   const KEY_LABELS = {
-    scan_cidr:                 '스캔 대상 CIDR',
-    excluded_ips:              '제외 IP (쉼표 구분)',
-    batch_size:                '배치 크기',
-    batch_interval_ms:         '배치 간격 (ms)',
-    cycle_interval_ms:         '스캔 주기 (ms)',
-    reply_idle_timeout_ms:     '응답 유휴 타임아웃 (ms)',
-    reply_max_wait_timeout_ms: '최대 응답 대기 (ms)',
+    scan_cidr:                 'Scan CIDRs',
+    excluded_ips:              'Excluded IPs',
+    batch_size:                'Batch Size',
+    batch_interval_ms:         'Batch Interval (ms)',
+    cycle_interval_ms:         'Cycle Interval (ms)',
+    reply_idle_timeout_ms:     'Reply Idle Timeout (ms)',
+    reply_max_wait_timeout_ms: 'Max Reply Wait (ms)',
     // Heartbeat (General tab)
-    poll_interval_ms:          '헬스 폴링 주기 (ms)',
-    response_timeout_ms:       '응답 타임아웃 (ms)',
+    poll_interval_ms:          'Poll Interval (ms)',
+    response_timeout_ms:       'Response Timeout (ms)',
+  };
+
+  const KEY_PLACEHOLDER = {
+    scan_cidr:    'e.g. 192.168.0.0/23',
+    excluded_ips: 'e.g. 192.168.0.1',
+  };
+
+  const KEY_HINT = {
+    scan_cidr:    'Add one CIDR block per entry. Multiple CIDRs are all scanned and deduplicated.',
+    excluded_ips: 'IPs listed here are skipped even if they fall within a scan CIDR.',
   };
 
   const DOMAIN_LABELS = {
@@ -87,6 +99,9 @@
   let reviewOverlay, reviewCloseBtn, reviewCancelBtn;
   let commitBtn, commitStatus, commitProgressFill;
   let commitQueueList, queueTotalBadge, diffViewer, diffPanelHint;
+
+  // List-editor modal state
+  let listEditorCallback = null;
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -128,6 +143,180 @@
     const tab = TABS[activeTab];
     if (pageTitleEl)    pageTitleEl.textContent    = tab.title;
     if (pageSubtitleEl) pageSubtitleEl.textContent = tab.subtitle;
+  }
+
+  // ── List editor modal ─────────────────────────────────────────────────────
+
+  function openListEditor({ title, hint, placeholder, items, onSave }) {
+    const overlay = document.getElementById('listEditorOverlay');
+    const titleEl = document.getElementById('listEditorTitle');
+    const hintEl  = document.getElementById('listEditorHint');
+    const listEl  = document.getElementById('listEditorItems');
+    if (!overlay) return;
+
+    titleEl.textContent = title;
+    hintEl.textContent  = hint || '';
+
+    function renderItems(arr) {
+      listEl.innerHTML = '';
+      if (arr.length === 0) {
+        listEl.innerHTML = '<div class="le-empty">No entries. Add one below.</div>';
+        return;
+      }
+      arr.forEach((val, idx) => {
+        const row = document.createElement('div');
+        row.className = 'le-item';
+        row.innerHTML =
+          `<span class="le-item-idx">${idx + 1}</span>` +
+          `<span class="le-item-val">${val}</span>` +
+          `<button class="le-item-del" data-idx="${idx}" title="Remove">` +
+          `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">` +
+          `<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+        listEl.appendChild(row);
+      });
+    }
+
+    let current = [...items];
+    renderItems(current);
+
+    // Delete handler
+    listEl.onclick = (e) => {
+      const btn = e.target.closest('.le-item-del');
+      if (!btn) return;
+      current.splice(Number(btn.dataset.idx), 1);
+      renderItems(current);
+    };
+
+    // Add handler
+    const addInput = document.getElementById('listEditorInput');
+    const addBtn   = document.getElementById('listEditorAddBtn');
+    if (addInput) {
+      addInput.value = '';
+      addInput.placeholder = placeholder || '';
+    }
+
+    function addItem() {
+      const val = (addInput?.value || '').trim();
+      if (!val) return;
+      if (!current.includes(val)) {
+        current.push(val);
+        renderItems(current);
+      }
+      if (addInput) addInput.value = '';
+      addInput?.focus();
+    }
+
+    addBtn && (addBtn.onclick = addItem);
+    addInput && (addInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } });
+
+    listEditorCallback = () => onSave(current.join(','));
+    overlay.classList.add('visible');
+    addInput?.focus();
+  }
+
+  function closeListEditor(save) {
+    const overlay = document.getElementById('listEditorOverlay');
+    if (!overlay) return;
+    if (save && listEditorCallback) listEditorCallback();
+    listEditorCallback = null;
+    overlay.classList.remove('visible');
+  }
+
+  // ── List field widget (replaces plain text input for LIST_KEYS) ───────────
+
+  function buildListField(daemon, domain, key, value) {
+    const skey = stageKey(daemon, domain, key);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'settings-field settings-field-list';
+    wrap.dataset.stageKey = skey;
+
+    const label = document.createElement('span');
+    label.className = 'settings-field-label';
+    label.textContent = KEY_LABELS[key] || key;
+
+    // Tag-list display
+    const tags = document.createElement('div');
+    tags.className = 'le-tags-wrap';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'le-edit-btn';
+    editBtn.innerHTML =
+      `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">` +
+      `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>` +
+      `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit`;
+
+    const originalEl = document.createElement('span');
+    originalEl.className = 'settings-field-original';
+
+    // Hidden input to track staged value
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.id = fieldId(daemon, domain, key);
+    hidden.dataset.daemon   = daemon;
+    hidden.dataset.domain   = domain;
+    hidden.dataset.key      = key;
+    hidden.dataset.original = String(value);
+    hidden.value = String(value);
+
+    function getItems(v) {
+      return String(v).split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    function refreshTags(v) {
+      const items = getItems(v);
+      tags.innerHTML = '';
+      if (items.length === 0) {
+        tags.innerHTML = '<span class="le-tag-empty">None</span>';
+      } else {
+        items.forEach(item => {
+          const t = document.createElement('span');
+          t.className = 'le-tag';
+          t.textContent = item;
+          tags.appendChild(t);
+        });
+      }
+    }
+
+    refreshTags(value);
+
+    // Restore staged value if any
+    const staged = pending.get(skey);
+    if (staged) {
+      hidden.value = staged.newValue;
+      refreshTags(staged.newValue);
+      applyDirty(wrap, originalEl, true, staged.oldValue);
+    }
+
+    editBtn.addEventListener('click', () => {
+      openListEditor({
+        title:       KEY_LABELS[key] || key,
+        hint:        KEY_HINT[key] || '',
+        placeholder: KEY_PLACEHOLDER[key] || '',
+        items:       getItems(hidden.value),
+        onSave(newVal) {
+          hidden.value = newVal;
+          refreshTags(newVal);
+          const orig = hidden.dataset.original;
+          if (newVal === orig) {
+            pending.delete(skey);
+            applyDirty(wrap, originalEl, false, orig);
+          } else {
+            pending.set(skey, { daemon, domain, key, oldValue: orig, newValue: newVal });
+            applyDirty(wrap, originalEl, true, orig);
+          }
+          refreshCardState(daemon, domain);
+          refreshPendingBadge();
+        },
+      });
+    });
+
+    wrap.appendChild(label);
+    wrap.appendChild(tags);
+    wrap.appendChild(editBtn);
+    wrap.appendChild(hidden);
+    wrap.appendChild(originalEl);
+    return wrap;
   }
 
   // ── Field rendering ───────────────────────────────────────────────────────
@@ -215,7 +404,7 @@
 
   function applyDirty(wrap, originalEl, dirty, originalValue) {
     wrap.classList.toggle('dirty', dirty);
-    originalEl.textContent = dirty ? `이전값: ${originalValue}` : '';
+    originalEl.textContent = dirty ? `was: ${originalValue}` : '';
   }
 
   function refreshCardState(daemon, domain) {
@@ -254,14 +443,16 @@
       const timingKeys = keys.filter(k => PROBE_TIMING_KEYS.has(k));
 
       if (targetKeys.length) {
-        card.appendChild(buildSectionHeader('스캔 대상'));
+        card.appendChild(buildSectionHeader('Scan Targets'));
         const g = document.createElement('div');
-        g.className = 'settings-field-grid';
-        targetKeys.forEach(k => g.appendChild(buildField(daemon, domain, k, values[k])));
+        g.className = 'settings-field-grid settings-field-grid-list';
+        targetKeys.forEach(k => g.appendChild(
+          LIST_KEYS.has(k) ? buildListField(daemon, domain, k, values[k]) : buildField(daemon, domain, k, values[k])
+        ));
         card.appendChild(g);
       }
       if (timingKeys.length) {
-        card.appendChild(buildSectionHeader('타이밍'));
+        card.appendChild(buildSectionHeader('Timing'));
         const g = document.createElement('div');
         g.className = 'settings-field-grid';
         timingKeys.forEach(k => g.appendChild(buildField(daemon, domain, k, values[k])));
@@ -300,7 +491,7 @@
     });
 
     if (!anyField) {
-      container.innerHTML = '<div class="settings-empty">이 서비스에는 변경 가능한 설정이 없습니다.</div>';
+      container.innerHTML = '<div class="settings-empty">No configurable parameters for this section.</div>';
     }
   }
 
@@ -323,7 +514,7 @@
     pending.clear();
     if (currentData) renderTabContent(currentData);
     refreshPendingBadge();
-    setStatus('모든 변경사항이 취소되었습니다.');
+    setStatus('All changes discarded.');
   }
 
   // ── Pending grouping ──────────────────────────────────────────────────────
@@ -399,7 +590,7 @@
     if (queueTotalBadge) queueTotalBadge.textContent = String(commitQueue.length);
 
     if (commitQueue.length === 0) {
-      commitQueueList.innerHTML = '<div class="loading-row" style="padding:16px">변경사항 없음.</div>';
+      commitQueueList.innerHTML = '<div class="loading-row" style="padding:16px">No changes staged.</div>';
       return;
     }
 
@@ -453,9 +644,9 @@
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
         <polyline points="14 2 14 8 20 8"/>
       </svg>
-      <span>항목을 선택하면 변경 내용을 미리볼 수 있습니다</span>
+      <span>Select a queue item to preview the JSON diff</span>
     </div>`;
-    if (diffPanelHint) diffPanelHint.textContent = '항목 선택';
+    if (diffPanelHint) diffPanelHint.textContent = 'Select a queue item';
     renderCommitQueueList();
     if (commitProgressFill) commitProgressFill.style.width = '0%';
     setCommitStatus('');
@@ -492,7 +683,7 @@
     reviewBtn.disabled  = true;
     commitQueue.forEach((_, i) => updateQueueItemStatus(i, 'running'));
     setProgress(0);
-    setCommitStatus('설정 저장 중…');
+    setCommitStatus('Saving settings…');
 
     const changes = commitQueue.map(item => {
       const values = {};
@@ -509,9 +700,9 @@
       });
       if (!r) return;
       resp = await r.json().catch(() => ({}));
-      if (!r.ok && !resp.results) { commitFailed(`실패: ${resp.error || r.status}`); return; }
+      if (!r.ok && !resp.results) { commitFailed(`Commit failed: ${resp.error || r.status}`); return; }
     } catch (e) {
-      commitFailed(`실패: ${e}`);
+      commitFailed(`Commit failed: ${e}`);
       return;
     }
 
@@ -533,7 +724,7 @@
     });
 
     if (applied === 0 && (resp.failed || 0) > 0) {
-      commitFailed('변경사항 저장에 실패했습니다.');
+      commitFailed('All changes failed to apply.');
       refreshPendingBadge();
       return;
     }
@@ -543,7 +734,7 @@
     if (!resp.reloading) {
       commitQueue.forEach((_, i) => updateQueueItemStatus(i, 'success'));
       setProgress(100);
-      setCommitStatus(`${applied}건 적용 완료.`, 'success');
+      setCommitStatus(`${applied} change${applied !== 1 ? 's' : ''} applied.`, 'success');
       discardBtn.disabled = false;
       reviewBtn.disabled  = pending.size === 0;
       refreshPendingBadge();
@@ -552,7 +743,7 @@
       return;
     }
 
-    setCommitStatus('서비스 재시작 중…');
+    setCommitStatus('Restarting services…');
     const pollStart = Date.now();
 
     await new Promise((resolve) => {
@@ -562,7 +753,7 @@
 
         if (elapsed >= RELOAD_TIMEOUT_MS) {
           clearInterval(timer);
-          commitFailed('타임아웃 — 데몬 로그를 확인하세요.');
+          commitFailed('Timeout — check daemon logs for details.');
           resolve();
           return;
         }
@@ -584,8 +775,8 @@
     });
 
     setProgress(100);
-    setCommitStatus(`${applied}건 배포 완료 — 서비스가 재시작되었습니다.`, 'success');
-    setStatus(`${applied}건 배포 완료.`, 'success');
+    setCommitStatus(`${applied} change${applied !== 1 ? 's' : ''} deployed — services restarted.`, 'success');
+    setStatus(`${applied} change${applied !== 1 ? 's' : ''} deployed.`, 'success');
     discardBtn.disabled = false;
     reviewBtn.disabled  = pending.size === 0;
     refreshPendingBadge();
@@ -596,18 +787,18 @@
   // ── Load ──────────────────────────────────────────────────────────────────
 
   async function load() {
-    setStatus('불러오는 중…');
+    setStatus('Loading…');
     try {
       const r = await fetchJSON('/api/settings');
       if (!r) return;
-      if (!r.ok) { setStatus(`설정 로드 실패 (${r.status})`, 'error'); return; }
+      if (!r.ok) { setStatus(`Failed to load settings (${r.status})`, 'error'); return; }
       const data = await r.json();
       pending.clear();
       render(data);
       refreshPendingBadge();
       setStatus('');
     } catch (e) {
-      setStatus(`설정 로드 실패: ${e}`, 'error');
+      setStatus(`Failed to load settings: ${e}`, 'error');
     }
   }
 
@@ -638,6 +829,14 @@
     if (!container) return;
 
     initTab();
+
+    // List editor modal
+    document.getElementById('listEditorSaveBtn')?.addEventListener('click', () => closeListEditor(true));
+    document.getElementById('listEditorCancelBtn')?.addEventListener('click', () => closeListEditor(false));
+    document.getElementById('listEditorCloseBtn')?.addEventListener('click', () => closeListEditor(false));
+    document.getElementById('listEditorOverlay')?.addEventListener('click', e => {
+      if (e.target === document.getElementById('listEditorOverlay')) closeListEditor(false);
+    });
 
     discardBtn?.addEventListener('click', discardAll);
     reviewBtn?.addEventListener('click', openReviewModal);

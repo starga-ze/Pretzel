@@ -20,7 +20,7 @@ void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("ProbeService: ReceiveProbeResult has empty message");
+            LOG_WARN("ReceiveProbeResult has empty message");
             return;
         }
 
@@ -28,7 +28,7 @@ void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
 
         if (payload.size() < sizeof(std::uint32_t))
         {
-            LOG_WARN("ProbeService: ProbeResult payload too short size={}", payload.size());
+            LOG_WARN("ProbeResult payload too short size={}", payload.size());
             return;
         }
 
@@ -55,7 +55,7 @@ void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
             }
         }
 
-        LOG_INFO("ProbeService: ProbeResult alive={} ips={}", aliveCount, ips.size());
+        LOG_INFO("ProbeResult alive={} ips={}", aliveCount, ips.size());
 
         serviceManager.setAliveDevices(aliveCount);
         serviceManager.setAliveIps(std::move(ips));
@@ -63,7 +63,7 @@ void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("ProbeService: unhandled event type={}",
+        LOG_WARN("unhandled event type={}",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }

@@ -25,7 +25,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(TopologydEventDoma
         return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
 
     default:
-        LOG_WARN("TopologydEventFactory: unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -35,7 +35,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
 {
     if (!msg)
     {
-        LOG_WARN("TopologydEventFactory: null message");
+        LOG_DEBUG("Topologyd event factory: received empty message — skipping");
         return nullptr;
     }
 
@@ -54,7 +54,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
                                                std::move(msg));
 
     default:
-        LOG_WARN("TopologydEventFactory: unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 }

@@ -14,13 +14,13 @@ void TopologydTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> ms
 {
     if (!msg)
     {
-        LOG_WARN("TopologydTxRouter: message is nullptr");
+        LOG_WARN("message is not initialized");
         return;
     }
 
     if (!m_ipcClientHandler)
     {
-        LOG_ERROR("TopologydTxRouter: IpcClientHandler is nullptr");
+        LOG_ERROR("Topologyd TxRouter: IPC client handler is not initialized");
         return;
     }
 

@@ -63,7 +63,7 @@ void BootstrapService::start()
 
     initProcessMap();
 
-    LOG_INFO("BootstrapService start...");
+    LOG_INFO("bootstrap started");
 }
 
 std::unique_ptr<EnginedEvent>
@@ -71,7 +71,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
-        LOG_ERROR("BootstrapService: eventFactory is nullptr");
+        LOG_ERROR("bootstrap: event factory is not initialized");
         return nullptr;
     }
 
@@ -87,7 +87,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         m_state = State::WaitHandshake;
         m_lastClientHelloSentAt = now;
 
-        LOG_DEBUG("BootstrapService: schedule SendClientHello");
+        LOG_DEBUG("bootstrap: scheduling ClientHello");
 
         return m_eventFactory->create(
             EnginedEventDomain::Bootstrap,
@@ -105,7 +105,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastClientHelloSentAt = now;
 
-            LOG_DEBUG("BootstrapService: schedule Re-SendClientHello");
+            LOG_DEBUG("bootstrap: retrying ClientHello");
 
             return m_eventFactory->create(
                 EnginedEventDomain::Bootstrap,
@@ -126,7 +126,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastSyncRequestSentAt = now;
 
-            LOG_DEBUG("BootstrapService: schedule Re-SendSyncRequest");
+            LOG_DEBUG("schedule Re-SendSyncRequest");
 
             return m_eventFactory->create(
                 EnginedEventDomain::Bootstrap,
@@ -139,7 +139,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
     case State::Ready:
     {
         m_state = State::Running;
-        LOG_INFO("BootstrapService: state change to Running");
+        LOG_INFO("bootstrap: state changed to Running");
 
         return m_eventFactory->create(
             EnginedEventDomain::Bootstrap,
@@ -164,7 +164,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
 {
     if (!m_actionFactory)
     {
-        LOG_ERROR("BootstrapService: actionFactory is nullptr");
+        LOG_ERROR("bootstrap: action factory is not initialized");
         return;
     }
 
@@ -185,7 +185,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("BootstrapService: ReceiveServerHello has empty message");
+            LOG_WARN("bootstrap: received empty ServerHello");
             return;
         }
 
@@ -208,7 +208,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("BootstrapService: ReceiveSyncResponse has empty message");
+            LOG_WARN("ReceiveSyncResponse has empty message");
             return;
         }
 
@@ -232,7 +232,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("BootstrapService: unhandled event type={}",
+        LOG_WARN("unhandled event type={}",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -249,12 +249,12 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
     {
         if (m_state != State::WaitHandshake)
         {
-            LOG_DEBUG("BootstrapService: skip SendClientHello state={}",
+            LOG_DEBUG("skip SendClientHello state={}",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_INFO("BootstrapService: Tx ClientHello, waiting ServerHello");
+        LOG_INFO("bootstrap: sent ClientHello, awaiting ServerHello");
         msg = buildClientHelloMessage();
         break;
     }
@@ -263,33 +263,33 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
     {
         if (m_state != State::WaitSync)
         {
-            LOG_DEBUG("BootstrapService: skip SendSyncRequest state={}",
+            LOG_DEBUG("skip SendSyncRequest state={}",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_INFO("BootstrapService: Tx SyncRequest, waiting SyncResponse");
+        LOG_INFO("Tx SyncRequest, waiting SyncResponse");
         msg = buildSyncRequestMessage();
         break;
     }
 
     case BootstrapActionType::SendRuntimeStart:
     {
-        LOG_INFO("BootstrapService: Tx RuntimeStart (broadcast)");
+        LOG_INFO("Tx RuntimeStart (broadcast)");
         msg = buildRuntimeStartMessage();
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
 
         if (m_isReload)
         {
             m_isReload = false;
-            LOG_INFO("BootstrapService: Tx ConfigReloadResponse to mgmtd");
+            LOG_INFO("Tx ConfigReloadResponse to mgmtd");
             serviceManager.txRouter().handleIpcMessage(buildConfigReloadResponse());
         }
         return;
     }
 
     default:
-        LOG_WARN("BootstrapService: unhandled action type={}",
+        LOG_WARN("unhandled action type={}",
                  static_cast<std::uint32_t>(action.type()));
         return;
     }
@@ -304,7 +304,7 @@ void BootstrapService::onServerHello(EnginedServiceManager& serviceManager,
 
     if (m_state != State::WaitHandshake)
     {
-        LOG_WARN("BootstrapService: ServerHello in unexpected state={}",
+        LOG_WARN("ServerHello in unexpected state={}",
                  static_cast<int>(m_state));
         return;
     }
@@ -312,7 +312,7 @@ void BootstrapService::onServerHello(EnginedServiceManager& serviceManager,
     m_state = State::WaitSync;
     m_lastSyncRequestSentAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("BootstrapService: state change to WaitSync");
+    LOG_INFO("state change to WaitSync");
 
     auto action = m_actionFactory->create(
         EnginedActionDomain::Bootstrap,
@@ -325,27 +325,27 @@ void BootstrapService::onSyncResponse(const pz::ipc::IpcMessage& msg)
 {
     if (m_state != State::WaitSync)
     {
-        LOG_WARN("BootstrapService: SyncResponse in unexpected state={}",
+        LOG_WARN("SyncResponse in unexpected state={}",
                  static_cast<int>(m_state));
         return;
     }
 
     if (!updateProcessMap(msg))
     {
-        LOG_WARN("BootstrapService: SyncResponse parse failed, waiting Sync...");
+        LOG_WARN("SyncResponse parse failed, waiting Sync...");
         dumpProcessMap();
         return;
     }
 
     if (!isAllProcessReady())
     {
-        LOG_DEBUG("BootstrapService: service daemons not all ready, waiting Sync...");
+        LOG_DEBUG("service daemons not all ready, waiting Sync...");
         dumpProcessMap();
         return;
     }
 
-    LOG_INFO("BootstrapService: synchronization complete");
-    LOG_INFO("BootstrapService: state change to Ready");
+    LOG_INFO("synchronization complete");
+    LOG_INFO("bootstrap: state changed to Ready");
 
     m_state = State::Ready;
 }
@@ -363,7 +363,7 @@ bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
         return false;
     }
 
-    LOG_ERROR("BootstrapService: bootstrap timeout state={}", stateName);
+    LOG_ERROR("bootstrap: timed out — state={}", stateName);
 
     m_state = State::Failed;
     return true;
@@ -402,7 +402,7 @@ void BootstrapService::scheduleServiceReload()
     m_lastSyncRequestSentAt = {};
 
     m_isReload = true;
-    LOG_INFO("BootstrapService: service-layer reload — re-entering WaitSync");
+    LOG_INFO("service-layer reload — re-entering WaitSync");
 }
 
 bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
@@ -410,7 +410,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
     const auto& payload = msg.getPayload();
     if (payload.empty())
     {
-        LOG_WARN("BootstrapService: SyncResponse payload is empty");
+        LOG_WARN("SyncResponse payload is empty");
         return false;
     }
 
@@ -424,7 +424,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
 
         if (!root.contains("daemons") || !root["daemons"].is_array())
         {
-            LOG_WARN("BootstrapService: SyncResponse invalid json: missing daemons array");
+            LOG_WARN("SyncResponse invalid json: missing daemons array");
             return false;
         }
 
@@ -435,7 +435,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
             if (!item.contains("daemon") || !item.contains("ready") ||
                 !item["daemon"].is_string() || !item["ready"].is_boolean())
             {
-                LOG_WARN("BootstrapService: SyncResponse daemon item invalid: {}", item.dump());
+                LOG_WARN("SyncResponse daemon item invalid: {}", item.dump());
                 continue;
             }
 
@@ -449,7 +449,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
             auto it = m_processMap.find(daemon);
             if (it == m_processMap.end())
             {
-                LOG_DEBUG("BootstrapService: ignore unknown daemon: {}", daemonName);
+                LOG_DEBUG("ignore unknown daemon: {}", daemonName);
                 continue;
             }
 
@@ -470,7 +470,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
                 // ready=true but stale generation: daemon is still alive from
                 // the previous cycle; wait for it to disconnect and reconnect.
                 ps.ready = false;
-                LOG_DEBUG("BootstrapService: {} ready but stale gen={} required={}",
+                LOG_DEBUG("{} ready but stale gen={} required={}",
                           daemonName, generation, ps.requiredGeneration);
             }
         }
@@ -487,7 +487,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("BootstrapService: SyncResponse json parse failed: {}", e.what());
+        LOG_ERROR("SyncResponse json parse failed: {}", e.what());
         return false;
     }
 
@@ -509,7 +509,7 @@ bool BootstrapService::isAllProcessReady() const
 {
     if (m_processMap.empty())
     {
-        LOG_WARN("BootstrapService: process map is empty");
+        LOG_WARN("process map is empty");
         return false;
     }
 
@@ -519,7 +519,7 @@ bool BootstrapService::isAllProcessReady() const
     {
         if (!ps.ready)
         {
-            LOG_WARN("BootstrapService: daemon not ready daemon={} gen={} required={}",
+            LOG_WARN("daemon not ready daemon={} gen={} required={}",
                      pz::ipc::IpcProtocol::daemonToStr(daemon),
                      ps.knownGeneration, ps.requiredGeneration);
             allReady = false;

@@ -5,6 +5,7 @@ A complete deployment pipeline script that deploys built binaries, configuration
 and certificates to the actual operational paths (/opt/pretzel, /etc/pretzel) and runs the services via systemd.
 """
 
+import json
 import os
 import sys
 import shutil
@@ -45,6 +46,44 @@ STATE_ROOT_DIR = "/var/lib/pretzel"
 # binaries (see pz::mgmtd::HttpServer — overridable via PRETZEL_SHARE_DIR).
 SHARE_INSTALL_DIR = "/opt/pretzel/share"
 MGMTD_WWW_INSTALL_DIR = os.path.join(SHARE_INSTALL_DIR, "mgmtd", "www")
+
+def _deep_merge(src: dict, dst: dict) -> bool:
+    """
+    Recursively copies keys that exist in *src* but are missing in *dst*.
+    Keys already present in *dst* (including user-edited values) are left untouched.
+    Returns True if any key was added.
+    """
+    changed = False
+    for key, src_val in src.items():
+        if key not in dst:
+            dst[key] = src_val
+            changed = True
+        elif isinstance(src_val, dict) and isinstance(dst[key], dict):
+            if _deep_merge(src_val, dst[key]):
+                changed = True
+    return changed
+
+
+def _merge_config(src_path: str, dst_path: str) -> None:
+    """
+    Merge new keys from the source running-config into the live deployed config.
+    Preserves all existing values; only adds missing keys.
+    """
+    try:
+        with open(src_path, "r") as f:
+            src = json.load(f)
+        with open(dst_path, "r") as f:
+            dst = json.load(f)
+
+        if _deep_merge(src, dst):
+            with open(dst_path, "w") as f:
+                json.dump(dst, f, indent=4)
+            print(f"[*] running-config.json: merged new keys into {dst_path}")
+        else:
+            print(f"[*] running-config.json: already up-to-date at {dst_path}")
+    except Exception as e:
+        print(f"[WARN] Could not merge running-config.json: {e}")
+
 
 def pre_flight_checks():
     """
@@ -125,13 +164,15 @@ def deploy_files():
             mode = 0o600 if f.endswith(".key") or "key" in f.lower() else 0o644
             install_file(os.path.join(CERT_DIR, f), os.path.join(CERT_INSTALL_DIR, f), mode)
 
-    # 7. Deploy the canonical daemon config (running-config.json). Only seed it
-    # on first install — once deployed, it's the live operational config that
-    # mgmtd edits via the settings dashboard, so redeploys must not clobber it.
+    # 7. Deploy the canonical daemon config (running-config.json).
+    # - First install: copy source file as-is.
+    # - Subsequent deploys: merge any *new* keys/sections from source into the
+    #   live config without touching keys the user may have changed via the UI.
+    src_config_path = os.path.join(ROOT_DIR, "config", "running-config.json")
     if not os.path.isfile(RUNNING_CONFIG_INSTALL_PATH):
-        install_file(os.path.join(ROOT_DIR, "config", "running-config.json"), RUNNING_CONFIG_INSTALL_PATH, 0o644)
+        install_file(src_config_path, RUNNING_CONFIG_INSTALL_PATH, 0o644)
     else:
-        print(f"[*] Skipping running-config.json (already deployed at {RUNNING_CONFIG_INSTALL_PATH})")
+        _merge_config(src_config_path, RUNNING_CONFIG_INSTALL_PATH)
 
     # 8. Create the runtime-state root. Each daemon creates its own
     # <daemon>/ subdirectory on first write (see Config::saveStateSnapshot).

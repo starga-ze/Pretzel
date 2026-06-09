@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  let allDevices = [];
+  let allDevices  = [];
   let activeFilter = 'all';
   let searchQuery  = '';
 
@@ -19,9 +19,9 @@
     tr.innerHTML = `
       <td class="col-status">${statusDot(d.status)}</td>
       <td class="col-ip"><code>${d.ip}</code></td>
-      <td class="col-hostname">${d.hostname || '<span class="muted">—</span>'}</td>
+      <td class="col-hostname">${d.hostname  || '<span class="muted">—</span>'}</td>
       <td class="col-device">${d.device_name || '<span class="muted">—</span>'}</td>
-      <td class="col-vendor">${d.vendor || '<span class="muted">—</span>'}</td>
+      <td class="col-vendor">${d.vendor      || '<span class="muted">—</span>'}</td>
       <td class="col-status-text">
         <span class="status-badge ${alive ? 'alive' : 'dead'}">${alive ? 'Alive' : 'Dead'}</span>
       </td>
@@ -38,13 +38,13 @@
       if (activeFilter === 'alive' && d.status !== 'alive') return false;
       if (activeFilter === 'dead'  && d.status === 'alive') return false;
       if (q && !d.ip.includes(q) &&
-          !(d.hostname || '').toLowerCase().includes(q) &&
+          !(d.hostname    || '').toLowerCase().includes(q) &&
           !(d.device_name || '').toLowerCase().includes(q)) return false;
       return true;
     });
 
     if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="loading-row">검색 결과가 없습니다.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="loading-row">No devices match the current filter.</td></tr>`;
       return;
     }
 
@@ -53,7 +53,7 @@
 
   async function load() {
     const tbody = document.getElementById('deviceTableBody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="loading-row">로드 중…</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="loading-row">Loading…</td></tr>`;
 
     try {
       const data = await window.NMS.utils.fetchJSON('/api/devices');
@@ -62,11 +62,11 @@
       allDevices = data.devices || [];
 
       const badge = document.getElementById('devicesBadge');
-      if (badge) badge.textContent = `${allDevices.length} devices`;
+      if (badge) badge.textContent = `${allDevices.length} device${allDevices.length !== 1 ? 's' : ''}`;
 
       applyFilters();
     } catch (e) {
-      if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="loading-row error">로드 실패: ${e}</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="loading-row error">Failed to load devices: ${e}</td></tr>`;
     }
   }
 

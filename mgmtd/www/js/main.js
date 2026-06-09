@@ -6,6 +6,8 @@
   // Single source of truth for all pages.
 
   const SIDEBAR_NAV = [
+
+    // ── Overview ──────────────────────────────────────────
     { type: 'section', label: 'Overview' },
     {
       type: 'link', id: 'dashboard', label: 'Dashboard', href: 'dashboard.html',
@@ -15,8 +17,9 @@
              <rect x="3" y="14" width="7" height="7" rx="1"/>`,
     },
     {
-      type: 'link', id: 'metrics', label: 'Metrics', href: '#', disabled: true, soon: true,
-      icon: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>`,
+      type: 'link', id: 'insight', label: 'Insight', href: '#', disabled: true, soon: true,
+      icon: `<circle cx="12" cy="12" r="10"/>
+             <polyline points="12 6 12 12 16 14"/>`,
     },
     {
       type: 'link', id: 'devices', label: 'Devices', href: 'devices.html',
@@ -26,6 +29,73 @@
              <line x1="6" y1="6" x2="6.01" y2="6"/>
              <line x1="6" y1="18" x2="6.01" y2="18"/>`,
     },
+
+    // ── Visibility ────────────────────────────────────────
+    { type: 'section', label: 'Visibility' },
+    {
+      type: 'link', id: 'rack-view', label: 'Rack View', href: '#', disabled: true, soon: true,
+      icon: `<rect x="2" y="2" width="20" height="8" rx="1"/>
+             <rect x="2" y="12" width="20" height="4" rx="1"/>
+             <rect x="2" y="18" width="20" height="4" rx="1"/>
+             <circle cx="18" cy="6" r="1.2" fill="currentColor"/>`,
+    },
+    {
+      type: 'link', id: 'cable-map', label: 'Cable Map', href: '#', disabled: true, soon: true,
+      icon: `<path d="M4 12h16M4 12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2"/>
+             <path d="M4 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2"/>`,
+    },
+    {
+      type: 'link', id: 'port-map', label: 'Port Map', href: '#', disabled: true, soon: true,
+      icon: `<rect x="3" y="3" width="5" height="5" rx="1"/>
+             <rect x="10" y="3" width="5" height="5" rx="1"/>
+             <rect x="17" y="3" width="5" height="5" rx="1"/>
+             <rect x="3" y="10" width="5" height="5" rx="1"/>
+             <rect x="10" y="10" width="5" height="5" rx="1"/>
+             <rect x="17" y="10" width="5" height="5" rx="1"/>`,
+    },
+    {
+      type: 'link', id: 'l2-topology', label: 'L2 Topology', href: '#', disabled: true, soon: true,
+      icon: `<circle cx="12" cy="5" r="2"/>
+             <circle cx="5" cy="19" r="2"/>
+             <circle cx="19" cy="19" r="2"/>
+             <line x1="12" y1="7" x2="5" y2="17"/>
+             <line x1="12" y1="7" x2="19" y2="17"/>
+             <line x1="5" y1="19" x2="19" y2="19"/>`,
+    },
+    {
+      type: 'link', id: 'l3-topology', label: 'L3 Topology', href: '#', disabled: true, soon: true,
+      icon: `<circle cx="12" cy="5" r="2"/>
+             <circle cx="3" cy="19" r="2"/>
+             <circle cx="12" cy="19" r="2"/>
+             <circle cx="21" cy="19" r="2"/>
+             <line x1="12" y1="7" x2="3" y2="17"/>
+             <line x1="12" y1="7" x2="12" y2="17"/>
+             <line x1="12" y1="7" x2="21" y2="17"/>`,
+    },
+
+    // ── Operations ────────────────────────────────────────
+    { type: 'section', label: 'Operations' },
+    {
+      type: 'link', id: 'power-control', label: 'Power Control', href: '#', disabled: true, soon: true,
+      icon: `<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+             <line x1="12" y1="2" x2="12" y2="12"/>`,
+    },
+    {
+      type: 'link', id: 'schedule', label: 'Schedule', href: '#', disabled: true, soon: true,
+      icon: `<rect x="3" y="4" width="18" height="18" rx="2"/>
+             <line x1="16" y1="2" x2="16" y2="6"/>
+             <line x1="8" y1="2" x2="8" y2="6"/>
+             <line x1="3" y1="10" x2="21" y2="10"/>`,
+    },
+    {
+      type: 'link', id: 'remote-access', label: 'Remote Access', href: '#', disabled: true, soon: true,
+      icon: `<rect x="2" y="3" width="20" height="14" rx="2"/>
+             <line x1="8" y1="21" x2="16" y2="21"/>
+             <line x1="12" y1="17" x2="12" y2="21"/>
+             <polyline points="8 10 12 14 16 10"/>`,
+    },
+
+    // ── Monitor ───────────────────────────────────────────
     { type: 'section', label: 'Monitor' },
     {
       type: 'link', id: 'log-viewer', label: 'Log Viewer', href: 'log-viewer.html',
@@ -35,6 +105,12 @@
              <line x1="8" y1="17" x2="16" y2="17"/>
              <line x1="8" y1="9" x2="10" y2="9"/>`,
     },
+    {
+      type: 'link', id: 'event-viewer', label: 'Event Viewer', href: '#', disabled: true, soon: true,
+      icon: `<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>`,
+    },
+
+    // ── Settings ──────────────────────────────────────────
     { type: 'section', label: 'System' },
     {
       type: 'group', id: 'settingsGroup', label: 'Settings',
@@ -49,11 +125,11 @@
                       l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
                       a1.65 1.65 0 0 0-1.51 1z"/>`,
       subitems: [
-        { id: 'general',  label: 'General',  href: 'settings.html?tab=general' },
-        { id: 'icmp',     label: 'ICMP',     href: 'settings.html?tab=icmp' },
-        { id: 'snmp',     label: 'SNMP',     href: 'settings.html?tab=snmp',     soon: true },
-        { id: 'lldp',     label: 'LLDP',     href: 'settings.html?tab=lldp',     soon: true },
-        { id: 'topology', label: 'Topology', href: 'settings.html?tab=topology', soon: true },
+        { id: 'general', label: 'General', href: 'settings.html?tab=general' },
+        { id: 'icmp',    label: 'ICMP',    href: 'settings.html?tab=icmp' },
+        { id: 'snmp',    label: 'SNMP',    href: 'settings.html?tab=snmp',  soon: true },
+        { id: 'lldp',    label: 'LLDP',    href: 'settings.html?tab=lldp',  soon: true },
+        { id: 'users',   label: 'Users',   href: 'settings.html?tab=users', soon: true },
       ],
     },
   ];
@@ -98,11 +174,11 @@
         const active = item.href && item.href.split('?')[0] === activePage && !item.disabled;
         const cls = ['nav-item', active ? 'active' : '', item.disabled ? 'nav-disabled' : ''].filter(Boolean).join(' ');
         const href = item.disabled ? '#' : item.href;
-        const tooltip = item.disabled ? `${item.label} (준비 중)` : item.label;
+        const tooltip = item.disabled ? `${item.label} (Coming soon)` : item.label;
         html += `<a class="${cls}" href="${href}" data-page="${item.href || ''}" data-tooltip="${tooltip}">
           ${buildSvg(item.icon)}
           <span class="nav-label">${item.label}</span>
-          ${item.soon ? '<span class="nav-badge-soon">준비 중</span>' : ''}
+          ${item.soon ? '<span class="nav-badge-soon">Coming soon</span>' : ''}
           ${item.badgeId ? `<span class="nav-badge" id="${item.badgeId}">--</span>` : ''}
         </a>`;
         continue;
@@ -128,7 +204,7 @@
           const subCls = ['nav-subitem', subActive ? 'active' : ''].filter(Boolean).join(' ');
           html += `<a class="${subCls}" data-tab="${sub.id}" href="${sub.href}">
             <span class="nav-label">${sub.label}</span>
-            ${sub.soon ? '<span class="nav-badge-soon">준비 중</span>' : ''}
+            ${sub.soon ? '<span class="nav-badge-soon">Coming soon</span>' : ''}
           </a>`;
         }
 
