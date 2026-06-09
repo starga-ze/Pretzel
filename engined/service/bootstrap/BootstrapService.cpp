@@ -277,7 +277,15 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
     {
         LOG_INFO("BootstrapService: Tx RuntimeStart (broadcast)");
         msg = buildRuntimeStartMessage();
-        break;
+        serviceManager.txRouter().handleIpcMessage(std::move(msg));
+
+        if (m_isReload)
+        {
+            m_isReload = false;
+            LOG_INFO("BootstrapService: Tx ConfigReloadResponse to mgmtd");
+            serviceManager.txRouter().handleIpcMessage(buildConfigReloadResponse());
+        }
+        return;
     }
 
     default:
@@ -393,6 +401,7 @@ void BootstrapService::scheduleServiceReload()
     m_startedAt = std::chrono::steady_clock::now();
     m_lastSyncRequestSentAt = {};
 
+    m_isReload = true;
     LOG_INFO("BootstrapService: service-layer reload — re-entering WaitSync");
 }
 
@@ -612,6 +621,21 @@ BootstrapService::buildRuntimeStartMessage() const
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
     return msg;
+}
+
+std::unique_ptr<pz::ipc::IpcMessage>
+BootstrapService::buildConfigReloadResponse() const
+{
+    const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
+
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
+        pz::ipc::IpcDaemon::Engined,
+        pz::ipc::IpcDaemon::Mgmtd,
+        pz::ipc::IpcCmd::ConfigReloadResponse,
+        0,
+        flag);
+
+    return std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 }
 
 } // namespace pz::engined

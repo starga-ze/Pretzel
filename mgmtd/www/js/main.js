@@ -1,88 +1,207 @@
-/* main.js — ChatGPT-style sidebar (expand ↔ icon-rail) */
+/* main.js — sidebar injection + shared utilities */
 (function () {
   'use strict';
+
+  // ── Sidebar definition ───────────────────────────────────────────────────
+  // Single source of truth for all pages.
+
+  const SIDEBAR_NAV = [
+    { type: 'section', label: 'Overview' },
+    {
+      type: 'link', id: 'dashboard', label: 'Dashboard', href: 'dashboard.html',
+      icon: `<rect x="3" y="3" width="7" height="7" rx="1"/>
+             <rect x="14" y="3" width="7" height="7" rx="1"/>
+             <rect x="14" y="14" width="7" height="7" rx="1"/>
+             <rect x="3" y="14" width="7" height="7" rx="1"/>`,
+    },
+    {
+      type: 'link', id: 'metrics', label: 'Metrics', href: '#', disabled: true, soon: true,
+      icon: `<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>`,
+    },
+    {
+      type: 'link', id: 'devices', label: 'Devices', href: 'devices.html',
+      badgeId: 'aliveCount',
+      icon: `<rect x="2" y="2" width="20" height="8" rx="2"/>
+             <rect x="2" y="14" width="20" height="8" rx="2"/>
+             <line x1="6" y1="6" x2="6.01" y2="6"/>
+             <line x1="6" y1="18" x2="6.01" y2="18"/>`,
+    },
+    { type: 'section', label: 'Monitor' },
+    {
+      type: 'link', id: 'log-viewer', label: 'Log Viewer', href: 'log-viewer.html',
+      icon: `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+             <polyline points="14 2 14 8 20 8"/>
+             <line x1="8" y1="13" x2="16" y2="13"/>
+             <line x1="8" y1="17" x2="16" y2="17"/>
+             <line x1="8" y1="9" x2="10" y2="9"/>`,
+    },
+    { type: 'section', label: 'System' },
+    {
+      type: 'group', id: 'settingsGroup', label: 'Settings',
+      icon: `<circle cx="12" cy="12" r="3"/>
+             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
+                      a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
+                      A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
+                      l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
+                      A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
+                      l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
+                      a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
+                      l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
+                      a1.65 1.65 0 0 0-1.51 1z"/>`,
+      subitems: [
+        { id: 'general',  label: 'General',  href: 'settings.html?tab=general' },
+        { id: 'icmp',     label: 'ICMP',     href: 'settings.html?tab=icmp' },
+        { id: 'snmp',     label: 'SNMP',     href: 'settings.html?tab=snmp',     soon: true },
+        { id: 'lldp',     label: 'LLDP',     href: 'settings.html?tab=lldp',     soon: true },
+        { id: 'topology', label: 'Topology', href: 'settings.html?tab=topology', soon: true },
+      ],
+    },
+  ];
+
+  function buildSvg(inner) {
+    return `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${inner}</svg>`;
+  }
+
+  function buildSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    const page = location.pathname.split('/').pop() || 'dashboard.html';
+    const tab  = new URLSearchParams(location.search).get('tab') || '';
+
+    // Determine active IDs
+    const activePage = page;
+    const activeTab  = tab;
+
+    let html = `
+      <div class="sidebar-brand">
+        <div class="brand-icon">P</div>
+        <span class="brand-name">Pretzel</span>
+        <button class="sidebar-toggle" id="sidebarToggle" aria-label="Collapse sidebar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
+            <polyline points="15 9 12 12 15 15"/>
+          </svg>
+        </button>
+      </div>
+      <nav class="sidebar-nav">`;
+
+    for (const item of SIDEBAR_NAV) {
+      if (item.type === 'section') {
+        html += `<div class="nav-section-label">${item.label}</div>`;
+        continue;
+      }
+
+      if (item.type === 'link') {
+        const active = item.href && item.href.split('?')[0] === activePage && !item.disabled;
+        const cls = ['nav-item', active ? 'active' : '', item.disabled ? 'nav-disabled' : ''].filter(Boolean).join(' ');
+        const href = item.disabled ? '#' : item.href;
+        const tooltip = item.disabled ? `${item.label} (준비 중)` : item.label;
+        html += `<a class="${cls}" href="${href}" data-page="${item.href || ''}" data-tooltip="${tooltip}">
+          ${buildSvg(item.icon)}
+          <span class="nav-label">${item.label}</span>
+          ${item.soon ? '<span class="nav-badge-soon">준비 중</span>' : ''}
+          ${item.badgeId ? `<span class="nav-badge" id="${item.badgeId}">--</span>` : ''}
+        </a>`;
+        continue;
+      }
+
+      if (item.type === 'group') {
+        // Group is "active" if current page is settings.html
+        const groupActive = activePage === 'settings.html';
+        const groupId = `navGroup_${item.id}`;
+        html += `<div class="nav-group${groupActive ? ' expanded' : ''}" id="${groupId}">
+          <button type="button" class="nav-item nav-group-toggle" data-tooltip="${item.label}" aria-expanded="${groupActive}">
+            ${buildSvg(item.icon)}
+            <span class="nav-label">${item.label}</span>
+            <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <div class="nav-subnav">`;
+
+        for (const sub of item.subitems) {
+          const subActive = groupActive && activeTab === sub.id;
+          const subCls = ['nav-subitem', subActive ? 'active' : ''].filter(Boolean).join(' ');
+          html += `<a class="${subCls}" data-tab="${sub.id}" href="${sub.href}">
+            <span class="nav-label">${sub.label}</span>
+            ${sub.soon ? '<span class="nav-badge-soon">준비 중</span>' : ''}
+          </a>`;
+        }
+
+        html += `</div></div>`;
+      }
+    }
+
+    html += `</nav>
+      <div class="sidebar-footer">
+        <div class="nav-item" data-tooltip="v0.1.0-dev"
+             style="cursor:default;opacity:.35;pointer-events:none;">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span class="nav-label">v0.1.0-dev</span>
+        </div>
+      </div>`;
+
+    sidebar.innerHTML = html;
+  }
+
+  // ── Sidebar collapse/expand ───────────────────────────────────────────────
 
   const COLLAPSED_KEY = 'sidebarCollapsed';
 
   function initSidebar() {
     const sidebar       = document.getElementById('sidebar');
     const overlay       = document.getElementById('sidebarOverlay');
-    const toggleBtn     = document.getElementById('sidebarToggle');   // inside brand row
-    const railToggle    = document.getElementById('railToggle');       // mobile rail header
+    const railToggle    = document.getElementById('railToggle');
     const railToggleBtn = document.getElementById('railToggleBtn');
     if (!sidebar) return;
 
     const isMobile = () => window.innerWidth <= 680;
 
-    /* ── State helpers ── */
     function isCollapsed() { return sidebar.classList.contains('collapsed'); }
 
     function applyCollapsed(collapsed) {
       sidebar.classList.toggle('collapsed', collapsed);
-      // Rail toggle: visible on desktop only when collapsed
-      if (railToggle) {
+      if (railToggle)
         railToggle.style.display = (!isMobile() && collapsed) ? 'flex' : 'none';
-      }
     }
 
-    /* ── Init ── */
     if (isMobile()) {
-      // Mobile: always starts hidden (slide-in overlay mode)
       sidebar.classList.remove('collapsed');
       if (railToggle) railToggle.style.display = 'flex';
     } else {
-      const saved = localStorage.getItem(COLLAPSED_KEY) === 'true';
-      applyCollapsed(saved);
+      applyCollapsed(localStorage.getItem(COLLAPSED_KEY) === 'true');
     }
 
-    /* ── Desktop toggle (inline button in brand row) ── */
-    function collapseDesktop() {
-      applyCollapsed(true);
-      localStorage.setItem(COLLAPSED_KEY, 'true');
-    }
-
-    function expandDesktop() {
-      applyCollapsed(false);
-      localStorage.setItem(COLLAPSED_KEY, 'false');
-    }
-
+    // Toggle button is injected by buildSidebar — need to bind after inject
+    const toggleBtn = document.getElementById('sidebarToggle');
     toggleBtn?.addEventListener('click', () => {
-      isCollapsed() ? expandDesktop() : collapseDesktop();
+      const next = !isCollapsed();
+      applyCollapsed(next);
+      localStorage.setItem(COLLAPSED_KEY, String(next));
     });
 
-    /* ── Rail toggle button (desktop collapsed / mobile hamburger) ── */
-    function openMobile() {
-      sidebar.classList.add('mobile-open');
-      overlay?.classList.add('visible');
-      if (railToggle) railToggle.style.display = 'none';
-    }
-    function closeMobile() {
-      sidebar.classList.remove('mobile-open');
-      overlay?.classList.remove('visible');
-      if (railToggle) railToggle.style.display = 'flex';
-    }
+    function openMobile()  { sidebar.classList.add('mobile-open'); overlay?.classList.add('visible'); if (railToggle) railToggle.style.display = 'none'; }
+    function closeMobile() { sidebar.classList.remove('mobile-open'); overlay?.classList.remove('visible'); if (railToggle) railToggle.style.display = 'flex'; }
 
     railToggleBtn?.addEventListener('click', () => {
-      if (isMobile()) {
-        openMobile();
-      } else {
-        // Desktop: expand from collapsed rail
-        expandDesktop();
-      }
+      isMobile() ? openMobile() : applyCollapsed(false) || localStorage.setItem(COLLAPSED_KEY, 'false');
     });
-
     overlay?.addEventListener('click', closeMobile);
 
-    /* ── Resize ── */
     window.addEventListener('resize', () => {
       if (!isMobile()) {
         sidebar.classList.remove('mobile-open');
         overlay?.classList.remove('visible');
-        // Re-apply saved collapsed state
-        const saved = localStorage.getItem(COLLAPSED_KEY) === 'true';
-        applyCollapsed(saved);
+        applyCollapsed(localStorage.getItem(COLLAPSED_KEY) === 'true');
       } else {
-        // On mobile, sidebar is always full-width overlay
         sidebar.classList.remove('collapsed');
         applyCollapsed(false);
         if (railToggle) railToggle.style.display = 'flex';
@@ -90,60 +209,50 @@
     });
   }
 
-  function initNav() {
-    const items   = document.querySelectorAll('.nav-item[data-page]');
-    const current = location.pathname.split('/').pop() || 'index.html';
-    items.forEach(item => {
-      if (item.dataset.page === current) item.classList.add('active');
-      item.addEventListener('click', () => {
-        items.forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
-      });
-    });
-  }
+  // ── Nav group toggle ──────────────────────────────────────────────────────
 
-  // Expandable sidebar groups (e.g. "Settings" -> "Daemon Settings"). Expand
-  // state is remembered per-group in localStorage, and a group auto-expands
-  // when one of its sub-items is the current page so the active section stays
-  // visible across navigations/reloads.
   function initNavGroups() {
-    const groups  = document.querySelectorAll('.nav-group');
-    const current = location.pathname.split('/').pop() || 'index.html';
+    document.querySelectorAll('.nav-group').forEach(group => {
+      const toggle = group.querySelector('.nav-group-toggle');
+      if (!toggle) return;
+      const key = `navGroupExpanded:${group.id}`;
 
-    groups.forEach(group => {
-      const toggle   = group.querySelector('.nav-group-toggle');
-      const subnav   = group.querySelector('.nav-subnav');
-      const subitems = group.querySelectorAll('.nav-subitem[data-page]');
-      if (!toggle || !subnav) return;
-
-      const key = `navGroupExpanded:${group.id || toggle.textContent.trim()}`;
-
-      function setExpanded(value) {
-        group.classList.toggle('expanded', value);
-        toggle.setAttribute('aria-expanded', String(value));
+      function setExpanded(v) {
+        group.classList.toggle('expanded', v);
+        toggle.setAttribute('aria-expanded', String(v));
       }
 
-      const hasActiveChild = Array.from(subitems).some(i => i.dataset.page === current);
+      // Restore saved state (current state already set by buildSidebar)
       const saved = localStorage.getItem(key);
-      const expanded = hasActiveChild || saved === 'true' || group.classList.contains('expanded');
-      setExpanded(expanded);
+      if (saved !== null) setExpanded(saved === 'true');
 
       toggle.addEventListener('click', () => {
         const next = !group.classList.contains('expanded');
         setExpanded(next);
         localStorage.setItem(key, String(next));
       });
-
-      subitems.forEach(item => {
-        if (item.dataset.page === current) item.classList.add('active');
-      });
     });
   }
 
+  // ── Alive count badge ─────────────────────────────────────────────────────
+
+  async function pollAliveCount() {
+    try {
+      const r = await fetch('/api/status', { credentials: 'same-origin' });
+      if (!r.ok) return;
+      const d = await r.json();
+      const el = document.getElementById('aliveCount');
+      if (el && d.alive_devices != null) el.textContent = d.alive_devices;
+    } catch { /* ignore */ }
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+
   document.addEventListener('DOMContentLoaded', () => {
+    buildSidebar();
     initSidebar();
-    initNav();
     initNavGroups();
+    pollAliveCount();
   });
 
   /* ── Shared utils ── */
@@ -158,6 +267,12 @@
       if (d) return `${d}d ${h}h ${m}m`;
       if (h) return `${h}h ${m}m ${s}s`;
       return `${m}m ${s}s`;
-    }
+    },
+    async fetchJSON(url, opts) {
+      const r = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts));
+      if (r.status === 401) { window.location.href = '/index.html'; return null; }
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    },
   };
 }());

@@ -2,6 +2,7 @@
 #include "service/MgmtdServiceManager.h"
 
 #include "util/Logger.h"
+#include <nlohmann/json.hpp>
 
 #include <arpa/inet.h>
 #include <cstring>
@@ -31,13 +32,33 @@ void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
             return;
         }
 
-        std::uint32_t aliveNet = 0;
-        std::memcpy(&aliveNet, payload.data(), sizeof(aliveNet));
-        const std::uint32_t aliveCount = ntohl(aliveNet);
+        // Try JSON payload first {"alive": N, "ips": [...]}; fall back to legacy uint32_t
+        std::vector<std::string> ips;
+        std::uint32_t aliveCount = 0;
 
-        LOG_INFO("ProbeService: ProbeResult alive={}", aliveCount);
+        try
+        {
+            const std::string jsonStr(reinterpret_cast<const char*>(payload.data()), payload.size());
+            const auto root = nlohmann::json::parse(jsonStr);
+            aliveCount = root.value("alive", 0u);
+            for (const auto& ip : root.value("ips", nlohmann::json::array()))
+                ips.push_back(ip.get<std::string>());
+        }
+        catch (...)
+        {
+            // legacy: 4-byte big-endian count
+            if (payload.size() >= sizeof(std::uint32_t))
+            {
+                std::uint32_t aliveNet = 0;
+                std::memcpy(&aliveNet, payload.data(), sizeof(aliveNet));
+                aliveCount = ntohl(aliveNet);
+            }
+        }
+
+        LOG_INFO("ProbeService: ProbeResult alive={} ips={}", aliveCount, ips.size());
 
         serviceManager.setAliveDevices(aliveCount);
+        serviceManager.setAliveIps(std::move(ips));
         break;
     }
 

@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -56,6 +57,29 @@ std::chrono::milliseconds replyMaxWaitTimeout()
     return std::chrono::milliseconds(probeTuning().value("reply_max_wait_timeout_ms", 15000));
 }
 
+std::string probeScanCidr()
+{
+    return probeTuning().value("scan_cidr", std::string("192.168.0.0/23"));
+}
+
+// Comma-separated list of IPs to exclude from probe targets.
+std::vector<std::string> probeExcludedIps()
+{
+    const std::string raw = probeTuning().value("excluded_ips", std::string(""));
+    std::vector<std::string> result;
+    std::stringstream ss(raw);
+    std::string token;
+    while (std::getline(ss, token, ','))
+    {
+        // trim whitespace
+        const auto b = token.find_first_not_of(" \t");
+        const auto e = token.find_last_not_of(" \t");
+        if (b != std::string::npos)
+            result.push_back(token.substr(b, e - b + 1));
+    }
+    return result;
+}
+
 } // namespace
 
 ProbeService::ProbeService(IcmpdEventFactory* eventFactory,
@@ -70,7 +94,8 @@ void ProbeService::start()
     m_state = State::Init;
 
     m_localIps.clear();
-    m_localIps.insert("192.168.0.82");
+    for (const auto& ip : probeExcludedIps())
+        m_localIps.insert(ip);
 
     LOG_INFO("ProbeService start");
 }
@@ -252,7 +277,7 @@ void ProbeService::beginProbeSession()
 {
     m_identifier = static_cast<std::uint16_t>(::getpid() & 0xffff);
 
-    m_targets = buildIpv4Targets("192.168.0.0/23");
+    m_targets = buildIpv4Targets(probeScanCidr());
     m_targetIndexByIp.clear();
 
     const std::size_t generatedCount = m_targets.size();
@@ -282,7 +307,8 @@ void ProbeService::beginProbeSession()
     m_lastReplyAt = {};
     m_state = State::Sending;
 
-    LOG_INFO("Start probe, (cidr=192.168.0.0/23 generated={} targets={} excluded_local={})",
+    LOG_INFO("Start probe, (cidr={} generated={} targets={} excluded_local={})",
+             probeScanCidr(),
              generatedCount,
              m_targets.size(),
              generatedCount - m_targets.size());
@@ -508,15 +534,25 @@ ProbeService::buildIpv4Targets(const std::string& cidr)
 
 void ProbeService::sendProbeResult(IcmpdServiceManager& serviceManager)
 {
-    // payload: alive count를 4바이트 big-endian으로 인코딩
-    const std::uint32_t aliveNet = htonl(m_lastAliveCount);
+    // payload: JSON {"alive": N, "ips": ["1.2.3.4", ...]}
+    nlohmann::json payload;
+    payload["alive"] = m_lastAliveCount;
+    nlohmann::json ips = nlohmann::json::array();
+    for (const auto& t : m_targets)
+    {
+        if (t.alive)
+            ips.push_back(t.ip);
+    }
+    payload["ips"] = std::move(ips);
+
+    const std::string payloadStr = payload.dump();
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Icmpd);
     msg->setDst(pz::ipc::IpcDaemon::Mgmtd);
     msg->setCmd(pz::ipc::IpcCmd::ProbeResult);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
-    msg->setPayload(reinterpret_cast<const std::uint8_t*>(&aliveNet), sizeof(aliveNet));
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(payloadStr.data()), payloadStr.size());
 
     LOG_INFO("ProbeService: sending ProbeResult to mgmtd alive={}", m_lastAliveCount);
 

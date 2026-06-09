@@ -79,6 +79,8 @@
                 "bootstrap_timeout_ms": 10000
             },
             "probe": {
+                "scan_cidr": "192.168.0.0/23",
+                "excluded_ips": "192.168.0.82",
                 "batch_size": 32,
                 "batch_interval_ms": 20,
                 "cycle_interval_ms": 30000,

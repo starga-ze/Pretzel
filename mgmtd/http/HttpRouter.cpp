@@ -12,6 +12,14 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
+#include <deque>
+#include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <sstream>
+#include <string>
+#include <sys/statvfs.h>
 #include <utility>
 
 namespace pz::mgmtd
@@ -94,6 +102,36 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
             return unauthorized(req.version(), req.keep_alive());
         }
         return handleSettingsCommit(req);
+    }
+
+    if (target == "/api/settings/reload-status" && req.method() == http::verb::get)
+    {
+        if (!isAuthenticated(req))
+        {
+            return unauthorized(req.version(), req.keep_alive());
+        }
+        return handleReloadStatus(req);
+    }
+
+    if (target == "/api/devices" && req.method() == http::verb::get)
+    {
+        if (!isAuthenticated(req))
+            return unauthorized(req.version(), req.keep_alive());
+        return handleDevices(req);
+    }
+
+    if (target.rfind("/api/logs", 0) == 0 && req.method() == http::verb::get)
+    {
+        if (!isAuthenticated(req))
+            return unauthorized(req.version(), req.keep_alive());
+        return handleLogs(req);
+    }
+
+    if (target == "/api/node-metrics" && req.method() == http::verb::get)
+    {
+        if (!isAuthenticated(req))
+            return unauthorized(req.version(), req.keep_alive());
+        return handleNodeMetrics(req);
     }
 
     // ── Static files ──────────────────────────────────────────────────────
@@ -284,12 +322,14 @@ HttpRouter::Response HttpRouter::handleStatus(const Request& req)
 namespace
 {
 
-// Daemons whose "tuning" section is exposed/editable through the settings
-// dashboard. Mirrors the top-level keys in config/running-config.json.
-// mgmtd and ipcd are infrastructure daemons — they never restart on config
-// changes and their tuning is not user-configurable at runtime.
 constexpr const char* kSettingsDaemons[] = {
     "engined", "authd", "icmpd", "snmpd", "topologyd",
+};
+
+// Tuning domains that are internal infrastructure — not user-configurable
+// at runtime and not shown in the Settings UI.
+constexpr const char* kHiddenDomains[] = {
+    "ipc_connect",
 };
 
 } // namespace
@@ -300,8 +340,20 @@ HttpRouter::Response HttpRouter::handleSettingsGet(const Request& req)
 
     for (const auto* name : kSettingsDaemons)
     {
-        const auto& root = pz::config::Config::daemonConfig(name);
-        daemons[name] = root.value("tuning", json::object());
+        const auto& root    = pz::config::Config::daemonConfig(name);
+        const auto& allTuning = root.value("tuning", json::object());
+
+        json tuning = json::object();
+        for (const auto& [domain, values] : allTuning.items())
+        {
+            const bool hidden = std::any_of(
+                std::begin(kHiddenDomains), std::end(kHiddenDomains),
+                [&](const char* d) { return domain == d; });
+            if (!hidden)
+                tuning[domain] = values;
+        }
+
+        daemons[name] = std::move(tuning);
     }
 
     json body;
@@ -405,6 +457,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
         msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
 
         m_serviceManager->txRouter().handleIpcMessage(std::move(msg));
+        m_serviceManager->startReload();
         LOG_INFO("Mgmtd ConfigReloadRequest sent to engined ({} change(s) applied)", applied);
     }
 
@@ -413,15 +466,45 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
         : (applied > 0 ? http::status::ok : http::status::internal_server_error);
 
     json body;
-    body["applied"]  = applied;
-    body["failed"]   = failed;
-    body["results"]  = results;
+    body["applied"]   = applied;
+    body["failed"]    = failed;
+    body["results"]   = results;
+    body["reloading"] = (applied > 0);
 
     return makeResponse(status,
                         body.dump(),
                         "application/json; charset=utf-8",
                         req.version(),
                         req.keep_alive());
+}
+
+HttpRouter::Response HttpRouter::handleReloadStatus(const Request& req)
+{
+    json body;
+
+    if (!m_serviceManager)
+    {
+        body["status"] = "idle";
+        body["elapsed_ms"] = 0;
+        return makeResponse(http::status::ok, body.dump(),
+                            "application/json; charset=utf-8",
+                            req.version(), req.keep_alive());
+    }
+
+    const auto s = m_serviceManager->reloadStatus();
+
+    if (s == MgmtdServiceManager::ReloadStatus::Reloading)
+        body["status"] = "reloading";
+    else if (s == MgmtdServiceManager::ReloadStatus::Complete)
+        body["status"] = "complete";
+    else
+        body["status"] = "idle";
+
+    body["elapsed_ms"] = m_serviceManager->reloadElapsedMs();
+
+    return makeResponse(http::status::ok, body.dump(),
+                        "application/json; charset=utf-8",
+                        req.version(), req.keep_alive());
 }
 
 HttpRouter::Response HttpRouter::handleStatic(const Request& req)
@@ -435,7 +518,13 @@ HttpRouter::Response HttpRouter::handleStatic(const Request& req)
                             req.keep_alive());
     }
 
-    auto file = m_cache->get(std::string(req.target()));
+    // Strip query string before cache lookup (?tab=icmp, etc.)
+    std::string staticPath(req.target());
+    const auto qpos = staticPath.find('?');
+    if (qpos != std::string::npos)
+        staticPath.erase(qpos);
+
+    auto file = m_cache->get(staticPath);
     if (!file)
     {
         return makeResponse(http::status::not_found,
@@ -510,6 +599,215 @@ HttpRouter::Response HttpRouter::makeResponse(http::status status,
     res.body() = std::move(body);
     res.prepare_payload();
     return res;
+}
+
+// ── /api/devices ─────────────────────────────────────────────────────────────
+
+HttpRouter::Response HttpRouter::handleDevices(const Request& req)
+{
+    json body;
+    json devices = json::array();
+
+    if (m_serviceManager)
+    {
+        const auto ips = m_serviceManager->aliveIps();
+        for (const auto& ip : ips)
+        {
+            devices.push_back({
+                {"ip",          ip},
+                {"hostname",    ""},
+                {"device_name", ""},
+                {"vendor",      ""},
+                {"status",      "alive"},
+            });
+        }
+    }
+
+    body["devices"] = std::move(devices);
+    return makeResponse(http::status::ok, body.dump(),
+                        "application/json; charset=utf-8",
+                        req.version(), req.keep_alive());
+}
+
+// ── /api/logs ─────────────────────────────────────────────────────────────────
+
+namespace
+{
+// Parse query string key=value pairs from a target like /api/logs?daemon=icmpd&lines=100
+std::string queryParam(const std::string& target, const std::string& key)
+{
+    const auto q = target.find('?');
+    if (q == std::string::npos) return {};
+    std::string qs = target.substr(q + 1);
+    std::istringstream ss(qs);
+    std::string token;
+    while (std::getline(ss, token, '&'))
+    {
+        const auto eq = token.find('=');
+        if (eq == std::string::npos) continue;
+        if (token.substr(0, eq) == key)
+            return token.substr(eq + 1);
+    }
+    return {};
+}
+
+// Read last N lines of a file efficiently
+std::vector<std::string> tailFile(const std::string& path, int maxLines)
+{
+    std::ifstream f(path);
+    if (!f.is_open()) return {};
+    std::deque<std::string> lines;
+    std::string line;
+    while (std::getline(f, line))
+    {
+        lines.push_back(line);
+        if (static_cast<int>(lines.size()) > maxLines)
+            lines.pop_front();
+    }
+    return {lines.begin(), lines.end()};
+}
+
+const std::string kLogDir = "/var/log/pretzel";
+const std::vector<std::string> kKnownDaemons = {
+    "ipcd", "engined", "mgmtd", "authd", "icmpd", "snmpd", "topologyd"
+};
+} // namespace
+
+HttpRouter::Response HttpRouter::handleLogs(const Request& req)
+{
+    const std::string target(req.target());
+    std::string daemon  = queryParam(target, "daemon");
+    const int   maxLines = [&]{
+        const auto s = queryParam(target, "lines");
+        return s.empty() ? 200 : std::max(1, std::min(2000, std::stoi(s)));
+    }();
+
+    // Validate daemon name (prevent path traversal)
+    if (!daemon.empty())
+    {
+        const bool known = std::any_of(kKnownDaemons.begin(), kKnownDaemons.end(),
+            [&](const std::string& d) { return d == daemon; });
+        if (!known)
+        {
+            return makeResponse(http::status::bad_request,
+                                json{{"error", "unknown daemon"}}.dump(),
+                                "application/json; charset=utf-8",
+                                req.version(), req.keep_alive());
+        }
+    }
+
+    json body;
+
+    if (!daemon.empty())
+    {
+        const std::string path = kLogDir + "/" + daemon + ".log";
+        const auto lines = tailFile(path, maxLines);
+        json arr = json::array();
+        for (const auto& l : lines) arr.push_back(l);
+        body["daemon"] = daemon;
+        body["lines"]  = std::move(arr);
+    }
+    else
+    {
+        // Return last few lines from each known daemon
+        json all = json::object();
+        for (const auto& d : kKnownDaemons)
+        {
+            const std::string path = kLogDir + "/" + d + ".log";
+            const auto lines = tailFile(path, 50);
+            json arr = json::array();
+            for (const auto& l : lines) arr.push_back(l);
+            all[d] = std::move(arr);
+        }
+        body["daemons"] = std::move(all);
+    }
+
+    return makeResponse(http::status::ok, body.dump(),
+                        "application/json; charset=utf-8",
+                        req.version(), req.keep_alive());
+}
+
+// ── /api/node-metrics ─────────────────────────────────────────────────────────
+
+namespace
+{
+struct CpuSnapshot { uint64_t total{0}, idle{0}; };
+
+CpuSnapshot readCpuSnapshot()
+{
+    std::ifstream f("/proc/stat");
+    std::string token;
+    CpuSnapshot snap;
+    if (!f.is_open()) return snap;
+    f >> token; // "cpu"
+    std::vector<uint64_t> vals;
+    uint64_t v;
+    while (vals.size() < 10 && f >> v)
+        vals.push_back(v);
+    if (vals.size() >= 4)
+    {
+        snap.idle  = vals[3] + (vals.size() > 4 ? vals[4] : 0); // idle + iowait
+        snap.total = 0;
+        for (auto x : vals) snap.total += x;
+    }
+    return snap;
+}
+
+double readMemPct()
+{
+    std::ifstream f("/proc/meminfo");
+    if (!f.is_open()) return 0.0;
+    uint64_t total = 0, avail = 0;
+    std::string key;
+    uint64_t val;
+    std::string unit;
+    while (f >> key >> val)
+    {
+        f >> unit; // "kB"
+        if (key == "MemTotal:")     total = val;
+        if (key == "MemAvailable:") avail = val;
+        if (total && avail) break;
+    }
+    return total ? 100.0 * (total - avail) / total : 0.0;
+}
+
+double readDiskPct(const char* path = "/")
+{
+    struct statvfs st {};
+    if (::statvfs(path, &st) != 0) return 0.0;
+    const uint64_t total = static_cast<uint64_t>(st.f_blocks) * st.f_frsize;
+    const uint64_t avail = static_cast<uint64_t>(st.f_bavail) * st.f_frsize;
+    return total ? 100.0 * (total - avail) / total : 0.0;
+}
+
+// Simple moving-average CPU tracker
+std::mutex s_cpuMtx;
+CpuSnapshot s_cpuPrev;
+double      s_cpuPct{0.0};
+} // namespace
+
+HttpRouter::Response HttpRouter::handleNodeMetrics(const Request& req)
+{
+    const auto cur = readCpuSnapshot();
+    {
+        std::lock_guard<std::mutex> lk(s_cpuMtx);
+        if (s_cpuPrev.total > 0 && cur.total > s_cpuPrev.total)
+        {
+            const uint64_t dt = cur.total - s_cpuPrev.total;
+            const uint64_t di = cur.idle  - s_cpuPrev.idle;
+            s_cpuPct = 100.0 * (dt - di) / dt;
+        }
+        s_cpuPrev = cur;
+    }
+
+    json body;
+    body["cpu_pct"]  = std::round(s_cpuPct  * 10) / 10.0;
+    body["mem_pct"]  = std::round(readMemPct()  * 10) / 10.0;
+    body["disk_pct"] = std::round(readDiskPct() * 10) / 10.0;
+
+    return makeResponse(http::status::ok, body.dump(),
+                        "application/json; charset=utf-8",
+                        req.version(), req.keep_alive());
 }
 
 } // namespace pz::mgmtd

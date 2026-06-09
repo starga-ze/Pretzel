@@ -31,6 +31,13 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
+    if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReloadResponse)
+    {
+        LOG_INFO("MgmtdRxRouter: ConfigReloadResponse — service layer reload complete");
+        m_serviceManager->completeReload();
+        return;
+    }
+
     std::unique_ptr<MgmtdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));

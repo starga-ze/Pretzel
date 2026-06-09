@@ -118,10 +118,48 @@ std::optional<std::uint32_t> MgmtdServiceManager::aliveDevices() const
     return static_cast<std::uint32_t>(val);
 }
 
+void MgmtdServiceManager::startReload()
+{
+    m_reloadStartedAt = std::chrono::steady_clock::now();
+    m_reloadStatus.store(static_cast<int>(ReloadStatus::Reloading), std::memory_order_release);
+    LOG_INFO("MgmtdServiceManager: reload started");
+}
+
+void MgmtdServiceManager::completeReload()
+{
+    m_reloadStatus.store(static_cast<int>(ReloadStatus::Complete), std::memory_order_release);
+    LOG_INFO("MgmtdServiceManager: reload complete elapsed={}ms", reloadElapsedMs());
+}
+
+MgmtdServiceManager::ReloadStatus MgmtdServiceManager::reloadStatus() const
+{
+    return static_cast<ReloadStatus>(m_reloadStatus.load(std::memory_order_acquire));
+}
+
+std::int64_t MgmtdServiceManager::reloadElapsedMs() const
+{
+    if (reloadStatus() == ReloadStatus::Idle)
+        return 0;
+    const auto elapsed = std::chrono::steady_clock::now() - m_reloadStartedAt;
+    return std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+}
+
 void MgmtdServiceManager::setAliveDevices(std::uint32_t count)
 {
     m_aliveDevices.store(static_cast<std::int64_t>(count), std::memory_order_relaxed);
     LOG_DEBUG("MgmtdServiceManager: aliveDevices updated count={}", count);
+}
+
+std::vector<std::string> MgmtdServiceManager::aliveIps() const
+{
+    std::lock_guard<std::mutex> lock(m_aliveIpsMutex);
+    return m_aliveIps;
+}
+
+void MgmtdServiceManager::setAliveIps(std::vector<std::string> ips)
+{
+    std::lock_guard<std::mutex> lock(m_aliveIpsMutex);
+    m_aliveIps = std::move(ips);
 }
 
 } // namespace pz::mgmtd

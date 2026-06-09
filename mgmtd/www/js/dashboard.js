@@ -1,173 +1,89 @@
-/* dashboard.js — heartbeat polling & DOM update */
-
+/* dashboard.js */
 (function () {
   'use strict';
 
-  const POLL_INTERVAL = 5000;
-
-  let pollTimer = null;
-  let refs = {};
+  const POLL_MS = 10000;
 
   const DAEMON_META = {
-    ipcd:          { label: 'IPC',          icon: '🔌', raw: 'pz-ipcd' },
-    engined:       { label: 'Engine',       icon: '⚙️', raw: 'pz-engined' },
-    authd:         { label: 'Auth',         icon: '🔐', raw: 'pz-authd' },
-    icmpd:         { label: 'ICMP',         icon: '📡', raw: 'pz-icmpd' },
-    snmpd:         { label: 'SNMP',         icon: '📊', raw: 'pz-snmpd' },
-    topologyd:     { label: 'Topology',     icon: '🗺️', raw: 'pz-topologyd' },
-    mgmtd:         { label: 'Mgmt',         icon: '🖥️', raw: 'pz-mgmtd' },
-    prometheus:    { label: 'Prometheus',   icon: '📈', raw: 'prometheus' },
-    grafana:       { label: 'Grafana',      icon: '📉', raw: 'grafana' },
-    node_exporter: { label: 'Node Exporter',icon: '🖧', raw: 'node_exporter' },
+    ipcd:          { label: 'IPC Broker',    raw: 'pz-ipcd' },
+    engined:       { label: 'Engine',        raw: 'pz-engined' },
+    authd:         { label: 'Auth',          raw: 'pz-authd' },
+    icmpd:         { label: 'ICMP Probe',    raw: 'pz-icmpd' },
+    snmpd:         { label: 'SNMP',          raw: 'pz-snmpd' },
+    topologyd:     { label: 'Topology',      raw: 'pz-topologyd' },
+    mgmtd:         { label: 'Management',    raw: 'pz-mgmtd' },
+    prometheus:    { label: 'Prometheus',    raw: 'prometheus' },
+    grafana:       { label: 'Grafana',       raw: 'grafana' },
+    node_exporter: { label: 'Node Exporter', raw: 'node_exporter' },
   };
 
-  function resolveRefs() {
-    refs = {
-      uptimeVal:   document.getElementById('uptimeVal'),
-      aliveVal:    document.getElementById('aliveVal'),
-      daemonGrid:  document.getElementById('daemonGrid'),
-      eventList:   document.getElementById('eventList'),
-      hbTimestamp: document.getElementById('hbTimestamp'),
-    };
+  function initial(name) {
+    const m = DAEMON_META[name];
+    return (m ? m.label : name).slice(0, 2).toUpperCase();
   }
 
-  async function fetchJSON(url) {
-    try {
-      const r = await fetch(url, { credentials: 'same-origin' });
-      if (r.status === 401) { window.location.href = '/index.html'; return null; }
-      if (!r.ok) throw new Error(r.status);
-      return r.json();
-    } catch {
-      return null;
-    }
-  }
-
-  /* ── Daemon card ── */
-  function makeDaemonCard(daemon) {
-    const alive = daemon.status === 'alive';
-    const meta  = DAEMON_META[daemon.name] || { label: daemon.name, icon: '⚙️' };
-
-    const card = document.createElement('div');
-    card.className = 'daemon-card' + (alive ? ' alive' : ' dead');
-
-    /* pulse dot */
-    const dot = document.createElement('span');
-    dot.className = 'daemon-dot' + (alive ? ' pulse' : '');
-
-    /* icon */
-    const icon = document.createElement('span');
-    icon.className   = 'daemon-card-icon';
-    icon.textContent = meta.icon;
-
-    /* name */
-    const name = document.createElement('div');
-    name.className   = 'daemon-card-name';
-    name.textContent = meta.label;
-
-    /* raw name sub-label */
-    const raw = document.createElement('div');
-    raw.className   = 'daemon-card-raw';
-    raw.textContent = meta.raw || daemon.name;
-
-    /* status badge */
-    const badge = document.createElement('div');
-    badge.className   = 'daemon-card-badge ' + (alive ? 'alive' : 'dead');
-    badge.textContent = alive ? 'ALIVE' : 'DEAD';
-
-    /* latency */
-    const latency = document.createElement('div');
-    latency.className   = 'daemon-card-latency';
-    latency.textContent = (alive && daemon.latency_ms != null)
-      ? daemon.latency_ms + ' ms'
-      : '—';
-
-    const top  = document.createElement('div');
-    top.className = 'daemon-card-top';
-    top.append(dot, icon, name);
-
-    card.append(top, raw, badge, latency);
+  function makeDaemonCard(d) {
+    const alive = d.status === 'alive';
+    const meta  = DAEMON_META[d.name] || { label: d.name, raw: d.name };
+    const card  = document.createElement('div');
+    card.className = 'daemon-card ' + (alive ? 'alive' : 'dead');
+    card.innerHTML = `
+      <div class="daemon-card-top">
+        <span class="daemon-dot${alive ? ' pulse' : ''}"></span>
+        <div class="daemon-card-icon">${initial(d.name)}</div>
+        <div class="daemon-card-name">${meta.label}</div>
+      </div>
+      <div class="daemon-card-raw">${meta.raw}</div>
+      <div class="daemon-card-badge ${alive ? 'alive' : 'dead'}">${alive ? 'ALIVE' : 'DEAD'}</div>
+      <div class="daemon-card-latency">${alive && d.latency_ms != null ? d.latency_ms + ' ms' : '—'}</div>`;
     return card;
   }
 
-  function renderDaemons(daemons) {
-    if (!refs.daemonGrid) return;
-
-    if (!Array.isArray(daemons) || daemons.length === 0) {
-      refs.daemonGrid.replaceChildren(
-        Object.assign(document.createElement('div'), {
-          className: 'loading-row',
-          textContent: 'Waiting for heartbeat data…'
-        })
-      );
-      return;
+  function setBar(barId, valId, pct) {
+    const bar = document.getElementById(barId);
+    const val = document.getElementById(valId);
+    if (bar) {
+      bar.style.width = Math.min(pct, 100) + '%';
+      bar.style.background = pct > 85 ? 'var(--red)' : pct > 65 ? '#f59e0b' : 'var(--accent)';
     }
-
-    refs.daemonGrid.replaceChildren(...daemons.map(makeDaemonCard));
+    if (val) val.textContent = pct.toFixed(1) + '%';
   }
 
-  function makeEventRow(event) {
-    const row = document.createElement('div');
-    row.className = 'event-row';
-
-    const src = document.createElement('div');
-    src.className   = 'event-source';
-    src.textContent = event.source;
-
-    const msg = document.createElement('div');
-    msg.className   = 'event-msg';
-    msg.textContent = event.message;
-
-    row.append(src, msg);
-    return row;
+  async function pollMetrics() {
+    try {
+      const d = await window.NMS.utils.fetchJSON('/api/node-metrics');
+      if (!d) return;
+      setBar('cpuBar', 'cpuVal', d.cpu_pct ?? 0);
+      setBar('memBar', 'memVal', d.mem_pct ?? 0);
+      setBar('diskBar', 'diskVal', d.disk_pct ?? 0);
+    } catch { /* ignore */ }
   }
 
-  function renderEvents(events) {
-    if (!refs.eventList || !Array.isArray(events)) return;
-    refs.eventList.replaceChildren(...events.slice(0, 8).map(makeEventRow));
+  async function pollStatus() {
+    try {
+      const d = await window.NMS.utils.fetchJSON('/api/status');
+      if (!d) return;
+
+      const aliveEl = document.getElementById('aliveVal');
+      if (aliveEl) aliveEl.textContent = d.alive_devices ?? '--';
+
+      const hbTs = document.getElementById('hbTimestamp');
+      if (hbTs && d.timestamp_ms)
+        hbTs.textContent = 'Last poll: ' + new Date(d.timestamp_ms).toLocaleTimeString();
+
+      const grid = document.getElementById('daemonGrid');
+      if (grid && Array.isArray(d.daemons) && d.daemons.length)
+        grid.replaceChildren(...d.daemons.map(makeDaemonCard));
+    } catch { /* ignore */ }
   }
 
-  function formatTimestamp(ms) {
-    if (!ms) return '';
-    const d = new Date(ms);
-    return 'Last poll: ' + d.toLocaleTimeString();
-  }
-
-  /* ── Poll ── */
   async function poll() {
-    const data = await fetchJSON('/api/status');
-    if (!data) return;
-
-    if (refs.uptimeVal) {
-      const s = data.uptime_seconds;
-      refs.uptimeVal.textContent = (s != null)
-        ? (window.NMS?.utils?.formatUptime(s) ?? s)
-        : '--';
-    }
-
-    if (refs.aliveVal) {
-      refs.aliveVal.textContent = data.alive_devices ?? '--';
-    }
-
-    if (refs.hbTimestamp) {
-      refs.hbTimestamp.textContent = formatTimestamp(data.timestamp_ms);
-    }
-
-    renderDaemons(data.daemons);
-    renderEvents(data.events);
+    await Promise.all([pollMetrics(), pollStatus()]);
   }
 
-  /* ── Init ── */
   document.addEventListener('DOMContentLoaded', () => {
-    resolveRefs();
-
-    document.getElementById('refreshBtn')
-      ?.addEventListener('click', () => poll());
-
-    document.getElementById('exportBtn')
-      ?.addEventListener('click', () => alert('Export triggered'));
-
+    document.getElementById('refreshBtn')?.addEventListener('click', poll);
     poll();
-    pollTimer = setInterval(poll, POLL_INTERVAL);
+    setInterval(poll, POLL_MS);
   });
-
 }());

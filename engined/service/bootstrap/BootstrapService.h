@@ -35,11 +35,6 @@ public:
     ~BootstrapService() = default;
 
     void start();
-
-    // Called when engined receives ConfigReloadRequest from mgmtd.
-    // Re-enters WaitSync without restarting the process: engined invalidates
-    // its own config cache in-place and waits for service daemons to cycle
-    // through disconnect → reconnect before sending a new RuntimeStart.
     void scheduleServiceReload();
 
     std::unique_ptr<EnginedEvent> schedule(std::chrono::steady_clock::time_point now);
@@ -70,6 +65,7 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> buildClientHelloMessage() const;
     std::unique_ptr<pz::ipc::IpcMessage> buildSyncRequestMessage() const;
     std::unique_ptr<pz::ipc::IpcMessage> buildRuntimeStartMessage() const;
+    std::unique_ptr<pz::ipc::IpcMessage> buildConfigReloadResponse() const;
 
 private:
     EnginedEventFactory* m_eventFactory{nullptr};
@@ -95,6 +91,8 @@ private:
     };
 
     std::unordered_map<pz::ipc::IpcDaemon, ProcessState> m_processMap;
+
+    bool m_isReload{false};  // true when in a commit-triggered reload cycle
 };
 
 } // namespace pz::engined

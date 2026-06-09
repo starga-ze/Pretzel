@@ -48,12 +48,14 @@ enum class IpcCmd : std::uint16_t
     HeartbeatResponse = 105,
     HeartbeatResult   = 106,
 
-    // Unicast from mgmtd to engined: "a config commit has been applied,
-    // please orchestrate a full service-layer reload."
-    ConfigReloadRequest = 108,
+    // Unicast from mgmtd to engined after a config commit.
+    ConfigReloadRequest  = 108,
 
-    // Unicast from engined to each service daemon: invalidate config cache
-    // and restart via execv.
+    // Unicast from engined to mgmtd once RuntimeStart has been broadcast —
+    // signals that all service daemons are back up and the reload is complete.
+    ConfigReloadResponse = 109,
+
+    // Unicast from engined to each service daemon: restart via execv.
     ConfigReload      = 107,
 };
 

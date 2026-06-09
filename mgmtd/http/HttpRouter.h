@@ -34,12 +34,13 @@ private:
     Response handleLogin   (const Request& req);
     Response handleLogout  (const Request& req);
     Response handleStatus  (const Request& req);   // NEW
-    Response handleSettingsGet    (const Request& req);
-    // Accepts { changes: [{daemon, domain, values}] }, persists all updates,
-    // broadcasts IpcCmd::ConfigReload to all daemons, and schedules mgmtd's
-    // own restart. Returns per-change results.
-    Response handleSettingsCommit (const Request& req);
-    Response handleStatic         (const Request& req);
+    Response handleSettingsGet      (const Request& req);
+    Response handleSettingsCommit   (const Request& req);
+    Response handleReloadStatus     (const Request& req);
+    Response handleDevices          (const Request& req);
+    Response handleLogs             (const Request& req);
+    Response handleNodeMetrics      (const Request& req);
+    Response handleStatic           (const Request& req);
 
     // Returns true when the request carries a valid session cookie.
     bool     isAuthenticated(const Request& req) const;

@@ -10,131 +10,8 @@
 
 <div class="app-shell" id="appShell">
 
-  <!-- ══ Sidebar ══ -->
-  <aside class="sidebar" id="sidebar">
-
-    <div class="sidebar-brand">
-      <div class="brand-icon">P</div>
-      <span class="brand-name">Pretzel</span>
-      <button class="sidebar-toggle" id="sidebarToggle" aria-label="Collapse sidebar">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <rect x="3" y="3" width="18" height="18" rx="2"/>
-          <line x1="9" y1="3" x2="9" y2="21"/>
-          <polyline points="15 9 12 12 15 15"/>
-        </svg>
-      </button>
-    </div>
-
-    <nav class="sidebar-nav">
-      <div class="nav-section-label">Overview</div>
-
-      <a class="nav-item" data-page="dashboard.html" data-tooltip="Dashboard" href="dashboard.html">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <rect x="3" y="3" width="7" height="7" rx="1"/>
-          <rect x="14" y="3" width="7" height="7" rx="1"/>
-          <rect x="14" y="14" width="7" height="7" rx="1"/>
-          <rect x="3" y="14" width="7" height="7" rx="1"/>
-        </svg>
-        <span class="nav-label">Dashboard</span>
-      </a>
-
-      <a class="nav-item" data-page="metrics.html" data-tooltip="Metrics" href="#">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        <span class="nav-label">Metrics</span>
-      </a>
-
-      <a class="nav-item" data-page="devices.html" data-tooltip="Devices" href="#">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <rect x="2" y="2" width="20" height="8" rx="2"/>
-          <rect x="2" y="14" width="20" height="8" rx="2"/>
-          <line x1="6" y1="6" x2="6.01" y2="6"/>
-          <line x1="6" y1="18" x2="6.01" y2="18"/>
-        </svg>
-        <span class="nav-label">Devices</span>
-        <span class="nav-badge" id="aliveCount">--</span>
-      </a>
-
-      <div class="nav-section-label">Monitoring</div>
-
-      <a class="nav-item" data-page="prometheus.html" data-tooltip="Prometheus" href="#">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <line x1="18" y1="20" x2="18" y2="10"/>
-          <line x1="12" y1="20" x2="12" y2="4"/>
-          <line x1="6"  y1="20" x2="6"  y2="14"/>
-        </svg>
-        <span class="nav-label">Prometheus</span>
-      </a>
-
-      <a class="nav-item" data-page="node-exporter.html" data-tooltip="Node Exporter" href="#">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <rect x="4" y="4" width="16" height="16" rx="2"/>
-          <rect x="9" y="9" width="6" height="6"/>
-          <line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/>
-          <line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/>
-          <line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="15" x2="23" y2="15"/>
-          <line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="15" x2="4" y2="15"/>
-        </svg>
-        <span class="nav-label">Node Exporter</span>
-      </a>
-
-      <a class="nav-item" data-page="events.html" data-tooltip="Events" href="#">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-        </svg>
-        <span class="nav-label">Events</span>
-      </a>
-
-      <div class="nav-section-label">System</div>
-
-      <div class="nav-group expanded" id="settingsNavGroup">
-        <button type="button" class="nav-item nav-group-toggle" data-tooltip="Settings" aria-expanded="true">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
-                     a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
-                     A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
-                     l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
-                     A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
-                     l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
-                     a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
-                     l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
-                     a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-          <span class="nav-label">Settings</span>
-          <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-        <div class="nav-subnav">
-          <a class="nav-subitem active" data-page="settings.html" href="settings.html">
-            <span class="nav-label">Runtime Config</span>
-          </a>
-        </div>
-      </div>
-    </nav>
-
-    <div class="sidebar-footer">
-      <div class="nav-item" data-tooltip="v0.1.0-dev"
-           style="cursor:default;opacity:.35;pointer-events:none;">
-        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        <span class="nav-label">v0.1.0-dev</span>
-      </div>
-    </div>
-  </aside>
-
-  <!-- Mobile overlay -->
+  <aside class="sidebar" id="sidebar"><!-- populated by main.js --></aside>
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
-
-  <!-- Rail toggle -->
   <div class="rail-toggle" id="railToggle">
     <button class="rail-toggle-btn" id="railToggleBtn" aria-label="Open sidebar">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -153,12 +30,8 @@
       <!-- Page toolbar -->
       <div class="settings-toolbar">
         <div class="settings-toolbar-left">
-          <h1 class="settings-title">Runtime Parameters</h1>
-          <p class="settings-subtitle">
-            Tune operational parameters for running services. Changes are staged locally,
-            then <strong>committed</strong> as a batch — config is persisted and each affected
-            service is restarted to apply.
-          </p>
+          <h1 class="settings-title" id="pageTitle"></h1>
+          <p class="settings-subtitle" id="pageSubtitle"></p>
         </div>
         <div class="settings-toolbar-right">
           <div class="commit-pending-badge" id="commitPendingBadge">
@@ -173,24 +46,6 @@
             </svg>
             Commit
           </button>
-        </div>
-      </div>
-
-      <!-- Scope + search bar -->
-      <div class="settings-scope-bar">
-        <span class="scope-bar-label">Scope</span>
-        <div class="scope-selector" id="scopeSelector">
-          <button class="scope-chip active" data-scope="all">All Services</button>
-        </div>
-        <div class="scope-bar-sep"></div>
-        <div class="settings-search-wrap">
-          <svg class="settings-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="11" cy="11" r="7"/>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          </svg>
-          <input type="text" id="settingsSearch" class="settings-search-input"
-                 placeholder="Search services, domains, or keys…" autocomplete="off" />
         </div>
       </div>
 

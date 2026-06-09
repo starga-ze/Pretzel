@@ -14,10 +14,14 @@
 #include "router/MgmtdTxRouter.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <queue>
+#include <string>
+#include <vector>
 
 namespace pz::mgmtd
 {
@@ -50,6 +54,15 @@ public:
     std::optional<std::uint32_t> aliveDevices() const;
     void setAliveDevices(std::uint32_t count);
 
+    std::vector<std::string> aliveIps() const;
+    void setAliveIps(std::vector<std::string> ips);
+
+    enum class ReloadStatus { Idle, Reloading, Complete };
+    void startReload();
+    void completeReload();
+    ReloadStatus reloadStatus() const;
+    std::int64_t reloadElapsedMs() const;
+
 private:
     MgmtdEventFactory* m_eventFactory{nullptr};
     MgmtdActionFactory* m_actionFactory{nullptr};
@@ -64,7 +77,11 @@ private:
     std::queue<std::unique_ptr<MgmtdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<MgmtdAction>> m_actionQueue;
 
-    std::atomic<std::int64_t> m_aliveDevices{-1};
+    std::atomic<std::int64_t>  m_aliveDevices{-1};
+    mutable std::mutex         m_aliveIpsMutex;
+    std::vector<std::string>   m_aliveIps;
+    std::atomic<int>           m_reloadStatus{static_cast<int>(ReloadStatus::Idle)};
+    std::chrono::steady_clock::time_point m_reloadStartedAt{};
 };
 
 } // namespace pz::mgmtd
