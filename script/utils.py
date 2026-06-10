@@ -62,6 +62,17 @@ NODE_EXPORTER_DIR = os.path.join(THIRD_PARTY_DIR, "node_exporter")
 NODE_EXPORTER_TAR = os.path.join(NODE_EXPORTER_DIR, f"node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64.tar.gz")
 NODE_EXPORTER_SRC_PATH = os.path.join(NODE_EXPORTER_DIR, f"node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64")
 
+# PostgreSQL is installed from the distro APT repo (not built from source) and
+# runs under its own systemd unit (postgresql.service). Pretzel provisions a
+# dedicated login role + database; pz-mgmtd connects over localhost TCP.
+# These defaults MUST match the "database" block in config/running-config.json.
+PG_SERVICE     = "postgresql"        # distro-managed systemd unit
+PG_DB_NAME     = "pretzel"
+PG_DB_USER     = "pretzel"
+PG_DB_PASSWORD = "pretzel"           # localhost-only dev default — harden for prod
+PG_DB_HOST     = "127.0.0.1"
+PG_DB_PORT     = 5432
+
 # Detect CPU cores for build optimization
 NUM_CORES = os.cpu_count() or 1
 MAKE_JOBS = f"-j{NUM_CORES}"

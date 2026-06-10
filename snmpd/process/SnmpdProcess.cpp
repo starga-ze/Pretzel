@@ -4,12 +4,15 @@
 namespace pz::snmpd
 {
 
-constexpr int kIpcClientTimeoutMs = 10;
+constexpr int kIpcClientTimeoutMs  = 10;
+constexpr int kSnmpEngineTimeoutMs = 5;
 
 SnmpdProcess::SnmpdProcess(pz::ipc::IpcClient* ipcClient,
-                           SnmpdServiceManager* serviceManager) :
+                           SnmpdServiceManager* serviceManager,
+                           SnmpEngine* snmpEngine) :
     m_ipcClient(ipcClient),
-    m_serviceManager(serviceManager)
+    m_serviceManager(serviceManager),
+    m_snmpEngine(snmpEngine)
 {
 }
 
@@ -27,6 +30,12 @@ bool SnmpdProcess::start()
         return false;
     }
 
+    if (!m_snmpEngine)
+    {
+        LOG_ERROR("SnmpEngine is not initialized");
+        return false;
+    }
+
     m_serviceManager->start();
 
     return true;
@@ -35,6 +44,8 @@ bool SnmpdProcess::start()
 void SnmpdProcess::tick()
 {
     m_ipcClient->poll(kIpcClientTimeoutMs);
+
+    m_snmpEngine->poll(kSnmpEngineTimeoutMs);
 
     m_serviceManager->schedule();
 

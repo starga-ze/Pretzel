@@ -4,6 +4,9 @@
 #include "event/SnmpdEvent.h"
 #include "event/SnmpdEventFactory.h"
 #include "service/SnmpdServiceManager.h"
+#include "snmp/SnmpTypes.h"
+
+#include <vector>
 
 namespace pz::snmpd
 {
@@ -15,6 +18,9 @@ public:
     ~SnmpdRxRouter() override = default;
 
     void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
+
+    // Called by SnmpEngineHandler when async scan sweep completes.
+    void handleSnmpScanComplete(std::vector<SnmpDevice> devices);
 
     void setServiceManager(SnmpdServiceManager* serviceManager);
 

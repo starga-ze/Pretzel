@@ -4,8 +4,8 @@
  * POST /api/settings/commit       → { reloading, applied, failed, results[] }
  * GET  /api/settings/reload-status→ { status: "idle"|"reloading"|"complete", elapsed_ms }
  *
- * Tab is determined by URL ?tab=icmp|snmp|lldp|topology
- * bootstrap domain is never shown.
+ * Page is view-only. Clicking the ✏ edit button on a card opens a right-side
+ * slide-over panel with editable fields. Apply stages changes; Commit deploys.
  */
 
 (function () {
@@ -23,7 +23,7 @@
     },
     icmp: {
       label:    'ICMP',
-      title:    'ICMP Probe',
+      title:    'ICMP',
       subtitle: 'Configure scan ranges, excluded IPs, and probe timing for ICMP ping discovery.',
       daemons:  ['icmpd'],
       domains:  ['probe'],
@@ -33,7 +33,7 @@
       title:    'SNMP',
       subtitle: 'SNMP polling intervals and community string settings.',
       daemons:  ['snmpd'],
-      domains:  [],
+      domains:  ['scan'],
     },
     lldp: {
       label:    'LLDP',
@@ -51,9 +51,7 @@
     },
   };
 
-  // Keys that are free-form strings (rendered as text input, not number)
-  // Keys rendered with the list-editor modal instead of a plain text input
-  const LIST_KEYS = new Set(['scan_cidr', 'excluded_ips']);
+  const LIST_KEYS   = new Set(['scan_cidr', 'excluded_ips']);
   const STRING_KEYS = new Set(['scan_cidr', 'excluded_ips']);
 
   const KEY_LABELS = {
@@ -64,7 +62,6 @@
     cycle_interval_ms:         'Cycle Interval (ms)',
     reply_idle_timeout_ms:     'Reply Idle Timeout (ms)',
     reply_max_wait_timeout_ms: 'Max Reply Wait (ms)',
-    // Heartbeat (General tab)
     poll_interval_ms:          'Poll Interval (ms)',
     response_timeout_ms:       'Response Timeout (ms)',
   };
@@ -79,34 +76,45 @@
     excluded_ips: 'IPs listed here are skipped even if they fall within a scan CIDR.',
   };
 
-  const DOMAIN_LABELS = {
-    probe: 'Probe',
-  };
+  const DOMAIN_LABELS = { probe: 'Probe', heartbeat: 'Heartbeat', scan: 'Scan' };
 
-  // ── State ────────────────────────────────────────────────────────────────
+  const PROBE_TARGET_KEYS = new Set(['scan_cidr', 'excluded_ips']);
+  const PROBE_TIMING_KEYS = new Set([
+    'batch_size', 'batch_interval_ms', 'cycle_interval_ms',
+    'reply_idle_timeout_ms', 'reply_max_wait_timeout_ms',
+  ]);
+
+  // ── State ─────────────────────────────────────────────────────────────────
 
   let currentData      = null;
   let activeTab        = 'icmp';
   let selectedQueueKey = null;
 
-  // staged edits: `${daemon} ${domain} ${key}` → {daemon, domain, key, oldValue, newValue}
+  // staged edits: `${daemon} ${domain} ${key}` → { daemon, domain, key, oldValue, newValue }
   const pending = new Map();
 
-  // ── DOM refs ─────────────────────────────────────────────────────────────
+  // edit panel state
+  let editContext = null;   // { daemon, domain, values }
+  // in-panel staged values (before Apply)
+  const editDraft = new Map();  // key → value
+
+  // list editor callback
+  let listEditorCallback = null;
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
 
   let container, statusEl, pageTitleEl, pageSubtitleEl;
   let discardBtn, reviewBtn, commitPendingBadge, commitPendingCount;
   let reviewOverlay, reviewCloseBtn, reviewCancelBtn;
   let commitBtn, commitStatus, commitProgressFill;
   let commitQueueList, queueTotalBadge, diffViewer, diffPanelHint;
-
-  // List-editor modal state
-  let listEditorCallback = null;
+  let taskQueueBar;           // floating task-queue status bar
+  let taskQueuePollTimer = null;
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   function stageKey(daemon, domain, key) { return `${daemon} ${domain} ${key}`; }
-  function fieldId(daemon, domain, key)  { return `f__${daemon}__${domain}__${key}`; }
+  function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
 
   async function fetchJSON(url, opts) {
     const r = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts));
@@ -126,23 +134,313 @@
     commitStatus.className = 'modal-status' + (kind ? ` ${kind}` : '');
   }
 
-  function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+  function getItems(v) {
+    return String(v).split(',').map(s => s.trim()).filter(Boolean);
+  }
 
-  // ── Tab init ─────────────────────────────────────────────────────────────
+  // ── View rendering ────────────────────────────────────────────────────────
 
-  function initTab() {
-    const params = new URLSearchParams(window.location.search);
-    activeTab = params.get('tab') || 'icmp';
-    if (!TABS[activeTab]) activeTab = 'icmp';
+  function buildViewTags(value) {
+    const wrap = document.createElement('div');
+    wrap.className = 'le-tags-wrap';
+    const items = getItems(value);
+    if (items.length === 0) {
+      wrap.innerHTML = '<span class="le-tag-empty">None</span>';
+    } else {
+      items.forEach(item => {
+        const t = document.createElement('span');
+        t.className = 'le-tag';
+        t.textContent = item;
+        wrap.appendChild(t);
+      });
+    }
+    return wrap;
+  }
 
-    // Highlight active sub-item in sidebar
-    document.querySelectorAll('.nav-subitem[data-tab]').forEach((a) => {
-      a.classList.toggle('active', a.dataset.tab === activeTab);
+  function buildViewRow(key, value, daemon, domain) {
+    const row = document.createElement('div');
+    row.className = 'st-view-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'st-view-label';
+    lbl.textContent = KEY_LABELS[key] || key;
+
+    const val = document.createElement('div');
+    val.className = 'st-view-value';
+
+    if (LIST_KEYS.has(key)) {
+      val.appendChild(buildViewTags(value));
+    } else {
+      const v = document.createElement('span');
+      v.className = 'st-view-scalar';
+      v.textContent = String(value);
+
+      if (daemon && domain && pending.has(stageKey(daemon, domain, key))) {
+        v.classList.add('st-view-modified');
+      }
+      val.appendChild(v);
+    }
+
+    row.appendChild(lbl);
+    row.appendChild(val);
+    return row;
+  }
+
+  function buildSectionBox(title, keys, values, onEdit, daemon, domain) {
+    const box = document.createElement('div');
+    box.className = 'st-section-box';
+
+    if (title) {
+      const h = document.createElement('div');
+      h.className = 'st-section-box-title';
+
+      const titleSpan = document.createElement('span');
+      titleSpan.textContent = title;
+      h.appendChild(titleSpan);
+
+      if (onEdit) {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-icon-only st-card-edit-btn st-section-edit-btn';
+        editBtn.title = 'Edit';
+        editBtn.innerHTML =
+          `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">` +
+          `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>` +
+          `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+        editBtn.addEventListener('click', onEdit);
+        h.appendChild(editBtn);
+      }
+
+      box.appendChild(h);
+    }
+
+    keys.forEach(k => {
+      if (values[k] !== undefined) box.appendChild(buildViewRow(k, values[k], daemon, domain));
+    });
+    return box;
+  }
+
+  function buildDomainCard(daemon, domain, values) {
+    const card = document.createElement('div');
+    card.className = 'settings-domain-card st-view-card';
+    card.dataset.daemon = daemon;
+    card.dataset.domain = domain;
+
+    const keys = Object.keys(values);
+
+    if (domain === 'probe') {
+      card.classList.add('st-probe-card');
+      // Probe: two independently-editable sections, no shared card header
+      const targetKeys = keys.filter(k => PROBE_TARGET_KEYS.has(k));
+      const timingKeys = keys.filter(k => PROBE_TIMING_KEYS.has(k));
+
+      if (targetKeys.length) {
+        card.appendChild(buildSectionBox(
+          'Scan Targets', targetKeys, values,
+          () => openEditPanel(daemon, domain, values, 'ICMP - Scan Targets', targetKeys),
+          daemon, domain
+        ));
+      }
+      if (timingKeys.length) {
+        card.appendChild(buildSectionBox(
+          'Timing', timingKeys, values,
+          () => openEditPanel(daemon, domain, values, 'ICMP - Timing', timingKeys),
+          daemon, domain
+        ));
+      }
+    } else {
+      // Other domains: single card header with edit button
+      const header = document.createElement('div');
+      header.className = 'st-card-header';
+
+      const cardTitle = document.createElement('span');
+      cardTitle.className = 'st-card-title';
+      cardTitle.textContent = DOMAIN_LABELS[domain] || domain;
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-icon-only st-card-edit-btn';
+      editBtn.title = 'Edit';
+      editBtn.innerHTML =
+        `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">` +
+        `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>` +
+        `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+
+      editBtn.addEventListener('click', () => openEditPanel(daemon, domain, values));
+      header.appendChild(cardTitle);
+      header.appendChild(editBtn);
+      card.appendChild(header);
+      card.appendChild(buildSectionBox(null, keys, values, null, daemon, domain));
+    }
+
+    // Pending indicator
+    const hasPending = Array.from(pending.values()).some(p => p.daemon === daemon && p.domain === domain);
+    card.classList.toggle('has-changes', hasPending);
+
+    return card;
+  }
+
+  // ── Edit slide-over panel ─────────────────────────────────────────────────
+
+  function openEditPanel(daemon, domain, values, panelTitle, keyFilter) {
+    editContext = { daemon, domain, values };
+    editDraft.clear();
+
+    const panel    = document.getElementById('stEditPanel');
+    const backdrop = document.getElementById('stEditBackdrop');
+    const titleEl  = document.getElementById('stEditTitle');
+    const body     = document.getElementById('stEditBody');
+    if (!panel || !body) return;
+
+    titleEl.textContent = panelTitle || `Edit — ${DOMAIN_LABELS[domain] || domain}`;
+    body.innerHTML = '';
+
+    const keys = keyFilter || Object.keys(values);
+
+    keys.forEach(k => {
+      if (values[k] !== undefined) body.appendChild(buildEditField(daemon, domain, k, values[k]));
     });
 
-    const tab = TABS[activeTab];
-    if (pageTitleEl)    pageTitleEl.textContent    = tab.title;
-    if (pageSubtitleEl) pageSubtitleEl.textContent = tab.subtitle;
+    // Restore already-staged values
+    pending.forEach((change, sk) => {
+      if (change.daemon === daemon && change.domain === domain) {
+        editDraft.set(change.key, change.newValue);
+        const input = body.querySelector(`[data-key="${change.key}"]`);
+        if (input && input.type !== 'hidden') input.value = change.newValue;
+      }
+    });
+
+    backdrop.classList.add('visible');
+    panel.classList.add('visible');
+  }
+
+  function closeEditPanel() {
+    document.getElementById('stEditPanel')?.classList.remove('visible');
+    document.getElementById('stEditBackdrop')?.classList.remove('visible');
+    editContext = null;
+    editDraft.clear();
+  }
+
+  function applyEditPanel() {
+    if (!editContext) return;
+    const { daemon, domain, values } = editContext;
+
+    editDraft.forEach((newVal, key) => {
+      const sk  = stageKey(daemon, domain, key);
+      const orig = String(values[key]);
+      const nv   = String(newVal);
+      if (nv === orig) {
+        pending.delete(sk);
+      } else {
+        pending.set(sk, { daemon, domain, key, oldValue: values[key], newValue: newVal });
+      }
+    });
+
+    refreshPendingBadge();
+    // Re-render the specific card with pending changes merged into displayed values
+    if (currentData) {
+      const card = container?.querySelector(
+        `.settings-domain-card[data-daemon="${cssEsc(daemon)}"][data-domain="${cssEsc(domain)}"]`);
+      if (card) {
+        const displayed = Object.assign({}, values);
+        pending.forEach(change => {
+          if (change.daemon === daemon && change.domain === domain) {
+            displayed[change.key] = change.newValue;
+          }
+        });
+        const fresh = buildDomainCard(daemon, domain, displayed);
+        card.replaceWith(fresh);
+      }
+    }
+    closeEditPanel();
+  }
+
+  // ── Edit field builders (used inside the slide-over panel) ────────────────
+
+  function buildEditField(daemon, domain, key, value) {
+    const isStr  = STRING_KEYS.has(key);
+    const isList = LIST_KEYS.has(key);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'st-edit-field';
+
+    const lbl = document.createElement('label');
+    lbl.className = 'st-edit-field-label';
+    lbl.textContent = KEY_LABELS[key] || key;
+
+    wrap.appendChild(lbl);
+
+    if (isList) {
+      // Tag display + Edit button (opens list editor)
+      const tags = buildViewTags(value);
+      tags.className = 'le-tags-wrap st-edit-tags';
+
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.dataset.key = key;
+      hidden.value = String(value);
+
+      function refreshTags(v) {
+        const items = getItems(v);
+        tags.innerHTML = '';
+        if (items.length === 0) {
+          tags.innerHTML = '<span class="le-tag-empty">None</span>';
+        } else {
+          items.forEach(item => {
+            const t = document.createElement('span');
+            t.className = 'le-tag';
+            t.textContent = item;
+            tags.appendChild(t);
+          });
+        }
+      }
+
+      const editListBtn = document.createElement('button');
+      editListBtn.type = 'button';
+      editListBtn.className = 'btn btn-ghost le-edit-btn';
+      editListBtn.innerHTML =
+        `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">` +
+        `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>` +
+        `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit list`;
+
+      editListBtn.addEventListener('click', () => {
+        openListEditor({
+          title:       KEY_LABELS[key] || key,
+          hint:        KEY_HINT[key] || '',
+          placeholder: KEY_PLACEHOLDER[key] || '',
+          items:       getItems(hidden.value),
+          onSave(newVal) {
+            hidden.value = newVal;
+            refreshTags(newVal);
+            editDraft.set(key, newVal);
+          },
+        });
+      });
+
+      wrap.appendChild(tags);
+      wrap.appendChild(editListBtn);
+      wrap.appendChild(hidden);
+      if (KEY_HINT[key]) {
+        const hint = document.createElement('span');
+        hint.className = 'st-edit-field-hint';
+        hint.textContent = KEY_HINT[key];
+        wrap.appendChild(hint);
+      }
+    } else {
+      const input = document.createElement('input');
+      input.type = isStr ? 'text' : 'number';
+      input.className = 'settings-field-input' + (isStr ? ' settings-field-input-text' : '');
+      input.dataset.key = key;
+      input.value = String(value);
+      if (KEY_PLACEHOLDER[key]) input.placeholder = KEY_PLACEHOLDER[key];
+
+      input.addEventListener('input', () => {
+        const v = isStr ? input.value : Number(input.value);
+        editDraft.set(key, v);
+      });
+
+      wrap.appendChild(input);
+    }
+
+    return wrap;
   }
 
   // ── List editor modal ─────────────────────────────────────────────────────
@@ -156,6 +454,8 @@
 
     titleEl.textContent = title;
     hintEl.textContent  = hint || '';
+
+    let current = [...items];
 
     function renderItems(arr) {
       listEl.innerHTML = '';
@@ -176,10 +476,8 @@
       });
     }
 
-    let current = [...items];
     renderItems(current);
 
-    // Delete handler
     listEl.onclick = (e) => {
       const btn = e.target.closest('.le-item-del');
       if (!btn) return;
@@ -187,27 +485,21 @@
       renderItems(current);
     };
 
-    // Add handler
     const addInput = document.getElementById('listEditorInput');
     const addBtn   = document.getElementById('listEditorAddBtn');
-    if (addInput) {
-      addInput.value = '';
-      addInput.placeholder = placeholder || '';
-    }
+    if (addInput) { addInput.value = ''; addInput.placeholder = placeholder || ''; }
 
     function addItem() {
       const val = (addInput?.value || '').trim();
-      if (!val) return;
-      if (!current.includes(val)) {
-        current.push(val);
-        renderItems(current);
-      }
+      if (!val || current.includes(val)) return;
+      current.push(val);
+      renderItems(current);
       if (addInput) addInput.value = '';
       addInput?.focus();
     }
 
     addBtn && (addBtn.onclick = addItem);
-    addInput && (addInput.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } });
+    addInput && (addInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } });
 
     listEditorCallback = () => onSave(current.join(','));
     overlay.classList.add('visible');
@@ -222,267 +514,35 @@
     overlay.classList.remove('visible');
   }
 
-  // ── List field widget (replaces plain text input for LIST_KEYS) ───────────
+  // ── Tab init ──────────────────────────────────────────────────────────────
 
-  function buildListField(daemon, domain, key, value) {
-    const skey = stageKey(daemon, domain, key);
+  function initTab() {
+    const params = new URLSearchParams(window.location.search);
+    activeTab = params.get('tab') || 'icmp';
+    if (!TABS[activeTab]) activeTab = 'icmp';
 
-    const wrap = document.createElement('div');
-    wrap.className = 'settings-field settings-field-list';
-    wrap.dataset.stageKey = skey;
-
-    const label = document.createElement('span');
-    label.className = 'settings-field-label';
-    label.textContent = KEY_LABELS[key] || key;
-
-    // Tag-list display
-    const tags = document.createElement('div');
-    tags.className = 'le-tags-wrap';
-
-    const editBtn = document.createElement('button');
-    editBtn.className = 'le-edit-btn';
-    editBtn.innerHTML =
-      `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">` +
-      `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>` +
-      `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit`;
-
-    const originalEl = document.createElement('span');
-    originalEl.className = 'settings-field-original';
-
-    // Hidden input to track staged value
-    const hidden = document.createElement('input');
-    hidden.type = 'hidden';
-    hidden.id = fieldId(daemon, domain, key);
-    hidden.dataset.daemon   = daemon;
-    hidden.dataset.domain   = domain;
-    hidden.dataset.key      = key;
-    hidden.dataset.original = String(value);
-    hidden.value = String(value);
-
-    function getItems(v) {
-      return String(v).split(',').map(s => s.trim()).filter(Boolean);
-    }
-
-    function refreshTags(v) {
-      const items = getItems(v);
-      tags.innerHTML = '';
-      if (items.length === 0) {
-        tags.innerHTML = '<span class="le-tag-empty">None</span>';
-      } else {
-        items.forEach(item => {
-          const t = document.createElement('span');
-          t.className = 'le-tag';
-          t.textContent = item;
-          tags.appendChild(t);
-        });
-      }
-    }
-
-    refreshTags(value);
-
-    // Restore staged value if any
-    const staged = pending.get(skey);
-    if (staged) {
-      hidden.value = staged.newValue;
-      refreshTags(staged.newValue);
-      applyDirty(wrap, originalEl, true, staged.oldValue);
-    }
-
-    editBtn.addEventListener('click', () => {
-      openListEditor({
-        title:       KEY_LABELS[key] || key,
-        hint:        KEY_HINT[key] || '',
-        placeholder: KEY_PLACEHOLDER[key] || '',
-        items:       getItems(hidden.value),
-        onSave(newVal) {
-          hidden.value = newVal;
-          refreshTags(newVal);
-          const orig = hidden.dataset.original;
-          if (newVal === orig) {
-            pending.delete(skey);
-            applyDirty(wrap, originalEl, false, orig);
-          } else {
-            pending.set(skey, { daemon, domain, key, oldValue: orig, newValue: newVal });
-            applyDirty(wrap, originalEl, true, orig);
-          }
-          refreshCardState(daemon, domain);
-          refreshPendingBadge();
-        },
-      });
+    document.querySelectorAll('.nav-subitem[data-tab]').forEach(a => {
+      a.classList.toggle('active', a.dataset.tab === activeTab);
     });
 
-    wrap.appendChild(label);
-    wrap.appendChild(tags);
-    wrap.appendChild(editBtn);
-    wrap.appendChild(hidden);
-    wrap.appendChild(originalEl);
-    return wrap;
-  }
-
-  // ── Field rendering ───────────────────────────────────────────────────────
-
-  function buildField(daemon, domain, key, value) {
-    const skey = stageKey(daemon, domain, key);
-    const isStr = STRING_KEYS.has(key);
-
-    const wrap = document.createElement('div');
-    wrap.className = 'settings-field';
-    wrap.dataset.stageKey = skey;
-
-    const label = document.createElement('span');
-    label.className = 'settings-field-label';
-    label.textContent = KEY_LABELS[key] || key;
-    label.title = key;
-
-    const inputWrap = document.createElement('div');
-    inputWrap.className = 'settings-field-input-wrap';
-
-    const input = document.createElement('input');
-    input.type = isStr ? 'text' : 'number';
-    input.className = 'settings-field-input' + (isStr ? ' settings-field-input-text' : '');
-    input.id = fieldId(daemon, domain, key);
-    input.value = value;
-    input.dataset.daemon   = daemon;
-    input.dataset.domain   = domain;
-    input.dataset.key      = key;
-    input.dataset.original = String(value);
-    input.dataset.isStr    = isStr ? '1' : '0';
-
-    const dot = document.createElement('span');
-    dot.className = 'settings-field-dirty-dot';
-
-    inputWrap.appendChild(input);
-    inputWrap.appendChild(dot);
-
-    const originalEl = document.createElement('span');
-    originalEl.className = 'settings-field-original';
-
-    wrap.appendChild(label);
-    wrap.appendChild(inputWrap);
-    wrap.appendChild(originalEl);
-
-    input.addEventListener('input', () => onFieldInput(input, wrap, originalEl));
-
-    const staged = pending.get(skey);
-    if (staged) {
-      input.value = staged.newValue;
-      applyDirty(wrap, originalEl, true, staged.oldValue);
-    }
-
-    return wrap;
-  }
-
-  function onFieldInput(input, wrap, originalEl) {
-    const { daemon, domain, key, original } = input.dataset;
-    const skey = stageKey(daemon, domain, key);
-
-    if (input.dataset.isStr === '1') {
-      const val = input.value;
-      if (val === original) {
-        pending.delete(skey);
-        applyDirty(wrap, originalEl, false, original);
-      } else {
-        pending.set(skey, { daemon, domain, key, oldValue: original, newValue: val });
-        applyDirty(wrap, originalEl, true, original);
-      }
-    } else {
-      const orig = Number(original);
-      const num  = Number(input.value);
-      if (!Number.isFinite(num)) { applyDirty(wrap, originalEl, true, orig); return; }
-      if (num === orig) {
-        pending.delete(skey);
-        applyDirty(wrap, originalEl, false, orig);
-      } else {
-        pending.set(skey, { daemon, domain, key, oldValue: orig, newValue: num });
-        applyDirty(wrap, originalEl, true, orig);
-      }
-    }
-
-    refreshCardState(daemon, domain);
-    refreshPendingBadge();
-  }
-
-  function applyDirty(wrap, originalEl, dirty, originalValue) {
-    wrap.classList.toggle('dirty', dirty);
-    originalEl.textContent = dirty ? `was: ${originalValue}` : '';
-  }
-
-  function refreshCardState(daemon, domain) {
-    const card = container?.querySelector(
-      `.settings-domain-card[data-daemon="${cssEsc(daemon)}"][data-domain="${cssEsc(domain)}"]`);
-    if (!card) return;
-    card.classList.toggle('has-changes',
-      Array.from(pending.values()).some(p => p.daemon === daemon && p.domain === domain));
+    const tab = TABS[activeTab];
+    if (pageTitleEl)    pageTitleEl.textContent    = tab.title;
+    if (pageSubtitleEl) pageSubtitleEl.textContent = tab.subtitle;
   }
 
   // ── Layout ────────────────────────────────────────────────────────────────
 
-  function buildSectionHeader(text) {
-    const h = document.createElement('div');
-    h.className = 'settings-section-header';
-    h.textContent = text;
-    return h;
-  }
-
-  const PROBE_TARGET_KEYS = new Set(['scan_cidr', 'excluded_ips']);
-  const PROBE_TIMING_KEYS = new Set([
-    'batch_size', 'batch_interval_ms', 'cycle_interval_ms',
-    'reply_idle_timeout_ms', 'reply_max_wait_timeout_ms',
-  ]);
-
-  function buildDomainCard(daemon, domain, values) {
-    const card = document.createElement('div');
-    card.className = 'settings-domain-card';
-    card.dataset.daemon = daemon;
-    card.dataset.domain = domain;
-
-    const keys = Object.keys(values);
-
-    if (domain === 'probe') {
-      const targetKeys = keys.filter(k => PROBE_TARGET_KEYS.has(k));
-      const timingKeys = keys.filter(k => PROBE_TIMING_KEYS.has(k));
-
-      if (targetKeys.length) {
-        card.appendChild(buildSectionHeader('Scan Targets'));
-        const g = document.createElement('div');
-        g.className = 'settings-field-grid settings-field-grid-list';
-        targetKeys.forEach(k => g.appendChild(
-          LIST_KEYS.has(k) ? buildListField(daemon, domain, k, values[k]) : buildField(daemon, domain, k, values[k])
-        ));
-        card.appendChild(g);
-      }
-      if (timingKeys.length) {
-        card.appendChild(buildSectionHeader('Timing'));
-        const g = document.createElement('div');
-        g.className = 'settings-field-grid';
-        timingKeys.forEach(k => g.appendChild(buildField(daemon, domain, k, values[k])));
-        card.appendChild(g);
-      }
-    } else {
-      const g = document.createElement('div');
-      g.className = 'settings-field-grid';
-      keys.forEach(k => g.appendChild(buildField(daemon, domain, k, values[k])));
-      card.appendChild(g);
-    }
-
-    card.classList.toggle('has-changes',
-      Array.from(pending.values()).some(p => p.daemon === daemon && p.domain === domain));
-
-    return card;
-  }
-
   function renderTabContent(data) {
     container.innerHTML = '';
-
     const tab = TABS[activeTab];
     if (!tab) return;
 
     const daemons = (data && data.daemons) || {};
     let anyField = false;
 
-    tab.daemons.forEach((daemon) => {
+    tab.daemons.forEach(daemon => {
       const tuning = daemons[daemon] || {};
-      tab.domains.forEach((domain) => {
+      tab.domains.forEach(domain => {
         const values = tuning[domain];
         if (!values || typeof values !== 'object' || Object.keys(values).length === 0) return;
         container.appendChild(buildDomainCard(daemon, domain, values));
@@ -504,9 +564,9 @@
 
   function refreshPendingBadge() {
     const count = pending.size;
-    commitPendingCount.textContent = String(count);
-    commitPendingBadge.classList.toggle('visible', count > 0);
-    reviewBtn.disabled = count === 0;
+    if (commitPendingCount) commitPendingCount.textContent = String(count);
+    commitPendingBadge?.classList.toggle('visible', count > 0);
+    if (reviewBtn) reviewBtn.disabled = count === 0;
   }
 
   function discardAll() {
@@ -521,7 +581,7 @@
 
   function groupPending() {
     const map = new Map();
-    pending.forEach((c) => {
+    pending.forEach(c => {
       const k = `${c.daemon}::${c.domain}`;
       if (!map.has(k)) map.set(k, { daemon: c.daemon, domain: c.domain, changes: [] });
       map.get(k).changes.push(c);
@@ -535,8 +595,8 @@
     diffViewer.innerHTML = '';
     if (diffPanelHint) diffPanelHint.textContent = `${daemon} · ${DOMAIN_LABELS[domain] || domain}`;
 
-    const before = Object.assign({}, currentData?.daemons?.[daemon]?.[domain] || {});
-    const after  = Object.assign({}, before);
+    const before  = Object.assign({}, currentData?.daemons?.[daemon]?.[domain] || {});
+    const after   = Object.assign({}, before);
     changes.forEach(c => { before[c.key] = c.oldValue; after[c.key] = c.newValue; });
     const changed = new Set(changes.map(c => c.key));
 
@@ -633,7 +693,7 @@
     if (iw) { iw.className = `queue-item-icon status-${status}`; iw.innerHTML = iconSVG(status); }
   }
 
-  // ── Modal ─────────────────────────────────────────────────────────────────
+  // ── Commit modal ──────────────────────────────────────────────────────────
 
   function openReviewModal() {
     if (pending.size === 0) return;
@@ -700,18 +760,25 @@
       });
       if (!r) return;
       resp = await r.json().catch(() => ({}));
+      if (r.status === 409) { commitFailed('Another commit is already in progress. Please wait and retry.'); return; }
       if (!r.ok && !resp.results) { commitFailed(`Commit failed: ${resp.error || r.status}`); return; }
     } catch (e) {
       commitFailed(`Commit failed: ${e}`);
       return;
     }
 
+    // Server now returns results:[] (engined owns persistence); treat applied>0 as full success.
+    const serverApplied = resp.applied || 0;
+    const serverFailed  = resp.failed  || 0;
     const results = resp.results || [];
     let applied = 0;
 
     commitQueue.forEach((item, i) => {
       const res = results.find(r => r.daemon === item.daemon && r.domain === item.domain);
-      if (res && res.status === 'ok') {
+      // Fall back to overall applied count when per-item results absent (engined owns persistence).
+      const ok  = res ? res.status === 'ok' : serverFailed === 0 && serverApplied > 0;
+
+      if (ok) {
         item.changes.forEach(c => {
           pending.delete(stageKey(c.daemon, c.domain, c.key));
           if (currentData?.daemons?.[item.daemon]?.[item.domain])
@@ -746,7 +813,7 @@
     setCommitStatus('Restarting services…');
     const pollStart = Date.now();
 
-    await new Promise((resolve) => {
+    await new Promise(resolve => {
       const timer = setInterval(async () => {
         const elapsed = Date.now() - pollStart;
         setProgress(25 + 65 * Math.min(elapsed / RELOAD_TIMEOUT_MS, 1));
@@ -781,7 +848,64 @@
     reviewBtn.disabled  = pending.size === 0;
     refreshPendingBadge();
     if (currentData) renderTabContent(currentData);
+    startTaskQueuePolling();
     setTimeout(closeReviewModal, 1200);
+  }
+
+  // ── Commit task-queue status bar ─────────────────────────────────────────
+
+  function renderTaskQueueBar(tasks) {
+    if (!taskQueueBar) return;
+
+    const active = tasks.filter(t => t.status === 'pending' || t.status === 'running');
+    if (active.length === 0) {
+      taskQueueBar.classList.remove('visible');
+      return;
+    }
+
+    taskQueueBar.classList.add('visible');
+    taskQueueBar.innerHTML = '';
+
+    active.forEach(t => {
+      const chip = document.createElement('div');
+      chip.className = `tq-chip tq-chip--${t.status}`;
+
+      const dot = document.createElement('span');
+      dot.className = 'tq-dot';
+
+      const label = document.createElement('span');
+      label.textContent = t.status === 'running'
+        ? `Task #${t.id}  Running…`
+        : `Task #${t.id}  Pending`;
+
+      chip.appendChild(dot);
+      chip.appendChild(label);
+      taskQueueBar.appendChild(chip);
+    });
+  }
+
+  async function pollTaskQueue() {
+    try {
+      const r = await fetchJSON('/api/settings/commit-queue');
+      if (!r) return;
+      const tasks = await r.json().catch(() => []);
+      renderTaskQueueBar(Array.isArray(tasks) ? tasks : []);
+
+      const anyActive = tasks.some(t => t.status === 'pending' || t.status === 'running');
+      if (!anyActive) {
+        clearInterval(taskQueuePollTimer);
+        taskQueuePollTimer = null;
+        // Refresh settings data once queue drains so values are up-to-date.
+        const dr = await fetchJSON('/api/settings');
+        if (dr && dr.ok) { const d = await dr.json(); render(d); }
+      }
+    } catch (_) { /* keep polling */ }
+  }
+
+  function startTaskQueuePolling() {
+    if (taskQueuePollTimer) return;
+    taskQueuePollTimer = setInterval(pollTaskQueue, 1000);
+    pollTaskQueue();
   }
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -809,12 +933,10 @@
     statusEl           = document.getElementById('settingsStatus');
     pageTitleEl        = document.getElementById('pageTitle');
     pageSubtitleEl     = document.getElementById('pageSubtitle');
-
     commitPendingBadge = document.getElementById('commitPendingBadge');
     commitPendingCount = document.getElementById('commitPendingCount');
     discardBtn         = document.getElementById('discardBtn');
     reviewBtn          = document.getElementById('reviewBtn');
-
     reviewOverlay      = document.getElementById('reviewOverlay');
     reviewCloseBtn     = document.getElementById('reviewCloseBtn');
     reviewCancelBtn    = document.getElementById('reviewCancelBtn');
@@ -825,12 +947,12 @@
     queueTotalBadge    = document.getElementById('queueTotalBadge');
     diffViewer         = document.getElementById('diffViewer');
     diffPanelHint      = document.getElementById('diffPanelHint');
+    taskQueueBar       = document.getElementById('taskQueueBar');
 
     if (!container) return;
-
     initTab();
 
-    // List editor modal
+    // List editor
     document.getElementById('listEditorSaveBtn')?.addEventListener('click', () => closeListEditor(true));
     document.getElementById('listEditorCancelBtn')?.addEventListener('click', () => closeListEditor(false));
     document.getElementById('listEditorCloseBtn')?.addEventListener('click', () => closeListEditor(false));
@@ -838,15 +960,25 @@
       if (e.target === document.getElementById('listEditorOverlay')) closeListEditor(false);
     });
 
+    // Edit panel
+    document.getElementById('stEditCloseBtn')?.addEventListener('click', closeEditPanel);
+    document.getElementById('stEditCancelBtn')?.addEventListener('click', closeEditPanel);
+    document.getElementById('stEditApplyBtn')?.addEventListener('click', applyEditPanel);
+    document.getElementById('stEditBackdrop')?.addEventListener('click', closeEditPanel);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        if (document.getElementById('stEditPanel')?.classList.contains('visible')) closeEditPanel();
+        else if (reviewOverlay?.classList.contains('visible')) closeReviewModal();
+      }
+    });
+
+    // Commit flow
     discardBtn?.addEventListener('click', discardAll);
     reviewBtn?.addEventListener('click', openReviewModal);
     reviewCancelBtn?.addEventListener('click', closeReviewModal);
     reviewCloseBtn?.addEventListener('click', closeReviewModal);
     reviewOverlay?.addEventListener('click', e => { if (e.target === reviewOverlay) closeReviewModal(); });
     commitBtn?.addEventListener('click', commitChanges);
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && reviewOverlay?.classList.contains('visible')) closeReviewModal();
-    });
 
     load();
   });

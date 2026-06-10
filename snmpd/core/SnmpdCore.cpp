@@ -35,6 +35,13 @@ bool SnmpdCore::onInit()
 
     LOG_INFO("snmpd: starting up");
 
+    m_snmpEngine = std::make_unique<SnmpEngine>();
+    if (!m_snmpEngine->init())
+    {
+        LOG_ERROR("failed to initialize SnmpEngine");
+        return false;
+    }
+
     m_threadManager = std::make_unique<pz::util::ThreadManager>();
     if (!m_threadManager)
     {
@@ -54,7 +61,8 @@ bool SnmpdCore::onInit()
     m_actionFactory = std::make_unique<SnmpdActionFactory>();
 
     m_rxRouter = std::make_unique<SnmpdRxRouter>(m_eventFactory.get());
-    m_txRouter = std::make_unique<SnmpdTxRouter>(m_ipcClient->handler());
+    m_txRouter = std::make_unique<SnmpdTxRouter>(m_ipcClient->handler(),
+                                                  m_snmpEngine.get());
 
     if (!m_txRouter or !m_rxRouter)
     {
@@ -73,7 +81,9 @@ bool SnmpdCore::onInit()
         return false;
     }
 
-    m_process = std::make_unique<SnmpdProcess>(m_ipcClient.get(), m_serviceManager.get());
+    m_process = std::make_unique<SnmpdProcess>(m_ipcClient.get(),
+                                               m_serviceManager.get(),
+                                               m_snmpEngine.get());
 
     if (!m_process)
     {
@@ -82,8 +92,10 @@ bool SnmpdCore::onInit()
     }
 
     m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
-
     m_rxRouter->setServiceManager(m_serviceManager.get());
+
+    // Bind SnmpEngineHandler so it can deliver results back to the RxRouter.
+    m_snmpEngine->handler()->setRxRouter(m_rxRouter.get());
 
     return true;
 }
@@ -108,9 +120,7 @@ void SnmpdCore::onShutdown()
     LOG_INFO("shutting down");
 
     if (m_threadManager)
-    {
         m_threadManager->stopAll();
-    }
 
     LOG_INFO("all threads stopped");
 

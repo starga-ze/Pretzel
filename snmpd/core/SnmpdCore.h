@@ -11,6 +11,7 @@
 #include "service/SnmpdServiceManager.h"
 #include "event/SnmpdEventFactory.h"
 #include "action/SnmpdActionFactory.h"
+#include "snmp/SnmpEngine.h"
 
 #include "config/ConfigTypes.h"
 
@@ -35,6 +36,8 @@ private:
 
     std::unique_ptr<pz::util::ThreadManager> m_threadManager;
     std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
+
+    std::unique_ptr<SnmpEngine> m_snmpEngine;
 
     std::unique_ptr<SnmpdProcess> m_process;
 

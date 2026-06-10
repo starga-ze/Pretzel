@@ -31,7 +31,7 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    LOG_DEBUG("recv cmd={} src={}",
+    LOG_TRACE("recv cmd={} src={}",
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
@@ -49,7 +49,7 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     }
 
     default:
-        LOG_DEBUG("bypass routing cmd={}", pz::ipc::IpcProtocol::cmdToStr(cmd));
+        LOG_TRACE("bypass routing cmd={}", pz::ipc::IpcProtocol::cmdToStr(cmd));
         m_txRouter->handleIpcMessage(std::move(msg));
         break;
     }

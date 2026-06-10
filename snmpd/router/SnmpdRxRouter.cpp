@@ -1,5 +1,7 @@
 #include "router/SnmpdRxRouter.h"
 
+#include "service/scan/ScanEvent.h"
+
 #include "core/Core.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -35,6 +37,22 @@ void SnmpdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
     std::unique_ptr<SnmpdEvent> event = m_eventFactory->create(std::move(msg));
 
+    m_serviceManager->postEvent(std::move(event));
+}
+
+void SnmpdRxRouter::handleSnmpScanComplete(std::vector<SnmpDevice> devices)
+{
+    if (!m_serviceManager)
+    {
+        LOG_WARN("SnmpdRxRouter: serviceManager is nullptr, dropping scan results");
+        return;
+    }
+
+    LOG_DEBUG("SnmpdRxRouter: posting ScanComplete event devices={}",
+              devices.size());
+
+    auto event = std::make_unique<ScanEvent>(ScanEventType::ScanComplete,
+                                             std::move(devices));
     m_serviceManager->postEvent(std::move(event));
 }
 

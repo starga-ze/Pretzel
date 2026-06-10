@@ -56,7 +56,7 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
 
         m_hasData.store(true, std::memory_order_relaxed);
 
-        LOG_DEBUG("updated heartbeat result len={}", m_latestJson.size());
+        LOG_TRACE("updated heartbeat result len={}", m_latestJson.size());
 
         // Persist the runtime-determined heartbeat snapshot as mgmtd's running-config,
         // distinct from the operational running-config.
@@ -93,7 +93,7 @@ void HeartbeatService::handleAction(MgmtdServiceManager& serviceManager,
 
         auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-        LOG_DEBUG("Tx HeartbeatResponse dst={}",
+        LOG_TRACE("Tx HeartbeatResponse dst={}",
                   pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));

@@ -10,6 +10,7 @@
 #include "service/metrics/MetricService.h"
 #include "service/probe/ProbeService.h"
 #include "service/heartbeat/HeartbeatService.h"
+#include "service/snmp/SnmpService.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -48,6 +49,7 @@ public:
     BootstrapService& bootstrapService();
     ProbeService& probeService();
     HeartbeatService& heartbeatService();
+    SnmpService& snmpService();
 
     MgmtdTxRouter& txRouter();
 
@@ -63,6 +65,9 @@ public:
     ReloadStatus reloadStatus() const;
     std::int64_t reloadElapsedMs() const;
 
+    void        setCommitQueue(std::string snapshotJson);
+    std::string commitQueueSnapshot() const;
+
 private:
     MgmtdEventFactory* m_eventFactory{nullptr};
     MgmtdActionFactory* m_actionFactory{nullptr};
@@ -73,6 +78,7 @@ private:
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<ProbeService> m_probeService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
+    std::unique_ptr<SnmpService> m_snmpService;
 
     std::queue<std::unique_ptr<MgmtdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<MgmtdAction>> m_actionQueue;
@@ -82,6 +88,9 @@ private:
     std::vector<std::string>   m_aliveIps;
     std::atomic<int>           m_reloadStatus{static_cast<int>(ReloadStatus::Idle)};
     std::chrono::steady_clock::time_point m_reloadStartedAt{};
+
+    mutable std::mutex m_commitQueueMutex;
+    std::string        m_commitQueueSnapshot{"[]"};
 };
 
 } // namespace pz::mgmtd

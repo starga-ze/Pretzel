@@ -18,6 +18,7 @@ from script.utils import (
     JSON_VERSION, JSON_DIR, JSON_INSTALL, JSON_TAR, JSON_SRC_PATH,
     PROMETHEUS_VERSION, PROMETHEUS_DIR, PROMETHEUS_TAR, PROMETHEUS_SRC_PATH,
     NODE_EXPORTER_VERSION, NODE_EXPORTER_DIR, NODE_EXPORTER_TAR, NODE_EXPORTER_SRC_PATH,
+    PG_SERVICE, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
 )
 
 def install_openssl():
@@ -163,6 +164,71 @@ def install_grafana():
     print("[*] Grafana installation complete.")
 
 
+def is_postgresql_installed():
+    """Checks whether the PostgreSQL client/server is already installed."""
+    return shutil.which("psql") is not None
+
+
+def _pg_row_exists(check_sql):
+    """Runs a SELECT as the postgres superuser; True if it returns a '1' row."""
+    out = subprocess.run(
+        ["sudo", "-u", "postgres", "psql", "-tAc", check_sql],
+        capture_output=True, text=True,
+    )
+    return out.returncode == 0 and out.stdout.strip() == "1"
+
+
+def provision_postgresql():
+    """
+    Idempotently creates the dedicated 'pretzel' login role and database.
+    Run as the 'postgres' superuser via peer auth; pz-mgmtd later connects to
+    this role over localhost TCP using the password in running-config.json.
+    """
+    # 1. Login role
+    if _pg_row_exists(f"SELECT 1 FROM pg_roles WHERE rolname='{PG_DB_USER}'"):
+        print(f"[*] PostgreSQL role '{PG_DB_USER}' already exists, skipping...")
+    else:
+        run_cmd(
+            ["sudo", "-u", "postgres", "psql", "-c",
+             f"CREATE ROLE {PG_DB_USER} LOGIN PASSWORD '{PG_DB_PASSWORD}'"],
+            msg=f"Creating PostgreSQL role '{PG_DB_USER}'",
+        )
+
+    # 2. Database owned by that role
+    if _pg_row_exists(f"SELECT 1 FROM pg_database WHERE datname='{PG_DB_NAME}'"):
+        print(f"[*] PostgreSQL database '{PG_DB_NAME}' already exists, skipping...")
+    else:
+        run_cmd(
+            ["sudo", "-u", "postgres", "createdb", "-O", PG_DB_USER, PG_DB_NAME],
+            msg=f"Creating PostgreSQL database '{PG_DB_NAME}' (owner={PG_DB_USER})",
+        )
+
+
+def install_postgresql():
+    """
+    Installs PostgreSQL server + client dev library (libpq-dev for the C++ layer)
+    via APT and provisions the pretzel role/database. The server runs under the
+    distro-managed postgresql.service (not wrapped as a pz-* unit).
+    """
+    if is_postgresql_installed():
+        print("[*] PostgreSQL already installed, skipping apt install...")
+    else:
+        print("[*] Installing PostgreSQL...")
+        run_cmd(["sudo", "apt", "update"])
+        run_cmd(["sudo", "apt", "install", "-y",
+                 "postgresql", "postgresql-contrib", "libpq-dev"])
+        if not is_postgresql_installed():
+            print("[ERROR] PostgreSQL installation failed.")
+            sys.exit(1)
+
+    # The cluster must be up to provision the role/database.
+    run_cmd(["sudo", "systemctl", "enable", "--now", PG_SERVICE],
+            msg="Enabling and starting postgresql.service")
+
+    provision_postgresql()
+    print("[*] PostgreSQL installation complete.")
+
+
 def get_gpp_version():
     """Extracts the major version of the currently installed g++ compiler."""
     try:
@@ -226,7 +292,8 @@ def run():
     install_prometheus()
     install_node_exporter()
     install_grafana()
-    
+    install_postgresql()
+
     print("[*] All dependencies installed successfully.")
 
 if __name__ == "__main__":

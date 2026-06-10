@@ -4,6 +4,7 @@
 
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
+#include "service/scan/ScanService.h"
 
 #include "router/SnmpdTxRouter.h"
 
@@ -32,6 +33,7 @@ public:
 
     BootstrapService& bootstrapService();
     HeartbeatService& heartbeatService();
+    ScanService& scanService();
 
     SnmpdTxRouter& txRouter();
 
@@ -42,6 +44,7 @@ private:
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
+    std::unique_ptr<ScanService>      m_scanService;
 
     std::queue<std::unique_ptr<SnmpdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<SnmpdAction>> m_actionQueue;

@@ -1,5 +1,6 @@
 #include "service/MgmtdServiceManager.h"
 
+#include "config/Config.h"
 #include "util/Logger.h"
 
 #include <chrono>
@@ -15,7 +16,8 @@ MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory,
       m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_probeService(std::make_unique<ProbeService>()),
-      m_heartbeatService(std::make_unique<HeartbeatService>())
+      m_heartbeatService(std::make_unique<HeartbeatService>()),
+      m_snmpService(std::make_unique<SnmpService>())
 {
 }
 
@@ -102,6 +104,11 @@ HeartbeatService& MgmtdServiceManager::heartbeatService()
     return *m_heartbeatService;
 }
 
+SnmpService& MgmtdServiceManager::snmpService()
+{
+    return *m_snmpService;
+}
+
 MgmtdTxRouter& MgmtdServiceManager::txRouter()
 {
     return *m_txRouter;
@@ -127,6 +134,9 @@ void MgmtdServiceManager::startReload()
 
 void MgmtdServiceManager::completeReload()
 {
+    // Invalidate mgmtd's own config cache so the next /api/settings read
+    // picks up the values that engined just persisted to disk.
+    pz::config::Config::invalidateConfigCache();
     m_reloadStatus.store(static_cast<int>(ReloadStatus::Complete), std::memory_order_release);
     LOG_INFO("reload complete elapsed={}ms", reloadElapsedMs());
 }
@@ -142,6 +152,18 @@ std::int64_t MgmtdServiceManager::reloadElapsedMs() const
         return 0;
     const auto elapsed = std::chrono::steady_clock::now() - m_reloadStartedAt;
     return std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+}
+
+void MgmtdServiceManager::setCommitQueue(std::string snapshotJson)
+{
+    std::lock_guard<std::mutex> lk(m_commitQueueMutex);
+    m_commitQueueSnapshot = std::move(snapshotJson);
+}
+
+std::string MgmtdServiceManager::commitQueueSnapshot() const
+{
+    std::lock_guard<std::mutex> lk(m_commitQueueMutex);
+    return m_commitQueueSnapshot;
 }
 
 void MgmtdServiceManager::setAliveDevices(std::uint32_t count)

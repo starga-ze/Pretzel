@@ -27,7 +27,7 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    LOG_DEBUG("recv cmd={} src={}",
+    LOG_TRACE("recv cmd={} src={}",
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
@@ -35,6 +35,29 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     {
         LOG_INFO("config reload acknowledged by engined");
         m_serviceManager->completeReload();
+        return;
+    }
+
+    if (msg->getCmd() == pz::ipc::IpcCmd::CommitQueueStatus)
+    {
+        const auto& pl = msg->getPayload();
+        if (!pl.empty())
+        {
+            m_serviceManager->setCommitQueue(std::string(pl.begin(), pl.end()));
+            LOG_DEBUG("commit queue snapshot updated");
+        }
+        return;
+    }
+
+    if (msg->getCmd() == pz::ipc::IpcCmd::SnmpResult)
+    {
+        const auto& pl = msg->getPayload();
+        if (!pl.empty())
+        {
+            m_serviceManager->snmpService().handleSnmpResult(
+                std::string(pl.begin(), pl.end()));
+            LOG_DEBUG("SNMP result processed");
+        }
         return;
     }
 

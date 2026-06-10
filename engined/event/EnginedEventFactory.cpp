@@ -1,6 +1,7 @@
 #include "event/EnginedEventFactory.h"
 
 #include "service/bootstrap/BootstrapEvent.h"
+#include "service/commit/CommitEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 
 #include "util/Logger.h"
@@ -22,6 +23,9 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(EnginedEventDomain dom
 
     case EnginedEventDomain::Heartbeat:
         return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
+
+    case EnginedEventDomain::Commit:
+        return std::make_unique<CommitEvent>(static_cast<CommitEventType>(type));
 
     default:
         LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
@@ -51,6 +55,9 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
     case pz::ipc::IpcCmd::HeartbeatResponse:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResponse,
                                                std::move(msg));
+
+    case pz::ipc::IpcCmd::SettingsCommitRequest:
+        return std::make_unique<CommitEvent>(CommitEventType::ReceiveSettingsCommit, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));

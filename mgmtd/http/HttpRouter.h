@@ -37,6 +37,7 @@ private:
     Response handleSettingsGet      (const Request& req);
     Response handleSettingsCommit   (const Request& req);
     Response handleReloadStatus     (const Request& req);
+    Response handleCommitQueue      (const Request& req);
     Response handleDevices          (const Request& req);
     Response handleLogs             (const Request& req);
     Response handleNodeMetrics      (const Request& req);

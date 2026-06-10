@@ -1,8 +1,9 @@
 [Unit]
 Description=PZ Management Daemon
 
-After=pz-ipcd.service
+After=pz-ipcd.service postgresql.service
 Requires=pz-ipcd.service
+Wants=postgresql.service
 PartOf=pretzel.target
 
 [Service]

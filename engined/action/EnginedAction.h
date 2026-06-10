@@ -15,7 +15,8 @@ enum class EnginedActionDomain : std::uint32_t
 {
     Unknown   = 0,
     Bootstrap = 1,
-    Heartbeat = 2
+    Heartbeat = 2,
+    Commit    = 3,
 };
 
 class EnginedAction : public pz::action::Action

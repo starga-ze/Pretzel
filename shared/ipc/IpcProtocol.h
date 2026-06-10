@@ -57,6 +57,21 @@ enum class IpcCmd : std::uint16_t
 
     // Unicast from engined to each service daemon: restart via execv.
     ConfigReload      = 107,
+
+    // Unicast from mgmtd to engined: payload = changes JSON array.
+    // Engined persists config, fans out ConfigReload, and replies with
+    // ConfigReloadResponse when all service daemons are back up.
+    SettingsCommitRequest = 110,
+
+    // Unicast from engined to mgmtd: payload = commit-queue snapshot JSON.
+    // Sent whenever the queue changes (task added, started, completed, failed).
+    CommitQueueStatus = 111,
+
+    // Unicast from mgmtd to snmpd: payload = JSON {"ips":["..."]} to scan.
+    SnmpScanRequest = 112,
+
+    // Unicast from snmpd to mgmtd: payload = JSON {"devices":[...]} results.
+    SnmpResult = 113,
 };
 
 enum class IpcFlag : std::uint8_t

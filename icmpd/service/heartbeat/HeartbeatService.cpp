@@ -60,7 +60,7 @@ void HeartbeatService::handleAction(IcmpdServiceManager& serviceManager,
 
         auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-        LOG_DEBUG("Tx HeartbeatResponse dst={}",
+        LOG_TRACE("Tx HeartbeatResponse dst={}",
                   pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));

@@ -1,6 +1,7 @@
 #include "service/bootstrap/BootstrapService.h"
 
 #include "service/EnginedServiceManager.h"
+#include "service/commit/CommitEvent.h"
 #include "event/EnginedEventFactory.h"
 #include "action/EnginedActionFactory.h"
 #include "router/EnginedTxRouter.h"
@@ -284,6 +285,13 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
             m_isReload = false;
             LOG_INFO("Tx ConfigReloadResponse to mgmtd");
             serviceManager.txRouter().handleIpcMessage(buildConfigReloadResponse());
+
+            // Notify CommitService that the reload cycle is complete so it can
+            // dequeue the next pending task.
+            auto doneEvent = serviceManager.eventFactory()->create(
+                EnginedEventDomain::Commit,
+                static_cast<std::uint32_t>(CommitEventType::ReloadComplete));
+            serviceManager.postEvent(std::move(doneEvent));
         }
         return;
     }

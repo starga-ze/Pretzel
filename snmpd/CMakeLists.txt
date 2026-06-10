@@ -12,4 +12,5 @@ target_link_libraries(pz-snmpd PRIVATE
     pz-shared
     spdlog::spdlog
     Threads::Threads
+    netsnmp
 )

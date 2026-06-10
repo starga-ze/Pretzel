@@ -113,6 +113,15 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
         return handleReloadStatus(req);
     }
 
+    if (target == "/api/settings/commit-queue" && req.method() == http::verb::get)
+    {
+        if (!isAuthenticated(req))
+        {
+            return unauthorized(req.version(), req.keep_alive());
+        }
+        return handleCommitQueue(req);
+    }
+
     if (target == "/api/devices" && req.method() == http::verb::get)
     {
         if (!isAuthenticated(req))
@@ -396,15 +405,15 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
 
     const json& changes = input["changes"];
 
-    json results = json::array();
-    int applied  = 0;
-    int failed   = 0;
+    // Validate entries up-front; reject entirely if any are malformed.
+    json validChanges = json::array();
+    int failed = 0;
 
     for (const auto& change : changes)
     {
         if (!change.contains("daemon") || !change.contains("domain") || !change.contains("values"))
         {
-            results.push_back({{"status", "error"}, {"error", "missing daemon/domain/values"}});
+            LOG_WARN("Mgmtd handleSettingsCommit: skipping entry missing daemon/domain/values");
             failed++;
             continue;
         }
@@ -415,8 +424,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
 
         if (!values.is_object())
         {
-            results.push_back({{"daemon", daemon}, {"domain", domain},
-                               {"status", "error"}, {"error", "values must be an object"}});
+            LOG_WARN("Mgmtd handleSettingsCommit: values not object daemon={} domain={}", daemon, domain);
             failed++;
             continue;
         }
@@ -427,39 +435,31 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
 
         if (!knownDaemon)
         {
-            results.push_back({{"daemon", daemon}, {"domain", domain},
-                               {"status", "error"}, {"error", "unknown daemon"}});
+            LOG_WARN("Mgmtd handleSettingsCommit: unknown daemon={}", daemon);
             failed++;
             continue;
         }
 
-        if (!pz::config::Config::updateTuning(daemon, domain, values))
-        {
-            results.push_back({{"daemon", daemon}, {"domain", domain},
-                               {"status", "error"}, {"error", "failed to persist"}});
-            failed++;
-            continue;
-        }
-
-        LOG_INFO("Mgmtd settings committed daemon={} domain={} keys={}", daemon, domain, values.size());
-        results.push_back({{"daemon", daemon}, {"domain", domain}, {"status", "ok"}});
-        applied++;
+        validChanges.push_back(change);
     }
 
-    // Delegate the service-layer restart to engined: a single ConfigReloadRequest
-    // unicast is enough — engined fans it out to authd/icmpd/snmpd/topologyd and
-    // then restarts itself, ensuring a clean coordinated re-bootstrap.
+    const int applied = static_cast<int>(validChanges.size());
+
+    // Forward valid changes to engined as SettingsCommitRequest.
+    // engined owns persistence (Config::updateTuning) and service-layer restart.
     if (applied > 0 && m_serviceManager)
     {
+        const std::string payload = validChanges.dump();
         auto msg = std::make_unique<pz::ipc::IpcMessage>();
         msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
         msg->setDst(pz::ipc::IpcDaemon::Engined);
-        msg->setCmd(pz::ipc::IpcCmd::ConfigReloadRequest);
+        msg->setCmd(pz::ipc::IpcCmd::SettingsCommitRequest);
         msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+        msg->setPayload(std::vector<uint8_t>(payload.begin(), payload.end()));
 
         m_serviceManager->txRouter().handleIpcMessage(std::move(msg));
         m_serviceManager->startReload();
-        LOG_INFO("Mgmtd ConfigReloadRequest sent to engined ({} change(s) applied)", applied);
+        LOG_INFO("Mgmtd SettingsCommitRequest sent to engined ({} change(s))", applied);
     }
 
     const http::status status = (failed == 0)
@@ -469,7 +469,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
     json body;
     body["applied"]   = applied;
     body["failed"]    = failed;
-    body["results"]   = results;
+    body["results"]   = json::array();
     body["reloading"] = (applied > 0);
 
     return makeResponse(status,
@@ -506,6 +506,19 @@ HttpRouter::Response HttpRouter::handleReloadStatus(const Request& req)
     return makeResponse(http::status::ok, body.dump(),
                         "application/json; charset=utf-8",
                         req.version(), req.keep_alive());
+}
+
+HttpRouter::Response HttpRouter::handleCommitQueue(const Request& req)
+{
+    const std::string snapshot = m_serviceManager
+        ? m_serviceManager->commitQueueSnapshot()
+        : "[]";
+
+    return makeResponse(http::status::ok,
+                        snapshot,
+                        "application/json; charset=utf-8",
+                        req.version(),
+                        req.keep_alive());
 }
 
 HttpRouter::Response HttpRouter::handleStatic(const Request& req)
@@ -611,16 +624,36 @@ HttpRouter::Response HttpRouter::handleDevices(const Request& req)
 
     if (m_serviceManager)
     {
-        const auto ips = m_serviceManager->aliveIps();
+        const auto ips      = m_serviceManager->aliveIps();
+        const auto snmpDevs = m_serviceManager->snmpService().devices();
+
         for (const auto& ip : ips)
         {
-            devices.push_back({
-                {"ip",          ip},
-                {"hostname",    ""},
-                {"device_name", ""},
-                {"vendor",      ""},
-                {"status",      "alive"},
-            });
+            json dev;
+            dev["ip"]     = ip;
+            dev["status"] = "alive";
+
+            const auto it = snmpDevs.find(ip);
+            if (it != snmpDevs.end())
+            {
+                const auto& s = it->second;
+                dev["hostname"]          = s.sysName;
+                dev["device_name"]       = s.sysName;
+                dev["vendor"]            = "";
+                dev["sys_descr"]         = s.sysDescr;
+                dev["sys_object_id"]     = s.sysObjectId;
+                dev["sys_contact"]       = s.sysContact;
+                dev["sys_location"]      = s.sysLocation;
+                dev["sys_up_time_ticks"] = s.sysUpTimeTicks;
+            }
+            else
+            {
+                dev["hostname"]    = "";
+                dev["device_name"] = "";
+                dev["vendor"]      = "";
+            }
+
+            devices.push_back(std::move(dev));
         }
     }
 

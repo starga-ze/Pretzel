@@ -75,9 +75,13 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::HeartbeatResponse: return "HeartbeatResponse";
     case IpcCmd::HeartbeatResult:   return "HeartbeatResult";
     case IpcCmd::ConfigReload:         return "ConfigReload";
-    case IpcCmd::ConfigReloadRequest:  return "ConfigReloadRequest";
-    case IpcCmd::ConfigReloadResponse: return "ConfigReloadResponse";
-    default:                          return "Unknown";
+    case IpcCmd::ConfigReloadRequest:   return "ConfigReloadRequest";
+    case IpcCmd::ConfigReloadResponse:  return "ConfigReloadResponse";
+    case IpcCmd::SettingsCommitRequest: return "SettingsCommitRequest";
+    case IpcCmd::CommitQueueStatus:     return "CommitQueueStatus";
+    case IpcCmd::SnmpScanRequest:       return "SnmpScanRequest";
+    case IpcCmd::SnmpResult:            return "SnmpResult";
+    default:                            return "Unknown";
     }
 }
 

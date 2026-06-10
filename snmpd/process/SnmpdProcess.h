@@ -4,6 +4,7 @@
 
 #include "ipc/IpcClient.h"
 #include "service/SnmpdServiceManager.h"
+#include "snmp/SnmpEngine.h"
 
 #include <chrono>
 
@@ -14,7 +15,8 @@ class SnmpdProcess : public pz::process::Process
 {
 public:
     SnmpdProcess(pz::ipc::IpcClient* ipcClient,
-                 SnmpdServiceManager* serviceManager);
+                 SnmpdServiceManager* serviceManager,
+                 SnmpEngine* snmpEngine);
     ~SnmpdProcess() override = default;
 
     bool start() override;
@@ -23,6 +25,7 @@ public:
 private:
     pz::ipc::IpcClient* m_ipcClient;
     SnmpdServiceManager* m_serviceManager;
+    SnmpEngine* m_snmpEngine;
 };
 
 } // namespace pz::snmpd

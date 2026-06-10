@@ -14,6 +14,7 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory,
       m_actionFactory(actionFactory),
       m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
+      m_commitService(std::make_unique<CommitService>()),
       m_heartbeatService(std::make_unique<HeartbeatService>())
 {
 }
@@ -81,6 +82,11 @@ BootstrapService& EnginedServiceManager::bootstrapService()
     return *m_bootstrapService;
 }
 
+CommitService& EnginedServiceManager::commitService()
+{
+    return *m_commitService;
+}
+
 HeartbeatService& EnginedServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
@@ -89,6 +95,16 @@ HeartbeatService& EnginedServiceManager::heartbeatService()
 EnginedTxRouter& EnginedServiceManager::txRouter()
 {
     return *m_txRouter;
+}
+
+EnginedEventFactory* EnginedServiceManager::eventFactory()
+{
+    return m_eventFactory;
+}
+
+EnginedActionFactory* EnginedServiceManager::actionFactory()
+{
+    return m_actionFactory;
 }
 
 } // namespace pz::engined

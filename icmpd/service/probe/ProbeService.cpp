@@ -433,7 +433,7 @@ void ProbeService::onEchoReply(const ProbeEvent& event)
 
     target.alive = true;
 
-    LOG_DEBUG("reachable ip={}", srcIp);
+    LOG_TRACE("reachable ip={}", srcIp);
 }
 
 void ProbeService::completeProbeSession()
@@ -469,7 +469,7 @@ void ProbeService::completeProbeSession()
                  now - m_probeStartedAt).count());
 
     for (const auto& ip : aliveIps)
-        LOG_DEBUG("reachable ip={}", ip);
+        LOG_TRACE("reachable ip={}", ip);
 
     m_lastProbeCompletedAt = now;
     m_state = State::Idle;

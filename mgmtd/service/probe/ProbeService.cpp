@@ -1,6 +1,9 @@
 #include "service/probe/ProbeService.h"
 #include "service/MgmtdServiceManager.h"
 
+#include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
+
 #include "util/Logger.h"
 #include <nlohmann/json.hpp>
 
@@ -58,7 +61,30 @@ void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
         LOG_INFO("ProbeResult alive={} ips={}", aliveCount, ips.size());
 
         serviceManager.setAliveDevices(aliveCount);
-        serviceManager.setAliveIps(std::move(ips));
+        serviceManager.setAliveIps(ips);
+
+        // Forward IP list to snmpd for SNMP scanning
+        if (!ips.empty())
+        {
+            nlohmann::json scanReq;
+            scanReq["ips"] = ips;
+            const std::string scanJson = scanReq.dump();
+            std::vector<uint8_t> scanPayload(scanJson.begin(), scanJson.end());
+
+            auto scanHeader = pz::ipc::IpcHeader::build(
+                pz::ipc::IpcDaemon::Mgmtd,
+                pz::ipc::IpcDaemon::Snmpd,
+                pz::ipc::IpcCmd::SnmpScanRequest,
+                static_cast<uint32_t>(scanPayload.size()),
+                pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::None));
+
+            auto scanMsg = std::make_unique<pz::ipc::IpcMessage>(
+                std::move(scanHeader), std::move(scanPayload));
+
+            LOG_DEBUG("ProbeService: forwarding {} IPs to snmpd for SNMP scan", ips.size());
+
+            serviceManager.txRouter().handleIpcMessage(std::move(scanMsg));
+        }
         break;
     }
 

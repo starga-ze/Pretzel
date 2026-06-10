@@ -289,8 +289,8 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 
     if (m_state != State::WaitRuntimeStart)
     {
-        LOG_WARN("RuntimeStart in unexpected state={}",
-                 static_cast<int>(m_state));
+        LOG_DEBUG("RuntimeStart received in state={} — ignoring (expected after config reload)",
+                  static_cast<int>(m_state));
         return;
     }
 

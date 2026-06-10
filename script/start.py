@@ -14,6 +14,7 @@ import time
 from script.utils import (
     ROOT_DIR, BUILD_DIR, CERT_DIR, run_cmd, install_file,
     PROMETHEUS_SRC_PATH, NODE_EXPORTER_SRC_PATH,
+    PG_SERVICE, PG_DB_HOST, PG_DB_PORT,
 )
 
 # List of child systemd services targeted for start/restart
@@ -109,6 +110,34 @@ def pre_flight_checks():
     # 4. Validate Grafana binary installation (assumes installation via OS package manager)
     if not any(os.path.exists(p) for p in ["/usr/share/grafana/bin/grafana", "/usr/sbin/grafana-server"]):
         sys.exit("[ERROR] Grafana binary not found. Install first: sudo apt install -y grafana")
+
+    # 5. Validate PostgreSQL is installed (server + client). Provisioned by install.
+    if shutil.which("psql") is None:
+        sys.exit("[ERROR] PostgreSQL not found. Install first: ./pretzel install")
+
+
+def ensure_postgresql():
+    """
+    Ensures the PostgreSQL cluster (distro-managed postgresql.service) is enabled
+    and accepting connections BEFORE the pz daemons that depend on it are started.
+    postgresql.service is intentionally NOT PartOf pretzel.target, so it survives
+    `./pretzel stop` and every deploy cycle (the DB must persist across restarts).
+    """
+    print("[*] Ensuring PostgreSQL is up...")
+    run_cmd(["systemctl", "enable", "--now", PG_SERVICE], msg=f"Enabling {PG_SERVICE}")
+
+    # Wait until the cluster accepts TCP connections (pz-mgmtd connects via localhost).
+    for _ in range(30):
+        ready = subprocess.run(
+            ["pg_isready", "-q", "-h", PG_DB_HOST, "-p", str(PG_DB_PORT)],
+            check=False,
+        )
+        if ready.returncode == 0:
+            print("[*] PostgreSQL is ready.")
+            return
+        time.sleep(0.5)
+
+    print("[WARN] PostgreSQL not ready in time; pz-mgmtd will retry its DB connection.")
 
 
 def stop_services():
@@ -206,9 +235,10 @@ def run():
     """Main orchestration logic for the deployment pipeline."""
     pre_flight_checks()
     
-    # [CRITICAL ORDER] Stop services -> Overwrite new files -> Start services
+    # [CRITICAL ORDER] Stop services -> Overwrite new files -> Ensure DB -> Start services
     stop_services()
     deploy_files()
+    ensure_postgresql()   # bring the DB up before pz daemons that depend on it
     start_services()
 
 if __name__ == "__main__":

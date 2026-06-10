@@ -14,7 +14,8 @@ SnmpdServiceManager::SnmpdServiceManager(SnmpdEventFactory* eventFactory,
       m_actionFactory(actionFactory),
       m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_heartbeatService(std::make_unique<HeartbeatService>())
+      m_heartbeatService(std::make_unique<HeartbeatService>()),
+      m_scanService(std::make_unique<ScanService>())
 {
 }
 
@@ -32,6 +33,7 @@ void SnmpdServiceManager::schedule()
         postEvent(m_bootstrapService->schedule(now));
         return;
     }
+
 }
 
 void SnmpdServiceManager::postEvent(std::unique_ptr<SnmpdEvent> event)
@@ -81,6 +83,11 @@ BootstrapService& SnmpdServiceManager::bootstrapService()
 HeartbeatService& SnmpdServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
+}
+
+ScanService& SnmpdServiceManager::scanService()
+{
+    return *m_scanService;
 }
 
 SnmpdTxRouter& SnmpdServiceManager::txRouter()
