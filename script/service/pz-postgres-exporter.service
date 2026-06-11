@@ -6,10 +6,11 @@ PartOf=pretzel.target
 
 [Service]
 Type=simple
-# DATA_SOURCE_NAME MUST match PG_DB_* in script/utils.py and the "database" block
-# in running-config.json. The pretzel role is granted pg_monitor at install time
-# so the exporter can read the full pg_stat_* views.
-Environment="DATA_SOURCE_NAME=postgresql://pretzel:pretzel@127.0.0.1:5432/pretzel?sslmode=disable"
+# DATA_SOURCE_NAME embeds the DB password, so it is NOT hardcoded here. script/start.py
+# generates /etc/pretzel/postgres-exporter.env (0600, gitignored) from PG_DB_PASSWORD —
+# keeping it in lockstep with the role and out of version control. The pretzel role is
+# granted pg_monitor at install time so the exporter can read the full pg_stat_* views.
+EnvironmentFile=/etc/pretzel/postgres-exporter.env
 ExecStart=/opt/pretzel/bin/postgres_exporter \
   --web.listen-address=0.0.0.0:9187
 

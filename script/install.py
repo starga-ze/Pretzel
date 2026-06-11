@@ -249,6 +249,27 @@ def install_libpq_dev():
     run_cmd(["sudo", "apt", "install", "-y", "libpq-dev"])
 
 
+def is_libsnmp_dev_installed():
+    """Checks whether the Net-SNMP dev headers (net-snmp-config.h) are present."""
+    return os.path.exists("/usr/include/net-snmp/net-snmp-config.h")
+
+
+def install_libsnmp_dev():
+    """
+    Installs ONLY the Net-SNMP dev library (libsnmp-dev) — the headers/lib that
+    pz-snmpd compiles against (#include <net-snmp/...>) and links against (-lnetsnmp,
+    see snmpd/CMakeLists.txt). Same build-time-only pattern as install_libpq_dev():
+    a distro dev package rather than a from-source 3rd_party build.
+    """
+    if is_libsnmp_dev_installed():
+        print("[*] libsnmp-dev already present, skipping...")
+        return
+
+    print("[*] Installing libsnmp-dev (Net-SNMP headers)...")
+    run_cmd(["sudo", "apt", "update"])
+    run_cmd(["sudo", "apt", "install", "-y", "libsnmp-dev"])
+
+
 def install_postgresql():
     """
     Installs PostgreSQL server + client dev library (libpq-dev for the C++ layer)
@@ -370,6 +391,7 @@ def install_build_deps():
     """
     install_system_packages()
     install_libpq_dev()
+    install_libsnmp_dev()
     install_openssl()
     install_spdlog()
     install_boost()

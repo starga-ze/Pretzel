@@ -1,0 +1,180 @@
+{
+  "//": "TEMPLATE — copy to startup-config.json and fill in real secrets. The real",
+  "//startup-config.json": "is gitignored and never committed. Fields marked",
+  "//CHANGE_ME": "must be set before going to production. The mgmtd 'database.password'",
+  "//database": "is injected at deploy time from PZ_PG_PASSWORD (see script/utils.py),",
+  "//so": "the value here is only a placeholder/fallback.",
+
+  "global": {
+    "system": {
+      "ipc": {
+        "socket_path": "/run/pretzel/ipcd.sock",
+        "max_connections": 128,
+        "max_frame_size": 65536,
+        "rx_buffer_size": 65536,
+        "tx_buffer_size": 65536,
+        "ipc_retry_attempts": 10,
+        "ipc_retry_delay_ms": 1000
+      },
+      "logger": {
+        "max_file_size": 5242880,
+        "max_files": 100
+      }
+    },
+    "service": {
+      "bootstrap": {
+        "client_hello_interval_sec": 1,
+        "runtime_ready_interval_sec": 1,
+        "bootstrap_timeout_sec": 10
+      }
+    }
+  },
+
+  "engined": {
+    "daemon_name": "pz-engined",
+    "system": {
+      "logger": {
+        "name": "pz-engined",
+        "file": "/var/log/pretzel/engined.log"
+      }
+    },
+    "service": {
+      "bootstrap": {
+        "sync_request_interval_sec": 1
+      },
+      "heartbeat": {
+        "poll_interval_sec": 5,
+        "response_timeout_sec": 2
+      }
+    }
+  },
+
+  "authd": {
+    "daemon_name": "pz-authd",
+    "system": {
+      "logger": {
+        "name": "pz-authd",
+        "file": "/var/log/pretzel/authd.log"
+      }
+    },
+    "service": {}
+  },
+
+  "icmpd": {
+    "daemon_name": "pz-icmpd",
+    "system": {
+      "logger": {
+        "name": "pz-icmpd",
+        "file": "/var/log/pretzel/icmpd.log"
+      }
+    },
+    "service": {
+      "probe": {
+        "scan_cidr": "192.168.0.0/23",
+        "excluded_ips": "192.168.0.82",
+        "batch_size": 32,
+        "batch_interval_ms": 20,
+        "cycle_interval_sec": 30,
+        "reply_idle_timeout_sec": 5,
+        "reply_max_wait_timeout_sec": 15
+      }
+    }
+  },
+
+  "ipcd": {
+    "daemon_name": "pz-ipcd",
+    "system": {
+      "logger": {
+        "name": "pz-ipcd",
+        "file": "/var/log/pretzel/ipcd.log"
+      }
+    },
+    "service": {
+      "router": {
+        "allow_unknown_dst": false
+      },
+      "daemon_map": {
+        "ipcd": 1,
+        "engined": 2,
+        "mgmtd": 3,
+        "authd": 4,
+        "snmpd": 5,
+        "icmpd": 6,
+        "topologyd": 7
+      }
+    }
+  },
+
+  "mgmtd": {
+    "daemon_name": "pz-mgmtd",
+    "system": {
+      "logger": {
+        "name": "pz-mgmtd",
+        "file": "/var/log/pretzel/mgmtd.log",
+        "max_files": 10
+      }
+    },
+    "service": {
+      "http": {
+        "listen_address": "0.0.0.0",
+        "listen_port": 443,
+        "tls_enabled": true,
+        "cert_file": "/etc/pretzel/cert/server.crt",
+        "key_file": "/etc/pretzel/cert/server.key"
+      },
+      "database": {
+        "host": "127.0.0.1",
+        "port": 5432,
+        "name": "pretzel",
+        "user": "pretzel",
+        "password": "CHANGE_ME"
+      },
+      "admin": {
+        "username": "admin",
+        "password_hash": "",
+        "salt": ""
+      }
+    }
+  },
+
+  "snmpd": {
+    "daemon_name": "pz-snmpd",
+    "system": {
+      "logger": {
+        "name": "pz-snmpd",
+        "file": "/var/log/pretzel/snmpd.log"
+      }
+    },
+    "service": {
+      "scan": {
+        "community": "public",
+        "port": 161,
+        "timeout_sec": 2,
+        "retries": 1,
+        "max_concurrent": 10,
+        "v2c_probe_timeout_ms": 700,
+        "v2c_probe_retries": 0,
+        "v3_fallback": true,
+        "v3": {
+          "user": "CHANGE_ME",
+          "auth_protocol": "SHA",
+          "auth_password": "CHANGE_ME",
+          "priv_protocol": "AES",
+          "priv_password": "CHANGE_ME",
+          "security_level": "authPriv"
+        }
+      }
+    }
+  },
+
+  "topologyd": {
+    "daemon_name": "pz-topologyd",
+    "system": {
+      "logger": {
+        "name": "pz-topologyd",
+        "file": "/var/log/pretzel/topologyd.log"
+      }
+    },
+    "service": {}
+  }
+}

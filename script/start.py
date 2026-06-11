@@ -6,6 +6,7 @@ and certificates to the actual operational paths (/opt/pretzel, /etc/pretzel) an
 """
 
 import glob
+import json
 import os
 import sys
 import shutil
@@ -14,7 +15,7 @@ import time
 from script.utils import (
     ROOT_DIR, BUILD_DIR, CERT_DIR, run_cmd, install_file,
     PROMETHEUS_SRC_PATH, NODE_EXPORTER_SRC_PATH, POSTGRES_EXPORTER_SRC_PATH,
-    PG_SERVICE, PG_DB_HOST, PG_DB_PORT,
+    PG_SERVICE, PG_DB_HOST, PG_DB_PORT, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
     PGADMIN_VENV, PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD,
 )
 
@@ -59,25 +60,100 @@ MGMTD_WWW_INSTALL_DIR = os.path.join(SHARE_INSTALL_DIR, "mgmtd", "www")
 
 def deploy_startup_config() -> None:
     """
-    Atomically copies the baseline startup-config (config/startup-config.json) to the
-    active path /etc/pretzel/startup-config.json. Daemons read this file at bootstrap
-    for the DB connection params and as the factory-fresh seed / offline fallback;
-    mgmtd syncs it into the DB. Fatal if the source is missing or unreadable.
+    Installs the baseline startup-config to the active path
+    /etc/pretzel/startup-config.json. Daemons read this file at bootstrap for the DB
+    connection params and as the factory-fresh seed / offline fallback; mgmtd syncs
+    it into the DB.
+
+    The real config/startup-config.json is gitignored (it carries secrets), so on a
+    fresh checkout it may be absent — we seed it from the committed
+    startup-config.example.json. Before writing, the DB password is injected from the
+    single source of truth (PZ_PG_PASSWORD via PG_DB_PASSWORD) so mgmtd's connection
+    password can never drift from the role install.py created.
     """
     src = os.path.join(ROOT_DIR, "config", "startup-config.json")
     if not os.path.isfile(src):
-        sys.exit(f"[FATAL] startup-config not found: {src}")
+        example = os.path.join(ROOT_DIR, "config", "startup-config.example.json")
+        if not os.path.isfile(example):
+            sys.exit(f"[FATAL] startup-config not found: {src}")
+        shutil.copyfile(example, src)
+        print(f"[WARN] {src} was missing; seeded from startup-config.example.json. "
+              f"Edit it to set real secrets (SNMP v3, admin) before production.")
+
+    try:
+        with open(src) as f:
+            cfg = json.load(f)
+    except (OSError, ValueError) as e:
+        sys.exit(f"[FATAL] failed to read startup-config {src}: {e}")
+
+    # Drop the template's "//"-prefixed comment keys (present only in the seeded
+    # example) so the deployed config stays clean.
+    if isinstance(cfg, dict):
+        for k in [k for k in cfg if isinstance(k, str) and k.startswith("//")]:
+            cfg.pop(k)
+
+    # Inject the canonical DB password — single source of truth.
+    try:
+        cfg["mgmtd"]["service"]["database"]["password"] = PG_DB_PASSWORD
+    except (KeyError, TypeError):
+        print("[WARN] startup-config has no mgmtd.service.database block; "
+              "leaving DB password as-is.")
 
     os.makedirs(ETC_ROOT_DIR, exist_ok=True)
     dst = os.path.join(ETC_ROOT_DIR, "startup-config.json")
     tmp = dst + ".tmp"
     try:
-        shutil.copyfile(src, tmp)
-        os.chmod(tmp, 0o600)   # may carry secrets (admin hash, snmp v3 creds)
-        os.replace(tmp, dst)   # atomic swap
+        with open(tmp, "w") as f:
+            json.dump(cfg, f, indent=2)   # may carry secrets (admin hash, snmp v3 creds)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, dst)              # atomic swap
     except OSError as e:
         sys.exit(f"[FATAL] failed to install startup-config: {e}")
     print(f"[*] Installed startup-config: {dst}")
+
+
+# postgres_exporter's DATA_SOURCE_NAME embeds the DB password, so it is generated
+# here (not hardcoded in the committed pz-postgres-exporter.service) into a 0600 env
+# file that the unit pulls in via EnvironmentFile. Keeps the exporter's password in
+# lockstep with PG_DB_PASSWORD and out of version control.
+EXPORTER_ENV_PATH = os.path.join(ETC_ROOT_DIR, "postgres-exporter.env")
+
+
+def deploy_exporter_env() -> None:
+    """Writes /etc/pretzel/postgres-exporter.env with the DATA_SOURCE_NAME DSN."""
+    dsn = (f"postgresql://{PG_DB_USER}:{PG_DB_PASSWORD}@{PG_DB_HOST}:{PG_DB_PORT}"
+           f"/{PG_DB_NAME}?sslmode=disable")
+    os.makedirs(ETC_ROOT_DIR, exist_ok=True)
+    tmp = EXPORTER_ENV_PATH + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.write(f"DATA_SOURCE_NAME={dsn}\n")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, EXPORTER_ENV_PATH)
+    except OSError as e:
+        sys.exit(f"[FATAL] failed to write {EXPORTER_ENV_PATH}: {e}")
+    print(f"[*] Generated postgres-exporter env: {EXPORTER_ENV_PATH}")
+
+
+def ensure_certificates() -> None:
+    """
+    Generates a self-signed TLS pair in cert/ if missing. The private key
+    (cert/server.key) is gitignored, so a fresh checkout has none — create one so
+    mgmtd's HTTPS endpoint can start. Real deployments should drop in a CA-issued
+    cert/key here instead.
+    """
+    os.makedirs(CERT_DIR, exist_ok=True)
+    crt = os.path.join(CERT_DIR, "server.crt")
+    key = os.path.join(CERT_DIR, "server.key")
+    if os.path.isfile(crt) and os.path.isfile(key):
+        return
+    run_cmd([
+        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+        "-keyout", key, "-out", crt, "-days", "825",
+        "-subj", "/CN=localhost",
+        "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+    ], msg="Generating self-signed TLS certificate (cert/server.{crt,key})")
+    os.chmod(key, 0o600)
 
 
 def pre_flight_checks():
@@ -186,6 +262,13 @@ def deploy_pgadmin():
          a literal executable)
     Idempotent: re-running overwrites config/wrapper and syncs the admin password.
     """
+    # Explicit opt-out: PZ_SKIP_PGADMIN=1 skips the whole pgAdmin deploy (config +
+    # the slow setup-db migration + wrapper). Only safe once pgAdmin has been
+    # deployed at least once before — the launcher/config from the prior run remain.
+    if os.environ.get("PZ_SKIP_PGADMIN"):
+        print("[*] PZ_SKIP_PGADMIN set; skipping pgAdmin deploy.")
+        return
+
     web_dir = _pgadmin_web_dir()
     if not web_dir:
         print("[WARN] pgAdmin venv not found; skipping pgAdmin deploy. Run install first.")
@@ -210,26 +293,43 @@ def deploy_pgadmin():
     #    PYTHONWARNINGS and capture output, surfacing it only when a command fails.
     py = os.path.join(PGADMIN_VENV, "bin", "python")
     setup_py = os.path.join(web_dir, "setup.py")
-    env = dict(os.environ, PYTHONWARNINGS="ignore")
+    # PGADMIN_SETUP_EMAIL/PASSWORD make `setup-db` non-interactive: without them it
+    # prompts on stdin for the initial admin account and — since we capture output and
+    # give no stdin — blocks forever. We also pass stdin=DEVNULL below as a belt-and-
+    # suspenders guard so any unexpected prompt gets EOF and fails fast instead of hanging.
+    env = dict(os.environ, PYTHONWARNINGS="ignore",
+               PGADMIN_SETUP_EMAIL=PGADMIN_SETUP_EMAIL,
+               PGADMIN_SETUP_PASSWORD=PGADMIN_SETUP_PASSWORD)
 
     def _setup(args, why, warn=True):
         r = subprocess.run([py, setup_py, *args], cwd=web_dir, env=env,
+                           stdin=subprocess.DEVNULL,
                            check=False, capture_output=True, text=True)
         if r.returncode != 0 and warn:
             print(f"[WARN] pgAdmin {why} failed:\n{(r.stdout + r.stderr).rstrip()}")
         return r.returncode
 
-    # setup-db initialises/migrates the schema. add-user creates the account on a
-    # fresh DB; "User already exists" (non-zero) is expected on re-deploys, so its
-    # result is ignored — update-user below is authoritative and enforces the
-    # password/active/admin state so credentials stay in sync.
-    _setup(["setup-db"], "setup-db")
-    _setup(["add-user", PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD, "--admin"],
-           "add-user", warn=False)
-    if _setup(["update-user", PGADMIN_SETUP_EMAIL,
-               "--password", PGADMIN_SETUP_PASSWORD, "--active", "--admin"],
-              "update-user") == 0:
-        print(f"[*] pgAdmin admin account ready: {PGADMIN_SETUP_EMAIL}")
+    # setup-db (schema init/migration) is the slow step and only needs to run on a
+    # fresh DB or after a pgAdmin version bump. Once the SQLite config DB exists the
+    # account is already provisioned, so skip the whole bootstrap by default to keep
+    # re-deploys fast. Force it with PZ_PGADMIN_FORCE_SETUP=1 (e.g. after upgrading
+    # PGADMIN_VERSION, to run pending migrations / resync the admin password).
+    sqlite_db = os.path.join(cfg["data_dir"], "pgadmin4.db")
+    if os.path.isfile(sqlite_db) and not os.environ.get("PZ_PGADMIN_FORCE_SETUP"):
+        print(f"[*] pgAdmin already initialized ({sqlite_db}); skipping setup-db. "
+              f"Set PZ_PGADMIN_FORCE_SETUP=1 to re-run migrations / resync admin.")
+    else:
+        # setup-db initialises/migrates the schema. add-user creates the account on a
+        # fresh DB; "User already exists" (non-zero) is expected on re-deploys, so its
+        # result is ignored — update-user below is authoritative and enforces the
+        # password/active/admin state so credentials stay in sync.
+        _setup(["setup-db"], "setup-db")
+        _setup(["add-user", PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD, "--admin"],
+               "add-user", warn=False)
+        if _setup(["update-user", PGADMIN_SETUP_EMAIL,
+                   "--password", PGADMIN_SETUP_PASSWORD, "--active", "--admin"],
+                  "update-user") == 0:
+            print(f"[*] pgAdmin admin account ready: {PGADMIN_SETUP_EMAIL}")
 
     # 3. Generate the gunicorn launcher (bind from the canonical config; paths quoted).
     gunicorn = os.path.join(PGADMIN_VENV, "bin", "gunicorn")
@@ -313,6 +413,10 @@ def deploy_files():
     #    mgmtd syncs it into the DB at boot; all daemons read it for DB conn params.
     deploy_startup_config()
 
+    # 7b. Generate the postgres-exporter env file (DATA_SOURCE_NAME) referenced by
+    #     pz-postgres-exporter.service via EnvironmentFile.
+    deploy_exporter_env()
+
     # 8. Create the runtime-state root. Each daemon creates its own
     # <daemon>/ subdirectory on first write (see Config::saveStateSnapshot).
     os.makedirs(STATE_ROOT_DIR, exist_ok=True)
@@ -347,6 +451,10 @@ def start_services():
 def run():
     """Main orchestration logic for the deployment pipeline."""
     pre_flight_checks()
+
+    # A gitignored private key means a fresh checkout has no TLS cert — generate one
+    # before deploy_files copies cert/ into /etc/pretzel/cert.
+    ensure_certificates()
 
     # [CRITICAL ORDER] stop -> overwrite files (+startup-config) -> DB up -> start
     # daemons. mgmtd seeds the DB from the startup-config at boot, so PostgreSQL must

@@ -6,6 +6,10 @@ PartOf=pretzel.target
 
 [Service]
 Type=simple
+# grafana.ini reads admin_password via $__env{GF_SECURITY_ADMIN_PASSWORD}. Default is
+# the localhost-dev "admin"; override here (or in a systemd drop-in) for production so
+# the real password never lands in version control.
+Environment=GF_SECURITY_ADMIN_PASSWORD=admin
 ExecStart=/usr/share/grafana/bin/grafana server \
   --config=/etc/pretzel/grafana/grafana.ini \
   --homepath=/usr/share/grafana

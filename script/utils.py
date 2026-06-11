@@ -91,8 +91,12 @@ PGADMIN_VENV             = os.path.join(INSTALL_ROOT, "pgadmin", "venv")
 # reserved domains (.local, .localhost, .example, .test, ...). So a normal-looking
 # domain is required or login fails with "special-use or reserved name" — do NOT
 # use a .local address here.
-PGADMIN_SETUP_EMAIL      = "admin@pretzel.io"
-PGADMIN_SETUP_PASSWORD   = "REDACTED"
+# Deploy-time secrets are read from the environment so production credentials never
+# have to live in version control. The literals below are localhost-only DEV
+# defaults; override them by exporting PZ_PGADMIN_EMAIL / PZ_PGADMIN_PASSWORD (and
+# PZ_PG_PASSWORD for the DB) before `./pretzel install` / `./pretzel start`.
+PGADMIN_SETUP_EMAIL      = os.environ.get("PZ_PGADMIN_EMAIL", "pretzel@pretzel.io")
+PGADMIN_SETUP_PASSWORD   = os.environ.get("PZ_PGADMIN_PASSWORD", "pretzel")
 
 # PostgreSQL is installed from the distro APT repo (not built from source) and
 # runs under its own systemd unit (postgresql.service). Pretzel provisions a
@@ -101,7 +105,11 @@ PGADMIN_SETUP_PASSWORD   = "REDACTED"
 PG_SERVICE     = "postgresql"        # distro-managed systemd unit
 PG_DB_NAME     = "pretzel"
 PG_DB_USER     = "pretzel"
-PG_DB_PASSWORD = "pretzel"           # localhost-only dev default — harden for prod
+# Single source of truth for the DB password. install.py uses it to CREATE the role;
+# start.py injects it into the deployed startup-config (mgmtd) and the postgres-exporter
+# env file — so the role, mgmtd and the exporter can never drift apart. Override via
+# PZ_PG_PASSWORD; the literal is a localhost-only dev default — harden for prod.
+PG_DB_PASSWORD = os.environ.get("PZ_PG_PASSWORD", "pretzel")
 PG_DB_HOST     = "127.0.0.1"
 PG_DB_PORT     = 5432
 
