@@ -64,29 +64,43 @@ void ScanService::handleEvent(SnmpdServiceManager& sm, const ScanEvent& event)
         cfg.maxConcurrent = t.value("max_concurrent", 10);
         cfg.v2cProbeTimeoutMs = t.value("v2c_probe_timeout_ms", 700);
         cfg.v2cProbeRetries   = t.value("v2c_probe_retries",    0);
-        cfg.v3Fallback    = t.value("v3_fallback",    true);
 
-        // SNMPv3 (USM) credentials — used on v2c-timeout fallback.
-        if (t.contains("v3") && t["v3"].is_object())
-        {
-            const auto& v = t["v3"];
-            cfg.v3.user         = v.value("user",          std::string());
-            cfg.v3.authProtocol = v.value("auth_protocol", std::string("SHA"));
-            cfg.v3.authPassword = v.value("auth_password", std::string());
-            cfg.v3.privProtocol = v.value("priv_protocol", std::string("AES"));
-            cfg.v3.privPassword = v.value("priv_password", std::string());
+        // SNMPv3 (USM) credentials — PER-IP ONLY. A host with no entry here ends at
+        // v2c (no global default fallback). Parses one v3 credential object.
+        auto parseV3 = [](const nlohmann::json& v) {
+            SnmpV3Config c;
+            c.user         = v.value("user",          std::string());
+            c.authProtocol = v.value("auth_protocol", std::string("SHA"));
+            c.authPassword = v.value("auth_password", std::string());
+            c.privProtocol = v.value("priv_protocol", std::string("AES"));
+            c.privPassword = v.value("priv_password", std::string());
 
             const std::string lvl = v.value("security_level", std::string("authPriv"));
             if (lvl == "noAuthNoPriv")
-                cfg.v3.level = SnmpSecurityLevel::NoAuthNoPriv;
+                c.level = SnmpSecurityLevel::NoAuthNoPriv;
             else if (lvl == "authNoPriv")
-                cfg.v3.level = SnmpSecurityLevel::AuthNoPriv;
+                c.level = SnmpSecurityLevel::AuthNoPriv;
             else
-                cfg.v3.level = SnmpSecurityLevel::AuthPriv;
+                c.level = SnmpSecurityLevel::AuthPriv;
+            return c;
+        };
+
+        // Per-IP credential overrides: [{ "ip": "...", "user": ..., ... }, ...].
+        if (t.contains("v3_devices") && t["v3_devices"].is_array())
+        {
+            for (const auto& d : t["v3_devices"])
+            {
+                if (!d.is_object())
+                    continue;
+                const std::string ip = d.value("ip", std::string());
+                if (ip.empty())
+                    continue;
+                cfg.v3PerIp[ip] = parseV3(d);
+            }
         }
 
-        LOG_INFO("ScanService: forwarding scan to SnmpEngine ips={} v3_fallback={}",
-                 ips.size(), cfg.v3Fallback);
+        LOG_INFO("ScanService: forwarding scan to SnmpEngine ips={} v3_devices={}",
+                 ips.size(), cfg.v3PerIp.size());
 
         // Delegate to SnmpEngine via TxRouter (non-blocking — engine polls in tick)
         sm.txRouter().startSnmpScan(std::move(ips), std::move(cfg));

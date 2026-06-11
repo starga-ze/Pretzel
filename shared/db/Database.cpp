@@ -43,6 +43,12 @@ CREATE TABLE IF NOT EXISTS devices (
     sys_uptime_ticks BIGINT,
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS admin_user (
+    username      TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    salt          TEXT NOT NULL,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 )SQL";
 
 // Builds the const char* array PQexecParams expects from a string vector. The

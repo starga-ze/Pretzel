@@ -70,10 +70,9 @@ void SnmpProtocol::configureV2c(snmp_session& sess,
 
 bool SnmpProtocol::configureV3(snmp_session& sess,
                                const std::string& peer,
-                               const SnmpScanConfig& cfg)
+                               const SnmpScanConfig& cfg,
+                               const SnmpV3Config& v3)
 {
-    const auto& v3 = cfg.v3;
-
     if (v3.user.empty())
     {
         LOG_WARN("SnmpProtocol: v3 user is empty, cannot configure v3");

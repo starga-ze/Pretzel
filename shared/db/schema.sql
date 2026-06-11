@@ -46,3 +46,15 @@ CREATE TABLE IF NOT EXISTS devices (
     sys_uptime_ticks BIGINT,
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Admin login credential (single operator account). Stored hashed (SHA-256 of
+-- password+salt) so the plaintext never lives in the DB or in version control —
+-- mgmtd seeds a default on a factory-fresh device and the password is changed via
+-- the API. Kept OUT of running_config/startup_config on purpose (see Config.cpp
+-- secret redaction).
+CREATE TABLE IF NOT EXISTS admin_user (
+    username      TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    salt          TEXT NOT NULL,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -33,6 +33,7 @@ private:
     Response handleHealth  (const Request& req);
     Response handleLogin   (const Request& req);
     Response handleLogout  (const Request& req);
+    Response handleChangePassword(const Request& req);
     Response handleStatus  (const Request& req);   // NEW
     Response handleSettingsGet      (const Request& req);
     Response handleSettingsCommit   (const Request& req);

@@ -25,12 +25,14 @@ public:
                              const std::string& peer,
                              const SnmpScanConfig& cfg);
 
-    // Configure a session for SNMPv3 (USM). Derives auth/priv keys from the
-    // passphrases. Returns false if credentials are incomplete or key
-    // generation fails.
+    // Configure a session for SNMPv3 (USM) using the given credentials (resolved
+    // per-IP by the caller). cfg supplies the shared timeout/retries. Derives
+    // auth/priv keys from the passphrases. Returns false if credentials are
+    // incomplete or key generation fails.
     static bool configureV3(snmp_session& sess,
                             const std::string& peer,
-                            const SnmpScanConfig& cfg);
+                            const SnmpScanConfig& cfg,
+                            const SnmpV3Config& v3);
 
     // Build a GET PDU for the MIB-II system group (sysDescr .. sysLocation).
     // Caller passes ownership to snmp_sess_send (or frees on failure).

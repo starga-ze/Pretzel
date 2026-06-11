@@ -128,11 +128,6 @@
         "name": "pretzel",
         "user": "pretzel",
         "password": "CHANGE_ME"
-      },
-      "admin": {
-        "username": "admin",
-        "password_hash": "",
-        "salt": ""
       }
     }
   },
@@ -154,15 +149,7 @@
         "max_concurrent": 10,
         "v2c_probe_timeout_ms": 700,
         "v2c_probe_retries": 0,
-        "v3_fallback": true,
-        "v3": {
-          "user": "CHANGE_ME",
-          "auth_protocol": "SHA",
-          "auth_password": "CHANGE_ME",
-          "priv_protocol": "AES",
-          "priv_password": "CHANGE_ME",
-          "security_level": "authPriv"
-        }
+        "v3_devices": []
       }
     }
   },

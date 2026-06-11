@@ -122,6 +122,33 @@ std::optional<nlohmann::json> latestRunningConfig()
     return parsed;
 }
 
+// Secrets must never be persisted into the config tables in cleartext:
+//   * mgmtd.service.database.password — the DB connection password is read from the
+//     on-disk startup-config by bootstrapDatabase(), never from these tables.
+//   * mgmtd.service.admin            — the admin credential lives hashed in the
+//     admin_user table (see AuthService), not in config.
+// SNMP v3 credentials are intentionally left in place: snmpd consumes them from the
+// running-config at runtime, so they are operator-managed configuration.
+nlohmann::json redactSecretsForPersist(nlohmann::json root)
+{
+    if (!root.is_object())
+        return root;
+
+    auto m = root.find("mgmtd");
+    if (m == root.end() || !m->is_object())
+        return root;
+
+    auto s = m->find("service");
+    if (s == m->end() || !s->is_object())
+        return root;
+
+    if (auto d = s->find("database"); d != s->end() && d->is_object())
+        d->erase("password");
+
+    s->erase("admin");
+    return root;
+}
+
 // Implements the load decision tree (see Config.h):
 //   Case B: running_config has a latest version  -> use it.
 //   Case A: empty table OR DB unreachable        -> use the startup-config file.
@@ -269,12 +296,15 @@ bool Config::seedStore()
 
     auto& dbi = pz::db::Database::instance();
 
+    // Never persist cleartext secrets into the config tables (see redactSecretsForPersist).
+    const std::string persist = redactSecretsForPersist(startup).dump();
+
     // Sync the baseline startup_config (singleton row).
     if (!dbi.exec(
             "INSERT INTO startup_config (id, config_json) VALUES (1, $1::jsonb) "
             "ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json, "
             "updated_at = now()",
-            {startup.dump()}))
+            {persist}))
     {
         std::cerr << "seedStore: startup_config upsert failed" << std::endl;
     }
@@ -284,7 +314,7 @@ bool Config::seedStore()
     if (!dbi.exec(
             "INSERT INTO running_config (version, config_json) "
             "SELECT 1, $1::jsonb WHERE NOT EXISTS (SELECT 1 FROM running_config)",
-            {startup.dump()}))
+            {persist}))
     {
         std::cerr << "seedStore: running_config v1 seed failed" << std::endl;
         return false;
@@ -310,7 +340,7 @@ bool Config::commitConfig(const nlohmann::json& fullRoot)
     const bool ok = pz::db::Database::instance().exec(
         "INSERT INTO running_config (version, config_json) "
         "VALUES ((SELECT COALESCE(MAX(version), 0) + 1 FROM running_config), $1::jsonb)",
-        {fullRoot.dump()});
+        {redactSecretsForPersist(fullRoot).dump()});
 
     if (ok)
         invalidateConfigCache();  // next read adopts the new version

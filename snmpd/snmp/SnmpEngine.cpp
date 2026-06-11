@@ -84,9 +84,9 @@ void SnmpEngine::startScan(std::vector<std::string> ips, SnmpScanConfig cfg)
     m_scanActive   = true;
 
     LOG_INFO("SnmpEngine: starting scan ips={} community={} port={} "
-             "v2c_probe_ms={} v3_fallback={} v3_user={}",
+             "v2c_probe_ms={} v3_devices={}",
              ips.size(), m_cfg.community, m_cfg.port,
-             m_cfg.v2cProbeTimeoutMs, m_cfg.v3Fallback, m_cfg.v3.user);
+             m_cfg.v2cProbeTimeoutMs, m_cfg.v3PerIp.size());
 
     for (const auto& ip : ips)
     {
@@ -211,9 +211,8 @@ void SnmpEngine::reapDoneSessions()
             continue;
         }
 
-        const bool fallback = !s->responded
-                           && m_cfg.v3Fallback
-                           && !m_cfg.v3.user.empty();
+        const SnmpV3Config* v3 = m_cfg.v3For(s->device.ip);
+        const bool fallback = !s->responded && v3 != nullptr && !v3->user.empty();
 
         m_epoll.del(s->fd);
         snmp_sess_close(s->handle);   // safe: fully outside callback stack
@@ -317,7 +316,8 @@ SnmpDevice SnmpEngine::probeV3Blocking(const std::string& ip)
         ? ip + ":" + std::to_string(m_cfg.port)
         : ip;
 
-    if (!SnmpProtocol::configureV3(sess, peer, m_cfg))
+    const SnmpV3Config* v3 = m_cfg.v3For(ip);
+    if (!v3 || !SnmpProtocol::configureV3(sess, peer, m_cfg, *v3))
         return dev;
 
     void* handle = snmp_sess_open(&sess);

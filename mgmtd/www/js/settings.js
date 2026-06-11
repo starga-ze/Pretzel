@@ -84,6 +84,26 @@
     'reply_idle_timeout_sec', 'reply_max_wait_timeout_sec',
   ]);
 
+  // SNMPv3 fallback credentials (snmpd/scan). `v3` is the global default; `v3_devices`
+  // is a per-IP override list. Both are nested under the scan domain and are handled by
+  // a dedicated editor (the flat scalar pipeline can't represent them).
+  const V3_OBJECT_KEY  = 'v3';
+  const V3_DEVICES_KEY = 'v3_devices';
+  // Field spec for one v3 credential set, rendered by the v3 editor in order.
+  const V3_FIELDS = [
+    { key: 'user',           label: 'User',            type: 'text' },
+    { key: 'security_level', label: 'Security Level',  type: 'select',
+      options: ['authPriv', 'authNoPriv', 'noAuthNoPriv'] },
+    { key: 'auth_protocol',  label: 'Auth Protocol',   type: 'select', options: ['SHA', 'MD5'] },
+    { key: 'auth_password',  label: 'Auth Password',   type: 'text' },
+    { key: 'priv_protocol',  label: 'Priv Protocol',   type: 'select', options: ['AES', 'DES'] },
+    { key: 'priv_password',  label: 'Priv Password',   type: 'text' },
+  ];
+  const V3_DEFAULTS = {
+    user: '', security_level: 'authPriv',
+    auth_protocol: 'SHA', auth_password: '', priv_protocol: 'AES', priv_password: '',
+  };
+
   // ── State ─────────────────────────────────────────────────────────────────
 
   let currentData      = null;
@@ -248,7 +268,11 @@
         ));
       }
     } else {
-      // Other domains: single card header with edit button
+      // Other domains: single card header with edit button. The nested SNMPv3 keys
+      // (v3 / v3_devices) are excluded from the flat scalar editor and rendered by
+      // their own dedicated sections below.
+      const scalarKeys = keys.filter(k => k !== V3_OBJECT_KEY && k !== V3_DEVICES_KEY);
+
       const header = document.createElement('div');
       header.className = 'st-card-header';
 
@@ -264,11 +288,17 @@
         `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>` +
         `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
 
-      editBtn.addEventListener('click', () => openEditPanel(daemon, domain, values));
+      editBtn.addEventListener('click', () => openEditPanel(daemon, domain, values, null, scalarKeys));
       header.appendChild(cardTitle);
       header.appendChild(editBtn);
       card.appendChild(header);
-      card.appendChild(buildSectionBox(null, keys, values, null, daemon, domain));
+      card.appendChild(buildSectionBox(null, scalarKeys, values, null, daemon, domain));
+
+      // SNMPv3 fallback is per-IP only: a device listed here is retried with v3 on a
+      // v2c timeout; everything else ends at v2c. Always shown so operators can add.
+      if (domain === 'scan') {
+        card.appendChild(buildV3DevicesSection(daemon, domain, values));
+      }
     }
 
     // Pending indicator
@@ -276,6 +306,196 @@
     card.classList.toggle('has-changes', hasPending);
 
     return card;
+  }
+
+  // ── SNMPv3 fallback editor (nested object / per-IP array) ──────────────────
+  // The flat scalar pipeline can't represent v3 (object) or v3_devices (array), so
+  // these are staged directly into `pending` with the whole object/array as the value
+  // (groupPending/renderDiff/commit all handle non-scalar values via JSON).
+
+  function originalComplex(daemon, domain, key) {
+    return currentData?.daemons?.[daemon]?.[domain]?.[key];
+  }
+
+  // Stage (or clear) a complex object/array change and re-render the card.
+  function stageComplex(daemon, domain, key, oldValue, newValue) {
+    const sk = stageKey(daemon, domain, key);
+    if (JSON.stringify(oldValue ?? null) === JSON.stringify(newValue ?? null)) {
+      pending.delete(sk);
+    } else {
+      pending.set(sk, { daemon, domain, key, oldValue, newValue });
+    }
+    refreshPendingBadge();
+
+    if (currentData && container) {
+      const base = Object.assign({}, currentData?.daemons?.[daemon]?.[domain] || {});
+      pending.forEach(c => {
+        if (c.daemon === daemon && c.domain === domain) base[c.key] = c.newValue;
+      });
+      const card = container.querySelector(
+        `.settings-domain-card[data-daemon="${cssEsc(daemon)}"][data-domain="${cssEsc(domain)}"]`);
+      if (card) card.replaceWith(buildDomainCard(daemon, domain, base));
+    }
+  }
+
+  function buildV3DevicesSection(daemon, domain, values) {
+    const devices = Array.isArray(values[V3_DEVICES_KEY]) ? values[V3_DEVICES_KEY] : [];
+
+    const box = document.createElement('div');
+    box.className = 'st-section-box';
+
+    const h = document.createElement('div');
+    h.className = 'st-section-box-title';
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = `SNMPv3 Per-IP Devices (${devices.length})`;
+    h.appendChild(titleSpan);
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-ghost le-edit-btn';
+    addBtn.textContent = '+ Add device';
+    addBtn.addEventListener('click', () => editV3Device(daemon, domain, devices, -1));
+    h.appendChild(addBtn);
+    box.appendChild(h);
+
+    if (!devices.length) {
+      const empty = document.createElement('div');
+      empty.className = 'st-view-row';
+      empty.innerHTML = '<span class="le-tag-empty">No per-IP overrides — the default creds above apply to all devices.</span>';
+      box.appendChild(empty);
+    }
+
+    devices.forEach((d, i) => {
+      const row = document.createElement('div');
+      row.className = 'st-view-row';
+      const lbl = document.createElement('span');
+      lbl.className = 'st-view-label';
+      lbl.textContent = d.ip || '(no ip)';
+      const val = document.createElement('div');
+      val.className = 'st-view-value';
+      const summary = document.createElement('span');
+      summary.className = 'st-view-scalar';
+      summary.textContent = `user=${d.user || ''} · ${d.security_level || 'authPriv'}`;
+      val.appendChild(summary);
+
+      const editB = document.createElement('button');
+      editB.type = 'button';
+      editB.className = 'btn btn-ghost le-edit-btn';
+      editB.textContent = 'Edit';
+      editB.addEventListener('click', () => editV3Device(daemon, domain, devices, i));
+      const delB = document.createElement('button');
+      delB.type = 'button';
+      delB.className = 'btn btn-ghost le-edit-btn';
+      delB.textContent = 'Remove';
+      delB.addEventListener('click', () => {
+        const next = devices.slice();
+        next.splice(i, 1);
+        stageComplex(daemon, domain, V3_DEVICES_KEY,
+                     originalComplex(daemon, domain, V3_DEVICES_KEY) || [], next);
+      });
+      val.appendChild(editB);
+      val.appendChild(delB);
+
+      row.appendChild(lbl);
+      row.appendChild(val);
+      box.appendChild(row);
+    });
+
+    return box;
+  }
+
+  function editV3Device(daemon, domain, devices, index) {
+    const isNew = index < 0;
+    const creds = Object.assign({ ip: '' }, V3_DEFAULTS, isNew ? {} : devices[index]);
+    openV3Editor({
+      title: isNew ? 'Add SNMPv3 Device' : `Edit ${creds.ip || 'Device'}`,
+      creds,
+      showIp: true,
+      onSave: (newCreds) => {
+        if (!newCreds.ip) { setStatus('Device IP is required.', 'error'); return; }
+        const next = devices.slice();
+        if (isNew) next.push(newCreds); else next[index] = newCreds;
+        stageComplex(daemon, domain, V3_DEVICES_KEY,
+                     originalComplex(daemon, domain, V3_DEVICES_KEY) || [], next);
+      },
+    });
+  }
+
+  function openV3Editor({ title, creds, showIp, onSave }) {
+    document.getElementById('v3EditorOverlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'v3EditorOverlay';
+    overlay.style.cssText =
+      'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;' +
+      'justify-content:center;z-index:2000;';
+
+    const modal = document.createElement('div');
+    modal.className = 'st-section-box';
+    modal.style.cssText =
+      'background:var(--bg-elevated,#1f2430);min-width:340px;max-width:440px;max-height:88vh;' +
+      'overflow:auto;padding:20px;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.5);';
+
+    const h = document.createElement('h3');
+    h.textContent = title;
+    h.style.cssText = 'margin:0 0 14px;font-size:15px;';
+    modal.appendChild(h);
+
+    const inputs = {};
+    const fields = (showIp ? [{ key: 'ip', label: 'IP Address', type: 'text' }] : []).concat(V3_FIELDS);
+    fields.forEach(f => {
+      const wrap = document.createElement('div');
+      wrap.className = 'st-edit-field';
+      const lbl = document.createElement('label');
+      lbl.className = 'st-edit-field-label';
+      lbl.textContent = f.label;
+      wrap.appendChild(lbl);
+
+      let input;
+      if (f.type === 'select') {
+        input = document.createElement('select');
+        input.className = 'settings-field-input';
+        f.options.forEach(o => {
+          const opt = document.createElement('option');
+          opt.value = o; opt.textContent = o;
+          input.appendChild(opt);
+        });
+      } else {
+        input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'settings-field-input settings-field-input-text';
+      }
+      input.value = creds[f.key] !== undefined ? creds[f.key] : '';
+      inputs[f.key] = input;
+      wrap.appendChild(input);
+      modal.appendChild(wrap);
+    });
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:16px;';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn btn-ghost';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => overlay.remove());
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'btn';
+    save.textContent = 'Save';
+    save.style.cssText = 'background:var(--accent,#3b82f6);color:#fff;';
+    save.addEventListener('click', () => {
+      const out = {};
+      if (showIp) out.ip = (inputs.ip.value || '').trim();
+      V3_FIELDS.forEach(f => { out[f.key] = inputs[f.key].value; });
+      overlay.remove();
+      onSave(out);
+    });
+    btnRow.appendChild(cancel);
+    btnRow.appendChild(save);
+    modal.appendChild(btnRow);
+
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
   }
 
   // ── Edit slide-over panel ─────────────────────────────────────────────────

@@ -207,17 +207,13 @@ bool MgmtdCore::loadAuthConfig()
         return true;
     }
 
-    const auto& cfg = m_config.json();
-    const auto svc = cfg.value("service", nlohmann::json::object());
-    if (!svc.contains("admin"))
-    {
-        return true;
-    }
-
-    const auto& admin = svc["admin"];
-    m_serviceManager->authService().load(admin.value("username", "admin"),
-                                         admin.value("password_hash", ""),
-                                         admin.value("salt", ""));
+    // The admin credential lives entirely in the admin_user DB table (hashed). It is
+    // NOT read from config: redactSecretsForPersist() strips the admin block before it
+    // is ever persisted, so the running-config mgmtd reads here never carries it.
+    // loadFromDb() loads the stored hash, or seeds a default account on a factory-fresh
+    // device. seedStore() in onPreConfigLoad has already ensured the schema + DB
+    // connection by the time this runs.
+    m_serviceManager->authService().loadFromDb();
     return true;
 }
 

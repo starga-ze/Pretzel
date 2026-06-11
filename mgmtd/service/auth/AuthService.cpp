@@ -1,5 +1,8 @@
 #include "service/auth/AuthService.h"
 
+#include "db/Database.h"
+#include "util/Logger.h"
+
 #include <openssl/sha.h>
 
 #include <chrono>
@@ -10,13 +13,44 @@
 namespace pz::mgmtd
 {
 
-bool AuthService::load(const std::string& username,
-                       const std::string& passwordHash,
-                       const std::string& salt)
+bool AuthService::loadFromDb(const std::string& defaultUsername)
 {
-    m_username = username.empty() ? "admin" : username;
-    m_passwordHash = passwordHash;
-    m_salt = salt;
+    auto& db = pz::db::Database::instance();
+
+    const auto rows =
+        db.queryRows("SELECT username, password_hash, salt FROM admin_user LIMIT 1");
+    if (!rows.empty() && rows.front().size() >= 3)
+    {
+        m_username     = rows.front()[0];
+        m_passwordHash = rows.front()[1];
+        m_salt         = rows.front()[2];
+        return true;
+    }
+
+    // Factory-fresh: seed a default account (hashed) so the first login works without
+    // a plaintext backdoor. Operator must change it via /api/change-password.
+    const std::string username = defaultUsername.empty() ? "admin" : defaultUsername;
+    const std::string salt     = generateSalt();
+    const std::string hash     = hashSha256(kDefaultPassword, salt);
+
+    const bool persisted = db.exec(
+        "INSERT INTO admin_user (username, password_hash, salt) VALUES ($1, $2, $3) "
+        "ON CONFLICT (username) DO NOTHING",
+        {username, hash, salt});
+    if (!persisted)
+    {
+        // DB write failed (e.g. PostgreSQL briefly down). Fall back to the in-memory
+        // default — still hashed, no plaintext compare — so we are not locked out.
+        LOG_WARN("AuthService: could not persist default admin account; using "
+                 "in-memory default until DB is reachable");
+    }
+
+    LOG_WARN("AuthService: seeded default admin account '{}' with the default "
+             "password — change it immediately via /api/change-password", username);
+
+    m_username     = username;
+    m_passwordHash = hash;
+    m_salt         = salt;
     return true;
 }
 
@@ -28,13 +62,8 @@ AuthService::LoginResult AuthService::login(const std::string& username,
         return {};
     }
 
-    if (!m_passwordHash.empty() && hashSha256(password, m_salt) != m_passwordHash)
-    {
-        return {};
-    }
-
-    // Development fallback. Once config has password_hash, plain admin/admin no longer applies.
-    if (m_passwordHash.empty() && password != "admin")
+    // No plaintext fallback: an unprovisioned account (empty hash) refuses all logins.
+    if (m_passwordHash.empty() || hashSha256(password, m_salt) != m_passwordHash)
     {
         return {};
     }
@@ -44,6 +73,41 @@ AuthService::LoginResult AuthService::login(const std::string& username,
     m_sessions[sessionId] = Session{now() + m_sessionTtlSec};
 
     return LoginResult{true, sessionId};
+}
+
+bool AuthService::checkPassword(const std::string& username,
+                                const std::string& password) const
+{
+    if (username != m_username || m_passwordHash.empty())
+    {
+        return false;
+    }
+    return hashSha256(password, m_salt) == m_passwordHash;
+}
+
+bool AuthService::changePassword(const std::string& username,
+                                 const std::string& newPassword)
+{
+    if (username != m_username || newPassword.empty())
+    {
+        return false;
+    }
+
+    const std::string salt = generateSalt();
+    const std::string hash = hashSha256(newPassword, salt);
+
+    const bool ok = pz::db::Database::instance().exec(
+        "UPDATE admin_user SET password_hash = $1, salt = $2, updated_at = now() "
+        "WHERE username = $3",
+        {hash, salt, username});
+    if (!ok)
+    {
+        return false;
+    }
+
+    m_passwordHash = hash;
+    m_salt         = salt;
+    return true;
 }
 
 bool AuthService::validateSession(const std::string& sessionId)
@@ -105,6 +169,17 @@ std::string AuthService::generateSessionId()
 
     std::ostringstream oss;
     oss << std::hex << now() << dist(gen) << dist(gen);
+    return oss.str();
+}
+
+std::string AuthService::generateSalt()
+{
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<std::uint64_t> dist;
+
+    std::ostringstream oss;
+    oss << std::hex << dist(gen) << dist(gen);
     return oss.str();
 }
 

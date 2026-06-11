@@ -1,9 +1,9 @@
 [Unit]
 Description=PZ Topology Daemon
 
-After=pz-ipcd.service postgresql.service
+After=pz-ipcd.service postgresql.service pz-db-ready.service
 Requires=pz-ipcd.service
-Wants=postgresql.service
+Wants=postgresql.service pz-db-ready.service
 PartOf=pretzel.target
 
 [Service]

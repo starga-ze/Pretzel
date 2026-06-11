@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <string>
 
 namespace pz::snmpd
@@ -58,10 +59,19 @@ struct SnmpScanConfig
     int          v2cProbeTimeoutMs{700};
     int          v2cProbeRetries{0};
 
-    // When a v2c GET times out, retry the same host with the v3 credentials
-    // below. Lets a single sweep cover both v2c and v3-only devices.
-    bool         v3Fallback{true};
-    SnmpV3Config v3;
+    // SNMPv3 fallback is PER-IP ONLY: a host listed here is retried with its v3
+    // credentials when the v2c probe times out. A host NOT listed simply ends at v2c
+    // (no global default fallback). Keyed by device IP, set in the GUI
+    // (settings -> SNMP) and stored as snmpd.service.scan.v3_devices[].
+    std::map<std::string, SnmpV3Config> v3PerIp;
+
+    // The v3 creds configured for an IP, or nullptr if the host has no override
+    // (=> no v3 fallback for it).
+    const SnmpV3Config* v3For(const std::string& ip) const
+    {
+        const auto it = v3PerIp.find(ip);
+        return it != v3PerIp.end() ? &it->second : nullptr;
+    }
 };
 
 } // namespace pz::snmpd

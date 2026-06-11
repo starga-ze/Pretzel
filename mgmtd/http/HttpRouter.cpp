@@ -76,6 +76,15 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
         return handleLogout(req);
     }
 
+    if (target == "/api/change-password" && req.method() == http::verb::post)
+    {
+        if (!isAuthenticated(req))
+        {
+            return unauthorized(req.version(), req.keep_alive());
+        }
+        return handleChangePassword(req);
+    }
+
     if (target == "/api/status" && req.method() == http::verb::get)
     {
         if (!isAuthenticated(req))
@@ -263,6 +272,65 @@ HttpRouter::Response HttpRouter::handleLogout(const Request& req)
                             req.keep_alive());
     res.set(http::field::set_cookie, "session=; Path=/; Max-Age=0");
     return res;
+}
+
+HttpRouter::Response HttpRouter::handleChangePassword(const Request& req)
+{
+    if (!m_authService)
+    {
+        return makeResponse(http::status::service_unavailable,
+                            R"({"error":"auth unavailable"})",
+                            "application/json; charset=utf-8",
+                            req.version(), req.keep_alive());
+    }
+
+    try
+    {
+        const auto body    = json::parse(req.body());
+        const auto oldPass = body.at("old_password").get<std::string>();
+        const auto newPass = body.at("new_password").get<std::string>();
+
+        if (newPass.empty())
+        {
+            return makeResponse(http::status::bad_request,
+                                R"({"error":"new password must not be empty"})",
+                                "application/json; charset=utf-8",
+                                req.version(), req.keep_alive());
+        }
+
+        // Single operator account: the username is whatever the (authenticated)
+        // session's admin is. Require the current password before changing it.
+        const std::string& user = m_authService->username();
+        if (!m_authService->checkPassword(user, oldPass))
+        {
+            return makeResponse(http::status::unauthorized,
+                                R"({"error":"current password is incorrect"})",
+                                "application/json; charset=utf-8",
+                                req.version(), req.keep_alive());
+        }
+
+        if (!m_authService->changePassword(user, newPass))
+        {
+            return makeResponse(http::status::internal_server_error,
+                                R"({"error":"failed to update password"})",
+                                "application/json; charset=utf-8",
+                                req.version(), req.keep_alive());
+        }
+
+        LOG_INFO("Mgmtd admin password changed for user '{}'", user);
+        return makeResponse(http::status::ok,
+                            R"({"status":"ok"})",
+                            "application/json; charset=utf-8",
+                            req.version(), req.keep_alive());
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("Mgmtd change-password bad request: {}", e.what());
+        return makeResponse(http::status::bad_request,
+                            R"({"error":"bad request"})",
+                            "application/json; charset=utf-8",
+                            req.version(), req.keep_alive());
+    }
 }
 
 HttpRouter::Response HttpRouter::handleStatus(const Request& req)

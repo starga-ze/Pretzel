@@ -21,6 +21,7 @@ from script.utils import (
 
 # List of child systemd services targeted for start/restart
 DAEMONS = [
+    "pz-db-ready.service",
     "pz-ipcd.service", "pz-engined.service", "pz-authd.service", "pz-mgmtd.service",
     "pz-icmpd.service", "pz-snmpd.service", "pz-topologyd.service",
     "pz-prometheus.service", "pz-node-exporter.service", "pz-postgres-exporter.service",
