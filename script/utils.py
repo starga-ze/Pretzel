@@ -92,7 +92,7 @@ PGADMIN_VENV             = os.path.join(INSTALL_ROOT, "pgadmin", "venv")
 # domain is required or login fails with "special-use or reserved name" — do NOT
 # use a .local address here.
 PGADMIN_SETUP_EMAIL      = "admin@pretzel.io"
-PGADMIN_SETUP_PASSWORD   = "pretzel"
+PGADMIN_SETUP_PASSWORD   = "REDACTED"
 
 # PostgreSQL is installed from the distro APT repo (not built from source) and
 # runs under its own systemd unit (postgresql.service). Pretzel provisions a
