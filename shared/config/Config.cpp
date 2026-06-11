@@ -2,8 +2,6 @@
 
 #include "db/Database.h"
 
-#include "util/Logger.h"
-
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -299,13 +297,13 @@ bool Config::commitConfig(const nlohmann::json& fullRoot)
 {
     if (!fullRoot.is_object())
     {
-        LOG_ERROR("commitConfig: root is not an object");
+        std::cerr << "commitConfig: root is not an object" << std::endl;
         return false;
     }
 
     if (!bootstrapDatabase())
     {
-        LOG_ERROR("commitConfig: database unavailable");
+        std::cerr << "commitConfig: database unavailable" << std::endl;
         return false;
     }
 
