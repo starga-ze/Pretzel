@@ -147,13 +147,18 @@ def ensure_certificates() -> None:
     key = os.path.join(CERT_DIR, "server.key")
     if os.path.isfile(crt) and os.path.isfile(key):
         return
-    run_cmd([
+    # openssl is chatty (key-gen progress dots, banners) — capture its output and
+    # surface it only on failure, so a successful run is a single clean log line.
+    r = subprocess.run([
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
         "-keyout", key, "-out", crt, "-days", "825",
         "-subj", "/CN=localhost",
         "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
-    ], msg="Generating self-signed TLS certificate (cert/server.{crt,key})")
+    ], check=False, capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"[FATAL] openssl cert generation failed:\n{(r.stdout + r.stderr).rstrip()}")
     os.chmod(key, 0o600)
+    print("[*] Generated self-signed TLS certificate -> cert/server.{crt,key}")
 
 
 def pre_flight_checks():
@@ -283,9 +288,10 @@ def deploy_pgadmin():
 
     # 1. Deploy the canonical config: into the package dir (pgAdmin reads
     #    config_local from there) and into /etc/pretzel/pgadmin for parity.
-    install_file(PGADMIN_CONFIG_SRC, os.path.join(web_dir, "config_local.py"))
+    install_file(PGADMIN_CONFIG_SRC, os.path.join(web_dir, "config_local.py"), quiet=True)
     os.makedirs(PGADMIN_CONFIG_INSTALL_DIR, exist_ok=True)
-    install_file(PGADMIN_CONFIG_SRC, os.path.join(PGADMIN_CONFIG_INSTALL_DIR, "config_local.py"))
+    install_file(PGADMIN_CONFIG_SRC, os.path.join(PGADMIN_CONFIG_INSTALL_DIR, "config_local.py"), quiet=True)
+    print("[*] Deployed pgAdmin config_local.py")
 
     # 2. Bootstrap the SQLite config DB + admin account. pgAdmin's setup.py is noisy
     #    on every call (a Python FutureWarning, a banner, a "User already exists"
@@ -371,43 +377,53 @@ def deploy_files():
     to their destination folders.
     """
     print("[*] Deploying files...")
-    
+
     # Create required destination directories
     os.makedirs(INSTALL_BIN_DIR, exist_ok=True)
     os.makedirs(PROMETHEUS_CONFIG_DIR, exist_ok=True)
     os.makedirs(PROMETHEUS_DATA_DIR, exist_ok=True)
     os.makedirs(GRAFANA_CONFIG_DIR, exist_ok=True)
 
+    # Files are copied quietly and reported as one summary line per group (the
+    # per-file detail is noise; counts are enough to confirm a successful deploy).
+
     # 1. Deploy self-compiled Pretzel binaries (Execution permission 755)
-    for f in os.listdir(BUILD_BIN_DIR):
-        install_file(os.path.join(BUILD_BIN_DIR, f), os.path.join(INSTALL_BIN_DIR, f), 0o755)
-        
-    # 2. Deploy Prometheus binary and configuration files
-    for name in ["prometheus", "promtool"]:
-        install_file(os.path.join(PROMETHEUS_SRC_PATH, name), os.path.join(INSTALL_BIN_DIR, name), 0o755)
-    install_file(os.path.join(ROOT_DIR, "config", "prometheus", "prometheus.yml"), os.path.join(PROMETHEUS_CONFIG_DIR, "prometheus.yml"))
-    install_file(os.path.join(ROOT_DIR, "config", "prometheus", "web.yml"), os.path.join(PROMETHEUS_CONFIG_DIR, "web.yml"))
+    pz_bins = os.listdir(BUILD_BIN_DIR)
+    for f in pz_bins:
+        install_file(os.path.join(BUILD_BIN_DIR, f), os.path.join(INSTALL_BIN_DIR, f), 0o755, quiet=True)
+    print(f"[*] Deployed {len(pz_bins)} pretzel binaries -> {INSTALL_BIN_DIR}")
 
-    # 3. Deploy Node Exporter binary
-    install_file(os.path.join(NODE_EXPORTER_SRC_PATH, "node_exporter"), os.path.join(INSTALL_BIN_DIR, "node_exporter"), 0o755)
+    # 2-3b. Deploy monitoring binaries (prometheus/promtool/exporters)
+    mon_bins = [
+        (os.path.join(PROMETHEUS_SRC_PATH, "prometheus"), "prometheus"),
+        (os.path.join(PROMETHEUS_SRC_PATH, "promtool"), "promtool"),
+        (os.path.join(NODE_EXPORTER_SRC_PATH, "node_exporter"), "node_exporter"),
+        (os.path.join(POSTGRES_EXPORTER_SRC_PATH, "postgres_exporter"), "postgres_exporter"),
+    ]
+    for src, name in mon_bins:
+        install_file(src, os.path.join(INSTALL_BIN_DIR, name), 0o755, quiet=True)
+    print(f"[*] Deployed {len(mon_bins)} monitoring binaries (prometheus, exporters)")
 
-    # 3b. Deploy Postgres Exporter binary
-    install_file(os.path.join(POSTGRES_EXPORTER_SRC_PATH, "postgres_exporter"), os.path.join(INSTALL_BIN_DIR, "postgres_exporter"), 0o755)
-
-    # 4. Deploy Grafana configuration file
-    install_file(os.path.join(ROOT_DIR, "config", "grafana", "grafana.ini"), os.path.join(GRAFANA_CONFIG_DIR, "grafana.ini"))
+    # 2/4. Deploy monitoring config files (prometheus + grafana)
+    install_file(os.path.join(ROOT_DIR, "config", "prometheus", "prometheus.yml"), os.path.join(PROMETHEUS_CONFIG_DIR, "prometheus.yml"), quiet=True)
+    install_file(os.path.join(ROOT_DIR, "config", "prometheus", "web.yml"), os.path.join(PROMETHEUS_CONFIG_DIR, "web.yml"), quiet=True)
+    install_file(os.path.join(ROOT_DIR, "config", "grafana", "grafana.ini"), os.path.join(GRAFANA_CONFIG_DIR, "grafana.ini"), quiet=True)
+    print("[*] Deployed monitoring configs (prometheus, grafana)")
 
     # 5. Deploy Systemd daemon service files
-    for f in os.listdir(SERVICE_DIR):
-        if f.endswith((".service", ".target")):
-            install_file(os.path.join(SERVICE_DIR, f), os.path.join(SYSTEMD_DIR, f))
+    units = [f for f in os.listdir(SERVICE_DIR) if f.endswith((".service", ".target"))]
+    for f in units:
+        install_file(os.path.join(SERVICE_DIR, f), os.path.join(SYSTEMD_DIR, f), quiet=True)
+    print(f"[*] Deployed {len(units)} systemd units -> {SYSTEMD_DIR}")
 
     # 6. Deploy certificate files (Private key files (.key) are strictly set to 600 permission)
     if os.path.isdir(CERT_DIR):
         os.makedirs(CERT_INSTALL_DIR, exist_ok=True)
-        for f in os.listdir(CERT_DIR):
+        certs = os.listdir(CERT_DIR)
+        for f in certs:
             mode = 0o600 if f.endswith(".key") or "key" in f.lower() else 0o644
-            install_file(os.path.join(CERT_DIR, f), os.path.join(CERT_INSTALL_DIR, f), mode)
+            install_file(os.path.join(CERT_DIR, f), os.path.join(CERT_INSTALL_DIR, f), mode, quiet=True)
+        print(f"[*] Deployed TLS cert/key -> {CERT_INSTALL_DIR}")
 
     # 7. Install the baseline startup-config to /etc/pretzel/startup-config.json.
     #    mgmtd syncs it into the DB at boot; all daemons read it for DB conn params.

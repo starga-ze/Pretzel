@@ -201,31 +201,34 @@ def build_cmake_project(src_path, install_prefix, extra_args=None):
     run_cmd(["make", "install"], cwd=build_dir, msg=f"Installing project to {install_prefix}")
 
 
-def install_file(src, dst, mode=0o644):
+def install_file(src, dst, mode=0o644, quiet=False):
     """
     Copies a file to the destination and sets permissions (chmod).
     (Critical) To prevent 'Text file busy (Errno 26)' when overwriting running binaries,
     it removes (unlinks) the existing file before copying.
-    
+
     Args:
         src (str): Source file path.
         dst (str): Destination file path.
         mode (int): File permissions to set (default: 0o644).
-        
+        quiet (bool): Suppress the per-file "Installed" line (callers that copy many
+                      files print a single grouped summary instead).
+
     Returns:
         bool: False if the source file is missing (skipped), True on success.
     """
     if not os.path.isfile(src):
         return False
-        
+
     # [Fix Error] Unlink (remove) the file first to bypass OS-level locks on running binaries
     if os.path.exists(dst):
         try:
             os.remove(dst)
         except OSError:
             pass
-            
+
     shutil.copy(src, dst)
     os.chmod(dst, mode)
-    print(f"[*] Installed: {dst}")
+    if not quiet:
+        print(f"[*] Installed: {dst}")
     return True

@@ -57,13 +57,13 @@
   const KEY_LABELS = {
     scan_cidr:                 'Scan CIDRs',
     excluded_ips:              'Excluded IPs',
-    batch_size:                'Batch Size',
-    batch_interval_ms:         'Batch Interval (ms)',
-    cycle_interval_ms:         'Cycle Interval (ms)',
-    reply_idle_timeout_ms:     'Reply Idle Timeout (ms)',
-    reply_max_wait_timeout_ms: 'Max Reply Wait (ms)',
-    poll_interval_ms:          'Poll Interval (ms)',
-    response_timeout_ms:       'Response Timeout (ms)',
+    batch_size:                 'Batch Size',
+    batch_interval_ms:          'Batch Interval (ms)',
+    cycle_interval_sec:         'Cycle Interval (s)',
+    reply_idle_timeout_sec:     'Reply Idle Timeout (s)',
+    reply_max_wait_timeout_sec: 'Max Reply Wait (s)',
+    poll_interval_sec:          'Poll Interval (s)',
+    response_timeout_sec:       'Response Timeout (s)',
   };
 
   const KEY_PLACEHOLDER = {
@@ -80,8 +80,8 @@
 
   const PROBE_TARGET_KEYS = new Set(['scan_cidr', 'excluded_ips']);
   const PROBE_TIMING_KEYS = new Set([
-    'batch_size', 'batch_interval_ms', 'cycle_interval_ms',
-    'reply_idle_timeout_ms', 'reply_max_wait_timeout_ms',
+    'batch_size', 'batch_interval_ms', 'cycle_interval_sec',
+    'reply_idle_timeout_sec', 'reply_max_wait_timeout_sec',
   ]);
 
   // ── State ─────────────────────────────────────────────────────────────────
