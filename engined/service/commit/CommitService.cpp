@@ -188,6 +188,10 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
         int applied = 0;
         int failed  = 0;
 
+        // Build the next config version: start from the current running-config root
+        // and overlay each change at <daemon>.<service|system>.<domain>.
+        json root = pz::config::Config::runningConfigRoot();
+
         for (const auto& change : changes)
         {
             const std::string daemon = change.value("daemon", "");
@@ -208,27 +212,42 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
                 continue;
             }
 
-            if (!pz::config::Config::updateTuning(daemon, domain, values))
+            // "system" sections (ipc/logger) vs "service" sections (everything else).
+            // Place the change where the domain already lives; default to "service".
+            const char* parent = "service";
+            if (root.contains(daemon) && root[daemon].contains("system") &&
+                root[daemon]["system"].contains(domain))
             {
-                LOG_ERROR("CommitService: Config::updateTuning failed daemon={} domain={}", daemon, domain);
-                failed++;
-                continue;
+                parent = "system";
             }
 
-            LOG_INFO("CommitService: persisted daemon={} domain={} keys={}", daemon, domain, values.size());
+            root[daemon][parent][domain].merge_patch(values);
+            LOG_INFO("CommitService: staged daemon={} {}.{} keys={}",
+                     daemon, parent, domain, values.size());
             applied++;
         }
 
         if (applied == 0)
         {
-            LOG_ERROR("CommitService: no changes persisted — task {} failed", running->id);
+            LOG_ERROR("CommitService: no changes staged — task {} failed", running->id);
             running->status = TaskStatus::Failed;
             sendQueueStatus(serviceManager);
             startNext(serviceManager);
             return;
         }
 
-        LOG_INFO("CommitService: task {} — {} persisted, {} failed — scheduling reload",
+        // Persist as a brand-new running_config version (history append).
+        if (!pz::config::Config::commitConfig(root))
+        {
+            LOG_ERROR("CommitService: commitConfig failed — task {} failed", running->id);
+            running->status = TaskStatus::Failed;
+            sendQueueStatus(serviceManager);
+            startNext(serviceManager);
+            return;
+        }
+
+        LOG_INFO("CommitService: task {} — {} staged, {} skipped — committed new "
+                 "running_config version; scheduling reload",
                  running->id, applied, failed);
 
         static constexpr pz::ipc::IpcDaemon kServiceDaemons[] = {

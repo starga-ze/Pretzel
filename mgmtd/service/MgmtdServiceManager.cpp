@@ -19,6 +19,10 @@ MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory,
       m_heartbeatService(std::make_unique<HeartbeatService>()),
       m_snmpService(std::make_unique<SnmpService>())
 {
+    // Restore the SNMP device inventory persisted in the DB so discovered
+    // attributes survive a daemon restart (the DB is already bootstrapped by
+    // Config during Core::run, before this manager is constructed).
+    m_snmpService->loadPersisted();
 }
 
 void MgmtdServiceManager::start()
@@ -135,7 +139,7 @@ void MgmtdServiceManager::startReload()
 void MgmtdServiceManager::completeReload()
 {
     // Invalidate mgmtd's own config cache so the next /api/settings read
-    // picks up the values that engined just persisted to disk.
+    // picks up the values that engined just persisted to the DB.
     pz::config::Config::invalidateConfigCache();
     m_reloadStatus.store(static_cast<int>(ReloadStatus::Complete), std::memory_order_release);
     LOG_INFO("reload complete elapsed={}ms", reloadElapsedMs());
@@ -156,13 +160,11 @@ std::int64_t MgmtdServiceManager::reloadElapsedMs() const
 
 void MgmtdServiceManager::setCommitQueue(std::string snapshotJson)
 {
-    std::lock_guard<std::mutex> lk(m_commitQueueMutex);
     m_commitQueueSnapshot = std::move(snapshotJson);
 }
 
 std::string MgmtdServiceManager::commitQueueSnapshot() const
 {
-    std::lock_guard<std::mutex> lk(m_commitQueueMutex);
     return m_commitQueueSnapshot;
 }
 
@@ -174,13 +176,11 @@ void MgmtdServiceManager::setAliveDevices(std::uint32_t count)
 
 std::vector<std::string> MgmtdServiceManager::aliveIps() const
 {
-    std::lock_guard<std::mutex> lock(m_aliveIpsMutex);
     return m_aliveIps;
 }
 
 void MgmtdServiceManager::setAliveIps(std::vector<std::string> ips)
 {
-    std::lock_guard<std::mutex> lock(m_aliveIpsMutex);
     m_aliveIps = std::move(ips);
 }
 

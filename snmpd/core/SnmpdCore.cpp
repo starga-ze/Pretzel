@@ -13,13 +13,13 @@ bool SnmpdCore::onInit()
 {
     const auto& cfg = m_config.json();
 
-    const auto& log = cfg["logger"];
+    const auto& log = cfg["system"]["logger"];
     m_loggerConfig.name = log["name"];
     m_loggerConfig.file = log["file"];
     m_loggerConfig.maxFileSize = log["max_file_size"];
     m_loggerConfig.maxFiles = log["max_files"];
 
-    const auto& ipc = cfg["ipc"];
+    const auto& ipc = cfg["system"]["ipc"];
 
     m_ipcConfig.socketPath = ipc["socket_path"];
     m_ipcConfig.maxConnections = ipc["max_connections"];

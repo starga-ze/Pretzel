@@ -11,4 +11,5 @@ target_include_directories(pz-shared PUBLIC
 target_link_libraries(pz-shared PUBLIC
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    PostgreSQL::PostgreSQL
 )

@@ -1,9 +1,14 @@
 #include "Config.h"
 
+#include "db/Database.h"
+
+#include "util/Logger.h"
+
 #include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <optional>
 
 namespace pz::config
 {
@@ -11,12 +16,8 @@ namespace pz::config
 namespace
 {
 
-// Resolves a deployment-root directory from an environment variable, falling
-// back to the standard FHS location. This lets the same binary run against a
-// real install (/etc, /var/lib) or an alternate root (e.g. for testing/containers)
-// without requiring a rebuild — unlike the old PROJECT_ROOT compile-time constant,
-// which baked in the source-checkout path and broke once deployed elsewhere.
-std::string envDirOr(const char* envVar, const std::string& fallback)
+// Reads an environment variable, falling back to a default when unset/empty.
+std::string envOr(const char* envVar, const std::string& fallback)
 {
     const char* value = std::getenv(envVar);
     return (value && *value) ? std::string(value) : fallback;
@@ -24,40 +25,123 @@ std::string envDirOr(const char* envVar, const std::string& fallback)
 
 std::string configDir()
 {
-    return envDirOr("PRETZEL_CONFIG_DIR", "/etc/pretzel");
+    return envOr("PRETZEL_CONFIG_DIR", "/etc/pretzel");
 }
 
-std::string stateDir()
+// The deployed startup-config file. It is the baseline boot config: the source for
+// the DB connection params, the seed for the DB on a factory-fresh device, and the
+// offline fallback when the DB is unreachable. start.py copies it here from
+// config/startup-config.json before any daemon starts.
+std::string startupConfigPath()
 {
-    return envDirOr("PRETZEL_STATE_DIR", "/var/lib/pretzel");
+    return configDir() + "/startup-config.json";
 }
 
-std::string stateSnapshotPath(const std::string& daemonName)
+// Parses the startup-config file. Defensive: returns an empty object on any error
+// (missing file, bad JSON) so callers degrade gracefully instead of crashing.
+nlohmann::json readStartupFile()
 {
-    return stateDir() + "/" + daemonName + "/" + daemonName + "-state-snapshot.json";
-}
-
-std::string runningConfigPath()
-{
-    return configDir() + "/running-config.json";
-}
-
-nlohmann::json readJsonFile(const std::string& path)
-{
-    nlohmann::json json = nlohmann::json::object();
-
-    std::ifstream file(path);
-    if (file.is_open())
+    try
     {
+        std::ifstream file(startupConfigPath());
+        if (!file.is_open())
+        {
+            std::cerr << "config: cannot open startup-config: " << startupConfigPath() << std::endl;
+            return nlohmann::json::object();
+        }
+        nlohmann::json json;
         file >> json;
+        return json.is_object() ? json : nlohmann::json::object();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "config: failed to parse startup-config: " << e.what() << std::endl;
+        return nlohmann::json::object();
+    }
+}
+
+// ── Bootstrap: connect to PostgreSQL ──
+// The connection params are the one thing that cannot live in the DB, so they come
+// from the startup-config file's "mgmtd.service.database" block, falling back to the
+// compiled localhost defaults in ConnParams. Latches true on first success.
+bool bootstrapDatabase()
+{
+    static bool s_ready = false;
+
+    if (s_ready)
+        return true;
+
+    pz::db::ConnParams params;
+    try
+    {
+        const nlohmann::json root = readStartupFile();
+        const nlohmann::json db =
+            root.value("mgmtd", nlohmann::json::object())
+                .value("service", nlohmann::json::object())
+                .value("database", nlohmann::json::object());
+        if (db.is_object())
+        {
+            params.host     = db.value("host", params.host);
+            params.name     = db.value("name", params.name);
+            params.user     = db.value("user", params.user);
+            params.password = db.value("password", params.password);
+            if (db.contains("port"))
+            {
+                const auto& p = db["port"];
+                params.port = p.is_string() ? p.get<std::string>()
+                                            : std::to_string(p.get<long long>());
+            }
+        }
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "config: database block parse failed (" << e.what()
+                  << "), using defaults" << std::endl;
     }
 
-    return json;
+    if (!pz::db::Database::instance().connect(params))
+    {
+        std::cerr << "config: database unavailable (host=" << params.host
+                  << " port=" << params.port << " db=" << params.name << ")" << std::endl;
+        return false;
+    }
+
+    s_ready = pz::db::Database::instance().ensureSchema();
+    return s_ready;
 }
 
-// The single consolidated running-config file is cached as one unit, keyed by
-// daemon name at the top level. `s_loaded` distinguishes "not yet read" from
-// "read and turned out empty" so invalidate -> re-read works correctly.
+// Queries the latest (highest-version) running-config blob, if any.
+std::optional<nlohmann::json> latestRunningConfig()
+{
+    const auto raw = pz::db::Database::instance().queryScalar(
+        "SELECT config_json FROM running_config ORDER BY version DESC LIMIT 1");
+    if (!raw)
+        return std::nullopt;
+
+    auto parsed = nlohmann::json::parse(*raw, nullptr, false);
+    if (parsed.is_discarded() || !parsed.is_object())
+        return std::nullopt;
+    return parsed;
+}
+
+// Implements the load decision tree (see Config.h):
+//   Case B: running_config has a latest version  -> use it.
+//   Case A: empty table OR DB unreachable        -> use the startup-config file.
+// Fully defensive: any failure falls back to the startup-config file.
+nlohmann::json loadRunningConfigRoot()
+{
+    if (!bootstrapDatabase())
+        return readStartupFile();  // DB down — last-resort fallback
+
+    if (auto latest = latestRunningConfig())
+        return *latest;            // Case B: adopt latest committed version
+
+    return readStartupFile();      // Case A: empty DB (mgmtd seeds it via seedStore)
+}
+
+// ── In-process cache ──
+// The running-config root and the per-daemon "effective" configs (global merged
+// with the daemon section) are cached. invalidateConfigCache() clears both.
 nlohmann::json& runningConfigCache()
 {
     static nlohmann::json s_root = nlohmann::json::object();
@@ -70,42 +154,75 @@ bool& runningConfigLoaded()
     return s_loaded;
 }
 
+std::map<std::string, nlohmann::json>& effectiveCache()
+{
+    static std::map<std::string, nlohmann::json> s_cache;
+    return s_cache;
+}
+
 const nlohmann::json& cachedRunningConfig()
 {
     if (!runningConfigLoaded())
     {
-        runningConfigCache()  = readJsonFile(runningConfigPath());
+        runningConfigCache()  = loadRunningConfigRoot();
         runningConfigLoaded() = true;
     }
     return runningConfigCache();
 }
 
-const nlohmann::json& cachedDaemonSection(const std::string& daemonName)
+// Effective config for a daemon: the shared "global" defaults overlaid with the
+// daemon's own section (merge_patch = RFC-7386 deep override, daemon wins).
+const nlohmann::json& effectiveDaemon(const std::string& daemonName)
 {
-    static const nlohmann::json kEmpty = nlohmann::json::object();
+    auto& cache = effectiveCache();
+    auto it = cache.find(daemonName);
+    if (it != cache.end())
+        return it->second;
 
     const nlohmann::json& root = cachedRunningConfig();
 
-    auto it = root.find(daemonName);
-    if (it == root.end() || !it->is_object())
+    nlohmann::json eff = root.value("global", nlohmann::json::object());
+    if (!eff.is_object())
+        eff = nlohmann::json::object();
+
+    auto dit = root.find(daemonName);
+    if (dit != root.end() && dit->is_object())
+        eff.merge_patch(*dit);
+
+    return cache.emplace(daemonName, std::move(eff)).first->second;
+}
+
+// Returns effective(daemon)[parent][domain], or an empty object if absent.
+const nlohmann::json& nestedSection(const std::string& daemonName,
+                                    const char*        parent,
+                                    const std::string& domain)
+{
+    static const nlohmann::json kEmpty = nlohmann::json::object();
+
+    const nlohmann::json& eff = effectiveDaemon(daemonName);
+
+    auto pit = eff.find(parent);
+    if (pit == eff.end() || !pit->is_object())
         return kEmpty;
 
-    return *it;
+    auto dit = pit->find(domain);
+    if (dit == pit->end() || !dit->is_object())
+        return kEmpty;
+
+    return *dit;
 }
 
 } // namespace
 
 bool Config::load(const std::string& daemonName)
 {
-    const nlohmann::json& section = cachedDaemonSection(daemonName);
-    if (section.empty())
+    m_json = effectiveDaemon(daemonName);
+    if (m_json.empty())
     {
-        std::cerr << "running-config: no section for daemon '" << daemonName
-                  << "' in " << runningConfigPath() << std::endl;
-        return false;
+        std::cerr << "config: no effective config for daemon '" << daemonName
+                  << "' (startup-config missing and DB empty?) — using defaults"
+                  << std::endl;
     }
-
-    m_json = section;
     return true;
 }
 
@@ -114,109 +231,132 @@ const nlohmann::json& Config::json() const
     return m_json;
 }
 
-bool Config::saveStateSnapshot(const std::string& daemonName, const nlohmann::json& json)
+const nlohmann::json& Config::serviceSection(const std::string& daemonName,
+                                             const std::string& domain)
 {
-    std::string path = stateSnapshotPath(daemonName);
-
-    std::error_code ec;
-    std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
-
-    std::ofstream file(path, std::ios::trunc);
-
-    if (!file.is_open())
-    {
-        std::cerr << "File open failed, state-snapshot path: " << path << std::endl;
-        return false;
-    }
-
-    file << json.dump(4);
-
-    return true;
+    return nestedSection(daemonName, "service", domain);
 }
 
-bool Config::loadStateSnapshot(const std::string& daemonName, nlohmann::json& outJson)
+const nlohmann::json& Config::systemSection(const std::string& daemonName,
+                                            const std::string& domain)
 {
-    std::string path = stateSnapshotPath(daemonName);
-
-    std::ifstream file(path);
-
-    if (!file.is_open())
-    {
-        return false;
-    }
-
-    file >> outJson;
-
-    return true;
-}
-
-const nlohmann::json& Config::tuningSection(const std::string& daemonName, const std::string& domain)
-{
-    static const nlohmann::json kEmpty = nlohmann::json::object();
-
-    const nlohmann::json& root = cachedDaemonSection(daemonName);
-
-    auto tuningIt = root.find("tuning");
-    if (tuningIt == root.end() || !tuningIt->is_object())
-        return kEmpty;
-
-    auto domainIt = tuningIt->find(domain);
-    if (domainIt == tuningIt->end() || !domainIt->is_object())
-        return kEmpty;
-
-    return *domainIt;
+    return nestedSection(daemonName, "system", domain);
 }
 
 const nlohmann::json& Config::daemonConfig(const std::string& daemonName)
 {
-    return cachedDaemonSection(daemonName);
+    return effectiveDaemon(daemonName);
 }
 
-bool Config::updateTuning(const std::string& daemonName,
-                          const std::string& domain,
-                          const nlohmann::json& values)
+nlohmann::json Config::runningConfigRoot()
 {
-    if (!values.is_object())
-        return false;
+    return cachedRunningConfig();  // copy of the latest committed root
+}
 
-    std::string path = runningConfigPath();
-
-    nlohmann::json root = readJsonFile(path);
-    if (!root.is_object())
-        return false;
-
-    nlohmann::json& section = root[daemonName];
-    if (!section.is_object())
-        section = nlohmann::json::object();
-
-    nlohmann::json& tuning = section["tuning"];
-    if (!tuning.is_object())
-        tuning = nlohmann::json::object();
-
-    nlohmann::json& domainSection = tuning[domain];
-    if (!domainSection.is_object())
-        domainSection = nlohmann::json::object();
-
-    domainSection.merge_patch(values);
-
-    std::ofstream file(path, std::ios::trunc);
-    if (!file.is_open())
+bool Config::seedStore()
+{
+    if (!bootstrapDatabase())
     {
-        std::cerr << "File open failed, running-config path: " << path << std::endl;
+        std::cerr << "seedStore: database unavailable" << std::endl;
         return false;
     }
 
-    file << root.dump(4);
+    const nlohmann::json startup = readStartupFile();
+    if (startup.empty())
+    {
+        std::cerr << "seedStore: startup-config empty/unreadable: "
+                  << startupConfigPath() << std::endl;
+        return false;
+    }
 
-    runningConfigCache()  = root;
-    runningConfigLoaded() = true;
+    auto& dbi = pz::db::Database::instance();
 
+    // Sync the baseline startup_config (singleton row).
+    if (!dbi.exec(
+            "INSERT INTO startup_config (id, config_json) VALUES (1, $1::jsonb) "
+            "ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json, "
+            "updated_at = now()",
+            {startup.dump()}))
+    {
+        std::cerr << "seedStore: startup_config upsert failed" << std::endl;
+    }
+
+    // Seed running_config version 1 ONLY when the history is empty. Existing
+    // versions are preserved so committed changes survive a reboot.
+    if (!dbi.exec(
+            "INSERT INTO running_config (version, config_json) "
+            "SELECT 1, $1::jsonb WHERE NOT EXISTS (SELECT 1 FROM running_config)",
+            {startup.dump()}))
+    {
+        std::cerr << "seedStore: running_config v1 seed failed" << std::endl;
+        return false;
+    }
+
+    return true;
+}
+
+bool Config::commitConfig(const nlohmann::json& fullRoot)
+{
+    if (!fullRoot.is_object())
+    {
+        LOG_ERROR("commitConfig: root is not an object");
+        return false;
+    }
+
+    if (!bootstrapDatabase())
+    {
+        LOG_ERROR("commitConfig: database unavailable");
+        return false;
+    }
+
+    const bool ok = pz::db::Database::instance().exec(
+        "INSERT INTO running_config (version, config_json) "
+        "VALUES ((SELECT COALESCE(MAX(version), 0) + 1 FROM running_config), $1::jsonb)",
+        {fullRoot.dump()});
+
+    if (ok)
+        invalidateConfigCache();  // next read adopts the new version
+
+    return ok;
+}
+
+bool Config::saveStateSnapshot(const std::string& daemonName, const nlohmann::json& json)
+{
+    if (!bootstrapDatabase())
+    {
+        std::cerr << "saveStateSnapshot: database unavailable for daemon '"
+                  << daemonName << "'" << std::endl;
+        return false;
+    }
+
+    return pz::db::Database::instance().exec(
+        "INSERT INTO state_snapshot (daemon, snapshot) VALUES ($1, $2::jsonb) "
+        "ON CONFLICT (daemon) DO UPDATE SET snapshot = EXCLUDED.snapshot, updated_at = now()",
+        {daemonName, json.dump()});
+}
+
+bool Config::loadStateSnapshot(const std::string& daemonName, nlohmann::json& outJson)
+{
+    if (!bootstrapDatabase())
+        return false;
+
+    const auto snapshot = pz::db::Database::instance().queryScalar(
+        "SELECT snapshot FROM state_snapshot WHERE daemon = $1", {daemonName});
+    if (!snapshot)
+        return false;
+
+    auto parsed = nlohmann::json::parse(*snapshot, nullptr, false);
+    if (parsed.is_discarded())
+        return false;
+
+    outJson = std::move(parsed);
     return true;
 }
 
 void Config::invalidateConfigCache()
 {
     runningConfigLoaded() = false;
+    effectiveCache().clear();
 }
 
 }

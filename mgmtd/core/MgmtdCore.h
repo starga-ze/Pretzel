@@ -36,6 +36,7 @@ public:
     ~MgmtdCore() override = default;
 
 protected:
+    void onPreConfigLoad() override;
     bool onInit() override;
     void onLoop() override;
     void onShutdown() override;

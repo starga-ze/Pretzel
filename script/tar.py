@@ -9,7 +9,7 @@ import tarfile
 import os
 
 # List of target directories to include in the packaging
-TARGET_ITEMS = ['shared', 'ipcd', 'engined', 'icmpd', 'mgmtd']
+TARGET_ITEMS = ['shared', 'ipcd', 'engined', 'icmpd', 'mgmtd', 'authd', 'topologyd']
 TAR_FILENAME = "pretzel-ims.tar.gz"
 
 def run():

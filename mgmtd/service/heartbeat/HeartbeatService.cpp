@@ -58,8 +58,8 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
 
         LOG_TRACE("updated heartbeat result len={}", m_latestJson.size());
 
-        // Persist the runtime-determined heartbeat snapshot as mgmtd's running-config,
-        // distinct from the operational running-config.
+        // Persist the runtime-determined heartbeat snapshot to the DB
+        // (state_snapshot table), distinct from the operational running-config.
         auto parsed = nlohmann::json::parse(m_latestJson, nullptr, false);
         if (!parsed.is_discarded())
         {

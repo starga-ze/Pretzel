@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <map>
-#include <mutex>
 #include <string>
 
 namespace pz::mgmtd
@@ -17,7 +16,6 @@ public:
     std::string renderPrometheus() const;
 
 private:
-    mutable std::mutex m_mutex;
     std::map<std::string, double> m_gauges;
     std::map<std::string, std::uint64_t> m_counters;
 };

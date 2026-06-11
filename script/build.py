@@ -12,12 +12,15 @@ from script.utils import ROOT_DIR, BUILD_DIR, MAKE_JOBS, NUM_CORES, run_cmd
 def build_project():
     """Configures the CMake environment and compiles the project."""
     
-    # 1. Load and execute 3rd party dependency module (links with install.py)
+    # 1. Ensure only the BUILD-time dependencies (toolchain + source libs + libpq-dev)
+    #    are present. Runtime services (Prometheus/Grafana/PostgreSQL server/pgAdmin)
+    #    are NOT installed here — those belong to `./pretzel install`. This keeps a
+    #    plain build fast and free of service-provisioning side effects.
     try:
         install_module = importlib.import_module("script.install")
-        if hasattr(install_module, "run"):
-            print("[*] Ensuring all 3rd party dependencies are installed...")
-            install_module.run()
+        if hasattr(install_module, "run_build_deps"):
+            print("[*] Ensuring build dependencies are installed...")
+            install_module.run_build_deps()
     except Exception as e:
         print(f"[Error] Failed to load/run dependency installation: {e}")
         return

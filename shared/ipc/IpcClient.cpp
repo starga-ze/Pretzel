@@ -20,18 +20,18 @@ namespace
 // ipcd is launched as a simple systemd service, so it can be reported "active"
 // before its listening socket file actually exists. Retry the connect for a
 // short window so daemons started in parallel don't fail on this race. Defaults
-// match the previous hardcoded values; overridable via "tuning"."ipc_connect"
-// in running-config.json under each daemon's section.
+// match the compiled-in values; overridable via "system"."ipc" in the
+// running-config under each daemon's section (merged with global).
 int connectMaxAttempts(IpcDaemon selfId)
 {
-    const auto& tuning = pz::config::Config::tuningSection(IpcProtocol::daemonToStr(selfId), "ipc_connect");
-    return tuning.value("max_attempts", 10);
+    const auto& ipc = pz::config::Config::systemSection(IpcProtocol::daemonToStr(selfId), "ipc");
+    return ipc.value("ipc_retry_attempts", 10);
 }
 
 int connectRetryDelayMs(IpcDaemon selfId)
 {
-    const auto& tuning = pz::config::Config::tuningSection(IpcProtocol::daemonToStr(selfId), "ipc_connect");
-    return tuning.value("retry_delay_ms", 500);
+    const auto& ipc = pz::config::Config::systemSection(IpcProtocol::daemonToStr(selfId), "ipc");
+    return ipc.value("ipc_retry_delay_ms", 1000);
 }
 
 } // namespace

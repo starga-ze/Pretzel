@@ -11,20 +11,16 @@ namespace pz::mgmtd
 
 void MetricRegistry::setGauge(const std::string& name, double value)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
     m_gauges[name] = value;
 }
 
 void MetricRegistry::incCounter(const std::string& name, std::uint64_t delta)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
     m_counters[name] += delta;
 }
 
 std::string MetricRegistry::renderPrometheus() const
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
     std::ostringstream out;
 
     for (const auto& [name, value] : m_gauges)

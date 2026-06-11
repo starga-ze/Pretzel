@@ -4,6 +4,7 @@
 #include "util/Logger.h"
 
 #include <chrono>
+#include <iostream>
 #include <thread>
 
 namespace pz::mgmtd
@@ -12,6 +13,18 @@ namespace pz::mgmtd
 MgmtdCore::MgmtdCore()
     : Core("mgmtd")
 {
+}
+
+void MgmtdCore::onPreConfigLoad()
+{
+    // mgmtd owns the config store: sync the startup-config file into the DB and seed
+    // running_config v1 on a factory-fresh device (idempotent — existing history is
+    // preserved). Runs before any daemon reads its config.
+    if (!pz::config::Config::seedStore())
+    {
+        std::cerr << "mgmtd: config store seed failed — continuing on startup-config "
+                     "fallback" << std::endl;
+    }
 }
 
 bool MgmtdCore::onInit()
@@ -126,8 +139,9 @@ void MgmtdCore::onShutdown()
 bool MgmtdCore::loadLoggerConfig()
 {
     const auto& cfg = m_config.json();
+    const auto sys = cfg.value("system", nlohmann::json::object());
 
-    if (!cfg.contains("logger"))
+    if (!sys.contains("logger"))
     {
         m_loggerConfig.name = "pz-mgmtd";
         m_loggerConfig.file = "/tmp/pz-mgmtd.log";
@@ -136,7 +150,7 @@ bool MgmtdCore::loadLoggerConfig()
         return true;
     }
 
-    const auto& log = cfg["logger"];
+    const auto& log = sys["logger"];
     m_loggerConfig.name = log.value("name", "pz-mgmtd");
     m_loggerConfig.file = log.value("file", "/tmp/pz-mgmtd.log");
     m_loggerConfig.maxFileSize = log.value("max_file_size", 5 * 1024 * 1024);
@@ -147,14 +161,15 @@ bool MgmtdCore::loadLoggerConfig()
 bool MgmtdCore::loadIpcConfig()
 {
     const auto& cfg = m_config.json();
+    const auto sys = cfg.value("system", nlohmann::json::object());
 
-    if (!cfg.contains("ipc"))
+    if (!sys.contains("ipc"))
     {
         m_ipcConfig.socketPath = "/run/pretzel/ipcd.sock";
         return true;
     }
 
-    const auto& ipc = cfg["ipc"];
+    const auto& ipc = sys["ipc"];
     m_ipcConfig.socketPath = ipc.value("socket_path", "/run/pretzel/ipcd.sock");
     m_ipcConfig.maxConnections = ipc.value("max_connections", 128);
     m_ipcConfig.maxFrameSize = ipc.value("max_frame_size", 65536);
@@ -166,13 +181,14 @@ bool MgmtdCore::loadIpcConfig()
 bool MgmtdCore::loadHttpConfig()
 {
     const auto& cfg = m_config.json();
+    const auto svc = cfg.value("service", nlohmann::json::object());
 
-    if (!cfg.contains("http"))
+    if (!svc.contains("http"))
     {
         return true;
     }
 
-    const auto& http = cfg["http"];
+    const auto& http = svc["http"];
     m_httpConfig.listenAddress = http.value("listen_address", "0.0.0.0");
     m_httpConfig.listenPort =
         static_cast<std::uint16_t>(http.value("listen_port", 9101));
@@ -192,12 +208,13 @@ bool MgmtdCore::loadAuthConfig()
     }
 
     const auto& cfg = m_config.json();
-    if (!cfg.contains("admin"))
+    const auto svc = cfg.value("service", nlohmann::json::object());
+    if (!svc.contains("admin"))
     {
         return true;
     }
 
-    const auto& admin = cfg["admin"];
+    const auto& admin = svc["admin"];
     m_serviceManager->authService().load(admin.value("username", "admin"),
                                          admin.value("password_hash", ""),
                                          admin.value("salt", ""));

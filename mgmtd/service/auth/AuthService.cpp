@@ -41,7 +41,6 @@ AuthService::LoginResult AuthService::login(const std::string& username,
 
     const auto sessionId = generateSessionId();
 
-    std::lock_guard<std::mutex> lock(m_mutex);
     m_sessions[sessionId] = Session{now() + m_sessionTtlSec};
 
     return LoginResult{true, sessionId};
@@ -53,8 +52,6 @@ bool AuthService::validateSession(const std::string& sessionId)
     {
         return false;
     }
-
-    std::lock_guard<std::mutex> lock(m_mutex);
 
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end())
@@ -73,7 +70,6 @@ bool AuthService::validateSession(const std::string& sessionId)
 
 void AuthService::logout(const std::string& sessionId)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
     m_sessions.erase(sessionId);
 }
 

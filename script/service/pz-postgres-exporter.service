@@ -1,0 +1,23 @@
+[Unit]
+Description=Pretzel Postgres Exporter
+After=network.target postgresql.service
+Wants=postgresql.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+# DATA_SOURCE_NAME MUST match PG_DB_* in script/utils.py and the "database" block
+# in running-config.json. The pretzel role is granted pg_monitor at install time
+# so the exporter can read the full pg_stat_* views.
+Environment="DATA_SOURCE_NAME=postgresql://pretzel:pretzel@127.0.0.1:5432/pretzel?sslmode=disable"
+ExecStart=/opt/pretzel/bin/postgres_exporter \
+  --web.listen-address=0.0.0.0:9187
+
+StandardOutput=append:/var/log/pretzel/postgres_exporter.log
+StandardError=append:/var/log/pretzel/postgres_exporter.log
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=pretzel.target

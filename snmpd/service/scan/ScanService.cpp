@@ -54,12 +54,12 @@ void ScanService::handleEvent(SnmpdServiceManager& sm, const ScanEvent& event)
             return;
         }
 
-        // Read tuning config
-        const auto& t = pz::config::Config::tuningSection("snmpd", "scan");
+        // Read scan config (effective: global merged with the snmpd section).
+        const auto& t = pz::config::Config::serviceSection("snmpd", "scan");
         SnmpScanConfig cfg;
         cfg.community     = t.value("community",      std::string("public"));
         cfg.port          = static_cast<uint16_t>(t.value("port",          161));
-        cfg.timeoutMs     = t.value("timeout_ms",     1500);
+        cfg.timeoutMs     = t.value("timeout_sec",    2) * 1000;
         cfg.retries       = t.value("retries",        1);
         cfg.maxConcurrent = t.value("max_concurrent", 10);
         cfg.v2cProbeTimeoutMs = t.value("v2c_probe_timeout_ms", 700);

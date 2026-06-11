@@ -26,9 +26,13 @@ void Core::run()
 {
     handleSignal();
 
+    // mgmtd seeds the config store here (sync startup-config + seed running_config
+    // v1 if empty) before anyone reads it; other daemons no-op.
+    onPreConfigLoad();
+
     if (!m_config.load(m_name))
     {
-        std::cerr << "running-config load failed for " << m_name << std::endl;
+        std::cerr << "config load failed for " << m_name << std::endl;
         return;
     }
 

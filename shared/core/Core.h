@@ -22,6 +22,12 @@ public:
     static void scheduleReload();
 
 protected:
+    // Called once at startup, BEFORE the config is loaded from the DB. Default is a
+    // no-op; mgmtd overrides it to seed the config store (sync startup-config into
+    // the DB and seed running_config v1 on a factory-fresh device). Other daemons
+    // are read-only consumers and do not override it.
+    virtual void onPreConfigLoad() {}
+
     virtual bool onInit() = 0;
     virtual void onLoop() = 0;
     virtual void onShutdown() = 0;

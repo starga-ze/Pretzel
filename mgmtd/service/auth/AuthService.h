@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -41,7 +40,6 @@ private:
     static std::string generateSessionId();
 
 private:
-    std::mutex m_mutex;
     std::unordered_map<std::string, Session> m_sessions;
 
     std::string m_username {"admin"};

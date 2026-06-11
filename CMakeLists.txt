@@ -24,6 +24,10 @@ find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
+# libpq (PostgreSQL client) — installed system-wide via apt (libpq-dev). Backs the
+# DB-stored running-config / state snapshots / device inventory in shared/db.
+find_package(PostgreSQL REQUIRED)
+
 add_compile_options(
     -Wall
     -Wextra

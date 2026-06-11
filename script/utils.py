@@ -62,6 +62,38 @@ NODE_EXPORTER_DIR = os.path.join(THIRD_PARTY_DIR, "node_exporter")
 NODE_EXPORTER_TAR = os.path.join(NODE_EXPORTER_DIR, f"node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64.tar.gz")
 NODE_EXPORTER_SRC_PATH = os.path.join(NODE_EXPORTER_DIR, f"node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64")
 
+# postgres_exporter (prometheus-community) exposes PostgreSQL server metrics for
+# Prometheus to scrape and Grafana to visualize. Pre-compiled binary distribution,
+# same pattern as node_exporter. It connects to the pretzel database over localhost
+# TCP using DATA_SOURCE_NAME (see pz-postgres-exporter.service), so the credentials
+# below MUST match PG_DB_* and the "database" block in running-config.json.
+POSTGRES_EXPORTER_VERSION = "0.15.0"
+POSTGRES_EXPORTER_DIR = os.path.join(THIRD_PARTY_DIR, "postgres_exporter")
+POSTGRES_EXPORTER_TAR = os.path.join(POSTGRES_EXPORTER_DIR, f"postgres_exporter-{POSTGRES_EXPORTER_VERSION}.linux-amd64.tar.gz")
+POSTGRES_EXPORTER_SRC_PATH = os.path.join(POSTGRES_EXPORTER_DIR, f"postgres_exporter-{POSTGRES_EXPORTER_VERSION}.linux-amd64")
+POSTGRES_EXPORTER_PORT = 9187
+
+# pgAdmin 4 — web-based PostgreSQL admin GUI. Installed via pip into a dedicated
+# virtualenv (NOT the apt pgadmin4-web package, which pulls in Apache and an
+# interactive setup-web.sh) and run headless via gunicorn under pz-pgadmin.service,
+# matching the pz-* "one process on a port" model. PGADMIN_VERSION is a pinned PyPI
+# release — bump as desired; old releases stay available on PyPI.
+PGADMIN_VERSION          = "8.14"
+# pgAdmin is installed by pip into a venv (not downloaded/extracted as a tarball),
+# so it has no 3rd_party/<name>/ source dir — only this venv under install/.
+PGADMIN_VENV             = os.path.join(INSTALL_ROOT, "pgadmin", "venv")
+# Network/runtime settings (listen address/port, data dirs) live in the canonical
+# config/pgadmin/config_local.py — consistent with grafana/prometheus — NOT here.
+# Only the deploy-time admin credentials remain here.
+# Initial server-mode login, created at deploy time. Localhost-only dev default —
+# harden for prod. The email is only an identifier and need not be deliverable, BUT
+# pgAdmin's web login validates it via email_validator, which REJECTS special-use /
+# reserved domains (.local, .localhost, .example, .test, ...). So a normal-looking
+# domain is required or login fails with "special-use or reserved name" — do NOT
+# use a .local address here.
+PGADMIN_SETUP_EMAIL      = "admin@pretzel.io"
+PGADMIN_SETUP_PASSWORD   = "pretzel"
+
 # PostgreSQL is installed from the distro APT repo (not built from source) and
 # runs under its own systemd unit (postgresql.service). Pretzel provisions a
 # dedicated login role + database; pz-mgmtd connects over localhost TCP.

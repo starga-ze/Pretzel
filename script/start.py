@@ -5,7 +5,7 @@ A complete deployment pipeline script that deploys built binaries, configuration
 and certificates to the actual operational paths (/opt/pretzel, /etc/pretzel) and runs the services via systemd.
 """
 
-import json
+import glob
 import os
 import sys
 import shutil
@@ -13,15 +13,17 @@ import subprocess
 import time
 from script.utils import (
     ROOT_DIR, BUILD_DIR, CERT_DIR, run_cmd, install_file,
-    PROMETHEUS_SRC_PATH, NODE_EXPORTER_SRC_PATH,
+    PROMETHEUS_SRC_PATH, NODE_EXPORTER_SRC_PATH, POSTGRES_EXPORTER_SRC_PATH,
     PG_SERVICE, PG_DB_HOST, PG_DB_PORT,
+    PGADMIN_VENV, PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD,
 )
 
 # List of child systemd services targeted for start/restart
 DAEMONS = [
     "pz-ipcd.service", "pz-engined.service", "pz-authd.service", "pz-mgmtd.service",
     "pz-icmpd.service", "pz-snmpd.service", "pz-topologyd.service",
-    "pz-prometheus.service", "pz-node-exporter.service", "pz-grafana.service",
+    "pz-prometheus.service", "pz-node-exporter.service", "pz-postgres-exporter.service",
+    "pz-grafana.service", "pz-pgadmin.service",
 ]
 
 # Defines source and destination paths for deployment
@@ -37,10 +39,17 @@ PROMETHEUS_DATA_DIR = "/var/lib/pretzel/prometheus"
 GRAFANA_CONFIG_DIR = os.path.join(ETC_ROOT_DIR, "grafana")
 TARGET = "pretzel.target"
 
-# pz daemons read their canonical config from /etc/pretzel/running-config.json
-# and persist runtime state under /var/lib/pretzel/<daemon>/ (see pz::config::Config —
-# both overridable via PRETZEL_CONFIG_DIR / PRETZEL_STATE_DIR for alternate deployments).
-RUNNING_CONFIG_INSTALL_PATH = os.path.join(ETC_ROOT_DIR, "running-config.json")
+# pgAdmin: canonical config lives under config/pgadmin/ (consistent with
+# grafana/prometheus). It is deployed both into the venv package dir (where pgAdmin
+# reads it) and into /etc/pretzel/pgadmin/ (for parity). PGADMIN_WRAPPER_PATH is the
+# generated launcher that pz-pgadmin.service execs.
+PGADMIN_CONFIG_SRC = os.path.join(ROOT_DIR, "config", "pgadmin", "config_local.py")
+PGADMIN_CONFIG_INSTALL_DIR = os.path.join(ETC_ROOT_DIR, "pgadmin")
+PGADMIN_WRAPPER_PATH = os.path.join(INSTALL_BIN_DIR, "pz-pgadmin")
+
+# pz daemons read the baseline startup-config from /etc/pretzel/startup-config.json
+# (deployed by deploy_startup_config) for DB connection params + factory seed, then
+# adopt the live config from the DB. Runtime state lives under /var/lib/pretzel/<daemon>/.
 STATE_ROOT_DIR = "/var/lib/pretzel"
 
 # Static web frontend assets served by mgmtd, installed read-only alongside the
@@ -48,42 +57,27 @@ STATE_ROOT_DIR = "/var/lib/pretzel"
 SHARE_INSTALL_DIR = "/opt/pretzel/share"
 MGMTD_WWW_INSTALL_DIR = os.path.join(SHARE_INSTALL_DIR, "mgmtd", "www")
 
-def _deep_merge(src: dict, dst: dict) -> bool:
+def deploy_startup_config() -> None:
     """
-    Recursively copies keys that exist in *src* but are missing in *dst*.
-    Keys already present in *dst* (including user-edited values) are left untouched.
-    Returns True if any key was added.
+    Atomically copies the baseline startup-config (config/startup-config.json) to the
+    active path /etc/pretzel/startup-config.json. Daemons read this file at bootstrap
+    for the DB connection params and as the factory-fresh seed / offline fallback;
+    mgmtd syncs it into the DB. Fatal if the source is missing or unreadable.
     """
-    changed = False
-    for key, src_val in src.items():
-        if key not in dst:
-            dst[key] = src_val
-            changed = True
-        elif isinstance(src_val, dict) and isinstance(dst[key], dict):
-            if _deep_merge(src_val, dst[key]):
-                changed = True
-    return changed
+    src = os.path.join(ROOT_DIR, "config", "startup-config.json")
+    if not os.path.isfile(src):
+        sys.exit(f"[FATAL] startup-config not found: {src}")
 
-
-def _merge_config(src_path: str, dst_path: str) -> None:
-    """
-    Merge new keys from the source running-config into the live deployed config.
-    Preserves all existing values; only adds missing keys.
-    """
+    os.makedirs(ETC_ROOT_DIR, exist_ok=True)
+    dst = os.path.join(ETC_ROOT_DIR, "startup-config.json")
+    tmp = dst + ".tmp"
     try:
-        with open(src_path, "r") as f:
-            src = json.load(f)
-        with open(dst_path, "r") as f:
-            dst = json.load(f)
-
-        if _deep_merge(src, dst):
-            with open(dst_path, "w") as f:
-                json.dump(dst, f, indent=4)
-            print(f"[*] running-config.json: merged new keys into {dst_path}")
-        else:
-            print(f"[*] running-config.json: already up-to-date at {dst_path}")
-    except Exception as e:
-        print(f"[WARN] Could not merge running-config.json: {e}")
+        shutil.copyfile(src, tmp)
+        os.chmod(tmp, 0o600)   # may carry secrets (admin hash, snmp v3 creds)
+        os.replace(tmp, dst)   # atomic swap
+    except OSError as e:
+        sys.exit(f"[FATAL] failed to install startup-config: {e}")
+    print(f"[*] Installed startup-config: {dst}")
 
 
 def pre_flight_checks():
@@ -107,6 +101,10 @@ def pre_flight_checks():
     if not os.path.isfile(os.path.join(NODE_EXPORTER_SRC_PATH, "node_exporter")):
         sys.exit("[ERROR] Required node_exporter binary not found.")
 
+    # 3b. Validate essential Postgres Exporter binary
+    if not os.path.isfile(os.path.join(POSTGRES_EXPORTER_SRC_PATH, "postgres_exporter")):
+        sys.exit("[ERROR] Required postgres_exporter binary not found.")
+
     # 4. Validate Grafana binary installation (assumes installation via OS package manager)
     if not any(os.path.exists(p) for p in ["/usr/share/grafana/bin/grafana", "/usr/sbin/grafana-server"]):
         sys.exit("[ERROR] Grafana binary not found. Install first: sudo apt install -y grafana")
@@ -114,6 +112,10 @@ def pre_flight_checks():
     # 5. Validate PostgreSQL is installed (server + client). Provisioned by install.
     if shutil.which("psql") is None:
         sys.exit("[ERROR] PostgreSQL not found. Install first: ./pretzel install")
+
+    # 6. Validate pgAdmin virtualenv (gunicorn launcher present). Provisioned by install.
+    if not os.path.isfile(os.path.join(PGADMIN_VENV, "bin", "gunicorn")):
+        sys.exit("[ERROR] pgAdmin venv not found. Install first: ./pretzel install")
 
 
 def ensure_postgresql():
@@ -124,7 +126,15 @@ def ensure_postgresql():
     `./pretzel stop` and every deploy cycle (the DB must persist across restarts).
     """
     print("[*] Ensuring PostgreSQL is up...")
-    run_cmd(["systemctl", "enable", "--now", PG_SERVICE], msg=f"Enabling {PG_SERVICE}")
+    # Only enable when not already enabled — `systemctl enable` re-prints a noisy
+    # "Synchronizing state ..." block every time on this SysV-compat unit. Starting
+    # an already-running service is a quiet no-op.
+    already_enabled = subprocess.run(
+        ["systemctl", "is-enabled", "--quiet", PG_SERVICE], check=False).returncode == 0
+    if already_enabled:
+        subprocess.run(["systemctl", "start", PG_SERVICE], check=False)
+    else:
+        run_cmd(["systemctl", "enable", "--now", PG_SERVICE], msg=f"Enabling {PG_SERVICE}")
 
     # Wait until the cluster accepts TCP connections (pz-mgmtd connects via localhost).
     for _ in range(30):
@@ -138,6 +148,109 @@ def ensure_postgresql():
         time.sleep(0.5)
 
     print("[WARN] PostgreSQL not ready in time; pz-mgmtd will retry its DB connection.")
+
+
+def _pgadmin_web_dir():
+    """Resolves the installed pgadmin4 package directory inside the venv (the dir
+    holding config.py / pgAdmin4.py). Returns None if pgAdmin is not installed."""
+    matches = glob.glob(
+        os.path.join(PGADMIN_VENV, "lib", "python*", "site-packages", "pgadmin4"))
+    return matches[0] if matches else None
+
+
+def _read_pgadmin_settings():
+    """Loads the canonical pgAdmin config (config/pgadmin/config_local.py) and
+    returns the values start.py needs: the listen address/port (for the gunicorn
+    bind) and the writable data dir / log file (to pre-create)."""
+    ns = {}
+    with open(PGADMIN_CONFIG_SRC) as f:
+        exec(compile(f.read(), PGADMIN_CONFIG_SRC, "exec"), ns)
+    return {
+        "address": ns.get("PZ_PGADMIN_LISTEN_ADDRESS", "0.0.0.0"),
+        "port": int(ns.get("PZ_PGADMIN_LISTEN_PORT", 5050)),
+        "data_dir": ns.get("DATA_DIR", "/var/lib/pretzel/pgadmin"),
+        "log_file": ns.get("LOG_FILE", "/var/log/pretzel/pgadmin.log"),
+    }
+
+
+def deploy_pgadmin():
+    """
+    Deploys pgAdmin's canonical config and generates the launcher pz-pgadmin.service
+    execs:
+      1. install config/pgadmin/config_local.py into pgAdmin's package dir (where it
+         is read at startup) and into /etc/pretzel/pgadmin/ (parity with the others)
+      2. bootstrap the SQLite config DB and the admin account
+      3. generate /opt/pretzel/bin/pz-pgadmin (a gunicorn wrapper; the listen
+         address/port come from the same config file — single source of truth — and
+         the resolved venv/web-dir paths are baked in since systemd's ExecStart needs
+         a literal executable)
+    Idempotent: re-running overwrites config/wrapper and syncs the admin password.
+    """
+    web_dir = _pgadmin_web_dir()
+    if not web_dir:
+        print("[WARN] pgAdmin venv not found; skipping pgAdmin deploy. Run install first.")
+        return
+    if not os.path.isfile(PGADMIN_CONFIG_SRC):
+        print(f"[WARN] {PGADMIN_CONFIG_SRC} missing; skipping pgAdmin deploy.")
+        return
+
+    cfg = _read_pgadmin_settings()
+    os.makedirs(cfg["data_dir"], exist_ok=True)
+    os.makedirs(os.path.dirname(cfg["log_file"]), exist_ok=True)
+
+    # 1. Deploy the canonical config: into the package dir (pgAdmin reads
+    #    config_local from there) and into /etc/pretzel/pgadmin for parity.
+    install_file(PGADMIN_CONFIG_SRC, os.path.join(web_dir, "config_local.py"))
+    os.makedirs(PGADMIN_CONFIG_INSTALL_DIR, exist_ok=True)
+    install_file(PGADMIN_CONFIG_SRC, os.path.join(PGADMIN_CONFIG_INSTALL_DIR, "config_local.py"))
+
+    # 2. Bootstrap the SQLite config DB + admin account. pgAdmin's setup.py is noisy
+    #    on every call (a Python FutureWarning, a banner, a "User already exists"
+    #    line and a user-details table), so run it quietly: silence warnings via
+    #    PYTHONWARNINGS and capture output, surfacing it only when a command fails.
+    py = os.path.join(PGADMIN_VENV, "bin", "python")
+    setup_py = os.path.join(web_dir, "setup.py")
+    env = dict(os.environ, PYTHONWARNINGS="ignore")
+
+    def _setup(args, why, warn=True):
+        r = subprocess.run([py, setup_py, *args], cwd=web_dir, env=env,
+                           check=False, capture_output=True, text=True)
+        if r.returncode != 0 and warn:
+            print(f"[WARN] pgAdmin {why} failed:\n{(r.stdout + r.stderr).rstrip()}")
+        return r.returncode
+
+    # setup-db initialises/migrates the schema. add-user creates the account on a
+    # fresh DB; "User already exists" (non-zero) is expected on re-deploys, so its
+    # result is ignored — update-user below is authoritative and enforces the
+    # password/active/admin state so credentials stay in sync.
+    _setup(["setup-db"], "setup-db")
+    _setup(["add-user", PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD, "--admin"],
+           "add-user", warn=False)
+    if _setup(["update-user", PGADMIN_SETUP_EMAIL,
+               "--password", PGADMIN_SETUP_PASSWORD, "--active", "--admin"],
+              "update-user") == 0:
+        print(f"[*] pgAdmin admin account ready: {PGADMIN_SETUP_EMAIL}")
+
+    # 3. Generate the gunicorn launcher (bind from the canonical config; paths quoted).
+    gunicorn = os.path.join(PGADMIN_VENV, "bin", "gunicorn")
+    wrapper = (
+        "#!/bin/sh\n"
+        "# Generated by script/start.py (deploy_pgadmin). Do not edit by hand.\n"
+        "# Listen address/port come from config/pgadmin/config_local.py.\n"
+        f'exec "{gunicorn}" \\\n'
+        f'  --bind {cfg["address"]}:{cfg["port"]} \\\n'
+        "  --workers=1 --threads=25 \\\n"
+        f'  --chdir "{web_dir}" \\\n'
+        "  pgAdmin4:app\n"
+    )
+    os.makedirs(INSTALL_BIN_DIR, exist_ok=True)
+    if os.path.exists(PGADMIN_WRAPPER_PATH):
+        os.remove(PGADMIN_WRAPPER_PATH)
+    with open(PGADMIN_WRAPPER_PATH, "w") as f:
+        f.write(wrapper)
+    os.chmod(PGADMIN_WRAPPER_PATH, 0o755)
+    print(f"[*] Generated pgAdmin launcher: {PGADMIN_WRAPPER_PATH} "
+          f"({cfg['address']}:{cfg['port']})")
 
 
 def stop_services():
@@ -178,6 +291,9 @@ def deploy_files():
     # 3. Deploy Node Exporter binary
     install_file(os.path.join(NODE_EXPORTER_SRC_PATH, "node_exporter"), os.path.join(INSTALL_BIN_DIR, "node_exporter"), 0o755)
 
+    # 3b. Deploy Postgres Exporter binary
+    install_file(os.path.join(POSTGRES_EXPORTER_SRC_PATH, "postgres_exporter"), os.path.join(INSTALL_BIN_DIR, "postgres_exporter"), 0o755)
+
     # 4. Deploy Grafana configuration file
     install_file(os.path.join(ROOT_DIR, "config", "grafana", "grafana.ini"), os.path.join(GRAFANA_CONFIG_DIR, "grafana.ini"))
 
@@ -193,15 +309,9 @@ def deploy_files():
             mode = 0o600 if f.endswith(".key") or "key" in f.lower() else 0o644
             install_file(os.path.join(CERT_DIR, f), os.path.join(CERT_INSTALL_DIR, f), mode)
 
-    # 7. Deploy the canonical daemon config (running-config.json).
-    # - First install: copy source file as-is.
-    # - Subsequent deploys: merge any *new* keys/sections from source into the
-    #   live config without touching keys the user may have changed via the UI.
-    src_config_path = os.path.join(ROOT_DIR, "config", "running-config.json")
-    if not os.path.isfile(RUNNING_CONFIG_INSTALL_PATH):
-        install_file(src_config_path, RUNNING_CONFIG_INSTALL_PATH, 0o644)
-    else:
-        _merge_config(src_config_path, RUNNING_CONFIG_INSTALL_PATH)
+    # 7. Install the baseline startup-config to /etc/pretzel/startup-config.json.
+    #    mgmtd syncs it into the DB at boot; all daemons read it for DB conn params.
+    deploy_startup_config()
 
     # 8. Create the runtime-state root. Each daemon creates its own
     # <daemon>/ subdirectory on first write (see Config::saveStateSnapshot).
@@ -211,6 +321,9 @@ def deploy_files():
     if os.path.isdir(MGMTD_WWW_INSTALL_DIR):
         shutil.rmtree(MGMTD_WWW_INSTALL_DIR)
     shutil.copytree(os.path.join(ROOT_DIR, "mgmtd", "www"), MGMTD_WWW_INSTALL_DIR)
+
+    # 10. Configure pgAdmin (server mode) and generate its systemd launcher.
+    deploy_pgadmin()
 
 
 def start_services():
@@ -234,11 +347,13 @@ def start_services():
 def run():
     """Main orchestration logic for the deployment pipeline."""
     pre_flight_checks()
-    
-    # [CRITICAL ORDER] Stop services -> Overwrite new files -> Ensure DB -> Start services
+
+    # [CRITICAL ORDER] stop -> overwrite files (+startup-config) -> DB up -> start
+    # daemons. mgmtd seeds the DB from the startup-config at boot, so PostgreSQL must
+    # be accepting connections before the daemons start.
     stop_services()
     deploy_files()
-    ensure_postgresql()   # bring the DB up before pz daemons that depend on it
+    ensure_postgresql()
     start_services()
 
 if __name__ == "__main__":

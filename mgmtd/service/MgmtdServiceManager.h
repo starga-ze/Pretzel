@@ -18,7 +18,6 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <queue>
 #include <string>
@@ -84,12 +83,10 @@ private:
     std::queue<std::unique_ptr<MgmtdAction>> m_actionQueue;
 
     std::atomic<std::int64_t>  m_aliveDevices{-1};
-    mutable std::mutex         m_aliveIpsMutex;
     std::vector<std::string>   m_aliveIps;
     std::atomic<int>           m_reloadStatus{static_cast<int>(ReloadStatus::Idle)};
     std::chrono::steady_clock::time_point m_reloadStartedAt{};
 
-    mutable std::mutex m_commitQueueMutex;
     std::string        m_commitQueueSnapshot{"[]"};
 };
 

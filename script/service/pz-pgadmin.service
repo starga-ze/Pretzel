@@ -1,0 +1,22 @@
+[Unit]
+Description=Pretzel pgAdmin
+After=network.target postgresql.service
+Wants=postgresql.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+# pgAdmin lives in a pip virtualenv whose absolute path depends on the source
+# checkout location and Python version, but systemd requires a literal executable
+# path in ExecStart. So script/start.py generates this wrapper with the resolved
+# venv/gunicorn/web-dir paths baked in (see deploy_pgadmin()).
+ExecStart=/opt/pretzel/bin/pz-pgadmin
+
+StandardOutput=append:/var/log/pretzel/pgadmin.log
+StandardError=append:/var/log/pretzel/pgadmin.log
+
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=pretzel.target

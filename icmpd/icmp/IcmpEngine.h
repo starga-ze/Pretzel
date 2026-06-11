@@ -6,6 +6,7 @@
 #include "io/Epoll.h"
 #include "socket/IcmpSocket.h"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -47,13 +48,20 @@ private:
     bool initSocket();
     bool initConnection();
 
+    bool reopen();
     void closeConnection();
     void handleEvent(int fd, std::uint32_t events);
 
 private:
     static constexpr int MAX_EVENTS = 64;
 
+    // Backoff between socket re-open attempts after a connection drop, so a
+    // persistently failing reopen (e.g. lost CAP_NET_RAW) does not spin every tick.
+    static constexpr std::chrono::seconds REOPEN_BACKOFF {1};
+
     bool m_initialized {false};
+
+    std::chrono::steady_clock::time_point m_nextReopenAt {};
 
     pz::io::Epoll m_epoll;
     std::vector<epoll_event> m_events;

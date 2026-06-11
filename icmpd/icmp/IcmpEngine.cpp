@@ -49,6 +49,23 @@ bool IcmpEngine::init()
 
 bool IcmpEngine::poll(int timeoutMs)
 {
+    // Self-heal: if a prior fatal recv/send error tore the connection down
+    // (closeConnection), rebuild the socket here instead of staying dead until a
+    // daemon restart. Rate-limited by REOPEN_BACKOFF.
+    if (!isOpened())
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (now < m_nextReopenAt)
+            return true;
+        m_nextReopenAt = now + REOPEN_BACKOFF;
+
+        if (!reopen())
+        {
+            LOG_WARN("IcmpEngine reopen failed, will retry");
+            return true;
+        }
+    }
+
     const int n = m_epoll.wait(m_events, timeoutMs);
     if (n < 0)
     {
@@ -189,6 +206,32 @@ bool IcmpEngine::initConnection()
     return true;
 }
 
+bool IcmpEngine::reopen()
+{
+    // Rebuild the socket + connection on the existing epoll instance (m_epoll
+    // survives a connection drop — only the socket fd was removed from it). This
+    // is the recovery counterpart to closeConnection(); epoll is NOT re-init'd
+    // here because Epoll::init() is not idempotent.
+    closeConnection();
+
+    if (!initSocket())
+        return false;
+
+    if (!initConnection())
+        return false;
+
+    if (!m_epoll.add(m_socket->fd(), EPOLLIN | EPOLLRDHUP))
+    {
+        LOG_ERROR("epoll add failed on reopen fd={}", m_socket->fd());
+        closeConnection();
+        return false;
+    }
+
+    m_initialized = true;
+    LOG_INFO("IcmpEngine reopened fd={}", m_socket->fd());
+    return true;
+}
+
 void IcmpEngine::closeConnection()
 {
     if (m_socket && m_socket->fd() >= 0)
@@ -198,6 +241,11 @@ void IcmpEngine::closeConnection()
 
     if (m_socket)
         m_socket->close();
+
+    // Drop the socket object too so initSocket() rebuilds it on the next reopen()
+    // — it short-circuits on a non-null m_socket, so a closed-but-present socket
+    // would otherwise block recovery.
+    m_socket.reset();
 
     m_initialized = false;
 }

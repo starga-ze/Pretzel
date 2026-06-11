@@ -147,7 +147,11 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
         if (errno == EINTR)
             continue;
 
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        // ENOBUFS is transient backpressure (the local qdisc/socket output queue
+        // is momentarily full) — common when blasting a full subnet sweep. Treat
+        // it like EAGAIN: leave the frame at the queue front and retry on the next
+        // EPOLLOUT, rather than reporting a fatal error that tears down the socket.
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS)
             return IcmpIoResult::WouldBlock;
 
         const int err = errno;

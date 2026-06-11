@@ -7,6 +7,7 @@ Installed libraries are isolated under the `3rd_party/install/` directory.
 
 import os
 import sys
+import glob
 import subprocess
 import shutil
 
@@ -18,7 +19,9 @@ from script.utils import (
     JSON_VERSION, JSON_DIR, JSON_INSTALL, JSON_TAR, JSON_SRC_PATH,
     PROMETHEUS_VERSION, PROMETHEUS_DIR, PROMETHEUS_TAR, PROMETHEUS_SRC_PATH,
     NODE_EXPORTER_VERSION, NODE_EXPORTER_DIR, NODE_EXPORTER_TAR, NODE_EXPORTER_SRC_PATH,
+    POSTGRES_EXPORTER_VERSION, POSTGRES_EXPORTER_DIR, POSTGRES_EXPORTER_TAR, POSTGRES_EXPORTER_SRC_PATH,
     PG_SERVICE, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
+    PGADMIN_VERSION, PGADMIN_VENV,
 )
 
 def install_openssl():
@@ -107,6 +110,16 @@ def install_node_exporter():
     url = f"https://github.com/prometheus/node_exporter/releases/download/v{NODE_EXPORTER_VERSION}/node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
     download_and_extract(url, NODE_EXPORTER_TAR, NODE_EXPORTER_DIR, "Extracting Node Exporter")
     print("[*] Node Exporter installation complete.")
+
+def install_postgres_exporter():
+    """Downloads the Postgres Exporter binary for PostgreSQL metrics collection (pre-compiled binary distribution)."""
+    if os.path.exists(os.path.join(POSTGRES_EXPORTER_SRC_PATH, "postgres_exporter")):
+        print("[*] Postgres Exporter already downloaded and extracted, skipping...")
+        return
+
+    url = f"https://github.com/prometheus-community/postgres_exporter/releases/download/v{POSTGRES_EXPORTER_VERSION}/postgres_exporter-{POSTGRES_EXPORTER_VERSION}.linux-amd64.tar.gz"
+    download_and_extract(url, POSTGRES_EXPORTER_TAR, POSTGRES_EXPORTER_DIR, "Extracting Postgres Exporter")
+    print("[*] Postgres Exporter installation complete.")
 
 def is_grafana_installed():
     """Checks whether Grafana is already installed."""
@@ -203,6 +216,38 @@ def provision_postgresql():
             msg=f"Creating PostgreSQL database '{PG_DB_NAME}' (owner={PG_DB_USER})",
         )
 
+    # 3. Grant the built-in pg_monitor role so postgres_exporter (pz-postgres-exporter,
+    # connecting as this same role) can read the full pg_stat_* views for Grafana.
+    # Idempotent: GRANT on an already-granted role is a no-op.
+    run_cmd(
+        ["sudo", "-u", "postgres", "psql", "-c", f"GRANT pg_monitor TO {PG_DB_USER}"],
+        msg=f"Granting pg_monitor to '{PG_DB_USER}' (for postgres_exporter)",
+    )
+
+
+def is_libpq_dev_installed():
+    """Checks whether the libpq client dev headers (libpq-fe.h) are present."""
+    return any(os.path.exists(p) for p in (
+        "/usr/include/libpq-fe.h",
+        "/usr/include/postgresql/libpq-fe.h",
+    ))
+
+
+def install_libpq_dev():
+    """
+    Installs ONLY the PostgreSQL client dev library (libpq-dev) — the headers/lib the
+    C++ layer (shared/db) links against via CMake's find_package(PostgreSQL). Split
+    out from install_postgresql() so a pure build can compile without pulling in the
+    full PostgreSQL server + provisioning.
+    """
+    if is_libpq_dev_installed():
+        print("[*] libpq-dev already present, skipping...")
+        return
+
+    print("[*] Installing libpq-dev (PostgreSQL client headers)...")
+    run_cmd(["sudo", "apt", "update"])
+    run_cmd(["sudo", "apt", "install", "-y", "libpq-dev"])
+
 
 def install_postgresql():
     """
@@ -227,6 +272,45 @@ def install_postgresql():
 
     provision_postgresql()
     print("[*] PostgreSQL installation complete.")
+
+
+def is_pgadmin_installed():
+    """Checks whether pgAdmin is already installed in its dedicated virtualenv."""
+    return os.path.isfile(os.path.join(PGADMIN_VENV, "bin", "gunicorn")) and \
+        bool(glob.glob(os.path.join(PGADMIN_VENV, "lib", "python*", "site-packages", "pgadmin4")))
+
+
+def install_pgadmin():
+    """
+    Installs pgAdmin 4 (web/server mode) into a dedicated Python virtualenv via pip.
+    It is run headless under pz-pgadmin.service (gunicorn) — see script/start.py.
+    The apt pgadmin4-web package is deliberately avoided: it pulls in Apache and an
+    interactive setup-web.sh, which do not fit this project's unattended
+    pz-*.service deployment model.
+    """
+    if is_pgadmin_installed():
+        print("[*] pgAdmin already installed, skipping...")
+        return
+
+    print("[*] Installing pgAdmin...")
+
+    # venv + headers needed to build pgAdmin's deps (psycopg, etc.) if no wheel.
+    # libpq-dev is also pulled in by install_postgresql(); harmless to ensure here.
+    run_cmd(["sudo", "apt", "install", "-y", "python3-venv", "python3-dev", "libpq-dev"])
+
+    os.makedirs(os.path.dirname(PGADMIN_VENV), exist_ok=True)
+    run_cmd(["python3", "-m", "venv", PGADMIN_VENV], msg="Creating pgAdmin virtualenv")
+
+    pip = os.path.join(PGADMIN_VENV, "bin", "pip")
+    run_cmd([pip, "install", "--upgrade", "pip", "wheel"], msg="Upgrading pip in pgAdmin venv")
+    run_cmd([pip, "install", f"pgadmin4=={PGADMIN_VERSION}", "gunicorn"],
+            msg=f"Installing pgAdmin4 {PGADMIN_VERSION} + gunicorn")
+
+    if not is_pgadmin_installed():
+        print("[ERROR] pgAdmin installation failed.")
+        sys.exit(1)
+
+    print("[*] pgAdmin installation complete.")
 
 
 def get_gpp_version():
@@ -277,24 +361,51 @@ def install_system_packages():
     if "g++-9" in packages_to_install:
         run_cmd(["sudo", "update-alternatives", "--install", "/usr/bin/g++", "g++", "/usr/bin/g++-9", "20"])
 
-def run():
-    """The main entry point function that orchestrates the installation process."""
-    os.makedirs(INSTALL_ROOT, exist_ok=True)
-    
-    # Install system packages first (secure the build toolchain)
+def install_build_deps():
+    """
+    Build-time ONLY dependencies: the compiler toolchain, the C++ source libraries,
+    and libpq-dev headers — everything needed to COMPILE the project (CMake +
+    shared/db link against these). Does NOT install the runtime services. Invoked by
+    script/build.py so a plain build is fast and side-effect-free.
+    """
     install_system_packages()
-    
-    # Sequentially build 3rd-party source codes
+    install_libpq_dev()
     install_openssl()
     install_spdlog()
     install_boost()
     install_json()
+
+
+def install_runtime_deps():
+    """
+    Runtime services that the project needs to RUN but not to build: the monitoring
+    stack (Prometheus, node/postgres exporters, Grafana), the PostgreSQL server
+    (with role/database provisioning) and the pgAdmin web UI. These pull in apt
+    packages, download binaries and start systemd units, so they are kept out of the
+    build path and only run on a full `./pretzel install`.
+    """
     install_prometheus()
     install_node_exporter()
+    install_postgres_exporter()
     install_grafana()
     install_postgresql()
+    install_pgadmin()
 
+
+def run():
+    """Full install (./pretzel install): build deps + all runtime services."""
+    os.makedirs(INSTALL_ROOT, exist_ok=True)
+    install_build_deps()
+    install_runtime_deps()
     print("[*] All dependencies installed successfully.")
+
+
+def run_build_deps():
+    """Build-only deps (invoked by script/build.py before CMake/Make)."""
+    os.makedirs(INSTALL_ROOT, exist_ok=True)
+    install_build_deps()
+    print("[*] Build dependencies ready.")
+
 
 if __name__ == "__main__":
     run()

@@ -1,6 +1,7 @@
 [Unit]
 Description=PZ IPC Daemon
-After=network.target
+After=network.target postgresql.service
+Wants=postgresql.service
 PartOf=pretzel.target
 
 [Service]

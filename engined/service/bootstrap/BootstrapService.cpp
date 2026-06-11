@@ -24,26 +24,26 @@ namespace pz::engined
 namespace
 {
 
-// Defaults match the previous hardcoded values; overridable via
-// "tuning"."bootstrap" in running-config.json (section "engined").
-const nlohmann::json& bootstrapTuning()
+// Defaults match the compiled-in values; overridable via "service"."bootstrap" in
+// the running-config (global, merged with section "engined").
+const nlohmann::json& bootstrapConfig()
 {
-    return pz::config::Config::tuningSection("engined", "bootstrap");
+    return pz::config::Config::serviceSection("engined", "bootstrap");
 }
 
 std::chrono::milliseconds clientHelloInterval()
 {
-    return std::chrono::milliseconds(bootstrapTuning().value("client_hello_interval_ms", 1000));
+    return std::chrono::seconds(bootstrapConfig().value("client_hello_interval_sec", 1));
 }
 
 std::chrono::milliseconds syncRequestInterval()
 {
-    return std::chrono::milliseconds(bootstrapTuning().value("sync_request_interval_ms", 1000));
+    return std::chrono::seconds(bootstrapConfig().value("sync_request_interval_sec", 1));
 }
 
 std::chrono::milliseconds bootstrapTimeout()
 {
-    return std::chrono::milliseconds(bootstrapTuning().value("bootstrap_timeout_ms", 10000));
+    return std::chrono::seconds(bootstrapConfig().value("bootstrap_timeout_sec", 10));
 }
 
 } // namespace

@@ -26,42 +26,42 @@ namespace pz::icmpd
 namespace
 {
 
-// Defaults match the previous hardcoded values; overridable via
-// "tuning"."probe" in running-config.json (section "icmpd").
-const nlohmann::json& probeTuning()
+// Defaults match the compiled-in values; overridable via "service"."probe" in the
+// running-config (section "icmpd").
+const nlohmann::json& probeConfig()
 {
-    return pz::config::Config::tuningSection("icmpd", "probe");
+    return pz::config::Config::serviceSection("icmpd", "probe");
 }
 
 std::size_t probeBatchSize()
 {
-    return probeTuning().value("batch_size", 32);
+    return probeConfig().value("batch_size", 32);
 }
 
 std::chrono::milliseconds probeBatchInterval()
 {
-    return std::chrono::milliseconds(probeTuning().value("batch_interval_ms", 20));
+    return std::chrono::milliseconds(probeConfig().value("batch_interval_ms", 20));
 }
 
 std::chrono::milliseconds probeCycleInterval()
 {
-    return std::chrono::milliseconds(probeTuning().value("cycle_interval_ms", 30000));
+    return std::chrono::seconds(probeConfig().value("cycle_interval_sec", 30));
 }
 
 std::chrono::milliseconds replyIdleTimeout()
 {
-    return std::chrono::milliseconds(probeTuning().value("reply_idle_timeout_ms", 5000));
+    return std::chrono::seconds(probeConfig().value("reply_idle_timeout_sec", 5));
 }
 
 std::chrono::milliseconds replyMaxWaitTimeout()
 {
-    return std::chrono::milliseconds(probeTuning().value("reply_max_wait_timeout_ms", 15000));
+    return std::chrono::seconds(probeConfig().value("reply_max_wait_timeout_sec", 15));
 }
 
 // Returns comma-separated CIDR list as individual strings.
 std::vector<std::string> probeScanCidrs()
 {
-    const std::string raw = probeTuning().value("scan_cidr", std::string("192.168.0.0/23"));
+    const std::string raw = probeConfig().value("scan_cidr", std::string("192.168.0.0/23"));
     std::vector<std::string> result;
     std::stringstream ss(raw);
     std::string token;
@@ -80,7 +80,7 @@ std::vector<std::string> probeScanCidrs()
 // Comma-separated list of IPs to exclude from probe targets.
 std::vector<std::string> probeExcludedIps()
 {
-    const std::string raw = probeTuning().value("excluded_ips", std::string(""));
+    const std::string raw = probeConfig().value("excluded_ips", std::string(""));
     std::vector<std::string> result;
     std::stringstream ss(raw);
     std::string token;

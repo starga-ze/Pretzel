@@ -16,7 +16,6 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
-#include <mutex>
 #include <sstream>
 #include <string>
 #include <sys/statvfs.h>
@@ -335,10 +334,9 @@ constexpr const char* kSettingsDaemons[] = {
     "engined", "authd", "icmpd", "snmpd", "topologyd",
 };
 
-// Tuning domains that are internal infrastructure — not user-configurable
+// Service domains that are internal infrastructure — not user-configurable
 // at runtime and not shown in the Settings UI.
 constexpr const char* kHiddenDomains[] = {
-    "ipc_connect",
     "bootstrap",
 };
 
@@ -350,20 +348,20 @@ HttpRouter::Response HttpRouter::handleSettingsGet(const Request& req)
 
     for (const auto* name : kSettingsDaemons)
     {
-        const auto& root    = pz::config::Config::daemonConfig(name);
-        const auto& allTuning = root.value("tuning", json::object());
+        const auto& root       = pz::config::Config::daemonConfig(name);
+        const auto& allService  = root.value("service", json::object());
 
-        json tuning = json::object();
-        for (const auto& [domain, values] : allTuning.items())
+        json service = json::object();
+        for (const auto& [domain, values] : allService.items())
         {
             const bool hidden = std::any_of(
                 std::begin(kHiddenDomains), std::end(kHiddenDomains),
                 [&](const char* d) { return domain == d; });
             if (!hidden)
-                tuning[domain] = values;
+                service[domain] = values;
         }
 
-        daemons[name] = std::move(tuning);
+        daemons[name] = std::move(service);
     }
 
     json body;
@@ -446,7 +444,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
     const int applied = static_cast<int>(validChanges.size());
 
     // Forward valid changes to engined as SettingsCommitRequest.
-    // engined owns persistence (Config::updateTuning) and service-layer restart.
+    // engined owns persistence (Config::commitConfig) and service-layer restart.
     if (applied > 0 && m_serviceManager)
     {
         const std::string payload = validChanges.dump();
@@ -825,7 +823,6 @@ double readDiskPct(const char* path = "/")
 }
 
 // Simple moving-average CPU tracker
-std::mutex s_cpuMtx;
 CpuSnapshot s_cpuPrev;
 double      s_cpuPct{0.0};
 } // namespace
@@ -833,16 +830,13 @@ double      s_cpuPct{0.0};
 HttpRouter::Response HttpRouter::handleNodeMetrics(const Request& req)
 {
     const auto cur = readCpuSnapshot();
+    if (s_cpuPrev.total > 0 && cur.total > s_cpuPrev.total)
     {
-        std::lock_guard<std::mutex> lk(s_cpuMtx);
-        if (s_cpuPrev.total > 0 && cur.total > s_cpuPrev.total)
-        {
-            const uint64_t dt = cur.total - s_cpuPrev.total;
-            const uint64_t di = cur.idle  - s_cpuPrev.idle;
-            s_cpuPct = 100.0 * (dt - di) / dt;
-        }
-        s_cpuPrev = cur;
+        const uint64_t dt = cur.total - s_cpuPrev.total;
+        const uint64_t di = cur.idle  - s_cpuPrev.idle;
+        s_cpuPct = 100.0 * (dt - di) / dt;
     }
+    s_cpuPrev = cur;
 
     json body;
     body["cpu_pct"]  = std::round(s_cpuPct  * 10) / 10.0;

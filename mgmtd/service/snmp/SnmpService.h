@@ -1,7 +1,6 @@
 #pragma once
 
 #include <map>
-#include <mutex>
 #include <string>
 
 namespace pz::mgmtd
@@ -23,11 +22,18 @@ public:
     // Called by MgmtdRxRouter when SnmpResult IPC arrives.
     void handleSnmpResult(const std::string& payloadJson);
 
-    // Returns a snapshot copy of the device map (thread-safe).
+    // Returns a copy of the device map.
     std::map<std::string, SnmpDeviceInfo> devices() const;
 
+    // Loads the persisted device inventory from the DB into memory. Called once at
+    // startup so SNMP-discovered attributes survive a daemon restart (the live
+    // alive/dead status still comes from ICMP at request time).
+    void loadPersisted();
+
 private:
-    mutable std::mutex                     m_mutex;
+    // Write-through replace of the devices table with the current map.
+    void persist();
+
     std::map<std::string, SnmpDeviceInfo>  m_devices;
 };
 

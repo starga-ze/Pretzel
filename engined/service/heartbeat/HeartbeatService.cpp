@@ -18,18 +18,18 @@ namespace pz::engined
 namespace
 {
 
-// Defaults match the previous hardcoded values; overridable via
-// "tuning"."heartbeat" in running-config.json (section "engined").
+// Defaults match the compiled-in values; overridable via "service"."heartbeat" in
+// the running-config (section "engined").
 std::chrono::milliseconds pollInterval()
 {
-    const auto& tuning = pz::config::Config::tuningSection("engined", "heartbeat");
-    return std::chrono::milliseconds(tuning.value("poll_interval_ms", 5000));
+    const auto& hb = pz::config::Config::serviceSection("engined", "heartbeat");
+    return std::chrono::seconds(hb.value("poll_interval_sec", 5));
 }
 
 std::chrono::milliseconds responseTimeout()
 {
-    const auto& tuning = pz::config::Config::tuningSection("engined", "heartbeat");
-    return std::chrono::milliseconds(tuning.value("response_timeout_ms", 2000));
+    const auto& hb = pz::config::Config::serviceSection("engined", "heartbeat");
+    return std::chrono::seconds(hb.value("response_timeout_sec", 2));
 }
 
 } // namespace
