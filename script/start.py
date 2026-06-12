@@ -66,20 +66,15 @@ def deploy_startup_config() -> None:
     connection params and as the factory-fresh seed / offline fallback; mgmtd syncs
     it into the DB.
 
-    The real config/startup-config.json is gitignored (it carries secrets), so on a
-    fresh checkout it may be absent — we seed it from the committed
-    startup-config.example.json. Before writing, the DB password is injected from the
-    single source of truth (PZ_PG_PASSWORD via PG_DB_PASSWORD) so mgmtd's connection
-    password can never drift from the role install.py created.
+    config/startup-config.json is committed (it carries NO secrets): the DB password
+    is injected here from the single source of truth (PZ_PG_PASSWORD via PG_DB_PASSWORD)
+    so mgmtd's connection password can never drift from the role install.py created; the
+    admin credential lives hashed in the admin_user table; SNMP v3 credentials are entered
+    via the mgmtd web UI at runtime. So nothing secret is ever persisted in this file.
     """
     src = os.path.join(ROOT_DIR, "config", "startup-config.json")
     if not os.path.isfile(src):
-        example = os.path.join(ROOT_DIR, "config", "startup-config.example.json")
-        if not os.path.isfile(example):
-            sys.exit(f"[FATAL] startup-config not found: {src}")
-        shutil.copyfile(example, src)
-        print(f"[WARN] {src} was missing; seeded from startup-config.example.json. "
-              f"Edit it to set real secrets (SNMP v3, admin) before production.")
+        sys.exit(f"[FATAL] startup-config not found: {src}")
 
     try:
         with open(src) as f:
@@ -105,7 +100,7 @@ def deploy_startup_config() -> None:
     tmp = dst + ".tmp"
     try:
         with open(tmp, "w") as f:
-            json.dump(cfg, f, indent=2)   # may carry secrets (admin hash, snmp v3 creds)
+            json.dump(cfg, f, indent=2)   # carries the injected DB password -> 0600
         os.chmod(tmp, 0o600)
         os.replace(tmp, dst)              # atomic swap
     except OSError as e:

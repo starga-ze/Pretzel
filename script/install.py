@@ -197,9 +197,17 @@ def provision_postgresql():
     Run as the 'postgres' superuser via peer auth; pz-mgmtd later connects to
     this role over localhost TCP using the password in running-config.json.
     """
-    # 1. Login role
+    # 1. Login role. PG_DB_PASSWORD is the single source of truth (start.py injects the
+    # same value into startup-config + the exporter env file), so we must re-sync the
+    # role's password on every run — otherwise a pre-existing role keeps its original
+    # password while the deployed config moves to a new one, and mgmtd / exporter /
+    # pgAdmin all fail auth. Create when missing, ALTER to re-sync when it already exists.
     if _pg_row_exists(f"SELECT 1 FROM pg_roles WHERE rolname='{PG_DB_USER}'"):
-        print(f"[*] PostgreSQL role '{PG_DB_USER}' already exists, skipping...")
+        run_cmd(
+            ["sudo", "-u", "postgres", "psql", "-c",
+             f"ALTER ROLE {PG_DB_USER} LOGIN PASSWORD '{PG_DB_PASSWORD}'"],
+            msg=f"Re-syncing PostgreSQL role '{PG_DB_USER}' password",
+        )
     else:
         run_cmd(
             ["sudo", "-u", "postgres", "psql", "-c",

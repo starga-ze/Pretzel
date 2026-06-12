@@ -20,11 +20,6 @@ tmp/
 
 *.claude
 
-# Secrets — keep real values out of git (templates / example files are committed).
-# The real startup-config.json carries DB/SNMPv3/admin secrets; ship the
-# startup-config.example.json template instead.
-config/startup-config.json
-
 # TLS private key + cert: generated locally by script/start.py (ensure_certificates).
 cert/*.key
 cert/*.crt
