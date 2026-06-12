@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace pz::snmpd
 {
@@ -16,6 +17,11 @@ struct SnmpDevice
     std::string sysLocation;
     std::string sysObjectId;
     uint32_t    sysUpTimeTicks{0};
+
+    // ifPhysAddress (ifTable col 6) MACs — the device's interface MAC set. Used as a
+    // hardware fingerprint to group the multiple IPs of one physical device, since many
+    // devices (e.g. Palo Alto) don't expose the standard ip-MIB address tables.
+    std::vector<std::string> interfaceMacs;
 };
 
 // SNMP protocol version used for a given request.

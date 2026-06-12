@@ -79,6 +79,12 @@ html, body {
 .sidebar.collapsed {
   width: var(--sidebar-collapsed);
 }
+/* Pre-paint collapse: an inline <head> script sets html.sb-init-collapsed from the
+   saved preference so the rail renders narrow on first paint — no expand→collapse
+   flash when navigating between pages. (Desktop only; mobile uses an off-canvas drawer.) */
+@media (min-width: 681px) {
+  html.sb-init-collapsed .sidebar { width: var(--sidebar-collapsed); }
+}
 
 /* ── Brand row ── */
 .sidebar-brand {
@@ -152,6 +158,10 @@ html, body {
   transition: opacity var(--tr);
 }
 .sidebar.collapsed .nav-section-label { opacity: 0; }
+
+/* Slightly larger gap between top-level nav entries. */
+.sidebar-nav > .nav-item,
+.sidebar-nav > .nav-group { margin-bottom: 4px; }
 
 .nav-item {
   display: flex;
@@ -293,6 +303,57 @@ html, body {
   box-shadow: 0 4px 12px rgba(0,0,0,.3);
 }
 .sidebar.collapsed .nav-item:hover::after { opacity: 1; }
+/* Group toggles use the flyout (which carries the label) instead of a tooltip. */
+.sidebar.collapsed .nav-group-toggle::after { display: none; }
+
+/* ── Nav group flyout (right-side popover, body-mounted) ── */
+.nav-flyout {
+  position: fixed;
+  z-index: 500;
+  min-width: 190px;
+  background: #20242f;
+  border: 1px solid var(--sb-border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 12px 34px rgba(0,0,0,.5);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-4px);
+  transition: opacity .12s ease, transform .12s ease, visibility .12s;
+}
+.nav-flyout.visible { opacity: 1; visibility: visible; transform: none; }
+.nav-flyout-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--sb-muted);
+  padding: 6px 10px;
+}
+.nav-flyout-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  margin: 1px 0;
+  border-radius: 7px;
+  color: var(--sb-text);
+  opacity: .82;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--tr), opacity var(--tr), color var(--tr);
+}
+.nav-flyout-item > span:first-child { flex: 1; }
+.nav-flyout-item:hover { background: var(--sb-hover); opacity: 1; }
+.nav-flyout-item.active {
+  background: var(--sb-active-bg);
+  color: var(--sb-active-cl);
+  opacity: 1;
+  font-weight: 600;
+}
+.nav-flyout-item.is-soon { opacity: .42; pointer-events: none; cursor: default; }
 
 /* ── Footer ── */
 .sidebar-footer {
@@ -853,6 +914,202 @@ html, body {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* ══════════════════════════════════════
+   PROTOCOL SUB-TABS  (ICMP / SNMP / LLDP)
+   ══════════════════════════════════════ */
+.st-subtabs {
+  display: flex;
+  gap: 2px;
+  margin: 0 20px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.st-subtab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 10px 18px;
+  font: 600 13px var(--font-ui);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--tr), border-color var(--tr);
+}
+.st-subtab:hover { color: var(--text); }
+.st-subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ══════════════════════════════════════
+   SETTINGS TABLES  (view-only)
+   ══════════════════════════════════════ */
+.settings-domain-card.st-table-wrap {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.st-table-card {
+  margin: 0 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+  transition: border-color var(--tr), box-shadow var(--tr);
+}
+.st-table-wrap.has-changes .st-table-card {
+  border-color: rgba(249,115,22,.45);
+  box-shadow: 0 0 0 3px rgba(249,115,22,.08);
+}
+.st-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.st-table-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+}
+.st-table-add-btn {
+  font-size: 12px !important;
+  padding: 4px 10px !important;
+  height: auto !important;
+}
+
+.st-table { width: 100%; border-collapse: collapse; }
+.st-table thead th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.st-table tbody td {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(228,231,240,.6);
+  vertical-align: top;
+  font-size: 13px;
+  color: var(--text);
+}
+.st-table tbody tr:last-child td { border-bottom: none; }
+.st-table tbody tr:hover td { background: var(--surface-2); }
+
+.st-th-key, .st-td-key { width: 220px; }
+.st-td-key { font-weight: 600; color: var(--text); }
+.st-info {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 6px;
+  color: var(--text-muted);
+  opacity: .5;
+  cursor: default;
+  transition: color var(--tr), opacity var(--tr);
+}
+.st-info:hover, .st-info:focus-visible { opacity: 1; color: var(--accent); outline: none; }
+
+/* Global hover tooltip (main.js initTooltips) — fixed-position, never clipped. */
+.app-tooltip {
+  position: fixed;
+  z-index: 2000;
+  max-width: 240px;
+  background: #2d3142;
+  color: #e8eaf6;
+  font: 500 11.5px var(--font-ui);
+  line-height: 1.45;
+  padding: 6px 9px;
+  border-radius: 6px;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .12s;
+  box-shadow: 0 4px 14px rgba(0,0,0,.28);
+}
+.app-tooltip.visible { opacity: 1; }
+.st-td-val, .st-cell-scalar { font-family: var(--font-mono); }
+.st-cell-scalar.st-view-modified { color: var(--accent); font-weight: 600; }
+.st-td-desc { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.st-td-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 18px 16px !important;
+}
+
+/* SNMPv3 per-IP table */
+.st-table-v3 .st-td-ip { font-family: var(--font-mono); font-weight: 600; }
+.st-cred-muted { font-family: var(--font-mono); color: var(--text-muted); }
+.st-th-actions { width: 1%; }
+.st-row-actions { white-space: nowrap; text-align: right; }
+.st-row-btn {
+  font-size: 12px !important;
+  padding: 4px 11px !important;
+  height: auto !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--text-muted) !important;
+}
+.st-row-btn:hover { background: var(--surface-2) !important; color: var(--text) !important; }
+.st-row-btn-danger:hover {
+  color: var(--red) !important;
+  border-color: rgba(220,38,38,.45) !important;
+  background: rgba(220,38,38,.06) !important;
+}
+
+/* SNMPv3 device editor inside the slide-over */
+.st-v3-add {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 12px;
+  border: 1px dashed var(--border) !important;
+  background: var(--surface-2) !important;
+  color: var(--text-muted) !important;
+}
+.st-v3-add:hover {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  background: rgba(249,115,22,.06) !important;
+}
+.st-v3-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  transition: border-color var(--tr), box-shadow var(--tr);
+}
+.st-v3-row:hover { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(249,115,22,.07); }
+.st-v3-row-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.st-v3-row-ip { font-family: var(--font-mono); font-weight: 700; font-size: 13.5px; color: var(--text); }
+.st-v3-row-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-v3-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* SNMPv3 per-device field editor — reuses light .modal styling, above the panel */
+.v3-editor-overlay { z-index: 1200; }
+.v3-editor-modal { width: 380px; max-width: 94vw; }
+.v3-editor-body { display: flex; flex-direction: column; gap: 14px; }
 
 /* ══════════════════════════════════════
    EDIT SLIDE-OVER PANEL

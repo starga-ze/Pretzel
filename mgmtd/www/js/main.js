@@ -7,96 +7,49 @@
 
   const SIDEBAR_NAV = [
 
-    // ── Overview ──────────────────────────────────────────
-    { type: 'section', label: 'Overview' },
     {
       type: 'link', id: 'dashboard', label: 'Dashboard', href: 'dashboard.html',
-      icon: `<rect x="3" y="3" width="7" height="7" rx="1"/>
-             <rect x="14" y="3" width="7" height="7" rx="1"/>
-             <rect x="14" y="14" width="7" height="7" rx="1"/>
-             <rect x="3" y="14" width="7" height="7" rx="1"/>`,
+      icon: `<path d="M3 3v18h18"/>
+             <polyline points="7 14 11 10 14 13 19 7"/>`,
     },
     {
-      type: 'link', id: 'insight', label: 'Insight', href: '#', disabled: true, soon: true,
-      icon: `<circle cx="12" cy="12" r="10"/>
-             <polyline points="12 6 12 12 16 14"/>`,
-    },
-    {
-      type: 'link', id: 'devices', label: 'Devices', href: 'devices.html',
-      badgeId: 'aliveCount',
+      type: 'group', id: 'resource', label: 'Resource', badgeId: 'aliveCount',
       icon: `<rect x="2" y="2" width="20" height="8" rx="2"/>
              <rect x="2" y="14" width="20" height="8" rx="2"/>
              <line x1="6" y1="6" x2="6.01" y2="6"/>
              <line x1="6" y1="18" x2="6.01" y2="18"/>`,
-    },
-
-    // ── Visibility ────────────────────────────────────────
-    { type: 'section', label: 'Visibility' },
-    {
-      type: 'link', id: 'rack-view', label: 'Rack View', href: '#', disabled: true, soon: true,
-      icon: `<rect x="2" y="2" width="20" height="8" rx="1"/>
-             <rect x="2" y="12" width="20" height="4" rx="1"/>
-             <rect x="2" y="18" width="20" height="4" rx="1"/>
-             <circle cx="18" cy="6" r="1.2" fill="currentColor"/>`,
+      subitems: [
+        { id: 'devices',         label: 'Devices',         href: 'devices.html' },
+        { id: 'rack-management', label: 'Rack Management', href: '#', soon: true },
+      ],
     },
     {
-      type: 'link', id: 'cable-map', label: 'Cable Map', href: '#', disabled: true, soon: true,
-      icon: `<path d="M4 12h16M4 12a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2"/>
-             <path d="M4 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2"/>`,
-    },
-    {
-      type: 'link', id: 'port-map', label: 'Port Map', href: '#', disabled: true, soon: true,
-      icon: `<rect x="3" y="3" width="5" height="5" rx="1"/>
-             <rect x="10" y="3" width="5" height="5" rx="1"/>
-             <rect x="17" y="3" width="5" height="5" rx="1"/>
-             <rect x="3" y="10" width="5" height="5" rx="1"/>
-             <rect x="10" y="10" width="5" height="5" rx="1"/>
-             <rect x="17" y="10" width="5" height="5" rx="1"/>`,
-    },
-    {
-      type: 'link', id: 'l2-topology', label: 'L2 Topology', href: '#', disabled: true, soon: true,
+      type: 'group', id: 'topology', label: 'Topology',
       icon: `<circle cx="12" cy="5" r="2"/>
              <circle cx="5" cy="19" r="2"/>
              <circle cx="19" cy="19" r="2"/>
              <line x1="12" y1="7" x2="5" y2="17"/>
              <line x1="12" y1="7" x2="19" y2="17"/>
              <line x1="5" y1="19" x2="19" y2="19"/>`,
+      subitems: [
+        { id: 'cable-map',   label: 'Cable Map',   href: '#', soon: true },
+        { id: 'port-map',    label: 'Port Map',    href: '#', soon: true },
+        { id: 'l3-topology', label: 'L3 Topology', href: '#', soon: true },
+      ],
     },
     {
-      type: 'link', id: 'l3-topology', label: 'L3 Topology', href: '#', disabled: true, soon: true,
-      icon: `<circle cx="12" cy="5" r="2"/>
-             <circle cx="3" cy="19" r="2"/>
-             <circle cx="12" cy="19" r="2"/>
-             <circle cx="21" cy="19" r="2"/>
-             <line x1="12" y1="7" x2="3" y2="17"/>
-             <line x1="12" y1="7" x2="12" y2="17"/>
-             <line x1="12" y1="7" x2="21" y2="17"/>`,
+      type: 'group', id: 'control', label: 'Control',
+      icon: `<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+             <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+             <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+             <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
+             <line x1="17" y1="16" x2="23" y2="16"/>`,
+      subitems: [
+        { id: 'schedule',             label: 'Schedule',             href: '#', soon: true },
+        { id: 'power-remote-control', label: 'Power Remote Control', href: '#', soon: true },
+        { id: 'remote-access',        label: 'Remote Access',        href: '#', soon: true },
+      ],
     },
-
-    // ── Operations ────────────────────────────────────────
-    { type: 'section', label: 'Operations' },
-    {
-      type: 'link', id: 'power-control', label: 'Power Control', href: '#', disabled: true, soon: true,
-      icon: `<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
-             <line x1="12" y1="2" x2="12" y2="12"/>`,
-    },
-    {
-      type: 'link', id: 'schedule', label: 'Schedule', href: '#', disabled: true, soon: true,
-      icon: `<rect x="3" y="4" width="18" height="18" rx="2"/>
-             <line x1="16" y1="2" x2="16" y2="6"/>
-             <line x1="8" y1="2" x2="8" y2="6"/>
-             <line x1="3" y1="10" x2="21" y2="10"/>`,
-    },
-    {
-      type: 'link', id: 'remote-access', label: 'Remote Access', href: '#', disabled: true, soon: true,
-      icon: `<rect x="2" y="3" width="20" height="14" rx="2"/>
-             <line x1="8" y1="21" x2="16" y2="21"/>
-             <line x1="12" y1="17" x2="12" y2="21"/>
-             <polyline points="8 10 12 14 16 10"/>`,
-    },
-
-    // ── Monitor ───────────────────────────────────────────
-    { type: 'section', label: 'Monitor' },
     {
       type: 'link', id: 'log-viewer', label: 'Log Viewer', href: 'log-viewer.html',
       icon: `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -106,14 +59,18 @@
              <line x1="8" y1="9" x2="10" y2="9"/>`,
     },
     {
-      type: 'link', id: 'event-viewer', label: 'Event Viewer', href: '#', disabled: true, soon: true,
-      icon: `<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>`,
+      type: 'group', id: 'configuration', label: 'Configuration',
+      icon: `<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77
+                      a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91
+                      a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>`,
+      subitems: [
+        { id: 'general',  label: 'General',  href: 'settings.html?tab=general' },
+        { id: 'protocol', label: 'Protocol', href: 'settings.html?tab=protocol' },
+        { id: 'user',     label: 'User',     href: 'settings.html?tab=users', soon: true },
+      ],
     },
-
-    // ── Settings ──────────────────────────────────────────
-    { type: 'section', label: 'System' },
     {
-      type: 'group', id: 'settingsGroup', label: 'Settings',
+      type: 'group', id: 'system', label: 'System',
       icon: `<circle cx="12" cy="12" r="3"/>
              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
                       a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
@@ -125,11 +82,7 @@
                       l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
                       a1.65 1.65 0 0 0-1.51 1z"/>`,
       subitems: [
-        { id: 'general', label: 'General', href: 'settings.html?tab=general' },
-        { id: 'icmp',    label: 'ICMP',    href: 'settings.html?tab=icmp' },
-        { id: 'snmp',    label: 'SNMP',    href: 'settings.html?tab=snmp',  soon: true },
-        { id: 'lldp',    label: 'LLDP',    href: 'settings.html?tab=lldp',  soon: true },
-        { id: 'users',   label: 'Users',   href: 'settings.html?tab=users', soon: true },
+        { id: 'overview', label: 'Overview', href: '#', soon: true },
       ],
     },
   ];
@@ -138,16 +91,32 @@
     return `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${inner}</svg>`;
   }
 
+  // Parse an href into { page, tab, proto } so active-state matching can account for
+  // query params (settings.html?tab=protocol&proto=snmp etc.), not just the file name.
+  function parseHref(href) {
+    const [page, query] = String(href || '').split('?');
+    const p = new URLSearchParams(query || '');
+    return { page, tab: p.get('tab') || '', proto: p.get('proto') || '' };
+  }
+
   function buildSidebar() {
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
 
-    const page = location.pathname.split('/').pop() || 'dashboard.html';
-    const tab  = new URLSearchParams(location.search).get('tab') || '';
+    const activePage  = location.pathname.split('/').pop() || 'dashboard.html';
+    const params      = new URLSearchParams(location.search);
+    const activeTab   = params.get('tab')   || '';
+    const activeProto = params.get('proto') || '';
 
-    // Determine active IDs
-    const activePage = page;
-    const activeTab  = tab;
+    // A link/subitem is active when its page matches and any tab/proto it pins matches.
+    const hrefActive = (href, disabled) => {
+      if (disabled) return false;
+      const h = parseHref(href);
+      if (!h.page || h.page === '#' || h.page !== activePage) return false;
+      if (h.tab   && h.tab   !== activeTab)   return false;
+      if (h.proto && h.proto !== activeProto) return false;
+      return true;
+    };
 
     let html = `
       <div class="sidebar-brand">
@@ -171,7 +140,7 @@
       }
 
       if (item.type === 'link') {
-        const active = item.href && item.href.split('?')[0] === activePage && !item.disabled;
+        const active = hrefActive(item.href, item.disabled);
         const cls = ['nav-item', active ? 'active' : '', item.disabled ? 'nav-disabled' : ''].filter(Boolean).join(' ');
         const href = item.disabled ? '#' : item.href;
         const tooltip = item.disabled ? `${item.label} (Coming soon)` : item.label;
@@ -185,30 +154,28 @@
       }
 
       if (item.type === 'group') {
-        // Group is "active" if current page is settings.html
-        const groupActive = activePage === 'settings.html';
-        const groupId = `navGroup_${item.id}`;
-        html += `<div class="nav-group${groupActive ? ' expanded' : ''}" id="${groupId}">
-          <button type="button" class="nav-item nav-group-toggle" data-tooltip="${item.label}" aria-expanded="${groupActive}">
+        // Flyout group: the toggle never navigates; hovering/clicking it reveals a
+        // flyout (built by initFlyouts from data-subitems) to the right — works the
+        // same expanded or collapsed. The group is "active" if a subitem is active.
+        const subs = item.subitems.map(s => ({
+          id: s.id, label: s.label, href: s.href,
+          soon: !!s.soon, active: hrefActive(s.href, false),
+        }));
+        const groupActive = subs.some(s => s.active);
+        const cls = ['nav-item', 'nav-group-toggle', groupActive ? 'active' : ''].filter(Boolean).join(' ');
+        const dataSubs = JSON.stringify(subs).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+        html += `<div class="nav-group" data-group-id="${item.id}">
+          <button type="button" class="${cls}" data-tooltip="${item.label}"
+                  data-label="${item.label}" data-subitems="${dataSubs}" aria-haspopup="true" aria-expanded="false">
             ${buildSvg(item.icon)}
             <span class="nav-label">${item.label}</span>
+            ${item.badgeId ? `<span class="nav-badge" id="${item.badgeId}">--</span>` : ''}
             <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <polyline points="6 9 12 15 18 9"/>
+              <polyline points="9 6 15 12 9 18"/>
             </svg>
           </button>
-          <div class="nav-subnav">`;
-
-        for (const sub of item.subitems) {
-          const subActive = groupActive && activeTab === sub.id;
-          const subCls = ['nav-subitem', subActive ? 'active' : ''].filter(Boolean).join(' ');
-          html += `<a class="${subCls}" data-tab="${sub.id}" href="${sub.href}">
-            <span class="nav-label">${sub.label}</span>
-            ${sub.soon ? '<span class="nav-badge-soon">Coming soon</span>' : ''}
-          </a>`;
-        }
-
-        html += `</div></div>`;
+        </div>`;
       }
     }
 
@@ -256,6 +223,10 @@
       applyCollapsed(localStorage.getItem(COLLAPSED_KEY) === 'true');
     }
 
+    // The pre-paint width is now owned by the .collapsed class (applied above); drop
+    // the bootstrap html class so it can't override width once the user toggles.
+    document.documentElement.classList.remove('sb-init-collapsed');
+
     // Toggle button is injected by buildSidebar — need to bind after inject
     const toggleBtn = document.getElementById('sidebarToggle');
     toggleBtn?.addEventListener('click', () => {
@@ -285,29 +256,126 @@
     });
   }
 
-  // ── Nav group toggle ──────────────────────────────────────────────────────
+  // ── Nav group flyouts ─────────────────────────────────────────────────────
+  // Groups don't expand inline; hovering/clicking the toggle reveals a flyout to the
+  // right. The panel is a single shared element appended to <body> so the sidebar's
+  // overflow never clips it — works identically whether the rail is expanded or
+  // collapsed, satisfying "still selectable when collapsed".
 
-  function initNavGroups() {
-    document.querySelectorAll('.nav-group').forEach(group => {
+  function initFlyouts() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    let flyout = document.getElementById('navFlyout');
+    if (!flyout) {
+      flyout = document.createElement('div');
+      flyout.id = 'navFlyout';
+      flyout.className = 'nav-flyout';
+      document.body.appendChild(flyout);
+    }
+
+    let hideTimer = null;
+    const cancelHide   = () => clearTimeout(hideTimer);
+    const scheduleHide = () => { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 160); };
+
+    function hide() {
+      flyout.classList.remove('visible');
+      sidebar.querySelectorAll('.nav-group-toggle[aria-expanded="true"]')
+        .forEach(t => t.setAttribute('aria-expanded', 'false'));
+    }
+
+    function show(group) {
       const toggle = group.querySelector('.nav-group-toggle');
       if (!toggle) return;
-      const key = `navGroupExpanded:${group.id}`;
 
-      function setExpanded(v) {
-        group.classList.toggle('expanded', v);
-        toggle.setAttribute('aria-expanded', String(v));
-      }
+      let subs = [];
+      try { subs = JSON.parse(toggle.dataset.subitems || '[]'); } catch (_) { /* ignore */ }
 
-      // Restore saved state (current state already set by buildSidebar)
-      const saved = localStorage.getItem(key);
-      if (saved !== null) setExpanded(saved === 'true');
+      flyout.innerHTML =
+        `<div class="nav-flyout-title">${toggle.dataset.label || ''}</div>` +
+        subs.map(s => {
+          const cls  = ['nav-flyout-item', s.active ? 'active' : '', s.soon ? 'is-soon' : ''].filter(Boolean).join(' ');
+          const href = s.soon ? '#' : s.href;
+          return `<a class="${cls}" href="${href}">` +
+                 `<span>${s.label}</span>` +
+                 (s.soon ? '<span class="nav-badge-soon">Soon</span>' : '') +
+                 `</a>`;
+        }).join('');
 
-      toggle.addEventListener('click', () => {
-        const next = !group.classList.contains('expanded');
-        setExpanded(next);
-        localStorage.setItem(key, String(next));
-      });
+      // Anchor to the right edge of the toggle, clamped to the viewport.
+      const r = toggle.getBoundingClientRect();
+      flyout.style.visibility = 'hidden';
+      flyout.classList.add('visible');
+      const fh = flyout.offsetHeight;
+      let top = r.top;
+      if (top + fh > window.innerHeight - 8) top = Math.max(8, window.innerHeight - 8 - fh);
+      flyout.style.top  = `${top}px`;
+      flyout.style.left = `${r.right + 6}px`;
+      flyout.style.visibility = '';
+
+      sidebar.querySelectorAll('.nav-group-toggle[aria-expanded="true"]')
+        .forEach(t => t.setAttribute('aria-expanded', 'false'));
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+
+    sidebar.querySelectorAll('.nav-group').forEach(group => {
+      const toggle = group.querySelector('.nav-group-toggle');
+      group.addEventListener('mouseenter', () => { cancelHide(); show(group); });
+      group.addEventListener('mouseleave', scheduleHide);
+      toggle?.addEventListener('click', (e) => { e.preventDefault(); cancelHide(); show(group); });
     });
+
+    flyout.addEventListener('mouseenter', cancelHide);
+    flyout.addEventListener('mouseleave', scheduleHide);
+
+    // Dismiss when clicking away, scrolling, or resizing (anchor would go stale).
+    document.addEventListener('click', (e) => {
+      if (!flyout.contains(e.target) && !e.target.closest('.nav-group')) hide();
+    });
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+  }
+
+  // ── Global hover tooltip ──────────────────────────────────────────────────
+  // Any element with [data-tip] shows a small fixed-position tooltip on hover/focus.
+  // Event-delegated, so it covers content rendered dynamically after load.
+
+  function initTooltips() {
+    let tip = document.getElementById('appTooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'appTooltip';
+      tip.className = 'app-tooltip';
+      document.body.appendChild(tip);
+    }
+
+    function show(el) {
+      const text = el.getAttribute('data-tip');
+      if (!text) return;
+      tip.textContent = text;
+      tip.classList.add('visible');
+      const r  = el.getBoundingClientRect();
+      const tr = tip.getBoundingClientRect();
+      let left = r.left + r.width / 2 - tr.width / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - tr.width - 8));
+      let top = r.top - tr.height - 8;
+      if (top < 8) top = r.bottom + 8;   // flip below if no room above
+      tip.style.left = `${left}px`;
+      tip.style.top  = `${top}px`;
+    }
+    function hide() { tip.classList.remove('visible'); }
+
+    document.addEventListener('mouseover', e => {
+      const t = e.target.closest('[data-tip]');
+      if (t) show(t);
+    });
+    document.addEventListener('mouseout', e => {
+      const t = e.target.closest('[data-tip]');
+      if (t && !t.contains(e.relatedTarget)) hide();
+    });
+    document.addEventListener('focusin',  e => { const t = e.target.closest('[data-tip]'); if (t) show(t); });
+    document.addEventListener('focusout', hide);
+    window.addEventListener('scroll', hide, true);
   }
 
   // ── Alive count badge ─────────────────────────────────────────────────────
@@ -327,7 +395,8 @@
   document.addEventListener('DOMContentLoaded', () => {
     buildSidebar();
     initSidebar();
-    initNavGroups();
+    initFlyouts();
+    initTooltips();
     pollAliveCount();
   });
 

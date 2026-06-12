@@ -40,6 +40,12 @@ public:
 
     // Parse a sysGroup response PDU's varbinds into `dev`.
     static void parseSysGroup(snmp_pdu* pdu, SnmpDevice& dev);
+
+    // Walk ifPhysAddress (1.3.6.1.2.1.2.2.1.6) on an OPEN single-session handle
+    // (the void* returned by snmp_sess_open) and collect the non-empty interface
+    // MACs into dev.interfaceMacs. Synchronous (GETNEXT loop) — call from the v3
+    // worker path. `sessp` is net-snmp's opaque session pointer.
+    static void walkIfPhysAddr(void* sessp, SnmpDevice& dev);
 };
 
 } // namespace pz::snmpd

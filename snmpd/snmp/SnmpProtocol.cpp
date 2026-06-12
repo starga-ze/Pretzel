@@ -14,6 +14,8 @@
 #include "snmp/SnmpProtocol.h"
 #include "util/Logger.h"
 
+#include <cstring>
+
 // Session flag to skip the SYNCHRONOUS engineID probe that snmp_sess_open()
 // otherwise performs for v3. With it set, engineID discovery happens
 // asynchronously via the normal request/REPORT cycle, so a dead host times out
@@ -39,6 +41,24 @@ const oid kSysName[]     = {1,3,6,1,2,1,1,5,0};
 const oid kSysLocation[] = {1,3,6,1,2,1,1,6,0};
 
 constexpr size_t kSysOidLen = 9;
+
+// ifPhysAddress column (IF-MIB ifTable col 6): 1.3.6.1.2.1.2.2.1.6
+const oid kIfPhysAddr[] = {1,3,6,1,2,1,2,2,1,6};
+constexpr size_t kIfPhysAddrLen = 10;
+
+std::string macToStr(const u_char* b, size_t len)
+{
+    static const char* hexd = "0123456789ABCDEF";
+    std::string s;
+    s.reserve(len * 3);
+    for (size_t i = 0; i < len; ++i)
+    {
+        if (i) s += ':';
+        s += hexd[(b[i] >> 4) & 0xF];
+        s += hexd[b[i] & 0xF];
+    }
+    return s;
+}
 
 std::string oidToStr(const oid* name, size_t len)
 {
@@ -208,6 +228,59 @@ void SnmpProtocol::parseSysGroup(snmp_pdu* pdu, SnmpDevice& dev)
                 dev.sysObjectId = oidToStr(var->val.objid,
                                            var->val_len / sizeof(oid));
         }
+    }
+}
+
+void SnmpProtocol::walkIfPhysAddr(void* sessp, SnmpDevice& dev)
+{
+    if (sessp == nullptr)
+        return;
+
+    oid    cur[MAX_OID_LEN];
+    size_t curLen = kIfPhysAddrLen;
+    std::memcpy(cur, kIfPhysAddr, kIfPhysAddrLen * sizeof(oid));
+
+    // GETNEXT walk of the ifPhysAddress column. Guard against runaway agents.
+    for (int guard = 0; guard < 1024; ++guard)
+    {
+        netsnmp_pdu* pdu = snmp_pdu_create(SNMP_MSG_GETNEXT);
+        snmp_add_null_var(pdu, cur, curLen);
+
+        netsnmp_pdu* resp = nullptr;
+        const int status = snmp_sess_synch_response(sessp, pdu, &resp);
+
+        if (status != STAT_SUCCESS || resp == nullptr ||
+            resp->errstat != SNMP_ERR_NOERROR || resp->variables == nullptr)
+        {
+            if (resp) snmp_free_pdu(resp);
+            break;
+        }
+
+        netsnmp_variable_list* var = resp->variables;
+
+        // Left the ifPhysAddress subtree, or end-of-MIB → done.
+        bool inSubtree = var->name_length >= kIfPhysAddrLen;
+        for (size_t i = 0; inSubtree && i < kIfPhysAddrLen; ++i)
+            if (var->name[i] != kIfPhysAddr[i]) inSubtree = false;
+
+        if (!inSubtree ||
+            var->type == SNMP_ENDOFMIBVIEW ||
+            var->type == SNMP_NOSUCHOBJECT ||
+            var->type == SNMP_NOSUCHINSTANCE)
+        {
+            snmp_free_pdu(resp);
+            break;
+        }
+
+        // A populated physical interface reports a 6-byte MAC; logical/HA ifaces
+        // return an empty octet string — skip those.
+        if (var->type == ASN_OCTET_STR && var->val.string != nullptr && var->val_len == 6)
+            dev.interfaceMacs.push_back(macToStr(var->val.string, var->val_len));
+
+        // Advance the cursor to the OID we just received.
+        std::memcpy(cur, var->name, var->name_length * sizeof(oid));
+        curLen = var->name_length;
+        snmp_free_pdu(resp);
     }
 }
 
