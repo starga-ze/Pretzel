@@ -4,12 +4,13 @@
 #include "event/SnmpdEvent.h"
 #include "event/SnmpdEventFactory.h"
 #include "service/SnmpdServiceManager.h"
-#include "snmp/SnmpTypes.h"
 
-#include <vector>
+#include <memory>
 
 namespace pz::snmpd
 {
+
+class SnmpdPacket;
 
 class SnmpdRxRouter : public pz::router::RxRouter
 {
@@ -19,8 +20,10 @@ public:
 
     void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 
-    // Called by SnmpEngineHandler when async scan sweep completes.
-    void handleSnmpScanComplete(std::vector<SnmpDevice> devices);
+    // Called by SnmpEngineHandler when an async scan sweep completes. Mirrors
+    // IcmpdRxRouter::handleIcmpPacket — the typed packet is turned into an event
+    // by the factory, never constructed inline here.
+    void handleSnmpPacket(std::unique_ptr<SnmpdPacket> packet);
 
     void setServiceManager(SnmpdServiceManager* serviceManager);
 

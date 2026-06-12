@@ -4,8 +4,14 @@ Description=Pretzel DB Readiness Gate
 # server is actually accepting connections. After= only orders against the unit being
 # "active", not against the DB being ready — on a cold boot the server can be up as a
 # unit but not yet listening, so the daemons would race it. This oneshot closes that
-# gap. It always exits 0: if PG never comes up the daemons still start (degraded onto
-# the startup-file fallback) and reconcile via Config::isStale() once PG is reachable.
+# gap for the common case: dependents declare After=pz-db-ready.service, so they wait
+# until this poll loop returns.
+#
+# On timeout it now exits NON-ZERO (was exit 0) so a genuinely-down DB surfaces as a
+# failed unit instead of being silently swallowed. Dependents use Wants= (not
+# Requires=), so they still start in degraded mode on the startup-file fallback even
+# when this gate fails; mgmtd then self-heals the empty config tables via its in-loop
+# seedStore() retry (see MgmtdCore::ensureStoreSeeded) once PG becomes reachable.
 After=postgresql.service
 Wants=postgresql.service
 PartOf=pretzel.target
@@ -13,7 +19,8 @@ PartOf=pretzel.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c 'for i in $(seq 1 60); do pg_isready -q -h 127.0.0.1 -p 5432 && exit 0; sleep 0.5; done; echo "pz-db-ready: PostgreSQL not ready after 30s — daemons will use file fallback"; exit 0'
+# Poll for up to 60s (cold boot / first initdb can be slow), then fail honestly.
+ExecStart=/bin/bash -c 'for i in $(seq 1 120); do pg_isready -q -h 127.0.0.1 -p 5432 && exit 0; sleep 0.5; done; echo "pz-db-ready: PostgreSQL not ready after 60s — daemons start degraded and self-heal once PG is up" >&2; exit 1'
 
 [Install]
 WantedBy=pretzel.target

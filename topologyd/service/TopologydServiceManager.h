@@ -7,6 +7,7 @@
 
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
+#include "service/reload/ReloadService.h"
 
 #include "router/TopologydTxRouter.h"
 
@@ -35,6 +36,7 @@ public:
 
     BootstrapService& bootstrapService();
     HeartbeatService& heartbeatService();
+    ReloadService& reloadService();
 
     TopologydTxRouter& txRouter();
 
@@ -45,6 +47,7 @@ private:
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
+    std::unique_ptr<ReloadService>    m_reloadService;
 
     std::queue<std::unique_ptr<TopologydEvent>>  m_eventQueue;
     std::queue<std::unique_ptr<TopologydAction>> m_actionQueue;

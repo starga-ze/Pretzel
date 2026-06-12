@@ -16,6 +16,7 @@ enum class SnmpdEventDomain : std::uint32_t
     Bootstrap = 1,
     Heartbeat = 2,
     Scan      = 3,
+    Reload    = 4,
 };
 
 class SnmpdEvent : public pz::event::Event

@@ -1,7 +1,6 @@
 #include "router/TopologydRxRouter.h"
 
 #include "service/TopologydServiceManager.h"
-#include "core/Core.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
@@ -31,13 +30,8 @@ void TopologydRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> ms
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
-    if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReload)
-    {
-        LOG_INFO("config reload received — scheduling daemon restart");
-        pz::core::Core::scheduleReload();
-        return;
-    }
-
+    // ConfigReload is mapped to a ReloadEvent by the factory and handled in
+    // ReloadService — the router stays a pure pass-through.
     auto event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));

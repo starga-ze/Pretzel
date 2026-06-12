@@ -12,6 +12,7 @@
 #include "event/MgmtdEventFactory.h"
 #include "action/MgmtdActionFactory.h"
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -47,6 +48,12 @@ private:
     bool loadHttpConfig();
     bool loadAuthConfig();
 
+    // Self-heal for the boot-time DB race: if seedStore() failed in onPreConfigLoad
+    // because PostgreSQL was not yet accepting connections, retry from the main loop
+    // until it succeeds. Also recovers the empty-tables state after a runtime DB wipe
+    // or restart. No-op once the store is confirmed seeded.
+    void ensureStoreSeeded();
+
 private:
     pz::config::LoggerConfig m_loggerConfig;
     pz::config::IpcConfig m_ipcConfig;
@@ -60,6 +67,11 @@ private:
     std::unique_ptr<MgmtdRxRouter>       m_rxRouter;
     std::unique_ptr<HttpServer>          m_httpServer;
     std::unique_ptr<MgmtdProcess>        m_process;
+
+    // Config-store seed state. Set in onPreConfigLoad(); when false, ensureStoreSeeded()
+    // keeps retrying (throttled by m_lastSeedAttempt) until the DB is reachable.
+    bool m_storeSeeded{false};
+    std::chrono::steady_clock::time_point m_lastSeedAttempt{};
 };
 
 } // namespace pz::mgmtd

@@ -155,7 +155,10 @@ void Core::writePidFile()
     FILE* f = std::fopen(m_pidFilePath.c_str(), "w");
     if (!f)
     {
-        LOG_WARN("{}: failed to write pid file {}", m_name, m_pidFilePath);
+        // Runs before Logger::Init() (in onInit), so spdlog isn't ready yet —
+        // use stderr, consistent with onPreConfigLoad.
+        std::cerr << m_name << ": failed to write pid file " << m_pidFilePath
+                  << ": " << std::strerror(errno) << std::endl;
         m_pidFilePath.clear();
         return;
     }

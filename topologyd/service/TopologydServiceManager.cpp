@@ -14,7 +14,8 @@ TopologydServiceManager::TopologydServiceManager(TopologydEventFactory* eventFac
       m_actionFactory(actionFactory),
       m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_heartbeatService(std::make_unique<HeartbeatService>())
+      m_heartbeatService(std::make_unique<HeartbeatService>()),
+      m_reloadService(std::make_unique<ReloadService>())
 {
 }
 
@@ -81,6 +82,11 @@ BootstrapService& TopologydServiceManager::bootstrapService()
 HeartbeatService& TopologydServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
+}
+
+ReloadService& TopologydServiceManager::reloadService()
+{
+    return *m_reloadService;
 }
 
 TopologydTxRouter& TopologydServiceManager::txRouter()

@@ -15,7 +15,8 @@ IcmpdServiceManager::IcmpdServiceManager(IcmpdEventFactory* eventFactory,
     m_txRouter(txRouter),
     m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
     m_probeService(std::make_unique<ProbeService>(m_eventFactory, m_actionFactory)),
-    m_heartbeatService(std::make_unique<HeartbeatService>())
+    m_heartbeatService(std::make_unique<HeartbeatService>()),
+    m_reloadService(std::make_unique<ReloadService>())
 {
 }
 
@@ -93,6 +94,11 @@ ProbeService& IcmpdServiceManager::probeService()
 HeartbeatService& IcmpdServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
+}
+
+ReloadService& IcmpdServiceManager::reloadService()
+{
+    return *m_reloadService;
 }
 
 IcmpdTxRouter& IcmpdServiceManager::txRouter()

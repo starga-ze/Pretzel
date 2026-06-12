@@ -2,6 +2,7 @@
 
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
+#include "service/reload/ReloadEvent.h"
 
 #include "util/Logger.h"
 
@@ -22,6 +23,9 @@ std::unique_ptr<AuthdEvent> AuthdEventFactory::create(AuthdEventDomain domain, s
 
     case AuthdEventDomain::Heartbeat:
         return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
+
+    case AuthdEventDomain::Reload:
+        return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
 
     default:
         LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
@@ -47,6 +51,9 @@ std::unique_ptr<AuthdEvent> AuthdEventFactory::create(std::unique_ptr<pz::ipc::I
 
     case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
+
+    case pz::ipc::IpcCmd::ConfigReload:
+        return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 
     default:
         LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));

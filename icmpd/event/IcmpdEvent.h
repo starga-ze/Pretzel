@@ -15,7 +15,8 @@ enum class IcmpdEventDomain : std::uint32_t
     Unknown = 0,
     Bootstrap = 1,
     Probe = 2,
-    Heartbeat = 3
+    Heartbeat = 3,
+    Reload = 4
 };
 
 class IcmpdEvent : public pz::event::Event

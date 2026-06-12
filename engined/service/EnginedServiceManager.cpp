@@ -15,7 +15,9 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory,
       m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_commitService(std::make_unique<CommitService>()),
-      m_heartbeatService(std::make_unique<HeartbeatService>())
+      m_heartbeatService(std::make_unique<HeartbeatService>()),
+      m_probeService(std::make_unique<ProbeService>()),
+      m_scanService(std::make_unique<ScanService>())
 {
 }
 
@@ -90,6 +92,16 @@ CommitService& EnginedServiceManager::commitService()
 HeartbeatService& EnginedServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
+}
+
+ProbeService& EnginedServiceManager::probeService()
+{
+    return *m_probeService;
+}
+
+ScanService& EnginedServiceManager::scanService()
+{
+    return *m_scanService;
 }
 
 EnginedTxRouter& EnginedServiceManager::txRouter()

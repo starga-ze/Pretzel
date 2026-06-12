@@ -577,14 +577,15 @@ void ProbeService::sendProbeResult(IcmpdServiceManager& serviceManager)
 
     const std::string payloadStr = payload.dump();
 
+    // ProbeResult goes to engined (the control-plane hub), which relays it to mgmtd.
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Icmpd);
-    msg->setDst(pz::ipc::IpcDaemon::Mgmtd);
+    msg->setDst(pz::ipc::IpcDaemon::Engined);
     msg->setCmd(pz::ipc::IpcCmd::ProbeResult);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(payloadStr.data()), payloadStr.size());
 
-    LOG_INFO("sending ProbeResult to mgmtd alive={}", m_lastAliveCount);
+    LOG_INFO("sending ProbeResult to engined alive={}", m_lastAliveCount);
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }

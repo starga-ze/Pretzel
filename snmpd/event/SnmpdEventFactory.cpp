@@ -3,6 +3,9 @@
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/scan/ScanEvent.h"
+#include "service/reload/ReloadEvent.h"
+
+#include "snmp/SnmpdPacket.h"
 
 #include "util/Logger.h"
 
@@ -26,6 +29,9 @@ std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(SnmpdEventDomain domain, s
 
     case SnmpdEventDomain::Scan:
         return std::make_unique<ScanEvent>(static_cast<ScanEventType>(type));
+
+    case SnmpdEventDomain::Reload:
+        return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
 
     default:
         LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
@@ -55,10 +61,25 @@ std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(std::unique_ptr<pz::ipc::I
     case pz::ipc::IpcCmd::SnmpScanRequest:
         return std::make_unique<ScanEvent>(ScanEventType::ReceiveSnmpScanRequest, std::move(msg));
 
+    case pz::ipc::IpcCmd::ConfigReload:
+        return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
+
     default:
         LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
+}
+
+std::unique_ptr<SnmpdEvent> SnmpdEventFactory::create(std::unique_ptr<SnmpdPacket> packet)
+{
+    if (!packet)
+    {
+        LOG_WARN("Snmpd event factory: null scan packet — skipping");
+        return nullptr;
+    }
+
+    return std::make_unique<ScanEvent>(ScanEventType::ScanComplete,
+                                       std::move(packet->devices()));
 }
 
 } // namespace pz::snmpd

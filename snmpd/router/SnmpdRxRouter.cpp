@@ -1,8 +1,7 @@
 #include "router/SnmpdRxRouter.h"
 
-#include "service/scan/ScanEvent.h"
+#include "snmp/SnmpdPacket.h"
 
-#include "core/Core.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
@@ -28,19 +27,14 @@ void SnmpdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReload)
-    {
-        LOG_INFO("config reload received — scheduling daemon restart");
-        pz::core::Core::scheduleReload();
-        return;
-    }
-
+    // ConfigReload is mapped to a ReloadEvent by the factory and handled in
+    // ReloadService — the router stays a pure pass-through.
     std::unique_ptr<SnmpdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));
 }
 
-void SnmpdRxRouter::handleSnmpScanComplete(std::vector<SnmpDevice> devices)
+void SnmpdRxRouter::handleSnmpPacket(std::unique_ptr<SnmpdPacket> packet)
 {
     if (!m_serviceManager)
     {
@@ -48,12 +42,15 @@ void SnmpdRxRouter::handleSnmpScanComplete(std::vector<SnmpDevice> devices)
         return;
     }
 
-    LOG_DEBUG("SnmpdRxRouter: posting ScanComplete event devices={}",
-              devices.size());
+    if (!packet)
+    {
+        LOG_WARN("SnmpdRxRouter: null SnmpdPacket — skipping");
+        return;
+    }
 
-    auto event = std::make_unique<ScanEvent>(ScanEventType::ScanComplete,
-                                             std::move(devices));
-    m_serviceManager->postEvent(std::move(event));
+    LOG_DEBUG("SnmpdRxRouter: posting scan packet devices={}", packet->size());
+
+    m_serviceManager->postEvent(m_eventFactory->create(std::move(packet)));
 }
 
 void SnmpdRxRouter::setServiceManager(SnmpdServiceManager* serviceManager)

@@ -3,6 +3,7 @@
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/probe/ProbeEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
+#include "service/reload/ReloadEvent.h"
 
 #include "util/Logger.h"
 
@@ -23,6 +24,9 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(IcmpdEventDomain domain, s
 
     case IcmpdEventDomain::Probe:
         return std::make_unique<ProbeEvent>(static_cast<ProbeEventType>(type));
+
+    case IcmpdEventDomain::Reload:
+        return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
 
     default:
         LOG_WARN("Unhandled event domain={}", static_cast<std::uint32_t>(domain));
@@ -48,6 +52,9 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<pz::ipc::I
 
     case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
+
+    case pz::ipc::IpcCmd::ConfigReload:
+        return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 
     default:
         LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));

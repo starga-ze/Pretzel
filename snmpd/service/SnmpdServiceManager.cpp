@@ -15,7 +15,8 @@ SnmpdServiceManager::SnmpdServiceManager(SnmpdEventFactory* eventFactory,
       m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_scanService(std::make_unique<ScanService>())
+      m_scanService(std::make_unique<ScanService>()),
+      m_reloadService(std::make_unique<ReloadService>())
 {
 }
 
@@ -88,6 +89,11 @@ HeartbeatService& SnmpdServiceManager::heartbeatService()
 ScanService& SnmpdServiceManager::scanService()
 {
     return *m_scanService;
+}
+
+ReloadService& SnmpdServiceManager::reloadService()
+{
+    return *m_reloadService;
 }
 
 SnmpdTxRouter& SnmpdServiceManager::txRouter()

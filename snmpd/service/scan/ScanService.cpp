@@ -149,15 +149,16 @@ void ScanService::handleAction(SnmpdServiceManager& sm, const ScanAction& action
     {
     case ScanActionType::SendSnmpResult:
     {
-        LOG_DEBUG("ScanService: sending SnmpResult to mgmtd len={}",
+        LOG_DEBUG("ScanService: sending SnmpResult to engined len={}",
                   action.resultJson().size());
 
         const std::string& json = action.resultJson();
         std::vector<uint8_t> payload(json.begin(), json.end());
 
+        // SnmpResult goes to engined (the control-plane hub), which relays it to mgmtd.
         auto header = pz::ipc::IpcHeader::build(
             pz::ipc::IpcDaemon::Snmpd,
-            pz::ipc::IpcDaemon::Mgmtd,
+            pz::ipc::IpcDaemon::Engined,
             pz::ipc::IpcCmd::SnmpResult,
             static_cast<uint32_t>(payload.size()),
             pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::None));

@@ -1,6 +1,5 @@
 #include "router/IcmpdRxRouter.h"
 
-#include "core/Core.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
@@ -26,13 +25,8 @@ void IcmpdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReload)
-    {
-        LOG_INFO("config reload received — scheduling daemon restart");
-        pz::core::Core::scheduleReload();
-        return;
-    }
-
+    // ConfigReload is mapped to a ReloadEvent by the factory and handled in
+    // ReloadService — the router stays a pure pass-through.
     std::unique_ptr<IcmpdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));

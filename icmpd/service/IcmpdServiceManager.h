@@ -5,6 +5,7 @@
 #include "service/bootstrap/BootstrapService.h"
 #include "service/probe/ProbeService.h"
 #include "service/heartbeat/HeartbeatService.h"
+#include "service/reload/ReloadService.h"
 
 #include "router/IcmpdTxRouter.h"
 
@@ -31,6 +32,7 @@ public:
     BootstrapService& bootstrapService();
     ProbeService& probeService();
     HeartbeatService& heartbeatService();
+    ReloadService& reloadService();
 
     IcmpdTxRouter& txRouter();
 
@@ -42,6 +44,7 @@ private:
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<ProbeService> m_probeService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
+    std::unique_ptr<ReloadService> m_reloadService;
 
     std::queue<std::unique_ptr<IcmpdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<IcmpdAction>> m_actionQueue;
