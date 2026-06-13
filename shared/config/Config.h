@@ -59,9 +59,15 @@ public:
     // the next version.
     static nlohmann::json runningConfigRoot();
 
-    // mgmtd-only bootstrap: sync the startup-config file into the startup_config
-    // table, and seed running_config version 1 from it IF the table is empty
-    // (existing history is preserved across reboots). Call before load().
+    // engined-only pre-flight: ensure the DB connection + schema (DDL), then seed the
+    // config store. engined is the single DB writer and boots before every other
+    // daemon, so it owns schema creation; all other daemons only connect + read.
+    // Call from engined's onPreConfigLoad(), before any daemon reads its config.
+    static bool preflight();
+
+    // Sync the startup-config file into the startup_config table, and seed
+    // running_config version 1 from it IF the table is empty (existing history is
+    // preserved across reboots). Invoked by preflight() on engined.
     static bool seedStore();
 
     // Appends a new running_config version (= MAX(version)+1) with the given full

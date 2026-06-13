@@ -156,7 +156,7 @@
     </div>
 
     <!-- Card -->
-    <div class="login-card">
+    <div class="login-card" id="loginCard">
 
       <div class="login-field">
         <label class="login-label" for="username">Email or username</label>
@@ -185,6 +185,35 @@
 
       <div class="login-error" id="loginError">
         Invalid username or password
+      </div>
+
+    </div>
+
+    <!-- Forced password-change card (shown after first login on the default password) -->
+    <div class="login-card" id="changeCard" style="display:none;">
+
+      <div class="login-field" style="margin-bottom:14px;">
+        <span class="login-label" style="line-height:1.4;">
+          You're signed in with the default password. Set a new password to continue.
+        </span>
+      </div>
+
+      <div class="login-field">
+        <label class="login-label" for="newPassword">New password</label>
+        <input class="login-input" type="password" id="newPassword"
+               placeholder="new password" autocomplete="new-password" />
+      </div>
+
+      <div class="login-field">
+        <label class="login-label" for="confirmPassword">Confirm new password</label>
+        <input class="login-input" type="password" id="confirmPassword"
+               placeholder="confirm new password" autocomplete="new-password" />
+      </div>
+
+      <button class="login-btn" id="changeBtn">Set password &amp; continue</button>
+
+      <div class="login-error" id="changeError">
+        Passwords do not match
       </div>
 
     </div>

@@ -33,8 +33,11 @@ CREATE TABLE IF NOT EXISTS state_snapshot (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- SNMP/ICMP device inventory.
-CREATE TABLE IF NOT EXISTS devices (
+-- ICMP reachability inventory (renamed from `devices` for symmetry with
+-- snmp_devices). SNMP-discovered attributes live in snmp_devices; this table is the
+-- ICMP side. Rename migration is idempotent.
+ALTER TABLE IF EXISTS devices RENAME TO icmp_devices;
+CREATE TABLE IF NOT EXISTS icmp_devices (
     ip               TEXT PRIMARY KEY,
     status           TEXT,
     hostname         TEXT,
@@ -47,14 +50,24 @@ CREATE TABLE IF NOT EXISTS devices (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Admin login credential (single operator account). Stored hashed (SHA-256 of
--- password+salt) so the plaintext never lives in the DB or in version control —
--- mgmtd seeds a default on a factory-fresh device and the password is changed via
--- the API. Kept OUT of running_config/startup_config on purpose (see Config.cpp
--- secret redaction).
-CREATE TABLE IF NOT EXISTS admin_user (
-    username      TEXT PRIMARY KEY,
-    password_hash TEXT NOT NULL,
-    salt          TEXT NOT NULL,
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Admin login credential — commercial-gear style, the hashed credential lives in the
+-- running-config (mgmtd.service.http.admin = {username, password_hash, salt,
+-- must_change}), NOT in a dedicated table. engined seeds it on a factory-fresh device
+-- and writes password changes as a new running_config version. Drop the legacy table.
+DROP TABLE IF EXISTS admin_user;
+
+-- SNMP scan results, kept separate from the ICMP-discovered `devices` inventory so
+-- the two write paths never clobber each other. Keyed by IP; the interface MAC set
+-- (ifPhysAddress) is stored as a JSON array for hardware fingerprinting. Written
+-- exclusively by engined (the single DB writer); mgmtd reads it for /api/devices.
+CREATE TABLE IF NOT EXISTS snmp_devices (
+    ip               TEXT PRIMARY KEY,
+    sys_name         TEXT,
+    sys_descr        TEXT,
+    sys_object_id    TEXT,
+    sys_contact      TEXT,
+    sys_location     TEXT,
+    sys_uptime_ticks BIGINT,
+    interface_macs   JSONB,
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );

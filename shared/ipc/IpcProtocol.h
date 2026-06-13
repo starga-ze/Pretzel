@@ -43,6 +43,7 @@ enum class IpcCmd : std::uint16_t
     
     Error        = 102,
 
+    // Unicast from icmpd to mgmtd: payload = JSON {"alive":N,"ips":[...]}.
     ProbeResult       = 103,
     HeartbeatRequest  = 104,
     HeartbeatResponse = 105,
@@ -70,8 +71,15 @@ enum class IpcCmd : std::uint16_t
     // Unicast from mgmtd to snmpd: payload = JSON {"ips":["..."]} to scan.
     SnmpScanRequest = 112,
 
-    // Unicast from snmpd to mgmtd: payload = JSON {"devices":[...]} results.
+    // Unicast from snmpd to engined: payload = JSON {"devices":[...]} results.
+    // engined (the single DB writer) persists them into the snmp_devices table.
     SnmpResult = 113,
+
+    // Unicast from mgmtd to engined: payload = JSON {"username","password_hash","salt"}.
+    // engined (the single DB writer) writes it into running_config (mgmtd.service.http
+    // .admin) as a new version; mgmtd applies it in-memory optimistically. No response,
+    // no ConfigReload (mgmtd is the sole consumer of the credential).
+    AdminPasswordUpdate = 114,
 };
 
 enum class IpcFlag : std::uint8_t

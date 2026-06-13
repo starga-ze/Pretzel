@@ -16,8 +16,8 @@ enum class EnginedEventDomain : std::uint32_t
     Bootstrap = 1,
     Heartbeat = 2,
     Commit    = 3,
-    Probe     = 4,
-    Scan      = 5,
+    Scan      = 4,
+    Admin     = 5,
 };
 
 class EnginedEvent : public pz::event::Event

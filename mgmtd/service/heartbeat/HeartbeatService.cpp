@@ -58,13 +58,9 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
 
         LOG_TRACE("updated heartbeat result len={}", m_latestJson.size());
 
-        // Persist the runtime-determined heartbeat snapshot to the DB
-        // (state_snapshot table), distinct from the operational running-config.
-        auto parsed = nlohmann::json::parse(m_latestJson, nullptr, false);
-        if (!parsed.is_discarded())
-        {
-            pz::config::Config::saveStateSnapshot("mgmtd", parsed);
-        }
+        // mgmtd is read-only w.r.t. the DB: engined persists the heartbeat snapshot
+        // (state_snapshot table) when it builds the result. Here we only cache the
+        // latest JSON in memory for /api/status.
         break;
     }
 

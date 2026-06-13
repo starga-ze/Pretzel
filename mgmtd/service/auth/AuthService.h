@@ -14,15 +14,22 @@ public:
     {
         bool success {false};
         std::string sessionId;
+        bool mustChange {false};  // session must change the password before anything else
     };
 
     AuthService() = default;
 
-    // Loads the admin credential from the admin_user DB table. On a factory-fresh
-    // device (no row yet) it seeds a default account — username = defaultUsername,
-    // password = kDefaultPassword — stored hashed, and returns true. The plaintext
-    // password is never stored; the default MUST be changed via changePassword().
-    bool loadFromDb(const std::string& defaultUsername = "admin");
+    struct Credential
+    {
+        std::string passwordHash;
+        std::string salt;
+    };
+
+    // Loads the admin credential from the running-config (mgmtd.service.http.admin),
+    // which engined seeds/writes. If no credential is present yet (e.g. the DB was
+    // briefly down at boot before engined seeded it) it keeps an in-memory hashed
+    // default so logins are not permanently broken, but writes nothing.
+    bool loadCredential();
 
     LoginResult login(const std::string& username,
                       const std::string& password);
@@ -31,11 +38,19 @@ public:
     // (used to confirm the current password before a change).
     bool checkPassword(const std::string& username, const std::string& password) const;
 
-    // Re-hashes newPassword with a fresh salt and persists it to admin_user. Returns
-    // false if the username is unknown, the password is empty, or the DB write fails.
-    bool changePassword(const std::string& username, const std::string& newPassword);
+    // Computes a fresh {hash, salt} for newPassword WITHOUT touching the DB or memory.
+    // The caller forwards it to engined (the single writer) to persist.
+    Credential makeCredential(const std::string& newPassword) const;
+
+    // Adopts a credential into memory after handing the write to engined, so subsequent
+    // logins verify against the new password and the forced-change gate opens.
+    void applyCredential(const std::string& passwordHash, const std::string& salt);
 
     const std::string& username() const { return m_username; }
+
+    // True while the admin still uses the factory-default password. The HTTP router
+    // uses this to force a password change before allowing any other operation.
+    bool mustChangePassword() const { return m_mustChange; }
 
     bool validateSession(const std::string& sessionId);
     void logout(const std::string& sessionId);
@@ -51,10 +66,7 @@ private:
     static constexpr const char* kDefaultPassword = "admin";
 
     static std::uint64_t now();
-    static std::string hashSha256(const std::string& password,
-                                  const std::string& salt);
     static std::string generateSessionId();
-    static std::string generateSalt();
 
 private:
     std::unordered_map<std::string, Session> m_sessions;
@@ -62,6 +74,7 @@ private:
     std::string m_username {"admin"};
     std::string m_passwordHash;
     std::string m_salt;
+    bool m_mustChange {false};
     std::uint64_t m_sessionTtlSec {1800};
 };
 

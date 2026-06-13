@@ -14,6 +14,7 @@
 
 #include "config/ConfigTypes.h"
 
+#include <chrono>
 #include <memory>
 
 namespace pz::engined
@@ -25,11 +26,22 @@ public:
     EnginedCore();
 
 protected:
+    // engined is the single DB writer and boots first, so it owns the pre-flight:
+    // connect + ensure schema + seed the config store, before any daemon reads.
+    void onPreConfigLoad() override;
+
     bool onInit() override;
     void onLoop() override;
     void onShutdown() override;
 
 private:
+    // Retries Config::preflight() from the main loop when the boot-time attempt failed
+    // (typically the DB was not yet accepting connections). No-op once preflighted.
+    void ensureStorePreflighted();
+
+    bool m_preflighted{false};
+    std::chrono::steady_clock::time_point m_lastPreflightAttempt{};
+
     pz::config::LoggerConfig m_loggerConfig;
     pz::config::IpcConfig m_ipcConfig;
 

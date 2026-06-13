@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS state_snapshot (
     snapshot    JSONB NOT NULL,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE TABLE IF NOT EXISTS devices (
+ALTER TABLE IF EXISTS devices RENAME TO icmp_devices;
+CREATE TABLE IF NOT EXISTS icmp_devices (
     ip               TEXT PRIMARY KEY,
     status           TEXT,
     hostname         TEXT,
@@ -43,11 +44,19 @@ CREATE TABLE IF NOT EXISTS devices (
     sys_uptime_ticks BIGINT,
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE TABLE IF NOT EXISTS admin_user (
-    username      TEXT PRIMARY KEY,
-    password_hash TEXT NOT NULL,
-    salt          TEXT NOT NULL,
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+-- The admin credential now lives in running_config (mgmtd.service.http.admin),
+-- commercial-gear style. Drop the legacy table on existing databases.
+DROP TABLE IF EXISTS admin_user;
+CREATE TABLE IF NOT EXISTS snmp_devices (
+    ip               TEXT PRIMARY KEY,
+    sys_name         TEXT,
+    sys_descr        TEXT,
+    sys_object_id    TEXT,
+    sys_contact      TEXT,
+    sys_location     TEXT,
+    sys_uptime_ticks BIGINT,
+    interface_macs   JSONB,
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 )SQL";
 

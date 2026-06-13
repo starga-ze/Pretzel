@@ -1,56 +1,45 @@
 #include "service/auth/AuthService.h"
 
-#include "db/Database.h"
+#include "config/Config.h"
 #include "util/Logger.h"
-
-#include <openssl/sha.h>
+#include "util/PasswordHash.h"
 
 #include <chrono>
-#include <iomanip>
 #include <random>
 #include <sstream>
 
 namespace pz::mgmtd
 {
 
-bool AuthService::loadFromDb(const std::string& defaultUsername)
+bool AuthService::loadCredential()
 {
-    auto& db = pz::db::Database::instance();
+    // The admin credential lives hashed in the running-config (mgmtd.service.http.admin),
+    // seeded/written by engined. mgmtd only reads it.
+    const auto& http  = pz::config::Config::serviceSection("mgmtd", "http");
+    const auto  admin = http.value("admin", nlohmann::json::object());
 
-    const auto rows =
-        db.queryRows("SELECT username, password_hash, salt FROM admin_user LIMIT 1");
-    if (!rows.empty() && rows.front().size() >= 3)
+    const std::string hash = admin.value("password_hash", std::string{});
+    if (!hash.empty())
     {
-        m_username     = rows.front()[0];
-        m_passwordHash = rows.front()[1];
-        m_salt         = rows.front()[2];
+        m_username     = admin.value("username", std::string("admin"));
+        m_passwordHash = hash;
+        m_salt         = admin.value("salt", std::string{});
+        m_mustChange   = admin.value("must_change", false);
         return true;
     }
 
-    // Factory-fresh: seed a default account (hashed) so the first login works without
-    // a plaintext backdoor. Operator must change it via /api/change-password.
-    const std::string username = defaultUsername.empty() ? "admin" : defaultUsername;
-    const std::string salt     = generateSalt();
-    const std::string hash     = hashSha256(kDefaultPassword, salt);
+    // No credential in config yet — engined seeds it during pre-flight, but it may not
+    // have landed (e.g. the DB was briefly down at boot). Keep an in-memory hashed
+    // default so logins aren't permanently broken; the default must be changed.
+    const std::string salt = pz::util::generateSalt();
 
-    const bool persisted = db.exec(
-        "INSERT INTO admin_user (username, password_hash, salt) VALUES ($1, $2, $3) "
-        "ON CONFLICT (username) DO NOTHING",
-        {username, hash, salt});
-    if (!persisted)
-    {
-        // DB write failed (e.g. PostgreSQL briefly down). Fall back to the in-memory
-        // default — still hashed, no plaintext compare — so we are not locked out.
-        LOG_WARN("AuthService: could not persist default admin account; using "
-                 "in-memory default until DB is reachable");
-    }
+    LOG_WARN("AuthService: no admin credential in config yet — using in-memory default "
+             "account 'admin' until engined seeds it");
 
-    LOG_WARN("AuthService: seeded default admin account '{}' with the default "
-             "password — change it immediately via /api/change-password", username);
-
-    m_username     = username;
-    m_passwordHash = hash;
+    m_username     = "admin";
+    m_passwordHash = pz::util::hashSha256(kDefaultPassword, salt);
     m_salt         = salt;
+    m_mustChange   = true;
     return true;
 }
 
@@ -63,7 +52,8 @@ AuthService::LoginResult AuthService::login(const std::string& username,
     }
 
     // No plaintext fallback: an unprovisioned account (empty hash) refuses all logins.
-    if (m_passwordHash.empty() || hashSha256(password, m_salt) != m_passwordHash)
+    if (m_passwordHash.empty() ||
+        pz::util::hashSha256(password, m_salt) != m_passwordHash)
     {
         return {};
     }
@@ -72,7 +62,7 @@ AuthService::LoginResult AuthService::login(const std::string& username,
 
     m_sessions[sessionId] = Session{now() + m_sessionTtlSec};
 
-    return LoginResult{true, sessionId};
+    return LoginResult{true, sessionId, m_mustChange};
 }
 
 bool AuthService::checkPassword(const std::string& username,
@@ -82,32 +72,23 @@ bool AuthService::checkPassword(const std::string& username,
     {
         return false;
     }
-    return hashSha256(password, m_salt) == m_passwordHash;
+    return pz::util::hashSha256(password, m_salt) == m_passwordHash;
 }
 
-bool AuthService::changePassword(const std::string& username,
-                                 const std::string& newPassword)
+AuthService::Credential AuthService::makeCredential(const std::string& newPassword) const
 {
-    if (username != m_username || newPassword.empty())
-    {
-        return false;
-    }
+    Credential cred;
+    cred.salt         = pz::util::generateSalt();
+    cred.passwordHash = pz::util::hashSha256(newPassword, cred.salt);
+    return cred;
+}
 
-    const std::string salt = generateSalt();
-    const std::string hash = hashSha256(newPassword, salt);
-
-    const bool ok = pz::db::Database::instance().exec(
-        "UPDATE admin_user SET password_hash = $1, salt = $2, updated_at = now() "
-        "WHERE username = $3",
-        {hash, salt, username});
-    if (!ok)
-    {
-        return false;
-    }
-
-    m_passwordHash = hash;
+void AuthService::applyCredential(const std::string& passwordHash,
+                                  const std::string& salt)
+{
+    m_passwordHash = passwordHash;
     m_salt         = salt;
-    return true;
+    m_mustChange   = false;  // engined clears must_change in the same write
 }
 
 bool AuthService::validateSession(const std::string& sessionId)
@@ -144,23 +125,6 @@ std::uint64_t AuthService::now()
         .count();
 }
 
-std::string AuthService::hashSha256(const std::string& password,
-                                    const std::string& salt)
-{
-    const std::string input = password + salt;
-
-    unsigned char digest[SHA256_DIGEST_LENGTH];
-    SHA256(reinterpret_cast<const unsigned char*>(input.data()), input.size(), digest);
-
-    std::ostringstream oss;
-    for (unsigned char byte : digest)
-    {
-        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte);
-    }
-
-    return oss.str();
-}
-
 std::string AuthService::generateSessionId()
 {
     std::random_device rd;
@@ -169,17 +133,6 @@ std::string AuthService::generateSessionId()
 
     std::ostringstream oss;
     oss << std::hex << now() << dist(gen) << dist(gen);
-    return oss.str();
-}
-
-std::string AuthService::generateSalt()
-{
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<std::uint64_t> dist;
-
-    std::ostringstream oss;
-    oss << std::hex << dist(gen) << dist(gen);
     return oss.str();
 }
 

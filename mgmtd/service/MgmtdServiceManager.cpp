@@ -19,10 +19,8 @@ MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory,
       m_heartbeatService(std::make_unique<HeartbeatService>()),
       m_snmpService(std::make_unique<SnmpService>())
 {
-    // Restore the SNMP device inventory persisted in the DB so discovered
-    // attributes survive a daemon restart (the DB is already bootstrapped by
-    // Config during Core::run, before this manager is constructed).
-    m_snmpService->loadPersisted();
+    // SnmpService is a read-only view of snmp_devices (written by engined); nothing to
+    // restore here — devices() reads the table live.
 }
 
 void MgmtdServiceManager::start()

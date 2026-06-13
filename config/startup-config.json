@@ -2,8 +2,9 @@
   "//": "Committed baseline boot config for all pretzel daemons. Safe to commit: it",
   "//secrets": "carries NO secrets. The DB 'database.password' is injected at deploy",
   "//database": "time from PZ_PG_PASSWORD (script/utils.py -> script/start.py); the admin",
-  "//admin": "credential lives hashed in the admin_user table; SNMP v3 credentials are",
-  "//snmp": "entered via the mgmtd web UI at runtime (stored in running_config, not here).",
+  "//admin": "credential is seeded (hashed) by engined into running_config's empty admin",
+  "//admin2": "placeholder below on first boot; SNMP v3 credentials are entered via the",
+  "//snmp": "mgmtd web UI at runtime (stored in running_config, not here).",
 
   "global": {
     "system": {
@@ -120,7 +121,8 @@
         "listen_port": 443,
         "tls_enabled": true,
         "cert_file": "/etc/pretzel/cert/server.crt",
-        "key_file": "/etc/pretzel/cert/server.key"
+        "key_file": "/etc/pretzel/cert/server.key",
+        "admin": {}
       },
       "database": {
         "host": "127.0.0.1",

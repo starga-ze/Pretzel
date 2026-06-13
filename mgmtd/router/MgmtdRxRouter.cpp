@@ -49,18 +49,6 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    if (msg->getCmd() == pz::ipc::IpcCmd::SnmpResult)
-    {
-        const auto& pl = msg->getPayload();
-        if (!pl.empty())
-        {
-            m_serviceManager->snmpService().handleSnmpResult(
-                std::string(pl.begin(), pl.end()));
-            LOG_DEBUG("SNMP result processed");
-        }
-        return;
-    }
-
     std::unique_ptr<MgmtdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));

@@ -11,14 +11,13 @@ namespace pz::engined
 
 enum class ScanEventType : std::uint32_t
 {
-    Unknown            = 0,
-    ReceiveScanRequest = 1,  // mgmtd → engined → snmpd
-    ReceiveScanResult  = 2,  // snmpd → engined → mgmtd
+    Unknown           = 0,
+    ReceiveSnmpResult = 1,  // snmpd → engined: persist devices to snmp_devices
 };
 
-// Carries an SNMP scan request (mgmtd-originated) or result (snmpd-originated) that
-// engined relays on to the other end. engined is on the path purely as the
-// control-plane hub (relay + awareness); it does not own or interpret the payload.
+// Carries an SNMP scan result (snmpd-originated) that engined — the single DB
+// writer — persists into the snmp_devices table. mgmtd reads that table for
+// /api/devices.
 class ScanEvent final : public EnginedEvent
 {
 public:

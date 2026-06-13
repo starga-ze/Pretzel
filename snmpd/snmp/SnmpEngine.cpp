@@ -337,7 +337,25 @@ SnmpDevice SnmpEngine::probeV3Blocking(const std::string& ip)
         resp->errstat == SNMP_ERR_NOERROR)
     {
         SnmpProtocol::parseSysGroup(resp, dev);
-        LOG_DEBUG("SnmpEngine: v3 response ip={} sysName='{}'", ip, dev.sysName);
+
+        // Collect the interface MAC set (ifPhysAddress) as a hardware fingerprint.
+        // Palo Alto and similar gear don't expose the standard ip-MIB address
+        // tables, so the MAC set is the portable key for grouping a device's IPs.
+        SnmpProtocol::walkIfPhysAddr(handle, dev);
+
+        LOG_DEBUG("SnmpEngine: v3 response ip={} sysName='{}' macs={}",
+                  ip, dev.sysName, dev.interfaceMacs.size());
+
+        if (!dev.interfaceMacs.empty())
+        {
+            std::string joined;
+            for (size_t i = 0; i < dev.interfaceMacs.size(); ++i)
+            {
+                if (i) joined += ',';
+                joined += dev.interfaceMacs[i];
+            }
+            LOG_INFO("SnmpEngine: ip={} mac-fingerprint=[{}]", ip, joined);
+        }
     }
     else
     {

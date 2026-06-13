@@ -4,7 +4,6 @@
 #include "util/Logger.h"
 
 #include <chrono>
-#include <iostream>
 #include <thread>
 
 namespace pz::mgmtd
@@ -13,23 +12,6 @@ namespace pz::mgmtd
 MgmtdCore::MgmtdCore()
     : Core("mgmtd")
 {
-}
-
-void MgmtdCore::onPreConfigLoad()
-{
-    // mgmtd owns the config store: sync the startup-config file into the DB and seed
-    // running_config v1 on a factory-fresh device (idempotent — existing history is
-    // preserved). Runs before any daemon reads its config.
-    m_storeSeeded = pz::config::Config::seedStore();
-    if (!m_storeSeeded)
-    {
-        // Typically the boot-time DB race: PostgreSQL is up as a systemd unit but not
-        // yet accepting connections, so seedStore() could not write. We continue on the
-        // startup-config file fallback and ensureStoreSeeded() retries from onLoop()
-        // once the DB is reachable — otherwise the config tables stay empty forever.
-        std::cerr << "mgmtd: config store seed failed — continuing on startup-config "
-                     "fallback; will retry once the DB is reachable" << std::endl;
-    }
 }
 
 bool MgmtdCore::onInit()
@@ -124,46 +106,9 @@ void MgmtdCore::onLoop()
     while (!stopping())
     {
         checkReload();
-        ensureStoreSeeded();
         m_process->tick();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-}
-
-void MgmtdCore::ensureStoreSeeded()
-{
-    if (m_storeSeeded)
-    {
-        return;
-    }
-
-    // Throttle retries so a persistently-down DB does not spin the loop or spam the
-    // journal; the first attempt (epoch sentinel) runs immediately.
-    const auto now = std::chrono::steady_clock::now();
-    if (m_lastSeedAttempt != std::chrono::steady_clock::time_point{} &&
-        now - m_lastSeedAttempt < std::chrono::seconds(3))
-    {
-        return;
-    }
-    m_lastSeedAttempt = now;
-
-    if (!pz::config::Config::seedStore())
-    {
-        LOG_WARN("config store seed retry failed — DB still unavailable");
-        return;
-    }
-
-    m_storeSeeded = true;
-
-    // Adopt the freshly seeded running-config on the next read, and seed the default
-    // admin account that loadFromDb() in onInit() could not write while the DB was down.
-    pz::config::Config::invalidateConfigCache();
-    if (m_serviceManager)
-    {
-        m_serviceManager->authService().loadFromDb();
-    }
-
-    LOG_INFO("config store seeded after DB became reachable");
 }
 
 void MgmtdCore::onShutdown()
@@ -249,13 +194,10 @@ bool MgmtdCore::loadAuthConfig()
         return true;
     }
 
-    // The admin credential lives entirely in the admin_user DB table (hashed). It is
-    // NOT read from config: redactSecretsForPersist() strips the admin block before it
-    // is ever persisted, so the running-config mgmtd reads here never carries it.
-    // loadFromDb() loads the stored hash, or seeds a default account on a factory-fresh
-    // device. seedStore() in onPreConfigLoad has already ensured the schema + DB
-    // connection by the time this runs.
-    m_serviceManager->authService().loadFromDb();
+    // The admin credential lives hashed in the running-config (mgmtd.service.http.admin),
+    // seeded/written by engined (which boots first). mgmtd only reads it here; the
+    // settings API redacts it from GUI responses.
+    m_serviceManager->authService().loadCredential();
     return true;
 }
 

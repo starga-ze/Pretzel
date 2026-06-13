@@ -177,6 +177,15 @@ void HeartbeatService::handleAction(EnginedServiceManager& serviceManager,
     {
         const auto& jsonStr = action.resultJson();
 
+        // engined is the single DB writer: persist the aggregated heartbeat snapshot
+        // here (state_snapshot table). mgmtd still receives the result below for its
+        // in-memory /api/status view, but no longer writes the DB.
+        auto parsed = nlohmann::json::parse(jsonStr, nullptr, false);
+        if (!parsed.is_discarded())
+        {
+            pz::config::Config::saveStateSnapshot("heartbeat", parsed);
+        }
+
         const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
         pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(

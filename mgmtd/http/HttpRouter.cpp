@@ -85,6 +85,19 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
         return handleChangePassword(req);
     }
 
+    // Forced password-change gate: while the admin is still on the factory default,
+    // an authenticated session may only reach /api/logout and /api/change-password
+    // (both handled above). Every other /api/* call is blocked until it is changed.
+    if (target.rfind("/api/", 0) == 0 &&
+        m_authService && isAuthenticated(req) && m_authService->mustChangePassword())
+    {
+        return makeResponse(
+            http::status::forbidden,
+            R"({"error":"password change required","code":"MUST_CHANGE_PASSWORD"})",
+            "application/json; charset=utf-8",
+            req.version(), req.keep_alive());
+    }
+
     if (target == "/api/status" && req.method() == http::verb::get)
     {
         if (!isAuthenticated(req))
@@ -238,8 +251,10 @@ HttpRouter::Response HttpRouter::handleLogin(const Request& req)
                                 req.keep_alive());
         }
 
+        // Signal must_change so the client forces a password change before proceeding.
+        const json okBody = {{"status", "ok"}, {"must_change", result.mustChange}};
         auto res = makeResponse(http::status::ok,
-                                R"({"status":"ok"})",
+                                okBody.dump(),
                                 "application/json; charset=utf-8",
                                 req.version(),
                                 req.keep_alive());
@@ -309,15 +324,40 @@ HttpRouter::Response HttpRouter::handleChangePassword(const Request& req)
                                 req.version(), req.keep_alive());
         }
 
-        if (!m_authService->changePassword(user, newPass))
+        if (!m_serviceManager)
         {
-            return makeResponse(http::status::internal_server_error,
-                                R"({"error":"failed to update password"})",
+            return makeResponse(http::status::service_unavailable,
+                                R"({"error":"engine unavailable"})",
                                 "application/json; charset=utf-8",
                                 req.version(), req.keep_alive());
         }
 
-        LOG_INFO("Mgmtd admin password changed for user '{}'", user);
+        // mgmtd is read-only w.r.t. the DB: compute the new credential and hand the
+        // WRITE to engined (the single DB writer) over IPC. The HTTP server runs on the
+        // single main-loop thread (io_context.poll()), so we must NOT block here — a
+        // blocking confirm would stall the very loop that flushes this IPC frame,
+        // deadlocking itself. Instead we send and adopt the credential optimistically;
+        // engined persists it, and the DB stays the source of truth across restarts.
+        const auto cred = m_authService->makeCredential(newPass);
+
+        const json payload = {{"username",      user},
+                              {"password_hash", cred.passwordHash},
+                              {"salt",          cred.salt}};
+        const std::string payloadStr = payload.dump();
+
+        auto msg = std::make_unique<pz::ipc::IpcMessage>();
+        msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
+        msg->setDst(pz::ipc::IpcDaemon::Engined);
+        msg->setCmd(pz::ipc::IpcCmd::AdminPasswordUpdate);
+        msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+        msg->setPayload(std::vector<uint8_t>(payloadStr.begin(), payloadStr.end()));
+        m_serviceManager->txRouter().handleIpcMessage(std::move(msg));
+
+        // Adopt the new credential into memory immediately: subsequent logins verify
+        // against it and the forced-change gate opens (m_mustChange cleared).
+        m_authService->applyCredential(cred.passwordHash, cred.salt);
+
+        LOG_INFO("Mgmtd admin password change sent to engined for user '{}'", user);
         return makeResponse(http::status::ok,
                             R"({"status":"ok"})",
                             "application/json; charset=utf-8",
@@ -425,8 +465,16 @@ HttpRouter::Response HttpRouter::handleSettingsGet(const Request& req)
             const bool hidden = std::any_of(
                 std::begin(kHiddenDomains), std::end(kHiddenDomains),
                 [&](const char* d) { return domain == d; });
-            if (!hidden)
-                service[domain] = values;
+            if (hidden)
+                continue;
+
+            json v = values;
+            // Never expose the admin credential (hash/salt) to the settings UI; it is
+            // stored in mgmtd.service.http.admin but redacted from this response.
+            if (domain == "http" && v.is_object())
+                v.erase("admin");
+
+            service[domain] = std::move(v);
         }
 
         daemons[name] = std::move(service);

@@ -71,11 +71,10 @@ void ProbeService::handleEvent(MgmtdServiceManager& serviceManager,
             const std::string scanJson = scanReq.dump();
             std::vector<uint8_t> scanPayload(scanJson.begin(), scanJson.end());
 
-            // SnmpScanRequest goes to engined (the control-plane hub), which relays
-            // it to snmpd.
+            // SnmpScanRequest goes straight to snmpd; ipcd routes it.
             auto scanHeader = pz::ipc::IpcHeader::build(
                 pz::ipc::IpcDaemon::Mgmtd,
-                pz::ipc::IpcDaemon::Engined,
+                pz::ipc::IpcDaemon::Snmpd,
                 pz::ipc::IpcCmd::SnmpScanRequest,
                 static_cast<uint32_t>(scanPayload.size()),
                 pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::None));

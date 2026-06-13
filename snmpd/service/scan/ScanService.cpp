@@ -125,6 +125,7 @@ void ScanService::handleEvent(SnmpdServiceManager& sm, const ScanEvent& event)
                 {"sys_contact",      dev.sysContact},
                 {"sys_location",     dev.sysLocation},
                 {"sys_up_time_ticks", dev.sysUpTimeTicks},
+                {"interface_macs",   dev.interfaceMacs},
             });
         }
 
@@ -155,7 +156,8 @@ void ScanService::handleAction(SnmpdServiceManager& sm, const ScanAction& action
         const std::string& json = action.resultJson();
         std::vector<uint8_t> payload(json.begin(), json.end());
 
-        // SnmpResult goes to engined (the control-plane hub), which relays it to mgmtd.
+        // SnmpResult goes to engined, the single DB writer, which persists it to the
+        // snmp_devices table. mgmtd reads that table for /api/devices.
         auto header = pz::ipc::IpcHeader::build(
             pz::ipc::IpcDaemon::Snmpd,
             pz::ipc::IpcDaemon::Engined,

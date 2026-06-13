@@ -1,12 +1,31 @@
 #include "EnginedCore.h"
 #include "util/Logger.h"
 
+#include <iostream>
+
 namespace pz::engined
 {
 
 EnginedCore::EnginedCore()
     : Core("engined")
 {
+}
+
+void EnginedCore::onPreConfigLoad()
+{
+    // engined owns the config store: connect, create the schema (single-writer DDL),
+    // and seed running_config v1 on a factory-fresh device. Runs before any daemon —
+    // including engined itself — reads its config. Logger is not up yet, so use stderr.
+    m_preflighted = pz::config::Config::preflight();
+    if (!m_preflighted)
+    {
+        // Typically the boot-time DB race: PostgreSQL is up as a systemd unit but not
+        // yet accepting connections. We continue on the startup-config fallback and
+        // ensureStorePreflighted() retries from onLoop() once the DB is reachable.
+        std::cerr << "engined: config store preflight failed — continuing on "
+                     "startup-config fallback; will retry once the DB is reachable"
+                  << std::endl;
+    }
 }
 
 bool EnginedCore::onInit()
@@ -98,8 +117,40 @@ void EnginedCore::onLoop()
     while (!stopping())
     {
         checkReload();
+        ensureStorePreflighted();
         m_process->tick();
     }
+}
+
+void EnginedCore::ensureStorePreflighted()
+{
+    if (m_preflighted)
+    {
+        return;
+    }
+
+    // Throttle retries so a persistently-down DB does not spin the loop or spam the
+    // journal; the first attempt (epoch sentinel) runs immediately.
+    const auto now = std::chrono::steady_clock::now();
+    if (m_lastPreflightAttempt != std::chrono::steady_clock::time_point{} &&
+        now - m_lastPreflightAttempt < std::chrono::seconds(3))
+    {
+        return;
+    }
+    m_lastPreflightAttempt = now;
+
+    if (!pz::config::Config::preflight())
+    {
+        LOG_WARN("config store preflight retry failed — DB still unavailable");
+        return;
+    }
+
+    m_preflighted = true;
+
+    // Adopt the freshly seeded running-config on the next read.
+    pz::config::Config::invalidateConfigCache();
+
+    LOG_INFO("config store preflighted after DB became reachable");
 }
 
 void EnginedCore::onShutdown()

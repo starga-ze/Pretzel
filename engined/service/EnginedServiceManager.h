@@ -8,8 +8,8 @@
 #include "service/bootstrap/BootstrapService.h"
 #include "service/commit/CommitService.h"
 #include "service/heartbeat/HeartbeatService.h"
-#include "service/probe/ProbeService.h"
 #include "service/scan/ScanService.h"
+#include "service/admin/AdminService.h"
 
 #include "router/EnginedTxRouter.h"
 
@@ -39,8 +39,8 @@ public:
     BootstrapService& bootstrapService();
     CommitService&    commitService();
     HeartbeatService& heartbeatService();
-    ProbeService&     probeService();
     ScanService&      scanService();
+    AdminService&     adminService();
 
     EnginedTxRouter&      txRouter();
     EnginedEventFactory*  eventFactory();
@@ -54,8 +54,8 @@ private:
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<CommitService>    m_commitService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
-    std::unique_ptr<ProbeService>     m_probeService;
     std::unique_ptr<ScanService>      m_scanService;
+    std::unique_ptr<AdminService>     m_adminService;
 
     std::queue<std::unique_ptr<EnginedEvent>> m_eventQueue;
     std::queue<std::unique_ptr<EnginedAction>> m_actionQueue;
