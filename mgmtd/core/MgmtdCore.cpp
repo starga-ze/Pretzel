@@ -106,8 +106,32 @@ void MgmtdCore::onLoop()
     while (!stopping())
     {
         checkReload();
+        ensureCredentialLoaded();
         m_process->tick();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+void MgmtdCore::ensureCredentialLoaded()
+{
+    if (!m_serviceManager || m_serviceManager->authService().credentialLoaded())
+    {
+        return;
+    }
+
+    // Throttle the retry (~1s) so a persistently-empty/unreachable store doesn't spin
+    // the loop or spam the journal; the first attempt (epoch sentinel) runs immediately.
+    const auto now = std::chrono::steady_clock::now();
+    if (m_lastCredAttempt != std::chrono::steady_clock::time_point{} &&
+        now - m_lastCredAttempt < std::chrono::seconds(1))
+    {
+        return;
+    }
+    m_lastCredAttempt = now;
+
+    if (m_serviceManager->authService().loadCredential())
+    {
+        LOG_INFO("admin credential loaded from local_users");
     }
 }
 

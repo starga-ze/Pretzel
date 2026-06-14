@@ -135,9 +135,8 @@ std::optional<nlohmann::json> latestRunningConfig()
 // Secrets must never be persisted into the config tables in cleartext:
 //   * mgmtd.service.database.password — the DB connection password is read from the
 //     on-disk startup-config by bootstrapDatabase(), never from these tables.
-// The admin credential (mgmtd.service.http.admin) is intentionally KEPT: it is stored
-// hashed in the running-config (commercial-gear style). It is redacted only from the
-// settings API response to the GUI, not from storage.
+//   * mgmtd.service.http.admin       — login credentials live in the local_users
+//     table, never in config; this strips any stray admin block from a config blob.
 // SNMP v3 credentials are intentionally left in place: snmpd consumes them from the
 // running-config at runtime, so they are operator-managed configuration.
 nlohmann::json redactSecretsForPersist(nlohmann::json root)
@@ -153,37 +152,17 @@ nlohmann::json redactSecretsForPersist(nlohmann::json root)
     if (s == m->end() || !s->is_object())
         return root;
 
-    // Only the DB connection password is a true cleartext secret that must never be
-    // persisted into config (it is read from the startup-config file at boot instead).
+    // The DB connection password is read from the startup-config file at boot, never
+    // persisted into the config tables.
     if (auto d = s->find("database"); d != s->end() && d->is_object())
         d->erase("password");
 
+    // Login credentials never belong in config (they live in local_users). Strip any
+    // admin block so it can't leak into config history or the settings API.
+    if (auto h = s->find("http"); h != s->end() && h->is_object())
+        h->erase("admin");
+
     return root;
-}
-
-// Injects the factory-default admin credential (hashed, must_change=true) into
-// mgmtd.service.http.admin when no usable credential is present. Used only when
-// seeding running_config v1 on a factory-fresh device — the shipped startup-config
-// carries an empty admin placeholder, never a credential.
-void injectDefaultAdmin(nlohmann::json& root)
-{
-    if (!root.is_object())
-        root = nlohmann::json::object();
-
-    nlohmann::json& admin = root["mgmtd"]["service"]["http"]["admin"];
-
-    const bool hasCred = admin.is_object() &&
-                         admin.value("password_hash", std::string{}).size() > 0;
-    if (hasCred)
-        return;
-
-    const std::string salt = pz::util::generateSalt();
-    admin = {
-        {"username",      std::string(kDefaultAdminUser)},
-        {"password_hash", pz::util::hashSha256(kDefaultAdminPassword, salt)},
-        {"salt",          salt},
-        {"must_change",   true},
-    };
 }
 
 // Implements the load decision tree (see Config.h):
@@ -352,33 +331,43 @@ bool Config::seedStore()
 
     auto& dbi = pz::db::Database::instance();
 
-    // startup_config = the shipped baseline. It carries an empty admin placeholder
-    // (no credential), and the DB password is stripped — never a real secret.
-    const std::string startupPersist = redactSecretsForPersist(startup).dump();
+    // Secrets (DB password, admin credential) never go into the config tables.
+    const std::string persist = redactSecretsForPersist(startup).dump();
 
+    // Sync the baseline startup_config (singleton row).
     if (!dbi.exec(
             "INSERT INTO startup_config (id, config_json) VALUES (1, $1::jsonb) "
             "ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json, "
             "updated_at = now()",
-            {startupPersist}))
+            {persist}))
     {
         std::cerr << "seedStore: startup_config upsert failed" << std::endl;
     }
 
-    // running_config v1 gets the live default admin credential injected (hashed,
-    // must_change=true), so the operator can log in and is forced to change it.
-    // Seeded ONLY when the history is empty — committed versions survive reboot.
-    nlohmann::json runningRoot = redactSecretsForPersist(startup);
-    injectDefaultAdmin(runningRoot);
-    const std::string runningPersist = runningRoot.dump();
-
+    // Seed running_config version 1 ONLY when the history is empty. Existing versions
+    // are preserved so committed changes survive a reboot.
     if (!dbi.exec(
             "INSERT INTO running_config (version, config_json) "
             "SELECT 1, $1::jsonb WHERE NOT EXISTS (SELECT 1 FROM running_config)",
-            {runningPersist}))
+            {persist}))
     {
         std::cerr << "seedStore: running_config v1 seed failed" << std::endl;
         return false;
+    }
+
+    // Seed the default admin login into local_users on a factory-fresh device (hashed;
+    // no plaintext backdoor). must_change=true forces a change off the default on first
+    // login. ON CONFLICT DO NOTHING keeps an already-provisioned account intact.
+    {
+        const std::string salt = pz::util::generateSalt();
+        const std::string hash = pz::util::hashSha256(kDefaultAdminPassword, salt);
+        if (!dbi.exec(
+                "INSERT INTO local_users (username, password_hash, salt, must_change) "
+                "VALUES ($1, $2, $3, true) ON CONFLICT (username) DO NOTHING",
+                {kDefaultAdminUser, hash, salt}))
+        {
+            std::cerr << "seedStore: local_users default seed failed" << std::endl;
+        }
     }
 
     return true;

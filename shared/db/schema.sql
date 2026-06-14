@@ -50,11 +50,20 @@ CREATE TABLE IF NOT EXISTS icmp_devices (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Admin login credential — commercial-gear style, the hashed credential lives in the
--- running-config (mgmtd.service.http.admin = {username, password_hash, salt,
--- must_change}), NOT in a dedicated table. engined seeds it on a factory-fresh device
--- and writes password changes as a new running_config version. Drop the legacy table.
-DROP TABLE IF EXISTS admin_user;
+-- Local login accounts (operator credentials), stored hashed (SHA-256 of
+-- password+salt). A dedicated, NON-versioned store — kept out of running_config so
+-- password changes never create config-history versions, and out of cleartext on
+-- disk. Keyed by username so it extends to multiple local users / a future CLI daemon.
+-- engined (the single DB writer) seeds the default admin and applies password changes;
+-- must_change forces a change off the factory default on first login.
+DROP TABLE IF EXISTS admin_user;  -- legacy
+CREATE TABLE IF NOT EXISTS local_users (
+    username      TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    salt          TEXT NOT NULL,
+    must_change   BOOLEAN NOT NULL DEFAULT true,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- SNMP scan results, kept separate from the ICMP-discovered `devices` inventory so
 -- the two write paths never clobber each other. Keyed by IP; the interface MAC set

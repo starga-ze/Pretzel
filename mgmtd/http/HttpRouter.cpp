@@ -469,8 +469,9 @@ HttpRouter::Response HttpRouter::handleSettingsGet(const Request& req)
                 continue;
 
             json v = values;
-            // Never expose the admin credential (hash/salt) to the settings UI; it is
-            // stored in mgmtd.service.http.admin but redacted from this response.
+            // Credentials live in local_users, never in config. Defensively strip any
+            // stray admin block (e.g. left in a legacy config version) so the settings
+            // UI can never surface a credential.
             if (domain == "http" && v.is_object())
                 v.erase("admin");
 

@@ -2,7 +2,7 @@
 
 #include "service/EnginedServiceManager.h"
 
-#include "config/Config.h"
+#include "db/Database.h"
 #include "ipc/IpcMessage.h"
 #include "util/Logger.h"
 
@@ -55,22 +55,19 @@ void AdminService::updatePassword(const std::string& payloadJson)
         return;
     }
 
-    // The admin credential lives in the running-config. Take the current root, update
-    // mgmtd.service.http.admin (clearing must_change — the operator moved off the
-    // factory default), and commit it as a new running_config version. No ConfigReload:
-    // the sole consumer (mgmtd) updates its in-memory credential directly.
-    nlohmann::json cfgRoot = pz::config::Config::runningConfigRoot();
-    cfgRoot["mgmtd"]["service"]["http"]["admin"] = {
-        {"username",      username},
-        {"password_hash", hash},
-        {"salt",          salt},
-        {"must_change",   false},
-    };
+    // Credentials live in local_users (a non-versioned store), so a password change is
+    // a single-row UPDATE — it does NOT create a running_config version. must_change is
+    // cleared (the operator moved off the factory default). No ConfigReload: the sole
+    // consumer (mgmtd) updates its in-memory credential directly.
+    const bool ok = pz::db::Database::instance().exec(
+        "UPDATE local_users SET password_hash = $1, salt = $2, "
+        "must_change = false, updated_at = now() WHERE username = $3",
+        {hash, salt, username});
 
-    if (pz::config::Config::commitConfig(cfgRoot))
-        LOG_INFO("AdminService: admin password updated for user '{}' (running_config)", username);
+    if (ok)
+        LOG_INFO("AdminService: password updated for user '{}' (local_users)", username);
     else
-        LOG_WARN("AdminService: admin credential commit failed for user '{}'", username);
+        LOG_WARN("AdminService: local_users update failed for user '{}'", username);
 }
 
 } // namespace pz::engined

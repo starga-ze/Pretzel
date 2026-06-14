@@ -44,9 +44,17 @@ CREATE TABLE IF NOT EXISTS icmp_devices (
     sys_uptime_ticks BIGINT,
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- The admin credential now lives in running_config (mgmtd.service.http.admin),
--- commercial-gear style. Drop the legacy table on existing databases.
+-- Local login accounts (operator credentials), stored hashed. A non-versioned store
+-- (NOT running_config) so password changes don't pollute the config version history.
+-- Keyed by username so it extends to multiple local users / a future CLI daemon.
 DROP TABLE IF EXISTS admin_user;
+CREATE TABLE IF NOT EXISTS local_users (
+    username      TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    salt          TEXT NOT NULL,
+    must_change   BOOLEAN NOT NULL DEFAULT true,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS snmp_devices (
     ip               TEXT PRIMARY KEY,
     sys_name         TEXT,

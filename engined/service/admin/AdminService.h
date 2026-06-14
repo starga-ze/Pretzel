@@ -7,9 +7,10 @@ namespace pz::engined
 
 class EnginedServiceManager;
 
-// Persists admin credential updates into the running-config (mgmtd.service.http.admin)
-// as a new version. engined is the single DB writer, so mgmtd forwards password changes
-// here (it computes the hash+salt and applies them in-memory optimistically).
+// Persists login credential updates into the local_users table (a non-versioned store,
+// so password changes don't create running_config versions). engined is the single DB
+// writer, so mgmtd forwards password changes here (it computes the hash+salt and applies
+// them in-memory optimistically).
 class AdminService
 {
 public:

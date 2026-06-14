@@ -15,9 +15,9 @@ enum class AdminEventType : std::uint32_t
     ReceivePasswordUpdate = 1,  // mgmtd → engined: persist admin credential
 };
 
-// Carries an admin credential update (mgmtd-originated) that engined — the single DB
-// writer — persists into the running-config (mgmtd.service.http.admin). mgmtd computes
-// the hash+salt and applies it in-memory optimistically (there is no response cmd).
+// Carries a login credential update (mgmtd-originated) that engined — the single DB
+// writer — persists into the local_users table. mgmtd computes the hash+salt and
+// applies it in-memory optimistically (there is no response cmd).
 class AdminEvent final : public EnginedEvent
 {
 public:

@@ -49,7 +49,15 @@ private:
     bool loadHttpConfig();
     bool loadAuthConfig();
 
+    // Fail-closed credential load: until a real local_users row is read, the account
+    // has an empty hash and all logins are refused. Retries (throttled) from the main
+    // loop so logins become possible once engined has seeded the credential. No-op once
+    // loaded.
+    void ensureCredentialLoaded();
+
 private:
+    std::chrono::steady_clock::time_point m_lastCredAttempt{};
+
     pz::config::LoggerConfig m_loggerConfig;
     pz::config::IpcConfig m_ipcConfig;
     HttpConfig m_httpConfig;

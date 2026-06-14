@@ -1,6 +1,6 @@
 #include "service/auth/AuthService.h"
 
-#include "config/Config.h"
+#include "db/Database.h"
 #include "util/Logger.h"
 #include "util/PasswordHash.h"
 
@@ -13,34 +13,36 @@ namespace pz::mgmtd
 
 bool AuthService::loadCredential()
 {
-    // The admin credential lives hashed in the running-config (mgmtd.service.http.admin),
-    // seeded/written by engined. mgmtd only reads it.
-    const auto& http  = pz::config::Config::serviceSection("mgmtd", "http");
-    const auto  admin = http.value("admin", nlohmann::json::object());
-
-    const std::string hash = admin.value("password_hash", std::string{});
-    if (!hash.empty())
+    // Login credentials live in the local_users table (seeded/written by engined, the
+    // single DB writer). mgmtd only reads. Single operator account for now: the 'admin'
+    // row. The table is keyed by username so it extends to multiple users later.
+    const auto rows = pz::db::Database::instance().queryRows(
+        "SELECT username, password_hash, salt, must_change FROM local_users "
+        "WHERE username = 'admin' LIMIT 1");
+    if (!rows.empty() && rows.front().size() >= 4)
     {
-        m_username     = admin.value("username", std::string("admin"));
-        m_passwordHash = hash;
-        m_salt         = admin.value("salt", std::string{});
-        m_mustChange   = admin.value("must_change", false);
+        m_username     = rows.front()[0];
+        m_passwordHash = rows.front()[1];
+        m_salt         = rows.front()[2];
+        m_mustChange   = (rows.front()[3] == "t");  // libpq renders bool as 't'/'f'
+        m_loaded       = true;
         return true;
     }
 
-    // No credential in config yet — engined seeds it during pre-flight, but it may not
-    // have landed (e.g. the DB was briefly down at boot). Keep an in-memory hashed
-    // default so logins aren't permanently broken; the default must be changed.
-    const std::string salt = pz::util::generateSalt();
+    // Fail-closed: no readable credential. queryRows returns empty BOTH when the table
+    // is genuinely empty (factory-fresh, engined hasn't seeded yet) AND when the DB is
+    // unreachable — we cannot tell them apart, so we must NOT fall back to a usable
+    // default (that would accept admin/admin even when a real password exists but is
+    // momentarily unreadable). Empty hash → login() refuses every attempt. The main
+    // loop retries loadCredential() until engined's local_users row becomes readable.
+    m_passwordHash.clear();
+    m_salt.clear();
+    m_mustChange = false;
+    m_loaded     = false;
 
-    LOG_WARN("AuthService: no admin credential in config yet — using in-memory default "
-             "account 'admin' until engined seeds it");
-
-    m_username     = "admin";
-    m_passwordHash = pz::util::hashSha256(kDefaultPassword, salt);
-    m_salt         = salt;
-    m_mustChange   = true;
-    return true;
+    LOG_WARN("AuthService: no readable local_users credential — refusing logins until "
+             "it is available (retrying)");
+    return false;
 }
 
 AuthService::LoginResult AuthService::login(const std::string& username,

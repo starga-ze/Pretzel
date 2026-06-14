@@ -52,6 +52,11 @@ public:
     // uses this to force a password change before allowing any other operation.
     bool mustChangePassword() const { return m_mustChange; }
 
+    // True once a real credential row has been read from local_users. While false, the
+    // account has an empty hash and login() refuses everything (fail-closed); the main
+    // loop keeps retrying loadCredential() until it becomes true.
+    bool credentialLoaded() const { return m_loaded; }
+
     bool validateSession(const std::string& sessionId);
     void logout(const std::string& sessionId);
 
@@ -60,10 +65,6 @@ private:
     {
         std::uint64_t expiresAt {0};
     };
-
-    // Default password seeded on a factory-fresh device (hashed at seed time). Change
-    // it immediately via /api/change-password — there is no plaintext backdoor.
-    static constexpr const char* kDefaultPassword = "admin";
 
     static std::uint64_t now();
     static std::string generateSessionId();
@@ -75,6 +76,7 @@ private:
     std::string m_passwordHash;
     std::string m_salt;
     bool m_mustChange {false};
+    bool m_loaded {false};
     std::uint64_t m_sessionTtlSec {1800};
 };
 
