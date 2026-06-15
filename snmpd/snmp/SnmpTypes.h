@@ -8,6 +8,51 @@
 namespace pz::snmpd
 {
 
+// One IP-bearing interface from the ip-MIB ipAddrTable (ipAdEntAddr). Covers
+// firewall WAN/LAN interfaces, switch SVIs (VLAN interfaces), router interfaces —
+// they all surface here as an IP + netmask on an ifIndex.
+struct SnmpInterface
+{
+    std::string ip;         // ipAdEntAddr
+    std::string netmask;    // ipAdEntNetMask
+    uint32_t    ifIndex{0}; // ipAdEntIfIndex
+    std::string ifName;     // ifDescr for that ifIndex
+};
+
+// One row of the IF-MIB ifTable / ifXTable — a physical or logical interface.
+struct SnmpIfEntry
+{
+    uint32_t    ifIndex{0};
+    std::string name;       // ifName (ifXTable) or ifDescr
+    std::string descr;      // ifDescr
+    std::string alias;      // ifAlias (ifXTable) — admin-configured label
+    int         type{0};    // ifType (IANAifType)
+    uint64_t    speed{0};   // ifHighSpeed (Mbps)
+    int         operStatus{0}; // ifOperStatus (1=up,2=down,...)
+    std::string mac;        // ifPhysAddress
+};
+
+// One LLDP neighbor (lldpRemTable) — a directly-connected device. The basis for L2
+// topology edges.
+struct SnmpLldpNeighbor
+{
+    uint32_t    localPort{0};   // lldpRemLocalPortNum (index)
+    std::string localPortName;  // lldpLocPortId/Desc for that local port
+    std::string remoteSysName;  // lldpRemSysName
+    std::string remoteSysDescr; // lldpRemSysDesc
+    std::string remotePortId;   // lldpRemPortId
+    std::string remoteChassisId;// lldpRemChassisId
+};
+
+// One ARP / ip-MIB ipNetToMedia entry: an IP↔MAC the device has learned. Used to
+// discover the MAC (hence vendor) of SNMP-less hosts.
+struct SnmpArpEntry
+{
+    std::string ip;
+    std::string mac;
+    uint32_t    ifIndex{0};
+};
+
 struct SnmpDevice
 {
     std::string ip;
@@ -22,6 +67,18 @@ struct SnmpDevice
     // hardware fingerprint to group the multiple IPs of one physical device, since many
     // devices (e.g. Palo Alto) don't expose the standard ip-MIB address tables.
     std::vector<std::string> interfaceMacs;
+
+    // IP-bearing interfaces (ipAddrTable): firewall up/down interfaces, switch SVIs.
+    std::vector<SnmpInterface> interfaces;
+
+    // IF-MIB ifTable/ifXTable interface inventory (ports, NICs).
+    std::vector<SnmpIfEntry> ifTable;
+
+    // LLDP neighbors (topology edges).
+    std::vector<SnmpLldpNeighbor> lldpNeighbors;
+
+    // ARP / ipNetToMedia entries (IP↔MAC the device has learned).
+    std::vector<SnmpArpEntry> arpEntries;
 };
 
 // SNMP protocol version used for a given request.

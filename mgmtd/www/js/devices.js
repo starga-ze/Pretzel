@@ -1,4 +1,4 @@
-/* devices.js */
+/* devices.js — grouped/classified device inventory (Network / Server / Host) */
 (function () {
   'use strict';
 
@@ -6,22 +6,18 @@
   let activeFilter = 'all';
   let searchQuery  = '';
 
+  const SUBTYPE_LABEL = {
+    router: 'Router', switch: 'Switch', firewall: 'Firewall', ap: 'Access Point',
+    gateway: 'Gateway', hypervisor: 'Hypervisor', bmc: 'BMC/iDRAC', server: 'Server',
+    windows: 'Windows', linux: 'Linux/Unix', printer: 'Printer', unknown: '',
+  };
+
   function escHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-
-  function muted(text) {
-    return text ? escHtml(text) : '<span class="muted">—</span>';
-  }
-
-  function statusDot(status) {
-    const alive = status === 'alive';
-    return `<span class="status-dot ${alive ? 'alive pulse' : 'dead'}"></span>`;
-  }
+  function muted(text) { return text ? escHtml(text) : '<span class="muted">—</span>'; }
 
   function uptimeStr(ticks) {
     if (!ticks) return null;
@@ -34,96 +30,166 @@
     return `${m}m`;
   }
 
-  function renderRow(d) {
-    const alive    = d.status === 'alive';
-    const hasSnmp  = !!(d.sys_descr || d.sys_contact || d.sys_object_id || d.sys_up_time_ticks);
-    const rowId    = 'dev-' + d.ip.replace(/\./g, '-');
+  function typeLabel(d) {
+    const sub = SUBTYPE_LABEL[d.subtype] || '';
+    if (d.type === 'network') return sub || 'Network';
+    if (d.type === 'server')  return sub || 'Server';
+    return sub || 'Host';
+  }
+  function badgeCls(d) {
+    return d.type === 'network' ? 'badge-network'
+         : d.type === 'server'  ? 'badge-server' : 'badge-host';
+  }
+  function typeBadge(d) {
+    return `<span class="type-badge ${badgeCls(d)}">${escHtml(typeLabel(d))}</span>`;
+  }
 
+  function ipCell(d) {
+    const extra = d.ips.length > 1
+      ? ` <span class="ip-count-badge" title="${escHtml(d.ips.join(', '))}">+${d.ips.length - 1}</span>`
+      : '';
+    return `<code>${escHtml(d.primary_ip)}</code>${extra}`;
+  }
+
+  function hostnameCell(d) {
+    const name = d.hostname ? escHtml(d.hostname) : (d.vendor ? '' : '<span class="muted">—</span>');
+    const vend = d.vendor ? `<div class="cell-sub">${escHtml(d.vendor)}</div>` : '';
+    return `${name}${vend}`;
+  }
+
+  function renderRow(d) {
     const tr = document.createElement('tr');
     tr.className = 'device-row';
-    tr.dataset.ip     = d.ip;
-    tr.dataset.status = d.status;
-    if (hasSnmp) tr.dataset.expandable = '1';
-
+    tr.dataset.ip = d.primary_ip;
     tr.innerHTML = `
-      <td class="col-status">${statusDot(d.status)}</td>
-      <td class="col-ip"><code>${escHtml(d.ip)}</code></td>
-      <td class="col-hostname">${muted(d.hostname)}</td>
+      <td class="col-status"><span class="status-dot alive pulse"></span></td>
+      <td class="col-ip">${ipCell(d)}</td>
+      <td class="col-hostname">${hostnameCell(d)}</td>
+      <td class="col-type">${typeBadge(d)}</td>
       <td class="col-location">${muted(d.sys_location)}</td>
-      <td class="col-status-text">
-        <span class="status-badge ${alive ? 'alive' : 'dead'}">${alive ? 'Alive' : 'Dead'}</span>
-      </td>
-      <td class="col-latency">${d.latency_ms != null ? d.latency_ms + ' ms' : '<span class="muted">—</span>'}</td>
-      <td class="col-expand">${hasSnmp ? '<button class="expand-btn" title="SNMP details">&#x25BC;</button>' : ''}</td>`;
+      <td class="col-actions">
+        <a class="btn-sm details-btn" href="device-detail.html?ip=${encodeURIComponent(d.primary_ip)}">Details</a>
+      </td>`;
 
-    if (hasSnmp) {
-      const detail = document.createElement('tr');
-      detail.className = 'device-detail-row hidden';
-      detail.id = rowId + '-detail';
+    tr.addEventListener('mouseenter', e => showCard(d, e));
+    tr.addEventListener('mousemove', moveCard);
+    tr.addEventListener('mouseleave', hideCard);
+    return tr;
+  }
 
-      const uptime = uptimeStr(d.sys_up_time_ticks);
-      detail.innerHTML = `
-        <td colspan="7" class="device-detail-cell">
-          <div class="device-detail-grid">
-            ${d.sys_descr     ? `<div class="dg-item"><span class="dg-label">Description</span><span class="dg-value">${escHtml(d.sys_descr)}</span></div>` : ''}
-            ${d.sys_contact   ? `<div class="dg-item"><span class="dg-label">Contact</span><span class="dg-value">${escHtml(d.sys_contact)}</span></div>` : ''}
-            ${d.sys_object_id ? `<div class="dg-item"><span class="dg-label">OID</span><span class="dg-value"><code>${escHtml(d.sys_object_id)}</code></span></div>` : ''}
-            ${uptime          ? `<div class="dg-item"><span class="dg-label">Uptime</span><span class="dg-value">${uptime}</span></div>` : ''}
-          </div>
-        </td>`;
+  // ── Hover device card (follows the cursor) ──────────────────────────────────
+  function cardHtml(d) {
+    const uptime = uptimeStr(d.sys_up_time_ticks);
+    const ifaceLines = (d.interfaces || []).slice(0, 4).map(i =>
+      `<div class="dc-iface"><code>${escHtml(i.ip)}</code>${i.if_name ? ` <span class="muted">${escHtml(i.if_name)}</span>` : ''}</div>`
+    ).join('');
+    const moreIf = (d.interfaces || []).length > 4 ? `<div class="muted">+${d.interfaces.length - 4} more…</div>` : '';
 
-      tr.querySelector('.expand-btn')?.addEventListener('click', e => {
-        e.stopPropagation();
-        const open = !detail.classList.contains('hidden');
-        detail.classList.toggle('hidden', open);
-        e.currentTarget.innerHTML = open ? '&#x25BC;' : '&#x25B2;';
-      });
+    return `
+      <div class="dc-head">
+        <span class="dc-name">${escHtml(d.hostname || d.primary_ip)}</span>
+        ${typeBadge(d)}
+      </div>
+      <div class="dc-rows">
+        ${d.vendor ? `<div class="dc-row"><span class="dc-k">Vendor</span><span class="dc-v">${escHtml(d.vendor)}</span></div>` : ''}
+        <div class="dc-row"><span class="dc-k">IPs</span><span class="dc-v">${d.ips.map(escHtml).join(', ')}</span></div>
+        <div class="dc-row"><span class="dc-k">MACs</span><span class="dc-v">${d.interface_macs.length}</span></div>
+        ${(d.lldp_neighbors || []).length ? `<div class="dc-row"><span class="dc-k">LLDP</span><span class="dc-v">${d.lldp_neighbors.length} neighbor(s)</span></div>` : ''}
+        ${d.sys_descr ? `<div class="dc-row"><span class="dc-k">Desc</span><span class="dc-v dc-clamp">${escHtml(d.sys_descr)}</span></div>` : ''}
+        ${uptime ? `<div class="dc-row"><span class="dc-k">Uptime</span><span class="dc-v">${uptime}</span></div>` : ''}
+        ${ifaceLines ? `<div class="dc-row"><span class="dc-k">Ifaces</span><span class="dc-v">${ifaceLines}${moreIf}</span></div>` : ''}
+        ${!d.has_snmp ? `<div class="dc-row"><span class="dc-v muted">No SNMP — ICMP only</span></div>` : ''}
+      </div>`;
+  }
 
-      return [tr, detail];
+  function positionCard(card, x, y) {
+    const pad = 14;
+    const w = card.offsetWidth || 300;
+    const h = card.offsetHeight || 120;
+    let left = x + pad;
+    let top  = y + pad;
+    if (left + w > window.innerWidth - 8)  left = x - w - pad;
+    if (top + h > window.innerHeight - 8)  top = window.innerHeight - h - 8;
+    if (top < 8) top = 8;
+    card.style.left = Math.max(8, left) + 'px';
+    card.style.top  = top + 'px';
+  }
+
+  function showCard(d, e) {
+    const card = document.getElementById('deviceCard');
+    if (!card) return;
+    card.innerHTML = cardHtml(d);
+    card.classList.add('visible');
+    card.setAttribute('aria-hidden', 'false');
+    positionCard(card, e.clientX, e.clientY);
+  }
+  function moveCard(e) {
+    const card = document.getElementById('deviceCard');
+    if (card && card.classList.contains('visible')) positionCard(card, e.clientX, e.clientY);
+  }
+  function hideCard() {
+    const card = document.getElementById('deviceCard');
+    if (!card) return;
+    card.classList.remove('visible');
+    card.setAttribute('aria-hidden', 'true');
+  }
+
+  // ── Rendering ───────────────────────────────────────────────────────────────
+  function matches(d) {
+    if (activeFilter !== 'all' && d.type !== activeFilter) return false;
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    return d.primary_ip.includes(q)
+      || d.ips.some(ip => ip.includes(q))
+      || (d.hostname || '').toLowerCase().includes(q)
+      || (d.sys_location || '').toLowerCase().includes(q);
+  }
+
+  function fillSection(type, bodyId, badgeId, sectionId, list) {
+    const tbody = document.getElementById(bodyId);
+    const badge = document.getElementById(badgeId);
+    const section = document.getElementById(sectionId);
+    if (!tbody) return;
+
+    if (badge) badge.textContent = `${list.length}`;
+    if (section)
+      section.style.display = (activeFilter !== 'all' && activeFilter !== type) ? 'none' : '';
+
+    if (list.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="loading-row">No devices.</td></tr>`;
+      return;
     }
-
-    return [tr];
+    tbody.replaceChildren(...list.map(renderRow));
   }
 
   function applyFilters() {
-    const tbody = document.getElementById('deviceTableBody');
-    if (!tbody) return;
-
-    const q = searchQuery.toLowerCase();
-    const filtered = allDevices.filter(d => {
-      if (activeFilter === 'alive' && d.status !== 'alive') return false;
-      if (activeFilter === 'dead'  && d.status === 'alive') return false;
-      if (q && !d.ip.includes(q) &&
-          !(d.hostname     || '').toLowerCase().includes(q) &&
-          !(d.sys_location || '').toLowerCase().includes(q)) return false;
-      return true;
-    });
-
-    if (filtered.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="loading-row">No devices match the current filter.</td></tr>`;
-      return;
-    }
-
-    const rows = filtered.flatMap(renderRow);
-    tbody.replaceChildren(...rows);
+    const filtered = allDevices.filter(matches);
+    fillSection('network', 'networkBody', 'networkBadge', 'networkSection',
+      filtered.filter(d => d.type === 'network'));
+    fillSection('server', 'serverBody', 'serverBadge', 'serverSection',
+      filtered.filter(d => d.type === 'server'));
+    fillSection('host', 'hostBody', 'hostBadge', 'hostSection',
+      filtered.filter(d => d.type === 'host'));
   }
 
   async function load() {
-    const tbody = document.getElementById('deviceTableBody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="loading-row">Loading…</td></tr>`;
-
     try {
       const data = await window.NMS.utils.fetchJSON('/api/devices');
       if (!data) return;
 
       allDevices = data.devices || [];
-
-      const badge = document.getElementById('devicesBadge');
-      if (badge) badge.textContent = `${allDevices.length} device${allDevices.length !== 1 ? 's' : ''}`;
+      const s = data.summary || { total: 0, network: 0, server: 0, hosts: 0 };
+      document.getElementById('sumTotal').textContent   = s.total;
+      document.getElementById('sumNetwork').textContent = s.network;
+      document.getElementById('sumServer').textContent  = s.server;
+      document.getElementById('sumHosts').textContent   = s.hosts;
 
       applyFilters();
     } catch (e) {
-      if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="loading-row error">Failed to load devices: ${e}</td></tr>`;
+      ['networkBody', 'serverBody', 'hostBody'].forEach(id => {
+        const tb = document.getElementById(id);
+        if (tb) tb.innerHTML = `<tr><td colspan="6" class="loading-row error">Failed to load: ${escHtml(e.message || e)}</td></tr>`;
+      });
     }
   }
 

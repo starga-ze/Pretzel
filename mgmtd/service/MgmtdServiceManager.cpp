@@ -15,12 +15,11 @@ MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory,
       m_actionFactory(actionFactory),
       m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_probeService(std::make_unique<ProbeService>()),
       m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_snmpService(std::make_unique<SnmpService>())
+      m_deviceService(std::make_unique<DeviceService>())
 {
-    // SnmpService is a read-only view of snmp_devices (written by engined); nothing to
-    // restore here — devices() reads the table live.
+    // DeviceService is a read-only view of icmp_devices + snmp_devices (written by
+    // engined); nothing to restore here — groups() reads the tables live.
 }
 
 void MgmtdServiceManager::start()
@@ -96,35 +95,19 @@ BootstrapService& MgmtdServiceManager::bootstrapService()
     return *m_bootstrapService;
 }
 
-ProbeService& MgmtdServiceManager::probeService()
-{
-    return *m_probeService;
-}
-
 HeartbeatService& MgmtdServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
 }
 
-SnmpService& MgmtdServiceManager::snmpService()
+DeviceService& MgmtdServiceManager::deviceService()
 {
-    return *m_snmpService;
+    return *m_deviceService;
 }
 
 MgmtdTxRouter& MgmtdServiceManager::txRouter()
 {
     return *m_txRouter;
-}
-
-std::optional<std::uint32_t> MgmtdServiceManager::aliveDevices() const
-{
-    const std::int64_t val = m_aliveDevices.load(std::memory_order_relaxed);
-    if (val < 0)
-    {
-        return std::nullopt;
-    }
-
-    return static_cast<std::uint32_t>(val);
 }
 
 void MgmtdServiceManager::startReload()
@@ -164,22 +147,6 @@ void MgmtdServiceManager::setCommitQueue(std::string snapshotJson)
 std::string MgmtdServiceManager::commitQueueSnapshot() const
 {
     return m_commitQueueSnapshot;
-}
-
-void MgmtdServiceManager::setAliveDevices(std::uint32_t count)
-{
-    m_aliveDevices.store(static_cast<std::int64_t>(count), std::memory_order_relaxed);
-    LOG_DEBUG("aliveDevices updated count={}", count);
-}
-
-std::vector<std::string> MgmtdServiceManager::aliveIps() const
-{
-    return m_aliveIps;
-}
-
-void MgmtdServiceManager::setAliveIps(std::vector<std::string> ips)
-{
-    m_aliveIps = std::move(ips);
 }
 
 } // namespace pz::mgmtd

@@ -46,6 +46,14 @@
       "heartbeat": {
         "poll_interval_sec": 5,
         "response_timeout_sec": 2
+      },
+      "probe": {
+        "poll_interval_sec": 30,
+        "response_timeout_sec": 20
+      },
+      "scan": {
+        "poll_interval_sec": 60,
+        "response_timeout_sec": 30
       }
     }
   },

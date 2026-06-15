@@ -82,6 +82,7 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::SnmpScanRequest:       return "SnmpScanRequest";
     case IpcCmd::SnmpResult:            return "SnmpResult";
     case IpcCmd::AdminPasswordUpdate:   return "AdminPasswordUpdate";
+    case IpcCmd::ProbeRequest:          return "ProbeRequest";
     default:                            return "Unknown";
     }
 }

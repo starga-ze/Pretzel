@@ -53,6 +53,9 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<pz::ipc::I
     case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
+    case pz::ipc::IpcCmd::ProbeRequest:
+        return std::make_unique<ProbeEvent>(ProbeEventType::StartProbe);
+
     case pz::ipc::IpcCmd::ConfigReload:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 

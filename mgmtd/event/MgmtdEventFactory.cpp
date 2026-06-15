@@ -1,7 +1,6 @@
 #include "event/MgmtdEventFactory.h"
 
 #include "service/bootstrap/BootstrapEvent.h"
-#include "service/probe/ProbeEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 
 #include "util/Logger.h"
@@ -20,9 +19,6 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(MgmtdEventDomain domain, s
     {
     case MgmtdEventDomain::Bootstrap:
         return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
-
-    case MgmtdEventDomain::Probe:
-        return std::make_unique<ProbeEvent>(static_cast<ProbeEventType>(type));
 
     case MgmtdEventDomain::Heartbeat:
         return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
@@ -48,9 +44,6 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<pz::ipc::I
 
     case pz::ipc::IpcCmd::RuntimeStart:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
-
-    case pz::ipc::IpcCmd::ProbeResult:
-        return std::make_unique<ProbeEvent>(ProbeEventType::ReceiveProbeResult, std::move(msg));
 
     case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest,

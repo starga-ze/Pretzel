@@ -13,6 +13,7 @@ enum class ScanEventType : std::uint32_t
 {
     Unknown           = 0,
     ReceiveSnmpResult = 1,  // snmpd → engined: persist devices to snmp_devices
+    TriggerScan       = 2,  // timer: ask snmpd to scan the latest probe alive IPs
 };
 
 // Carries an SNMP scan result (snmpd-originated) that engined — the single DB

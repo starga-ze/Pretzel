@@ -64,8 +64,16 @@ CREATE TABLE IF NOT EXISTS snmp_devices (
     sys_location     TEXT,
     sys_uptime_ticks BIGINT,
     interface_macs   JSONB,
+    interfaces       JSONB,
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS interfaces JSONB;
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS if_table JSONB;
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS lldp_neighbors JSONB;
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS arp_entries JSONB;
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS vendor TEXT;
+ALTER TABLE IF EXISTS icmp_devices ADD COLUMN IF NOT EXISTS mac TEXT;
+ALTER TABLE IF EXISTS icmp_devices ADD COLUMN IF NOT EXISTS vendor TEXT;
 )SQL";
 
 // Builds the const char* array PQexecParams expects from a string vector. The

@@ -14,7 +14,7 @@ enum class ProbeActionType : std::uint32_t
     Unknown          = 0,
     StartProbe       = 1,
     SendProbeBatch   = 2,
-    SendProbeResult  = 3,  // send probe results to mgmtd after probe completes
+    SendProbeResult  = 3,  // send probe results to engined after probe completes
 };
 
 class ProbeAction final : public IcmpdAction

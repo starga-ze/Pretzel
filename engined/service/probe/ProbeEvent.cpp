@@ -1,24 +1,25 @@
 #include "service/probe/ProbeEvent.h"
-#include "service/MgmtdServiceManager.h"
 
-namespace pz::mgmtd
+#include "service/EnginedServiceManager.h"
+
+namespace pz::engined
 {
 
 ProbeEvent::ProbeEvent(ProbeEventType type)
-    : MgmtdEvent(MgmtdEventDomain::Probe),
+    : EnginedEvent(EnginedEventDomain::Probe),
       m_type(type)
 {
 }
 
 ProbeEvent::ProbeEvent(ProbeEventType type,
-                                  std::unique_ptr<pz::ipc::IpcMessage> message)
-    : MgmtdEvent(MgmtdEventDomain::Probe),
+                       std::unique_ptr<pz::ipc::IpcMessage> message)
+    : EnginedEvent(EnginedEventDomain::Probe),
       m_type(type),
       m_message(std::move(message))
 {
 }
 
-void ProbeEvent::dispatch(MgmtdServiceManager& serviceManager)
+void ProbeEvent::dispatch(EnginedServiceManager& serviceManager)
 {
     serviceManager.probeService().handleEvent(serviceManager, *this);
 }
@@ -33,9 +34,4 @@ const pz::ipc::IpcMessage* ProbeEvent::message() const
     return m_message.get();
 }
 
-std::unique_ptr<pz::ipc::IpcMessage> ProbeEvent::takeMessage()
-{
-    return std::move(m_message);
-}
-
-} // namespace pz::mgmtd
+} // namespace pz::engined

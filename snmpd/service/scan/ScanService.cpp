@@ -16,7 +16,7 @@ void ScanService::handleEvent(SnmpdServiceManager& sm, const ScanEvent& event)
 {
     switch (event.type())
     {
-    // ── Receive scan request from mgmtd ──────────────────────────────────────
+    // ── Receive scan request from engined ────────────────────────────────────
     case ScanEventType::ReceiveSnmpScanRequest:
     {
         const auto* msg = event.message();
@@ -117,6 +117,55 @@ void ScanService::handleEvent(SnmpdServiceManager& sm, const ScanEvent& event)
         nlohmann::json arr = nlohmann::json::array();
         for (const auto& dev : devices)
         {
+            nlohmann::json ifaces = nlohmann::json::array();
+            for (const auto& itf : dev.interfaces)
+            {
+                ifaces.push_back({
+                    {"ip",       itf.ip},
+                    {"netmask",  itf.netmask},
+                    {"if_index", itf.ifIndex},
+                    {"if_name",  itf.ifName},
+                });
+            }
+
+            nlohmann::json ifTable = nlohmann::json::array();
+            for (const auto& e : dev.ifTable)
+            {
+                ifTable.push_back({
+                    {"if_index",    e.ifIndex},
+                    {"name",        e.name},
+                    {"descr",       e.descr},
+                    {"alias",       e.alias},
+                    {"type",        e.type},
+                    {"speed_mbps",  e.speed},
+                    {"oper_status", e.operStatus},
+                    {"mac",         e.mac},
+                });
+            }
+
+            nlohmann::json neighbors = nlohmann::json::array();
+            for (const auto& n : dev.lldpNeighbors)
+            {
+                neighbors.push_back({
+                    {"local_port",       n.localPort},
+                    {"local_port_name",  n.localPortName},
+                    {"remote_sys_name",  n.remoteSysName},
+                    {"remote_sys_descr", n.remoteSysDescr},
+                    {"remote_port_id",   n.remotePortId},
+                    {"remote_chassis_id",n.remoteChassisId},
+                });
+            }
+
+            nlohmann::json arp = nlohmann::json::array();
+            for (const auto& a : dev.arpEntries)
+            {
+                arp.push_back({
+                    {"ip",       a.ip},
+                    {"mac",      a.mac},
+                    {"if_index", a.ifIndex},
+                });
+            }
+
             arr.push_back({
                 {"ip",               dev.ip},
                 {"sys_name",         dev.sysName},
@@ -126,6 +175,10 @@ void ScanService::handleEvent(SnmpdServiceManager& sm, const ScanEvent& event)
                 {"sys_location",     dev.sysLocation},
                 {"sys_up_time_ticks", dev.sysUpTimeTicks},
                 {"interface_macs",   dev.interfaceMacs},
+                {"interfaces",       std::move(ifaces)},
+                {"if_table",         std::move(ifTable)},
+                {"lldp_neighbors",   std::move(neighbors)},
+                {"arp_entries",      std::move(arp)},
             });
         }
 

@@ -14,7 +14,6 @@ enum class MgmtdEventDomain : std::uint32_t
 {
     Unknown   = 0,
     Bootstrap = 1,
-    Probe     = 2,
     Heartbeat = 3
 };
 

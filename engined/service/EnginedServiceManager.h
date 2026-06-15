@@ -9,12 +9,17 @@
 #include "service/commit/CommitService.h"
 #include "service/heartbeat/HeartbeatService.h"
 #include "service/scan/ScanService.h"
+#include "service/probe/ProbeService.h"
 #include "service/admin/AdminService.h"
+
+#include "vendor/VendorResolver.h"
 
 #include "router/EnginedTxRouter.h"
 
 #include <memory>
 #include <queue>
+#include <string>
+#include <vector>
 
 namespace pz::engined
 {
@@ -40,11 +45,19 @@ public:
     CommitService&    commitService();
     HeartbeatService& heartbeatService();
     ScanService&      scanService();
+    ProbeService&     probeService();
     AdminService&     adminService();
+    VendorResolver&   vendorResolver();
 
     EnginedTxRouter&      txRouter();
     EnginedEventFactory*  eventFactory();
     EnginedActionFactory* actionFactory();
+
+    // Latest ICMP probe alive-IP snapshot. ProbeService writes it on ProbeResult;
+    // ScanService reads it to build the SNMP scan target list. Single event loop,
+    // so no synchronization is needed.
+    const std::vector<std::string>& aliveIps() const;
+    void setAliveIps(std::vector<std::string> ips);
 
 private:
     EnginedEventFactory* m_eventFactory{nullptr};
@@ -55,7 +68,11 @@ private:
     std::unique_ptr<CommitService>    m_commitService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ScanService>      m_scanService;
+    std::unique_ptr<ProbeService>     m_probeService;
     std::unique_ptr<AdminService>     m_adminService;
+    std::unique_ptr<VendorResolver>   m_vendorResolver;
+
+    std::vector<std::string> m_aliveIps;
 
     std::queue<std::unique_ptr<EnginedEvent>> m_eventQueue;
     std::queue<std::unique_ptr<EnginedAction>> m_actionQueue;

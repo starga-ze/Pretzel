@@ -214,6 +214,20 @@ void SnmpEngine::reapDoneSessions()
         const SnmpV3Config* v3 = m_cfg.v3For(s->device.ip);
         const bool fallback = !s->responded && v3 != nullptr && !v3->user.empty();
 
+        // Collect the interface MAC set (ifPhysAddress) and IP-bearing interfaces
+        // (ipAddrTable) for responded v2c devices — the MAC set is the grouping
+        // fingerprint; the interfaces surface firewall WAN/LAN IPs and switch SVIs.
+        // The handle is still open here (outside the callback stack), so the
+        // synchronous walks are safe. v3 devices collect these in their own path.
+        if (s->responded)
+        {
+            SnmpProtocol::walkIfPhysAddr(s->handle, s->device);
+            SnmpProtocol::walkInterfaceAddrs(s->handle, s->device);
+            SnmpProtocol::walkIfTable(s->handle, s->device);
+            SnmpProtocol::walkLldpNeighbors(s->handle, s->device);
+            SnmpProtocol::walkArpTable(s->handle, s->device);
+        }
+
         m_epoll.del(s->fd);
         snmp_sess_close(s->handle);   // safe: fully outside callback stack
 
@@ -342,9 +356,10 @@ SnmpDevice SnmpEngine::probeV3Blocking(const std::string& ip)
         // Palo Alto and similar gear don't expose the standard ip-MIB address
         // tables, so the MAC set is the portable key for grouping a device's IPs.
         SnmpProtocol::walkIfPhysAddr(handle, dev);
+        SnmpProtocol::walkInterfaceAddrs(handle, dev);
 
-        LOG_DEBUG("SnmpEngine: v3 response ip={} sysName='{}' macs={}",
-                  ip, dev.sysName, dev.interfaceMacs.size());
+        LOG_DEBUG("SnmpEngine: v3 response ip={} sysName='{}' macs={} ifs={}",
+                  ip, dev.sysName, dev.interfaceMacs.size(), dev.interfaces.size());
 
         if (!dev.interfaceMacs.empty())
         {

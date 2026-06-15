@@ -13,7 +13,7 @@
              <polyline points="7 14 11 10 14 13 19 7"/>`,
     },
     {
-      type: 'group', id: 'resource', label: 'Resource', badgeId: 'aliveCount',
+      type: 'group', id: 'resource', label: 'Resource',
       icon: `<rect x="2" y="2" width="20" height="8" rx="2"/>
              <rect x="2" y="14" width="20" height="8" rx="2"/>
              <line x1="6" y1="6" x2="6.01" y2="6"/>
@@ -378,18 +378,6 @@
     window.addEventListener('scroll', hide, true);
   }
 
-  // ── Alive count badge ─────────────────────────────────────────────────────
-
-  async function pollAliveCount() {
-    try {
-      const r = await fetch('/api/status', { credentials: 'same-origin' });
-      if (!r.ok) return;
-      const d = await r.json();
-      const el = document.getElementById('aliveCount');
-      if (el && d.alive_devices != null) el.textContent = d.alive_devices;
-    } catch { /* ignore */ }
-  }
-
   // ── Init ──────────────────────────────────────────────────────────────────
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -397,7 +385,6 @@
     initSidebar();
     initFlyouts();
     initTooltips();
-    pollAliveCount();
   });
 
   /* ── Shared utils ── */

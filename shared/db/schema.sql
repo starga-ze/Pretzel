@@ -78,5 +78,24 @@ CREATE TABLE IF NOT EXISTS snmp_devices (
     sys_location     TEXT,
     sys_uptime_ticks BIGINT,
     interface_macs   JSONB,
+    interfaces       JSONB,
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- IP-bearing interfaces (ipAddrTable): firewall WAN/LAN IPs, switch SVIs, router
+-- interfaces. JSON array of {ip, netmask, if_index, if_name}. Idempotent add for
+-- databases created before this column existed.
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS interfaces JSONB;
+-- Richer SNMP inventory for topology/identification (all idempotent adds):
+--   if_table       : IF-MIB ifTable/ifXTable rows (ports/NICs)
+--   lldp_neighbors : LLDP neighbors (topology edges)
+--   arp_entries    : ipNetToMedia IP↔MAC the device has learned
+--   vendor         : resolved from sysObjectID enterprise number (by engined)
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS if_table JSONB;
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS lldp_neighbors JSONB;
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS arp_entries JSONB;
+ALTER TABLE IF EXISTS snmp_devices ADD COLUMN IF NOT EXISTS vendor TEXT;
+
+-- ICMP-only hosts: MAC (learned from a router/switch ARP table) and its OUI vendor,
+-- resolved by engined so SNMP-less endpoints can still be identified.
+ALTER TABLE IF EXISTS icmp_devices ADD COLUMN IF NOT EXISTS mac TEXT;
+ALTER TABLE IF EXISTS icmp_devices ADD COLUMN IF NOT EXISTS vendor TEXT;

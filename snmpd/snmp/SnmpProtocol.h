@@ -46,6 +46,23 @@ public:
     // MACs into dev.interfaceMacs. Synchronous (GETNEXT loop) — call from the v3
     // worker path. `sessp` is net-snmp's opaque session pointer.
     static void walkIfPhysAddr(void* sessp, SnmpDevice& dev);
+
+    // Walk the ip-MIB ipAddrTable (ipAdEntIfIndex/ipAdEntNetMask, 1.3.6.1.2.1.4.20.1)
+    // on an OPEN single-session handle and collect each IP-bearing interface
+    // (ip + netmask + ifIndex + ifDescr name) into dev.interfaces. This surfaces a
+    // firewall's WAN/LAN interface IPs, a switch's SVIs, router interfaces, etc.
+    // Synchronous (GETNEXT walk + targeted ifDescr GETs).
+    static void walkInterfaceAddrs(void* sessp, SnmpDevice& dev);
+
+    // Walk IF-MIB ifTable + ifXTable into dev.ifTable (interface inventory).
+    static void walkIfTable(void* sessp, SnmpDevice& dev);
+
+    // Walk LLDP-MIB lldpRemTable (+ lldpLocPortTable for local port names) into
+    // dev.lldpNeighbors — the device's directly-connected neighbors (topology edges).
+    static void walkLldpNeighbors(void* sessp, SnmpDevice& dev);
+
+    // Walk ip-MIB ipNetToMediaTable (ARP) into dev.arpEntries (IP↔MAC).
+    static void walkArpTable(void* sessp, SnmpDevice& dev);
 };
 
 } // namespace pz::snmpd

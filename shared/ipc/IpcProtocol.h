@@ -43,7 +43,8 @@ enum class IpcCmd : std::uint16_t
     
     Error        = 102,
 
-    // Unicast from icmpd to mgmtd: payload = JSON {"alive":N,"ips":[...]}.
+    // Unicast from icmpd to engined: payload = JSON {"alive":N,"ips":[...]}.
+    // engined holds the alive-IP snapshot and feeds it to the SNMP scan.
     ProbeResult       = 103,
     HeartbeatRequest  = 104,
     HeartbeatResponse = 105,
@@ -68,7 +69,8 @@ enum class IpcCmd : std::uint16_t
     // Sent whenever the queue changes (task added, started, completed, failed).
     CommitQueueStatus = 111,
 
-    // Unicast from mgmtd to snmpd: payload = JSON {"ips":["..."]} to scan.
+    // Unicast from engined to snmpd: payload = JSON {"ips":["..."]} to scan.
+    // engined drives the scan on its own timer using the latest probe alive IPs.
     SnmpScanRequest = 112,
 
     // Unicast from snmpd to engined: payload = JSON {"devices":[...]} results.
@@ -80,6 +82,10 @@ enum class IpcCmd : std::uint16_t
     // .admin) as a new version; mgmtd applies it in-memory optimistically. No response,
     // no ConfigReload (mgmtd is the sole consumer of the credential).
     AdminPasswordUpdate = 114,
+
+    // Unicast from engined to icmpd: no payload. Triggers one ICMP probe cycle.
+    // icmpd replies with ProbeResult once the cycle completes.
+    ProbeRequest = 115,
 };
 
 enum class IpcFlag : std::uint8_t

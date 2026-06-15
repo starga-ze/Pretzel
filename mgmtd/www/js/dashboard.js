@@ -64,9 +64,6 @@
       const d = await window.NMS.utils.fetchJSON('/api/status');
       if (!d) return;
 
-      const aliveEl = document.getElementById('aliveVal');
-      if (aliveEl) aliveEl.textContent = d.alive_devices ?? '--';
-
       const hbTs = document.getElementById('hbTimestamp');
       if (hbTs && d.timestamp_ms)
         hbTs.textContent = 'Last poll: ' + new Date(d.timestamp_ms).toLocaleTimeString();

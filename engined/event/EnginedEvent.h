@@ -18,6 +18,7 @@ enum class EnginedEventDomain : std::uint32_t
     Commit    = 3,
     Scan      = 4,
     Admin     = 5,
+    Probe     = 6,
 };
 
 class EnginedEvent : public pz::event::Event

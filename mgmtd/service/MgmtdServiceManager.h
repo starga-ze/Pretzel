@@ -8,9 +8,8 @@
 #include "service/auth/AuthService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/metrics/MetricService.h"
-#include "service/probe/ProbeService.h"
 #include "service/heartbeat/HeartbeatService.h"
-#include "service/snmp/SnmpService.h"
+#include "service/device/DeviceService.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -46,17 +45,10 @@ public:
     AuthService& authService();
     MetricService& metricService();
     BootstrapService& bootstrapService();
-    ProbeService& probeService();
     HeartbeatService& heartbeatService();
-    SnmpService& snmpService();
+    DeviceService& deviceService();
 
     MgmtdTxRouter& txRouter();
-
-    std::optional<std::uint32_t> aliveDevices() const;
-    void setAliveDevices(std::uint32_t count);
-
-    std::vector<std::string> aliveIps() const;
-    void setAliveIps(std::vector<std::string> ips);
 
     enum class ReloadStatus { Idle, Reloading, Complete };
     void startReload();
@@ -75,15 +67,12 @@ private:
     AuthService m_authService;
     MetricService m_metricService;
     std::unique_ptr<BootstrapService> m_bootstrapService;
-    std::unique_ptr<ProbeService> m_probeService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
-    std::unique_ptr<SnmpService> m_snmpService;
+    std::unique_ptr<DeviceService> m_deviceService;
 
     std::queue<std::unique_ptr<MgmtdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<MgmtdAction>> m_actionQueue;
 
-    std::atomic<std::int64_t>  m_aliveDevices{-1};
-    std::vector<std::string>   m_aliveIps;
     std::atomic<int>           m_reloadStatus{static_cast<int>(ReloadStatus::Idle)};
     std::chrono::steady_clock::time_point m_reloadStartedAt{};
 

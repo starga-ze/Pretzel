@@ -17,14 +17,19 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory,
       m_commitService(std::make_unique<CommitService>()),
       m_heartbeatService(std::make_unique<HeartbeatService>()),
       m_scanService(std::make_unique<ScanService>()),
-      m_adminService(std::make_unique<AdminService>())
+      m_probeService(std::make_unique<ProbeService>()),
+      m_adminService(std::make_unique<AdminService>()),
+      m_vendorResolver(std::make_unique<VendorResolver>())
 {
 }
 
 void EnginedServiceManager::start()
 {
+    m_vendorResolver->loadOui();
     m_bootstrapService->start();
     m_heartbeatService->start();
+    m_probeService->start();
+    m_scanService->start();
 }
 
 void EnginedServiceManager::schedule()
@@ -38,6 +43,8 @@ void EnginedServiceManager::schedule()
     }
 
     postEvent(m_heartbeatService->schedule(now));
+    postEvent(m_probeService->schedule(now));
+    postEvent(m_scanService->schedule(now));
 }
 
 void EnginedServiceManager::postEvent(std::unique_ptr<EnginedEvent> event)
@@ -97,6 +104,26 @@ HeartbeatService& EnginedServiceManager::heartbeatService()
 ScanService& EnginedServiceManager::scanService()
 {
     return *m_scanService;
+}
+
+ProbeService& EnginedServiceManager::probeService()
+{
+    return *m_probeService;
+}
+
+VendorResolver& EnginedServiceManager::vendorResolver()
+{
+    return *m_vendorResolver;
+}
+
+const std::vector<std::string>& EnginedServiceManager::aliveIps() const
+{
+    return m_aliveIps;
+}
+
+void EnginedServiceManager::setAliveIps(std::vector<std::string> ips)
+{
+    m_aliveIps = std::move(ips);
 }
 
 AdminService& EnginedServiceManager::adminService()

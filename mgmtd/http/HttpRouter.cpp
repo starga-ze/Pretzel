@@ -383,9 +383,6 @@ HttpRouter::Response HttpRouter::handleStatus(const Request& req)
 
     if (m_serviceManager)
     {
-        const auto alive = m_serviceManager->aliveDevices();
-        body["alive_devices"] = alive.has_value() ? json(alive.value()) : json(nullptr);
-
         const auto& hb = m_serviceManager->heartbeatService();
         if (hb.hasData())
         {
@@ -409,10 +406,6 @@ HttpRouter::Response HttpRouter::handleStatus(const Request& req)
                 // keep daemons array as-is on parse failure
             }
         }
-    }
-    else
-    {
-        body["alive_devices"] = nullptr;
     }
 
     // 3rd-party daemons are reported alongside the in-house daemons so the
@@ -736,43 +729,61 @@ HttpRouter::Response HttpRouter::handleDevices(const Request& req)
 {
     json body;
     json devices = json::array();
+    int networkCount = 0;
+    int serverCount  = 0;
+    int hostCount    = 0;
 
     if (m_serviceManager)
     {
-        const auto ips      = m_serviceManager->aliveIps();
-        const auto snmpDevs = m_serviceManager->snmpService().devices();
+        const auto groups = m_serviceManager->deviceService().groups();
 
-        for (const auto& ip : ips)
+        for (const auto& g : groups)
         {
-            json dev;
-            dev["ip"]     = ip;
-            dev["status"] = "alive";
+            if (g.type == "network")      ++networkCount;
+            else if (g.type == "server")  ++serverCount;
+            else                          ++hostCount;
 
-            const auto it = snmpDevs.find(ip);
-            if (it != snmpDevs.end())
+            json ifaces = json::array();
+            for (const auto& itf : g.interfaces)
             {
-                const auto& s = it->second;
-                dev["hostname"]          = s.sysName;
-                dev["device_name"]       = s.sysName;
-                dev["vendor"]            = "";
-                dev["sys_descr"]         = s.sysDescr;
-                dev["sys_object_id"]     = s.sysObjectId;
-                dev["sys_contact"]       = s.sysContact;
-                dev["sys_location"]      = s.sysLocation;
-                dev["sys_up_time_ticks"] = s.sysUpTimeTicks;
-            }
-            else
-            {
-                dev["hostname"]    = "";
-                dev["device_name"] = "";
-                dev["vendor"]      = "";
+                ifaces.push_back({
+                    {"ip",       itf.ip},
+                    {"netmask",  itf.netmask},
+                    {"if_index", itf.ifIndex},
+                    {"if_name",  itf.ifName},
+                });
             }
 
-            devices.push_back(std::move(dev));
+            devices.push_back({
+                {"primary_ip",        g.primaryIp},
+                {"ips",               g.ips},
+                {"type",              g.type},
+                {"subtype",           g.subtype},
+                {"vendor",            g.vendor},
+                {"hostname",          g.hostname},
+                {"sys_descr",         g.sysDescr},
+                {"sys_object_id",     g.sysObjectId},
+                {"sys_contact",       g.sysContact},
+                {"sys_location",      g.sysLocation},
+                {"sys_up_time_ticks", g.sysUpTimeTicks},
+                {"interface_macs",    g.interfaceMacs},
+                {"interfaces",        std::move(ifaces)},
+                {"if_table",          g.ifTable},
+                {"lldp_neighbors",    g.lldpNeighbors},
+                {"host_mac",          g.hostMac},
+                {"has_snmp",          g.hasSnmp},
+            });
         }
     }
 
+    body["summary"] = {
+        {"total",   networkCount + serverCount + hostCount},
+        {"network", networkCount},
+        {"server",  serverCount},
+        {"hosts",   hostCount},
+    };
     body["devices"] = std::move(devices);
+
     return makeResponse(http::status::ok, body.dump(),
                         "application/json; charset=utf-8",
                         req.version(), req.keep_alive());

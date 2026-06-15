@@ -43,11 +43,6 @@ std::chrono::milliseconds probeBatchInterval()
     return std::chrono::milliseconds(probeConfig().value("batch_interval_ms", 20));
 }
 
-std::chrono::milliseconds probeCycleInterval()
-{
-    return std::chrono::seconds(probeConfig().value("cycle_interval_sec", 30));
-}
-
 std::chrono::milliseconds replyIdleTimeout()
 {
     return std::chrono::seconds(probeConfig().value("reply_idle_timeout_sec", 5));
@@ -106,7 +101,9 @@ ProbeService::ProbeService(IcmpdEventFactory* eventFactory,
 
 void ProbeService::start()
 {
-    m_state = State::Init;
+    // engined now owns the probe cadence: icmpd stays Idle until it receives a
+    // ProbeRequest, then runs exactly one probe cycle and replies with ProbeResult.
+    m_state = State::Idle;
 
     m_localIps.clear();
     for (const auto& ip : probeExcludedIps())
@@ -125,24 +122,11 @@ std::unique_ptr<IcmpdEvent> ProbeService::schedule(std::chrono::steady_clock::ti
 
     switch (m_state)
     {
+    // Init/Idle: nothing to drive locally. The probe cycle is kicked off by a
+    // ProbeRequest from engined (see handleEvent StartProbe), not a local timer.
     case State::Init:
-    {
-        return m_eventFactory->create(
-            IcmpdEventDomain::Probe,
-            static_cast<std::uint32_t>(ProbeEventType::StartProbe));
-    }
-
     case State::Idle:
-    {
-        if (now - m_lastProbeCompletedAt >= probeCycleInterval())
-        {
-            return m_eventFactory->create(
-                IcmpdEventDomain::Probe,
-                static_cast<std::uint32_t>(ProbeEventType::StartProbe));
-        }
-
         return nullptr;
-    }
 
     case State::Sending:
     {
@@ -577,15 +561,16 @@ void ProbeService::sendProbeResult(IcmpdServiceManager& serviceManager)
 
     const std::string payloadStr = payload.dump();
 
-    // ProbeResult goes straight to mgmtd (the data-plane consumer); ipcd routes it.
+    // ProbeResult goes to engined, which holds the alive-IP snapshot and drives the
+    // SNMP scan from it; ipcd routes it.
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Icmpd);
-    msg->setDst(pz::ipc::IpcDaemon::Mgmtd);
+    msg->setDst(pz::ipc::IpcDaemon::Engined);
     msg->setCmd(pz::ipc::IpcCmd::ProbeResult);
-    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(payloadStr.data()), payloadStr.size());
 
-    LOG_INFO("sending ProbeResult to mgmtd alive={}", m_lastAliveCount);
+    LOG_INFO("sending ProbeResult to engined alive={}", m_lastAliveCount);
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
