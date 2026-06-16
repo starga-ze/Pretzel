@@ -49,7 +49,7 @@ ScanService::schedule(std::chrono::steady_clock::time_point now)
     {
         if (now - m_requestedAt >= responseTimeout())
         {
-            LOG_WARN("ScanService: SnmpResult timed out — clearing pending");
+            LOG_WARN("ScanService: ScanResult timed out — clearing pending");
             m_pending = false;
         }
         return nullptr;
@@ -74,14 +74,14 @@ void ScanService::handleEvent(EnginedServiceManager& serviceManager,
         sendScanRequest(serviceManager);
         break;
 
-    case ScanEventType::ReceiveSnmpResult:
+    case ScanEventType::ReceiveScanResult:
     {
         m_pending = false;
 
         const pz::ipc::IpcMessage* in = event.message();
         if (!in || in->getPayload().empty())
         {
-            LOG_WARN("ScanService: empty SnmpResult — dropping");
+            LOG_WARN("ScanService: empty ScanResult — dropping");
             return;
         }
 
@@ -113,8 +113,8 @@ void ScanService::sendScanRequest(EnginedServiceManager& serviceManager)
 
     pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
         pz::ipc::IpcDaemon::Engined,
-        pz::ipc::IpcDaemon::Snmpd,
-        pz::ipc::IpcCmd::SnmpScanRequest,
+        pz::ipc::IpcDaemon::Scand,
+        pz::ipc::IpcCmd::ScanRequest,
         static_cast<std::uint32_t>(json.size()),
         pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
 
@@ -124,7 +124,7 @@ void ScanService::sendScanRequest(EnginedServiceManager& serviceManager)
     m_pending     = true;
     m_requestedAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("ScanService: sending SnmpScanRequest to snmpd ips={}", ips.size());
+    LOG_INFO("ScanService: sending ScanRequest to scand ips={}", ips.size());
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
@@ -139,16 +139,22 @@ void ScanService::persistDevices(EnginedServiceManager& serviceManager,
     }
     catch (const std::exception& e)
     {
-        LOG_WARN("ScanService: failed to parse SnmpResult payload: {}", e.what());
+        LOG_WARN("ScanService: failed to parse ScanResult payload: {}", e.what());
         return;
     }
 
     const auto& devices = root.value("devices", nlohmann::json::array());
 
-    // The SnmpResult is an authoritative full snapshot of the scanned IPs, so replace
-    // the snmp_devices table wholesale. exec() fails soft when the DB is down.
+    // The ScanResult is an authoritative full snapshot of the scanned set. ScanService
+    // owns only the SNMP/API columns of probe_devices (ProbeService owns reachability +
+    // row lifecycle), so clear those columns across the table, then re-apply responders.
+    // This mirrors the old wholesale snmp_devices replace without touching ICMP data.
     auto& db = pz::db::Database::instance();
-    db.exec("DELETE FROM snmp_devices");
+    db.exec("UPDATE probe_devices SET "
+            "  sys_name = NULL, sys_descr = NULL, sys_object_id = NULL, "
+            "  sys_contact = NULL, sys_location = NULL, sys_uptime_ticks = NULL, "
+            "  interface_macs = NULL, interfaces = NULL, if_table = NULL, "
+            "  lldp_neighbors = NULL, arp_entries = NULL, snmp_vendor = NULL");
 
     int written = 0;
     for (const auto& d : devices)
@@ -176,10 +182,10 @@ void ScanService::persistDevices(EnginedServiceManager& serviceManager,
             serviceManager.vendorResolver().vendorForSysObjectId(sysObjectId);
 
         const bool ok = db.exec(
-            "INSERT INTO snmp_devices "
+            "INSERT INTO probe_devices "
             "(ip, sys_name, sys_descr, sys_object_id, sys_contact, sys_location, "
             " sys_uptime_ticks, interface_macs, interfaces, if_table, lldp_neighbors, "
-            " arp_entries, vendor) "
+            " arp_entries, snmp_vendor) "
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, "
             " $11::jsonb, $12::jsonb, $13) "
             "ON CONFLICT (ip) DO UPDATE SET "
@@ -190,7 +196,7 @@ void ScanService::persistDevices(EnginedServiceManager& serviceManager,
             "  interface_macs = EXCLUDED.interface_macs, "
             "  interfaces = EXCLUDED.interfaces, if_table = EXCLUDED.if_table, "
             "  lldp_neighbors = EXCLUDED.lldp_neighbors, arp_entries = EXCLUDED.arp_entries, "
-            "  vendor = EXCLUDED.vendor, updated_at = now()",
+            "  snmp_vendor = EXCLUDED.snmp_vendor, updated_at = now()",
             {ip,
              d.value("sys_name", ""),
              d.value("sys_descr", ""),
@@ -208,7 +214,7 @@ void ScanService::persistDevices(EnginedServiceManager& serviceManager,
             ++written;
     }
 
-    LOG_INFO("ScanService: persisted {} SNMP device(s) to snmp_devices", written);
+    LOG_INFO("ScanService: persisted {} SNMP device(s) to probe_devices", written);
 }
 
 } // namespace pz::engined

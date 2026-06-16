@@ -9,7 +9,7 @@
     engined:       { label: 'Engine',        raw: 'pz-engined' },
     authd:         { label: 'Auth',          raw: 'pz-authd' },
     icmpd:         { label: 'ICMP Probe',    raw: 'pz-icmpd' },
-    snmpd:         { label: 'SNMP',          raw: 'pz-snmpd' },
+    scand:         { label: 'SNMP',          raw: 'pz-scand' },
     topologyd:     { label: 'Topology',      raw: 'pz-topologyd' },
     mgmtd:         { label: 'Management',    raw: 'pz-mgmtd' },
     prometheus:    { label: 'Prometheus',    raw: 'prometheus' },

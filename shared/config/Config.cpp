@@ -118,18 +118,31 @@ bool bootstrapDatabase()
     return true;
 }
 
-// Queries the latest (highest-version) running-config blob, if any.
-std::optional<nlohmann::json> latestRunningConfig()
+// Queries the latest active running-config (version + blob), if any. The 'pending'
+// row of an in-flight reload is intentionally excluded — a cold-starting daemon must
+// adopt the last-good (active) version, never an unconverged one.
+std::optional<std::pair<std::uint64_t, nlohmann::json>> latestRunningConfig()
 {
-    const auto raw = pz::db::Database::instance().queryScalar(
-        "SELECT config_json FROM running_config ORDER BY version DESC LIMIT 1");
-    if (!raw)
+    const auto rows = pz::db::Database::instance().queryRows(
+        "SELECT version, config_json FROM running_config "
+        "WHERE state = 'active' ORDER BY version DESC LIMIT 1");
+    if (rows.empty() || rows.front().size() < 2)
         return std::nullopt;
 
-    auto parsed = nlohmann::json::parse(*raw, nullptr, false);
+    std::uint64_t version = 0;
+    try
+    {
+        version = std::stoull(rows.front()[0]);
+    }
+    catch (const std::exception&)
+    {
+        return std::nullopt;
+    }
+
+    auto parsed = nlohmann::json::parse(rows.front()[1], nullptr, false);
     if (parsed.is_discarded() || !parsed.is_object())
         return std::nullopt;
-    return parsed;
+    return std::make_pair(version, std::move(parsed));
 }
 
 // Secrets must never be persisted into the config tables in cleartext:
@@ -137,7 +150,7 @@ std::optional<nlohmann::json> latestRunningConfig()
 //     on-disk startup-config by bootstrapDatabase(), never from these tables.
 //   * mgmtd.service.http.admin       — login credentials live in the local_users
 //     table, never in config; this strips any stray admin block from a config blob.
-// SNMP v3 credentials are intentionally left in place: snmpd consumes them from the
+// SNMP v3 credentials are intentionally left in place: scand consumes them from the
 // running-config at runtime, so they are operator-managed configuration.
 nlohmann::json redactSecretsForPersist(nlohmann::json root)
 {
@@ -165,17 +178,30 @@ nlohmann::json redactSecretsForPersist(nlohmann::json root)
     return root;
 }
 
+// Version of the running-config currently held in runningConfigCache(). Set by
+// loadRunningConfigRoot() alongside the cache; 0 for the startup-file fallback.
+std::uint64_t& runningConfigVersionCache()
+{
+    static std::uint64_t s_version = 0;
+    return s_version;
+}
+
 // Implements the load decision tree (see Config.h):
 //   Case B: running_config has a latest version  -> use it.
 //   Case A: empty table OR DB unreachable        -> use the startup-config file.
 // Fully defensive: any failure falls back to the startup-config file.
 nlohmann::json loadRunningConfigRoot()
 {
+    runningConfigVersionCache() = 0;  // startup-file fallback carries no DB version
+
     if (!bootstrapDatabase())
         return readStartupFile();  // DB down — last-resort fallback
 
     if (auto latest = latestRunningConfig())
-        return *latest;            // Case B: adopt latest committed version
+    {
+        runningConfigVersionCache() = latest->first;  // Case B: adopt latest version
+        return std::move(latest->second);
+    }
 
     return readStartupFile();      // Case A: empty DB (engined seeds it via preflight)
 }
@@ -387,15 +413,34 @@ bool Config::commitConfig(const nlohmann::json& fullRoot)
         return false;
     }
 
-    const bool ok = pz::db::Database::instance().exec(
-        "INSERT INTO running_config (version, config_json) "
-        "VALUES ((SELECT COALESCE(MAX(version), 0) + 1 FROM running_config), $1::jsonb)",
-        {redactSecretsForPersist(fullRoot).dump()});
+    // Single-active invariant: supersede the prior active version, then append the new
+    // one as the sole active row. Wrapped in a transaction so a reader never observes
+    // zero or two active versions. The newest active is what daemons load on (re)start.
+    auto& db = pz::db::Database::instance();
 
-    if (ok)
-        invalidateConfigCache();  // next read adopts the new version
+    if (!db.exec("BEGIN"))
+    {
+        std::cerr << "commitConfig: BEGIN failed" << std::endl;
+        return false;
+    }
 
-    return ok;
+    const bool ok =
+        db.exec("UPDATE running_config SET state = 'superseded' WHERE state = 'active'") &&
+        db.exec(
+            "INSERT INTO running_config (version, config_json, state) "
+            "VALUES ((SELECT COALESCE(MAX(version), 0) + 1 FROM running_config), "
+            "$1::jsonb, 'active')",
+            {redactSecretsForPersist(fullRoot).dump()});
+
+    if (!ok || !db.exec("COMMIT"))
+    {
+        db.exec("ROLLBACK");
+        std::cerr << "commitConfig: transaction failed, rolled back" << std::endl;
+        return false;
+    }
+
+    invalidateConfigCache();  // next read adopts the new version
+    return true;
 }
 
 bool Config::saveStateSnapshot(const std::string& daemonName, const nlohmann::json& json)
@@ -435,6 +480,12 @@ void Config::invalidateConfigCache()
 {
     runningConfigLoaded() = false;
     effectiveCache().clear();
+}
+
+std::uint64_t Config::runningConfigVersion()
+{
+    cachedRunningConfig();  // ensures the root (and its version) is loaded
+    return runningConfigVersionCache();
 }
 
 }

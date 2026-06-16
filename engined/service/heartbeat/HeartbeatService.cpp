@@ -39,7 +39,7 @@ const std::vector<pz::ipc::IpcDaemon>& HeartbeatService::targets()
     static const std::vector<pz::ipc::IpcDaemon> kTargets = {
         pz::ipc::IpcDaemon::Authd,
         pz::ipc::IpcDaemon::Icmpd,
-        pz::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcDaemon::Scand,
         pz::ipc::IpcDaemon::Topologyd,
         pz::ipc::IpcDaemon::Mgmtd,
     };
@@ -287,7 +287,7 @@ std::string HeartbeatService::buildResultJson() const
         pz::ipc::IpcDaemon::Engined,
         pz::ipc::IpcDaemon::Authd,
         pz::ipc::IpcDaemon::Icmpd,
-        pz::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcDaemon::Scand,
         pz::ipc::IpcDaemon::Topologyd,
         pz::ipc::IpcDaemon::Mgmtd,
     };

@@ -107,7 +107,7 @@
         "engined": 2,
         "mgmtd": 3,
         "authd": 4,
-        "snmpd": 5,
+        "scand": 5,
         "icmpd": 6,
         "topologyd": 7
       }
@@ -140,12 +140,12 @@
     }
   },
 
-  "snmpd": {
-    "daemon_name": "pz-snmpd",
+  "scand": {
+    "daemon_name": "pz-scand",
     "system": {
       "logger": {
-        "name": "pz-snmpd",
-        "file": "/var/log/pretzel/snmpd.log"
+        "name": "pz-scand",
+        "file": "/var/log/pretzel/scand.log"
       }
     },
     "service": {

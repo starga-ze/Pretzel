@@ -3,7 +3,7 @@
   'use strict';
 
   // Service daemons (ipcd / mgmtd excluded — infra only)
-  const SERVICE_DAEMONS = ['engined', 'authd', 'icmpd', 'snmpd', 'topologyd'];
+  const SERVICE_DAEMONS = ['engined', 'authd', 'icmpd', 'scand', 'topologyd'];
 
   // Max lines fetched per daemon — server reads tail of file
   const FETCH_LINES = 2000;

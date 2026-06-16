@@ -179,7 +179,7 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
 
     if (isClose)
     {
-        LOG_INFO("connection close event fd={} events=0x{:x}", fd, events);
+        LOG_DEBUG("connection close event fd={} events=0x{:x}", fd, events);
         m_handler->closeConnection(fd, m_connections, m_epoll);
         return;
     }

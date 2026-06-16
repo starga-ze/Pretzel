@@ -36,9 +36,14 @@ void EnginedServiceManager::schedule()
 {
     const auto now = std::chrono::steady_clock::now();
 
+    // BootstrapService reconciles continuously: it keeps the fleet converged to the
+    // target config version and re-issues RuntimeStart to any daemon that reconnects.
+    // So tick it every loop, not just before readiness. engined's own services only
+    // start once the initial convergence has completed (isReady() latches true).
+    postEvent(m_bootstrapService->schedule(now));
+
     if (!m_bootstrapService->isReady())
     {
-        postEvent(m_bootstrapService->schedule(now));
         return;
     }
 

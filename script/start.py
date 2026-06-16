@@ -23,7 +23,7 @@ from script.utils import (
 DAEMONS = [
     "pz-db-ready.service",
     "pz-ipcd.service", "pz-engined.service", "pz-authd.service", "pz-mgmtd.service",
-    "pz-icmpd.service", "pz-snmpd.service", "pz-topologyd.service",
+    "pz-icmpd.service", "pz-scand.service", "pz-topologyd.service",
     "pz-prometheus.service", "pz-node-exporter.service", "pz-postgres-exporter.service",
     "pz-grafana.service", "pz-pgadmin.service",
 ]

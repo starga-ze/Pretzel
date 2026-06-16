@@ -44,7 +44,7 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
             return;
         }
 
-        LOG_INFO("ReceiveClientHello src={}",
+        LOG_DEBUG("ReceiveClientHello src={}",
                  pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
         auto action = std::make_unique<BootstrapAction>(
@@ -64,7 +64,7 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
             return;
         }
 
-        LOG_INFO("ReceiveSyncRequest src={}",
+        LOG_TRACE("ReceiveSyncRequest src={}",
                  pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
         auto action = std::make_unique<BootstrapAction>(
@@ -84,12 +84,27 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
             return;
         }
 
-        LOG_INFO("ReceiveRuntimeReady src={}",
-                 pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+        // Payload: JSON {"daemon":...,"applied_version":V}. A legacy bare daemon-name
+        // string is tolerated as applied_version=0 (ipcd keeps the last known version).
+        uint64_t appliedVersion = 0;
+        const auto& payload = msg->getPayload();
+        if (!payload.empty())
+        {
+            const auto parsed = nlohmann::json::parse(
+                std::string(reinterpret_cast<const char*>(payload.data()), payload.size()),
+                nullptr, false);
+            if (parsed.is_object())
+            {
+                appliedVersion = parsed.value("applied_version", 0ull);
+            }
+        }
+
+        LOG_DEBUG("ReceiveRuntimeReady src={} applied_version={}",
+                 pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()), appliedVersion);
 
         if (m_ipcServerHandler)
         {
-            m_ipcServerHandler->markRuntimeReady(msg->getSrc(), true);
+            m_ipcServerHandler->markRuntimeReady(msg->getSrc(), true, appliedVersion);
         }
 
         break;
@@ -185,7 +200,12 @@ BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
 
         for (const auto& [daemon, state] : runtimeTable)
         {
-            if (daemon == pz::ipc::IpcDaemon::Engined)
+            // engined is the requester; mgmtd is infrastructure that engined never gates
+            // on (see engined initProcessMap). Excluding both keeps the snapshot to the
+            // service daemons engined actually reconciles — and avoids a per-second
+            // "ignore unknown daemon: mgmtd" log on the engined side.
+            if (daemon == pz::ipc::IpcDaemon::Engined ||
+                daemon == pz::ipc::IpcDaemon::Mgmtd)
             {
                 continue;
             }
@@ -196,9 +216,10 @@ BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
             }
 
             payloadJson["daemons"].push_back({
-                {"daemon",      pz::ipc::IpcProtocol::daemonToStr(daemon)},
-                {"ready",       state.ready},
-                {"generation",  state.generation}
+                {"daemon",          pz::ipc::IpcProtocol::daemonToStr(daemon)},
+                {"ready",           state.ready},
+                {"generation",      state.generation},
+                {"applied_version", state.appliedVersion}
             });
         }
     }

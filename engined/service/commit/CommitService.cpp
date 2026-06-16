@@ -133,6 +133,34 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
         break;
     }
 
+    case CommitEventType::ReloadFailed:
+    {
+        // Reload did not converge in time. Mark the Running task Failed (the new config
+        // version stays the active committed intent; daemons adopt it as they restart),
+        // then advance the queue exactly as the success path does.
+        for (auto& t : m_queue)
+        {
+            if (t.status == TaskStatus::Running)
+            {
+                t.status = TaskStatus::Failed;
+                LOG_ERROR("CommitService: task {} failed — reload did not converge", t.id);
+                break;
+            }
+        }
+
+        while (m_queue.size() > 5 ||
+               (!m_queue.empty() &&
+                (m_queue.front().status == TaskStatus::Done ||
+                 m_queue.front().status == TaskStatus::Failed)))
+        {
+            m_queue.pop_front();
+        }
+
+        sendQueueStatus(serviceManager);
+        startNext(serviceManager);
+        break;
+    }
+
     default:
         LOG_WARN("CommitService: unhandled event type={}",
                  static_cast<std::uint32_t>(event.type()));
@@ -253,7 +281,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
         static constexpr pz::ipc::IpcDaemon kServiceDaemons[] = {
             pz::ipc::IpcDaemon::Authd,
             pz::ipc::IpcDaemon::Icmpd,
-            pz::ipc::IpcDaemon::Snmpd,
+            pz::ipc::IpcDaemon::Scand,
             pz::ipc::IpcDaemon::Topologyd,
         };
 

@@ -9,7 +9,7 @@
 namespace pz::mgmtd
 {
 
-// One IP-bearing interface (from snmp_devices.interfaces / ipAddrTable).
+// One IP-bearing interface (from probe_devices.interfaces / ipAddrTable / vendor API).
 struct DeviceInterface
 {
     std::string   ip;
@@ -53,9 +53,9 @@ struct DeviceGroup
     bool hasSnmp{false};
 };
 
-// Read-only inventory view assembled from icmp_devices (reachability, written by
-// engined's probe) and snmp_devices (SNMP attributes incl. interface_macs). Groups
-// by MAC fingerprint and classifies each device as network gear vs general host.
+// Read-only inventory view assembled from probe_devices (ICMP reachability + SNMP/API
+// attributes incl. interface_macs, all written by engined). Groups by MAC fingerprint
+// and classifies each device as network gear vs general host.
 class DeviceService
 {
 public:

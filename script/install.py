@@ -265,8 +265,8 @@ def is_libsnmp_dev_installed():
 def install_libsnmp_dev():
     """
     Installs ONLY the Net-SNMP dev library (libsnmp-dev) — the headers/lib that
-    pz-snmpd compiles against (#include <net-snmp/...>) and links against (-lnetsnmp,
-    see snmpd/CMakeLists.txt). Same build-time-only pattern as install_libpq_dev():
+    pz-scand compiles against (#include <net-snmp/...>) and links against (-lnetsnmp,
+    see scand/CMakeLists.txt). Same build-time-only pattern as install_libpq_dev():
     a distro dev package rather than a from-source 3rd_party build.
     """
     if is_libsnmp_dev_installed():

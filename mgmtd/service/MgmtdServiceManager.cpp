@@ -18,8 +18,8 @@ MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory,
       m_heartbeatService(std::make_unique<HeartbeatService>()),
       m_deviceService(std::make_unique<DeviceService>())
 {
-    // DeviceService is a read-only view of icmp_devices + snmp_devices (written by
-    // engined); nothing to restore here — groups() reads the tables live.
+    // DeviceService is a read-only view of probe_devices (written by engined);
+    // nothing to restore here — groups() reads the table live.
 }
 
 void MgmtdServiceManager::start()

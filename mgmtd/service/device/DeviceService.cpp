@@ -33,9 +33,9 @@ struct IpRecord
     std::vector<std::string>     macs;
     std::vector<DeviceInterface> interfaces;
 
-    std::string    snmpVendor;   // snmp_devices.vendor (PEN-resolved by engined)
-    std::string    hostMac;      // icmp_devices.mac (ARP-learned)
-    std::string    hostVendor;   // icmp_devices.vendor (OUI-resolved by engined)
+    std::string    snmpVendor;   // probe_devices.snmp_vendor (PEN-resolved by engined)
+    std::string    hostMac;      // probe_devices.mac (ARP-learned)
+    std::string    hostVendor;   // probe_devices.host_vendor (OUI-resolved by engined)
     nlohmann::json ifTable{nlohmann::json::array()};
     nlohmann::json lldp{nlohmann::json::array()};
 };
@@ -163,46 +163,40 @@ std::vector<DeviceGroup> DeviceService::groups() const
 
     std::map<std::string, IpRecord> byIp;
 
-    // ICMP reachability (all currently-alive IPs) + host MAC/vendor (engined-resolved).
-    for (const auto& row : db.queryRows("SELECT ip, status, mac, vendor FROM icmp_devices"))
-    {
-        if (row.size() < 4 || row[0].empty())
-            continue;
-        auto& rec      = byIp[row[0]];
-        rec.ip         = row[0];
-        rec.hostMac    = row[2];
-        rec.hostVendor = row[3];
-    }
-
-    // SNMP attributes + fingerprint + interfaces + ifTable/LLDP + vendor.
+    // Unified per-IP inventory: ICMP reachability + host MAC/vendor (ICMP stage) and
+    // SNMP/API identity + interfaces + ifTable/LLDP + vendor (SNMP/API stage), all on
+    // one row. hasSnmp is derived from whether any SNMP/API-stage data is present.
     for (const auto& row : db.queryRows(
-             "SELECT ip, sys_name, sys_descr, sys_object_id, sys_contact, sys_location, "
-             "sys_uptime_ticks, interface_macs, interfaces, vendor, if_table, "
-             "lldp_neighbors FROM snmp_devices"))
+             "SELECT ip, status, mac, host_vendor, sys_name, sys_descr, sys_object_id, "
+             "sys_contact, sys_location, sys_uptime_ticks, interface_macs, interfaces, "
+             "snmp_vendor, if_table, lldp_neighbors FROM probe_devices"))
     {
-        if (row.size() < 12 || row[0].empty())
+        if (row.size() < 15 || row[0].empty())
             continue;
 
-        auto& rec = byIp[row[0]];
+        auto& rec          = byIp[row[0]];
         rec.ip             = row[0];
-        rec.hasSnmp        = true;
-        rec.sysName        = row[1];
-        rec.sysDescr       = row[2];
-        rec.sysObjectId    = row[3];
-        rec.sysContact     = row[4];
-        rec.sysLocation    = row[5];
-        rec.sysUpTimeTicks = static_cast<std::uint32_t>(std::strtoul(row[6].c_str(), nullptr, 10));
-        rec.snmpVendor     = row[9];
+        // ICMP stage.
+        rec.hostMac        = row[2];
+        rec.hostVendor     = row[3];
+        // SNMP / vendor-API stage.
+        rec.sysName        = row[4];
+        rec.sysDescr       = row[5];
+        rec.sysObjectId    = row[6];
+        rec.sysContact     = row[7];
+        rec.sysLocation    = row[8];
+        rec.sysUpTimeTicks = static_cast<std::uint32_t>(std::strtoul(row[9].c_str(), nullptr, 10));
+        rec.snmpVendor     = row[12];
 
-        auto ifT = nlohmann::json::parse(row[10], nullptr, false);
+        auto ifT = nlohmann::json::parse(row[13], nullptr, false);
         if (ifT.is_array()) rec.ifTable = std::move(ifT);
-        auto nb = nlohmann::json::parse(row[11], nullptr, false);
+        auto nb = nlohmann::json::parse(row[14], nullptr, false);
         if (nb.is_array()) rec.lldp = std::move(nb);
 
         // interface_macs is a JSONB array of MAC strings. Keep only real, groupable
         // MACs (drop all-zero/virtual) and dedupe — agents often repeat the same MAC
         // across every ifTable row.
-        auto macsJson = nlohmann::json::parse(row[7], nullptr, false);
+        auto macsJson = nlohmann::json::parse(row[10], nullptr, false);
         if (macsJson.is_array())
         {
             for (const auto& m : macsJson)
@@ -217,7 +211,7 @@ std::vector<DeviceGroup> DeviceService::groups() const
         }
 
         // interfaces is a JSONB array of {ip, netmask, if_index, if_name}.
-        auto ifJson = nlohmann::json::parse(row[8], nullptr, false);
+        auto ifJson = nlohmann::json::parse(row[11], nullptr, false);
         if (ifJson.is_array())
         {
             for (const auto& it : ifJson)
@@ -233,6 +227,12 @@ std::vector<DeviceGroup> DeviceService::groups() const
                     rec.interfaces.push_back(std::move(di));
             }
         }
+
+        // A device is "SNMP/API-managed" if any identity/topology data was collected
+        // (the SNMP/API stage ran and returned something). Drives host vs network/server
+        // classification, grouping primary selection, and vendor source.
+        rec.hasSnmp = !rec.sysName.empty() || !rec.sysObjectId.empty() ||
+                      !rec.macs.empty() || !rec.interfaces.empty() || !rec.ifTable.empty();
     }
 
     if (byIp.empty())

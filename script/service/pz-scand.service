@@ -1,0 +1,23 @@
+[Unit]
+Description=PZ Scan Daemon (SNMP + vendor API)
+
+After=pz-ipcd.service postgresql.service pz-db-ready.service
+Requires=pz-ipcd.service
+Wants=postgresql.service pz-db-ready.service
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+ExecStart=/opt/pretzel/bin/pz-scand
+
+Restart=always
+RestartSec=3
+
+LimitNOFILE=65536
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pz-scand
+
+[Install]
+WantedBy=pretzel.target

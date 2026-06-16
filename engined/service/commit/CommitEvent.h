@@ -13,7 +13,8 @@ enum class CommitEventType : std::uint32_t
 {
     Unknown               = 0,
     ReceiveSettingsCommit = 1,
-    ReloadComplete        = 2,  // fired by BootstrapService after a reload cycle finishes
+    ReloadComplete        = 2,  // fired by BootstrapService after a reload converges
+    ReloadFailed          = 3,  // fired by BootstrapService when a reload times out
 };
 
 class CommitEvent final : public EnginedEvent

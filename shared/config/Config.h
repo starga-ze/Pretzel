@@ -1,6 +1,7 @@
 #pragma once
 
 #include <nlohmann/json.hpp>
+#include <cstdint>
 #include <string>
 
 namespace pz::config
@@ -58,6 +59,12 @@ public:
     // i.e. the latest committed version. Used by the commit pipeline as the base for
     // the next version.
     static nlohmann::json runningConfigRoot();
+
+    // The version of the currently-loaded (cached) running-config: the highest active
+    // running_config row, or 0 when the config came from the startup-config file
+    // fallback (DB empty/unreachable). Each service daemon reports this in its
+    // RuntimeReady so engined can gate bootstrap on config-version convergence.
+    static std::uint64_t runningConfigVersion();
 
     // engined-only pre-flight: ensure the DB connection + schema (DDL), then seed the
     // config store. engined is the single DB writer and boots before every other

@@ -140,12 +140,12 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
 
     LOG_INFO("ProbeService: ProbeResult alive={} ips={}", aliveCount, ips.size());
 
-    // Build an IP→MAC map from every device's learned ARP table (snmp_devices.
+    // Build an IP→MAC map from every device's learned ARP table (probe_devices.
     // arp_entries) so SNMP-less hosts can be tagged with a MAC + OUI vendor (laptop/
     // AP/phone). Empty until the first SNMP scan has run.
     auto& db = pz::db::Database::instance();
     std::unordered_map<std::string, std::string> ipToMac;
-    for (const auto& row : db.queryRows("SELECT arp_entries FROM snmp_devices "
+    for (const auto& row : db.queryRows("SELECT arp_entries FROM probe_devices "
                                         "WHERE arp_entries IS NOT NULL"))
     {
         if (row.empty())
@@ -162,11 +162,12 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
         }
     }
 
-    // Persist the alive set to icmp_devices (engined is the single DB writer). This is
-    // an authoritative snapshot of the currently-reachable IPs, so replace the table
-    // wholesale — mirrors ScanService's snmp_devices replace. exec() fails soft when DB down.
+    // Persist the alive set into probe_devices (engined is the single DB writer).
+    // ProbeService owns the ICMP-stage columns (status/mac/host_vendor) AND the row
+    // lifecycle: each alive IP is upserted, then IPs that dropped out of the sweep are
+    // pruned (taking their SNMP/API columns with them). The SNMP/API columns are left
+    // untouched here — ScanService owns them. exec() fails soft when the DB is down.
     auto& vendorResolver = serviceManager.vendorResolver();
-    db.exec("DELETE FROM icmp_devices");
     for (const auto& ip : ips)
     {
         std::string mac;
@@ -178,11 +179,26 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
             vendor = vendorResolver.vendorForMac(mac);
         }
 
-        db.exec("INSERT INTO icmp_devices (ip, status, mac, vendor) "
+        db.exec("INSERT INTO probe_devices (ip, status, mac, host_vendor) "
                 "VALUES ($1, 'alive', $2, $3) "
                 "ON CONFLICT (ip) DO UPDATE SET status = 'alive', "
-                "  mac = EXCLUDED.mac, vendor = EXCLUDED.vendor, updated_at = now()",
+                "  mac = EXCLUDED.mac, host_vendor = EXCLUDED.host_vendor, updated_at = now()",
                 {ip, mac, vendor});
+    }
+
+    // Prune rows whose IP is no longer reachable. Guarded against an empty sweep so a
+    // transient zero-alive cycle can't wipe the whole inventory. IPs are validated
+    // IPv4 from the ICMP path, safe to inline as a text[] literal.
+    if (!ips.empty())
+    {
+        std::string arr = "{";
+        for (size_t i = 0; i < ips.size(); ++i)
+        {
+            if (i) arr += ',';
+            arr += ips[i];
+        }
+        arr += "}";
+        db.exec("DELETE FROM probe_devices WHERE ip <> ALL($1::text[])", {arr});
     }
 
     serviceManager.setAliveIps(std::move(ips));

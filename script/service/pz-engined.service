@@ -8,7 +8,6 @@ PartOf=pretzel.target
 
 [Service]
 Type=simple
-RuntimeDirectory=pretzel
 ExecStart=/opt/pretzel/bin/pz-engined
 
 Restart=always

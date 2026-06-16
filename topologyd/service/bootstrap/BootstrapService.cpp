@@ -57,6 +57,7 @@ void BootstrapService::start()
     m_startedAt = std::chrono::steady_clock::now();
     m_lastClientHelloSentAt = {};
     m_lastRuntimeReadySentAt = {};
+    m_bootSlowWarned = false;
 
     LOG_INFO("bootstrap started");
 }
@@ -225,7 +226,7 @@ void BootstrapService::handleAction(TopologydServiceManager& serviceManager,
             return;
         }
 
-        LOG_INFO("bootstrap: sent ClientHello, awaiting ServerHello");
+        LOG_DEBUG("bootstrap: sent ClientHello, awaiting ServerHello");
         msg = buildClientHelloMessage();
         break;
     }
@@ -239,7 +240,7 @@ void BootstrapService::handleAction(TopologydServiceManager& serviceManager,
             return;
         }
 
-        LOG_INFO("bootstrap: sent RuntimeReady, awaiting RuntimeStart");
+        LOG_DEBUG("bootstrap: sent RuntimeReady, awaiting RuntimeStart");
         msg = buildRuntimeReadyMessage();
         break;
     }
@@ -268,7 +269,7 @@ void BootstrapService::onServerHello(TopologydServiceManager& serviceManager,
     m_state = State::WaitRuntimeStart;
     m_lastRuntimeReadySentAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("bootstrap: state changed to WaitRuntimeStart");
+    LOG_DEBUG("bootstrap: state changed to WaitRuntimeStart");
 
     auto action = m_actionFactory->create(
         TopologydActionDomain::Bootstrap,
@@ -290,26 +291,23 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 
     m_state = State::Ready;
 
-    LOG_INFO("bootstrap: state changed to Ready");
+    LOG_DEBUG("bootstrap: state changed to Ready");
 }
 
 bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
                                     const char* stateName)
 {
-    if (m_state == State::Failed)
+    // Cold boot never gives up: engined may simply be slow to broadcast RuntimeStart
+    // (e.g. another service daemon is lagging). Warn once on crossing the threshold,
+    // then keep retrying the handshake indefinitely rather than wedging in Failed.
+    if (now - m_startedAt >= bootstrapTimeout() && !m_bootSlowWarned)
     {
-        return true;
+        m_bootSlowWarned = true;
+        LOG_WARN("bootstrap: still waiting in state={} after {}s — will keep retrying",
+                 stateName,
+                 std::chrono::duration_cast<std::chrono::seconds>(now - m_startedAt).count());
     }
-
-    if (now - m_startedAt < bootstrapTimeout())
-    {
-        return false;
-    }
-
-    LOG_ERROR("bootstrap: timed out — state={}", stateName);
-
-    m_state = State::Failed;
-    return true;
+    return false;
 }
 
 std::unique_ptr<pz::ipc::IpcMessage>
@@ -339,8 +337,10 @@ BootstrapService::buildClientHelloMessage() const
 std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildRuntimeReadyMessage() const
 {
-    std::string name =
-        pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Topologyd);
+    nlohmann::json payloadJson;
+    payloadJson["daemon"]          = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Topologyd);
+    payloadJson["applied_version"] = pz::config::Config::runningConfigVersion();
+    const std::string payload = payloadJson.dump();
 
     auto flag =
         pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
@@ -354,8 +354,8 @@ BootstrapService::buildRuntimeReadyMessage() const
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(
-        reinterpret_cast<const std::uint8_t*>(name.data()),
-        name.size());
+        reinterpret_cast<const std::uint8_t*>(payload.data()),
+        payload.size());
 
     return msg;
 }

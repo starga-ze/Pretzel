@@ -346,6 +346,7 @@ bool IpcServerHandler::bindRoute(pz::ipc::IpcDaemon daemon, int fd)
     // Rebind after disconnect: new connection, new generation.
     state.fd    = fd;
     state.ready = false;
+    state.appliedVersion = 0;  // must re-report applied config version after reconnect
     state.generation++;
 
     LOG_DEBUG("Runtime route rebound: daemon={} fd={} ready=false gen={}",
@@ -383,6 +384,7 @@ void IpcServerHandler::removeRoute(int fd)
 
         state.fd = -1;
         state.ready = false;
+        state.appliedVersion = 0;
 
         LOG_DEBUG("Runtime route removed: daemon={}, fd={}",
                   pz::ipc::IpcProtocol::daemonToStr(daemon),
@@ -390,7 +392,8 @@ void IpcServerHandler::removeRoute(int fd)
     }
 }
 
-void IpcServerHandler::markRuntimeReady(pz::ipc::IpcDaemon daemon, bool ready)
+void IpcServerHandler::markRuntimeReady(pz::ipc::IpcDaemon daemon, bool ready,
+                                        uint64_t appliedVersion)
 {
     auto it = m_runtimeTable.find(daemon);
     if (it == m_runtimeTable.end())
@@ -400,12 +403,26 @@ void IpcServerHandler::markRuntimeReady(pz::ipc::IpcDaemon daemon, bool ready)
         return;
     }
 
+    const bool     prevReady   = it->second.ready;
+    const uint64_t prevVersion = it->second.appliedVersion;
+
     it->second.ready = ready;
 
-    LOG_INFO("Runtime ready changed: daemon={}, fd={}, ready={}",
-             pz::ipc::IpcProtocol::daemonToStr(daemon),
-             it->second.fd,
-             ready);
+    // appliedVersion==0 means the daemon did not report a version (legacy bare-name
+    // RuntimeReady payload); keep whatever was last recorded in that case.
+    if (appliedVersion > 0)
+    {
+        it->second.appliedVersion = appliedVersion;
+    }
+
+    // RuntimeReady arrives every second while a daemon waits; only log the actual
+    // transition (first ready, or a version change), not each repeat.
+    if (it->second.ready != prevReady || it->second.appliedVersion != prevVersion)
+    {
+        LOG_INFO("Runtime ready changed: daemon={} fd={} ready={} applied_version={}",
+                 pz::ipc::IpcProtocol::daemonToStr(daemon),
+                 it->second.fd, it->second.ready, it->second.appliedVersion);
+    }
 }
 
 const std::unordered_map<pz::ipc::IpcDaemon, RuntimeState>& IpcServerHandler::getRuntimeTable() const

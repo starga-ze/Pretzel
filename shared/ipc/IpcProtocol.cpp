@@ -48,7 +48,7 @@ const char* IpcProtocol::daemonToStr(IpcDaemon daemon) noexcept
     case IpcDaemon::Engined:   return "engined";
     case IpcDaemon::Authd:     return "authd";
     case IpcDaemon::Icmpd:     return "icmpd";
-    case IpcDaemon::Snmpd:     return "snmpd";
+    case IpcDaemon::Scand:     return "scand";
     case IpcDaemon::Topologyd: return "topologyd";
     case IpcDaemon::Mgmtd:     return "mgmtd";
     case IpcDaemon::Broadcast: return "broadcast";
@@ -79,8 +79,8 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::ConfigReloadResponse:  return "ConfigReloadResponse";
     case IpcCmd::SettingsCommitRequest: return "SettingsCommitRequest";
     case IpcCmd::CommitQueueStatus:     return "CommitQueueStatus";
-    case IpcCmd::SnmpScanRequest:       return "SnmpScanRequest";
-    case IpcCmd::SnmpResult:            return "SnmpResult";
+    case IpcCmd::ScanRequest:       return "ScanRequest";
+    case IpcCmd::ScanResult:            return "ScanResult";
     case IpcCmd::AdminPasswordUpdate:   return "AdminPasswordUpdate";
     case IpcCmd::ProbeRequest:          return "ProbeRequest";
     default:                            return "Unknown";
@@ -147,9 +147,9 @@ pz::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
         return IpcDaemon::Icmpd;
     }
 
-    if (daemon == "snmpd")
+    if (daemon == "scand")
     {
-        return IpcDaemon::Snmpd;
+        return IpcDaemon::Scand;
     }
 
     if (daemon == "topologyd")

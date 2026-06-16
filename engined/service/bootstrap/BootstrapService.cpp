@@ -41,9 +41,20 @@ std::chrono::milliseconds syncRequestInterval()
     return std::chrono::seconds(bootstrapConfig().value("sync_request_interval_sec", 1));
 }
 
-std::chrono::milliseconds bootstrapTimeout()
+// Cold-boot is never fatal: this is only the cadence at which engined logs a "still
+// waiting" warning while service daemons come up (they may legitimately be slow, e.g.
+// a slow DB). It never aborts the handshake.
+std::chrono::milliseconds bootWarnInterval()
 {
     return std::chrono::seconds(bootstrapConfig().value("bootstrap_timeout_sec", 10));
+}
+
+// A commit-triggered reload IS bounded: if the fleet has not converged to the new
+// version within this window, engined gives up the reload (reports failure to mgmtd)
+// and returns to Running rather than wedging.
+std::chrono::milliseconds reloadTimeout()
+{
+    return std::chrono::seconds(bootstrapConfig().value("reload_timeout_sec", 20));
 }
 
 } // namespace
@@ -61,6 +72,10 @@ void BootstrapService::start()
     m_startedAt = std::chrono::steady_clock::now();
     m_lastClientHelloSentAt = {};
     m_lastSyncRequestSentAt = {};
+    m_lastBootWarnAt = {};
+    m_reloadStartedAt = {};
+    m_isReload = false;
+    m_bootstrapped = false;
 
     initProcessMap();
 
@@ -80,10 +95,8 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
     {
     case State::Init:
     {
-        if (checkTimeout(now, "Init"))
-        {
-            return nullptr;
-        }
+        // Cold boot: no terminal failure. Warn if slow, then proceed.
+        warnIfBootSlow(now, "Init");
 
         m_state = State::WaitHandshake;
         m_lastClientHelloSentAt = now;
@@ -97,10 +110,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 
     case State::WaitHandshake:
     {
-        if (checkTimeout(now, "WaitHandshake"))
-        {
-            return nullptr;
-        }
+        warnIfBootSlow(now, "WaitHandshake");
 
         if (now - m_lastClientHelloSentAt >= clientHelloInterval())
         {
@@ -116,19 +126,34 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         return nullptr;
     }
 
-    case State::WaitSync:
+    case State::Reconcile:
     {
-        if (checkTimeout(now, "WaitSync"))
+        // Steady state: keep refreshing the runtime snapshot and converging the fleet.
+        // The actual decision (broadcast RuntimeStart / declare reload done) happens in
+        // onSyncResponse when each fresh snapshot arrives. Here we only (a) bound a
+        // reload, and (b) keep the SyncRequest heartbeat going.
+        if (m_isReload && now - m_reloadStartedAt >= reloadTimeout())
         {
-            return nullptr;
+            LOG_ERROR("bootstrap: reload to version={} did not converge within {}s — "
+                      "abandoning reload (it stays the committed intent; daemons adopt "
+                      "it as they restart)", m_targetVersion,
+                      std::chrono::duration_cast<std::chrono::seconds>(reloadTimeout()).count());
+            m_isReload = false;
+
+            return m_eventFactory->create(
+                EnginedEventDomain::Bootstrap,
+                static_cast<std::uint32_t>(BootstrapEventType::ReloadFailed));
+        }
+
+        // While the initial bootstrap has not completed, warn (throttled) if it drags.
+        if (!m_bootstrapped)
+        {
+            warnIfBootSlow(now, "Reconcile");
         }
 
         if (now - m_lastSyncRequestSentAt >= syncRequestInterval())
         {
             m_lastSyncRequestSentAt = now;
-
-            LOG_DEBUG("schedule Re-SendSyncRequest");
-
             return m_eventFactory->create(
                 EnginedEventDomain::Bootstrap,
                 static_cast<std::uint32_t>(BootstrapEventType::SendSyncRequest));
@@ -136,20 +161,6 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 
         return nullptr;
     }
-
-    case State::Ready:
-    {
-        m_state = State::Running;
-        LOG_INFO("bootstrap: state changed to Running");
-
-        return m_eventFactory->create(
-            EnginedEventDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapEventType::SendRuntimeStart));
-    }
-
-    case State::Running:
-    case State::Failed:
-        return nullptr;
     }
 
     return nullptr;
@@ -157,7 +168,10 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 
 bool BootstrapService::isReady() const
 {
-    return m_state == State::Running;
+    // Latched: engined's own services start after the first convergence and keep running
+    // thereafter — a peer daemon restarting must not pause engined's work. Reconciliation
+    // continues in the background regardless of this flag.
+    return m_bootstrapped;
 }
 
 void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
@@ -213,7 +227,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
             return;
         }
 
-        onSyncResponse(*msg);
+        onSyncResponse(serviceManager, *msg);
         break;
     }
 
@@ -229,6 +243,16 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
 
     case BootstrapEventType::ReceiveRuntimeStart:
     {
+        break;
+    }
+
+    case BootstrapEventType::ReloadFailed:
+    {
+        auto action = m_actionFactory->create(
+            EnginedActionDomain::Bootstrap,
+            static_cast<std::uint32_t>(BootstrapActionType::SendReloadFailed));
+
+        serviceManager.postAction(std::move(action));
         break;
     }
 
@@ -262,29 +286,47 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
 
     case BootstrapActionType::SendSyncRequest:
     {
-        if (m_state != State::WaitSync)
+        if (m_state != State::Reconcile)
         {
             LOG_DEBUG("skip SendSyncRequest state={}",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_INFO("Tx SyncRequest, waiting SyncResponse");
+        LOG_TRACE("Tx SyncRequest");
         msg = buildSyncRequestMessage();
         break;
     }
 
     case BootstrapActionType::SendRuntimeStart:
     {
-        LOG_INFO("Tx RuntimeStart (broadcast)");
+        LOG_INFO("Tx RuntimeStart (broadcast, target version={})", m_targetVersion);
         msg = buildRuntimeStartMessage();
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
+
+        // "Bless" every converged daemon at its current generation: we have now cleared
+        // this connection epoch to run, so we won't re-send RuntimeStart until the daemon
+        // reconnects (generation bumps past blessedGeneration again).
+        for (auto& [daemon, ps] : m_processMap)
+        {
+            if (ps.connected && ps.appliedVersion >= m_targetVersion)
+            {
+                ps.blessedGeneration = ps.generation;
+            }
+        }
+
+        const bool firstConvergence = !m_bootstrapped;
+        m_bootstrapped = true;
+        if (firstConvergence)
+        {
+            LOG_INFO("bootstrap: initial convergence complete at version={}", m_targetVersion);
+        }
 
         if (m_isReload)
         {
             m_isReload = false;
-            LOG_INFO("Tx ConfigReloadResponse to mgmtd");
-            serviceManager.txRouter().handleIpcMessage(buildConfigReloadResponse());
+            LOG_INFO("Tx ConfigReloadResponse(ok) to mgmtd");
+            serviceManager.txRouter().handleIpcMessage(buildConfigReloadResponse(true));
 
             // Notify CommitService that the reload cycle is complete so it can
             // dequeue the next pending task.
@@ -293,6 +335,19 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
                 static_cast<std::uint32_t>(CommitEventType::ReloadComplete));
             serviceManager.postEvent(std::move(doneEvent));
         }
+        return;
+    }
+
+    case BootstrapActionType::SendReloadFailed:
+    {
+        LOG_INFO("Tx ConfigReloadResponse(failed) to mgmtd");
+        serviceManager.txRouter().handleIpcMessage(buildConfigReloadResponse(false));
+
+        // Let CommitService mark the task failed and advance the queue.
+        auto failEvent = serviceManager.eventFactory()->create(
+            EnginedEventDomain::Commit,
+            static_cast<std::uint32_t>(CommitEventType::ReloadFailed));
+        serviceManager.postEvent(std::move(failEvent));
         return;
     }
 
@@ -317,10 +372,11 @@ void BootstrapService::onServerHello(EnginedServiceManager& serviceManager,
         return;
     }
 
-    m_state = State::WaitSync;
+    m_state = State::Reconcile;
     m_lastSyncRequestSentAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("state change to WaitSync");
+    LOG_INFO("bootstrap: handshake complete — entering Reconcile (target version={})",
+             m_targetVersion);
 
     auto action = m_actionFactory->create(
         EnginedActionDomain::Bootstrap,
@@ -329,88 +385,122 @@ void BootstrapService::onServerHello(EnginedServiceManager& serviceManager,
     serviceManager.postAction(std::move(action));
 }
 
-void BootstrapService::onSyncResponse(const pz::ipc::IpcMessage& msg)
+void BootstrapService::onSyncResponse(EnginedServiceManager& serviceManager,
+                                      const pz::ipc::IpcMessage& msg)
 {
-    if (m_state != State::WaitSync)
+    if (m_state != State::Reconcile)
     {
         LOG_WARN("SyncResponse in unexpected state={}",
                  static_cast<int>(m_state));
         return;
     }
 
+    // Fold the fresh snapshot into the desired/actual comparison.
     if (!updateProcessMap(msg))
     {
-        LOG_WARN("SyncResponse parse failed, waiting Sync...");
+        LOG_WARN("SyncResponse parse failed");
         dumpProcessMap();
         return;
     }
 
     if (!isAllProcessReady())
     {
-        LOG_DEBUG("service daemons not all ready, waiting Sync...");
+        // Not every daemon is connected and at the target version yet — keep waiting.
+        // The SyncRequest heartbeat in schedule() will bring the next snapshot.
+        LOG_DEBUG("fleet not yet converged to version={}", m_targetVersion);
         dumpProcessMap();
         return;
     }
 
-    LOG_INFO("synchronization complete");
-    LOG_INFO("bootstrap: state changed to Ready");
+    // Everyone is connected and at the target version. Has any daemon (re)connected
+    // since we last cleared it to run? If so it needs a (fresh) RuntimeStart. This
+    // covers all three cases uniformly: cold boot (blessed=0 < gen=1), reload (daemons
+    // execv'd → new generation), and a lone crash-restart (one daemon's generation
+    // jumped past its blessedGeneration). If nobody is stale, steady state — do nothing.
+    bool anyUnblessed = false;
+    for (const auto& [daemon, ps] : m_processMap)
+    {
+        if (ps.generation > ps.blessedGeneration)
+        {
+            anyUnblessed = true;
+            break;
+        }
+    }
 
-    m_state = State::Ready;
+    if (!anyUnblessed)
+    {
+        return;  // converged and everyone already cleared — nothing to do
+    }
+
+    auto action = m_actionFactory->create(
+        EnginedActionDomain::Bootstrap,
+        static_cast<std::uint32_t>(BootstrapActionType::SendRuntimeStart));
+    serviceManager.postAction(std::move(action));
 }
 
-bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
-                                           const char* stateName)
+void BootstrapService::warnIfBootSlow(std::chrono::steady_clock::time_point now,
+                                      const char* stateName)
 {
-    if (m_state == State::Failed)
+    // Cold boot must never give up: a service daemon may simply be slow to come up
+    // (e.g. waiting on the DB). Emit a throttled warning so operators can see the
+    // hold-up, but keep retrying the handshake indefinitely.
+    if (now - m_startedAt < bootWarnInterval())
     {
-        return true;
+        return;
     }
 
-    if (now - m_startedAt < bootstrapTimeout())
+    if (m_lastBootWarnAt.time_since_epoch().count() != 0 &&
+        now - m_lastBootWarnAt < bootWarnInterval())
     {
-        return false;
+        return;
     }
 
-    LOG_ERROR("bootstrap: timed out — state={}", stateName);
-
-    m_state = State::Failed;
-    return true;
+    m_lastBootWarnAt = now;
+    LOG_WARN("bootstrap: still waiting in state={} after {}s — service daemons not yet "
+             "converged to version={}; will keep retrying",
+             stateName,
+             std::chrono::duration_cast<std::chrono::seconds>(now - m_startedAt).count(),
+             m_targetVersion);
+    dumpProcessMap();
 }
 
 void BootstrapService::initProcessMap()
 {
     m_processMap.clear();
 
-    // Only the service-layer daemons that engined must wait for.
-    // ipcd and mgmtd are infrastructure: always up, never in SyncResponse,
-    // and their readiness is not gated here.
-    // requiredGeneration=0 at cold-start means any first-connect (gen>=1)
-    // is accepted — no prior baseline to compare against.
+    // Only the service-layer daemons that engined must wait for. ipcd and mgmtd are
+    // infrastructure: never gated here.
     m_processMap[pz::ipc::IpcDaemon::Authd]    = {false, 0, 0};
     m_processMap[pz::ipc::IpcDaemon::Icmpd]    = {false, 0, 0};
-    m_processMap[pz::ipc::IpcDaemon::Snmpd]    = {false, 0, 0};
+    m_processMap[pz::ipc::IpcDaemon::Scand]    = {false, 0, 0};
     m_processMap[pz::ipc::IpcDaemon::Topologyd]= {false, 0, 0};
+
+    // Cold-start convergence target: the running-config version engined itself loaded.
+    // Every service daemon loads the same version, so they converge immediately; a
+    // daemon stuck on the startup-file fallback (version 0) while the DB has a real
+    // version will correctly read as not-yet-converged.
+    m_targetVersion = pz::config::Config::runningConfigVersion();
+
+    LOG_INFO("bootstrap: cold-start target running-config version={}", m_targetVersion);
 }
 
 void BootstrapService::scheduleServiceReload()
 {
-    // After sending ConfigReload to service daemons, re-enter WaitSync.
-    // Set requiredGeneration = knownGeneration + 1 for each daemon so that
-    // a daemon still alive from the previous cycle (same generation) is
-    // rejected until it has disconnected and reconnected (new generation).
-    for (auto& [daemon, ps] : m_processMap)
-    {
-        ps.ready              = false;
-        ps.requiredGeneration = ps.knownGeneration + 1;
-        // knownGeneration is preserved — it's the baseline for the "+1"
-    }
+    // The commit pipeline has already persisted (and cache-invalidated) the new
+    // running-config version. Convergence target = that version. No generation
+    // bookkeeping: a daemon counts as ready once it reports appliedVersion >= target,
+    // whether it restarted (execv → reconnect → reload) or hot-applied in place.
+    m_targetVersion = pz::config::Config::runningConfigVersion();
 
-    m_state = State::WaitSync;
-    m_startedAt = std::chrono::steady_clock::now();
-    m_lastSyncRequestSentAt = {};
-
+    // Stay in Reconcile — just raise the target and arm the reload deadline. Daemons
+    // execv on ConfigReload, reconnect with a new generation, reload the new version,
+    // and the next converged snapshot re-blesses them (sending RuntimeStart) and reports
+    // success to mgmtd. No state reset, no generation bookkeeping.
     m_isReload = true;
-    LOG_INFO("service-layer reload — re-entering WaitSync");
+    m_reloadStartedAt = std::chrono::steady_clock::now();
+
+    LOG_INFO("service-layer reload — converging to running-config version={}",
+             m_targetVersion);
 }
 
 bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
@@ -440,16 +530,15 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
 
         for (const auto& item : root["daemons"])
         {
-            if (!item.contains("daemon") || !item.contains("ready") ||
-                !item["daemon"].is_string() || !item["ready"].is_boolean())
+            if (!item.contains("daemon") || !item["daemon"].is_string())
             {
                 LOG_WARN("SyncResponse daemon item invalid: {}", item.dump());
                 continue;
             }
 
-            const std::string daemonName = item["daemon"].get<std::string>();
-            const bool        ready      = item["ready"].get<bool>();
-            const uint32_t    generation = item.value("generation", 0u);
+            const std::string daemonName     = item["daemon"].get<std::string>();
+            const uint64_t    appliedVersion = item.value("applied_version", 0ull);
+            const uint32_t    generation     = item.value("generation", 0u);
             const pz::ipc::IpcDaemon daemon = pz::ipc::IpcProtocol::strToDaemon(daemonName);
 
             reported.insert(daemon);
@@ -457,39 +546,24 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
             auto it = m_processMap.find(daemon);
             if (it == m_processMap.end())
             {
-                LOG_DEBUG("ignore unknown daemon: {}", daemonName);
+                LOG_TRACE("ignore unknown daemon: {}", daemonName);
                 continue;
             }
 
             ProcessState& ps = it->second;
-            ps.knownGeneration = generation;
-
-            if (!ready)
-            {
-                ps.ready = false;
-            }
-            else if (generation >= ps.requiredGeneration)
-            {
-                // ready=true AND fresh enough generation — accept.
-                ps.ready = true;
-            }
-            else
-            {
-                // ready=true but stale generation: daemon is still alive from
-                // the previous cycle; wait for it to disconnect and reconnect.
-                ps.ready = false;
-                LOG_DEBUG("{} ready but stale gen={} required={}",
-                          daemonName, generation, ps.requiredGeneration);
-            }
+            ps.connected      = true;
+            ps.appliedVersion = appliedVersion;
+            ps.generation     = generation;
         }
 
-        // Daemons absent from SyncResponse have fd<0 (disconnected from ipcd).
-        // Mark not-ready; their generation will increment on next reconnect.
+        // Daemons absent from SyncResponse have fd<0 (disconnected from ipcd): they
+        // have applied nothing in this connection epoch, so reset to version 0.
         for (auto& [daemon, ps] : m_processMap)
         {
             if (reported.find(daemon) == reported.end())
             {
-                ps.ready = false;
+                ps.connected      = false;
+                ps.appliedVersion = 0;
             }
         }
     }
@@ -510,7 +584,7 @@ bool BootstrapService::isProcessReady(pz::ipc::IpcDaemon daemon) const
         return false;
     }
 
-    return it->second.ready;
+    return it->second.connected && it->second.appliedVersion >= m_targetVersion;
 }
 
 bool BootstrapService::isAllProcessReady() const
@@ -521,20 +595,18 @@ bool BootstrapService::isAllProcessReady() const
         return false;
     }
 
-    bool allReady = true;
-
+    // Pure predicate — no logging. A daemon being mid-converge is normal during boot
+    // and reload; per-daemon detail is in dumpProcessMap() (DEBUG) and a genuinely stuck
+    // boot is surfaced by the throttled warnIfBootSlow().
     for (const auto& [daemon, ps] : m_processMap)
     {
-        if (!ps.ready)
+        if (!ps.connected || ps.appliedVersion < m_targetVersion)
         {
-            LOG_WARN("daemon not ready daemon={} gen={} required={}",
-                     pz::ipc::IpcProtocol::daemonToStr(daemon),
-                     ps.knownGeneration, ps.requiredGeneration);
-            allReady = false;
+            return false;
         }
     }
 
-    return allReady;
+    return true;
 }
 
 void BootstrapService::dumpProcessMap() const
@@ -542,7 +614,7 @@ void BootstrapService::dumpProcessMap() const
     static const std::vector<pz::ipc::IpcDaemon> dumpOrder = {
         pz::ipc::IpcDaemon::Authd,
         pz::ipc::IpcDaemon::Icmpd,
-        pz::ipc::IpcDaemon::Snmpd,
+        pz::ipc::IpcDaemon::Scand,
         pz::ipc::IpcDaemon::Topologyd,
     };
 
@@ -557,14 +629,18 @@ void BootstrapService::dumpProcessMap() const
             continue;
         }
 
+        const bool converged =
+            it->second.connected && it->second.appliedVersion >= m_targetVersion;
         dump += "  - ";
         dump += pz::ipc::IpcProtocol::daemonToStr(daemon);
         dump += " : ";
-        dump += it->second.ready ? "ready" : "not-ready";
-        dump += " (gen=";
-        dump += std::to_string(it->second.knownGeneration);
-        dump += " required=";
-        dump += std::to_string(it->second.requiredGeneration);
+        dump += converged ? "ready" : "not-ready";
+        dump += " (applied_version=";
+        dump += std::to_string(it->second.appliedVersion);
+        dump += " target=";
+        dump += std::to_string(m_targetVersion);
+        dump += " gen=";
+        dump += std::to_string(it->second.generation);
         dump += ")\n";
     }
 
@@ -614,7 +690,11 @@ BootstrapService::buildSyncRequestMessage() const
 std::unique_ptr<pz::ipc::IpcMessage>
 BootstrapService::buildRuntimeStartMessage() const
 {
-    const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Engined);
+    // Payload announces the converged epoch the fleet has reached.
+    nlohmann::json payloadJson;
+    payloadJson["daemon"]         = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Engined);
+    payloadJson["target_version"] = m_targetVersion;
+    const std::string payload = payloadJson.dump();
 
     const auto flag = pz::ipc::IpcProtocol::orFlag(pz::ipc::IpcFlag::Request, pz::ipc::IpcFlag::Broadcast);
 
@@ -626,15 +706,22 @@ BootstrapService::buildRuntimeStartMessage() const
         flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
-    msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
 
     return msg;
 }
 
 std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildConfigReloadResponse() const
+BootstrapService::buildConfigReloadResponse(bool ok) const
 {
-    const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
+    // mgmtd currently treats any ConfigReloadResponse as "reload acknowledged" and
+    // unblocks the HTTP commit. The Error flag and payload distinguish a failed reload
+    // so mgmtd can surface it once it learns to read them.
+    auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
+    if (!ok)
+    {
+        flag = pz::ipc::IpcProtocol::orFlag(pz::ipc::IpcFlag::Response, pz::ipc::IpcFlag::Error);
+    }
 
     pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
         pz::ipc::IpcDaemon::Engined,
@@ -643,7 +730,15 @@ BootstrapService::buildConfigReloadResponse() const
         0,
         flag);
 
-    return std::make_unique<pz::ipc::IpcMessage>(std::move(header));
+    auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
+
+    nlohmann::json payloadJson;
+    payloadJson["ok"]             = ok;
+    payloadJson["target_version"] = m_targetVersion;
+    const std::string payload = payloadJson.dump();
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
+
+    return msg;
 }
 
 } // namespace pz::engined

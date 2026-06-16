@@ -17,7 +17,8 @@ enum class BootstrapEventType : std::uint32_t
     SendSyncRequest      = 3,
     ReceiveSyncResponse  = 4,
     SendRuntimeStart     = 5,
-    ReceiveRuntimeStart  = 6
+    ReceiveRuntimeStart  = 6,
+    ReloadFailed         = 7   // a commit-triggered reload failed to converge in time
 };
 
 class BootstrapEvent final : public EnginedEvent

@@ -11,9 +11,9 @@ namespace pz::engined
 
 class EnginedServiceManager;
 
-// engined-owned SNMP scan orchestrator. On its own timer it asks snmpd to scan the
+// engined-owned SNMP scan orchestrator. On its own timer it asks scand to scan the
 // latest ICMP probe alive-IP snapshot (held in the service manager), then persists
-// the returned SnmpResult into the snmp_devices table — engined is the single DB
+// the returned ScanResult into the probe_devices table — engined is the single DB
 // writer. The result is an authoritative snapshot of the scanned IPs.
 class ScanService
 {

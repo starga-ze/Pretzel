@@ -1,0 +1,130 @@
+#include "ScandCore.h"
+#include "util/Logger.h"
+
+namespace pz::scand
+{
+
+ScandCore::ScandCore() :
+    Core("scand")
+{
+}
+
+bool ScandCore::onInit()
+{
+    const auto& cfg = m_config.json();
+
+    const auto& log = cfg["system"]["logger"];
+    m_loggerConfig.name = log["name"];
+    m_loggerConfig.file = log["file"];
+    m_loggerConfig.maxFileSize = log["max_file_size"];
+    m_loggerConfig.maxFiles = log["max_files"];
+
+    const auto& ipc = cfg["system"]["ipc"];
+
+    m_ipcConfig.socketPath = ipc["socket_path"];
+    m_ipcConfig.maxConnections = ipc["max_connections"];
+    m_ipcConfig.maxFrameSize = ipc["max_frame_size"];
+    m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
+    m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
+
+    pz::util::Logger::Init(
+            m_loggerConfig.name,
+            m_loggerConfig.file,
+            m_loggerConfig.maxFileSize,
+            m_loggerConfig.maxFiles);
+
+    LOG_INFO("scand: starting up");
+
+    m_snmpEngine = std::make_unique<SnmpEngine>();
+    if (!m_snmpEngine->init())
+    {
+        LOG_ERROR("failed to initialize SnmpEngine");
+        return false;
+    }
+
+    m_threadManager = std::make_unique<pz::util::ThreadManager>();
+    if (!m_threadManager)
+    {
+        LOG_ERROR("failed to initialize thread manager");
+        return false;
+    }
+
+    m_ipcClient = std::make_unique<pz::ipc::IpcClient>(m_ipcConfig, pz::ipc::IpcDaemon::Scand);
+
+    if (!m_ipcClient->init())
+    {
+        LOG_ERROR("failed to initialize IPC client");
+        return false;
+    }
+
+    m_eventFactory = std::make_unique<ScandEventFactory>();
+    m_actionFactory = std::make_unique<ScandActionFactory>();
+
+    m_rxRouter = std::make_unique<ScandRxRouter>(m_eventFactory.get());
+    m_txRouter = std::make_unique<ScandTxRouter>(m_ipcClient->handler(),
+                                                  m_snmpEngine.get());
+
+    if (!m_txRouter or !m_rxRouter)
+    {
+        LOG_ERROR("failed to initialize IPC router");
+        return false;
+    }
+
+    m_serviceManager = std::make_unique<ScandServiceManager>(
+        m_eventFactory.get(),
+        m_actionFactory.get(),
+        m_txRouter.get());
+
+    if (!m_serviceManager)
+    {
+        LOG_ERROR("failed to initialize service manager");
+        return false;
+    }
+
+    m_process = std::make_unique<ScandProcess>(m_ipcClient.get(),
+                                               m_serviceManager.get(),
+                                               m_snmpEngine.get());
+
+    if (!m_process)
+    {
+        LOG_ERROR("failed to initialize process");
+        return false;
+    }
+
+    m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
+    m_rxRouter->setServiceManager(m_serviceManager.get());
+
+    // Bind SnmpEngineHandler so it can deliver results back to the RxRouter.
+    m_snmpEngine->handler()->setRxRouter(m_rxRouter.get());
+
+    return true;
+}
+
+void ScandCore::onLoop()
+{
+    if (!m_process->start())
+    {
+        LOG_ERROR("process failed to start");
+        return;
+    }
+
+    while (!stopping())
+    {
+        checkReload();
+        m_process->tick();
+    }
+}
+
+void ScandCore::onShutdown()
+{
+    LOG_INFO("shutting down");
+
+    if (m_threadManager)
+        m_threadManager->stopAll();
+
+    LOG_INFO("all threads stopped");
+
+    pz::util::Logger::Shutdown();
+}
+
+} // namespace pz::scand

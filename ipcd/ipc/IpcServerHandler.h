@@ -20,7 +20,9 @@ struct RuntimeState
 {
     int fd {-1};
     bool ready {false};
-    uint32_t generation {0};  // incremented on every new connection (bindRoute rebind)
+    uint32_t generation {0};      // incremented on every new connection (bindRoute rebind)
+    uint64_t appliedVersion {0};  // running-config version the daemon last reported applying
+                                  // (0 = not yet reported / reset on reconnect)
 };
 
 class IpcServerHandler : public pz::ipc::IpcHandler
@@ -54,7 +56,8 @@ public:
 
     void setRxRouter(pz::router::RxRouter* rxRouter);
 
-    void markRuntimeReady(pz::ipc::IpcDaemon daemon, bool ready = true);
+    void markRuntimeReady(pz::ipc::IpcDaemon daemon, bool ready = true,
+                          uint64_t appliedVersion = 0);
     const std::unordered_map<pz::ipc::IpcDaemon, RuntimeState>& getRuntimeTable() const;
 
 private:

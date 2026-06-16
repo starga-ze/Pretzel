@@ -7,7 +7,11 @@
 namespace pz::ipc
 {
 
-inline constexpr std::uint8_t IPC_PROTOCOL_VERSION = 1;
+// v2: bootstrap convergence payloads — RuntimeReady/SyncResponse carry applied_version,
+// RuntimeStart carries target_version. All daemons are built from this header and
+// deployed together, so the codec's exact-match version check guards against a stale
+// binary that was not redeployed (the failure mode behind the snmpd zombie incident).
+inline constexpr std::uint8_t IPC_PROTOCOL_VERSION = 2;
 inline constexpr std::size_t IPC_MAX_FRAME_SIZE = 64 * 1024;
 
 enum class IpcDaemon : std::uint8_t
@@ -17,7 +21,7 @@ enum class IpcDaemon : std::uint8_t
     Engined   = 2,
     Authd     = 3,
     Icmpd     = 4,
-    Snmpd     = 5,
+    Scand     = 5,
     Topologyd = 6,
     Mgmtd     = 7,
 
@@ -31,9 +35,19 @@ enum class IpcCmd : std::uint16_t
     ClientHello  = 1,
     ServerHello  = 2,
     
+    // SyncRequest : engined -> ipcd, no meaningful payload.
+    // SyncResponse: ipcd -> engined, payload = JSON
+    //   {"daemons":[{"daemon":"icmpd","ready":bool,"generation":N,"applied_version":V}, ...]}.
+    //   applied_version is the running-config version each daemon has loaded/applied
+    //   (0 = not yet reported). engined gates readiness on applied_version >= target.
     SyncRequest  = 3,
     SyncResponse = 4,
 
+    // RuntimeReady: service daemon -> ipcd, payload = JSON
+    //   {"daemon":"icmpd","applied_version":V}. V is the config version the daemon has
+    //   applied. A bare daemon-name string (legacy) is tolerated as applied_version=0.
+    // RuntimeStart: engined -> broadcast, payload = JSON {"target_version":V} — the epoch
+    //   the fleet has converged to. RuntimeStop: reserved.
     RuntimeReady = 5,
     RuntimeStart = 6,
     RuntimeStop  = 7,
@@ -69,13 +83,13 @@ enum class IpcCmd : std::uint16_t
     // Sent whenever the queue changes (task added, started, completed, failed).
     CommitQueueStatus = 111,
 
-    // Unicast from engined to snmpd: payload = JSON {"ips":["..."]} to scan.
+    // Unicast from engined to scand: payload = JSON {"ips":["..."]} to scan.
     // engined drives the scan on its own timer using the latest probe alive IPs.
-    SnmpScanRequest = 112,
+    ScanRequest = 112,
 
-    // Unicast from snmpd to engined: payload = JSON {"devices":[...]} results.
-    // engined (the single DB writer) persists them into the snmp_devices table.
-    SnmpResult = 113,
+    // Unicast from scand to engined: payload = JSON {"devices":[...]} results.
+    // engined (the single DB writer) persists them into the probe_devices table (SNMP/API columns).
+    ScanResult = 113,
 
     // Unicast from mgmtd to engined: payload = JSON {"username","password_hash","salt"}.
     // engined (the single DB writer) writes it into running_config (mgmtd.service.http

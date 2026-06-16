@@ -71,8 +71,8 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
     case pz::ipc::IpcCmd::SettingsCommitRequest:
         return std::make_unique<CommitEvent>(CommitEventType::ReceiveSettingsCommit, std::move(msg));
 
-    case pz::ipc::IpcCmd::SnmpResult:
-        return std::make_unique<ScanEvent>(ScanEventType::ReceiveSnmpResult, std::move(msg));
+    case pz::ipc::IpcCmd::ScanResult:
+        return std::make_unique<ScanEvent>(ScanEventType::ReceiveScanResult, std::move(msg));
 
     case pz::ipc::IpcCmd::ProbeResult:
         return std::make_unique<ProbeEvent>(ProbeEventType::ReceiveProbeResult, std::move(msg));

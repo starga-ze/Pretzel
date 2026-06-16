@@ -48,7 +48,7 @@
     snmp: {
       label:    'SNMP',
       subtitle: 'SNMP polling parameters, community string, and SNMPv3 credentials.',
-      daemons:  ['snmpd'],
+      daemons:  ['scand'],
       domains:  ['scan'],
     },
     lldp: {
@@ -72,7 +72,7 @@
     reply_max_wait_timeout_sec: 'Max Reply Wait (s)',
     poll_interval_sec:          'Poll Interval (s)',
     response_timeout_sec:       'Response Timeout (s)',
-    // SNMP (snmpd/scan)
+    // SNMP (scand/scan)
     community:                  'Community String',
     port:                       'Port',
     timeout_sec:                'Timeout (s)',
@@ -120,7 +120,7 @@
     'reply_idle_timeout_sec', 'reply_max_wait_timeout_sec',
   ]);
 
-  // SNMPv3 fallback credentials (snmpd/scan). `v3` is the global default; `v3_devices`
+  // SNMPv3 fallback credentials (scand/scan). `v3` is the global default; `v3_devices`
   // is a per-IP override list. Both are nested under the scan domain and are handled by
   // a dedicated editor (the flat scalar pipeline can't represent them).
   const V3_OBJECT_KEY  = 'v3';
@@ -140,6 +140,33 @@
     auth_protocol: 'SHA', auth_password: '', priv_protocol: 'AES', priv_password: '',
   };
 
+  // Vendor-API credentials (scand/scan, key `api_devices`) — the terminal stage of
+  // the v2c -> v3 -> API collection chain. A device listed here is queried over its
+  // vendor HTTP API to fill the topology data (interface IPs, ARP, LLDP) its SNMP
+  // agent doesn't expose (e.g. PAN-OS). Per-IP array, edited like v3_devices.
+  const API_DEVICES_KEY = 'api_devices';
+  const API_FIELDS = [
+    { key: 'vendor',     label: 'Vendor',             type: 'select', options: ['paloalto'] },
+    { key: 'username',   label: 'Username',           type: 'text' },
+    { key: 'password',   label: 'Password',           type: 'password' },
+    { key: 'port',       label: 'Port',               type: 'text' },
+    { key: 'api_key',    label: 'API Key (optional)', type: 'password' },
+    { key: 'verify_tls', label: 'Verify TLS',         type: 'select', options: ['false', 'true'] },
+  ];
+  const API_DEFAULTS = {
+    vendor: 'paloalto', username: '', password: '',
+    port: '443', api_key: '', verify_tls: 'false',
+  };
+
+  // The committed JSON needs proper types (the backend reads port/verify_tls as
+  // number/bool), but form inputs are strings — coerce on the way out.
+  function coerceApiCred(c) {
+    const out = Object.assign({}, c);
+    out.port       = Number(c.port) || 443;
+    out.verify_tls = (c.verify_tls === true || c.verify_tls === 'true');
+    return out;
+  }
+
   // ── State ─────────────────────────────────────────────────────────────────
 
   let currentData      = null;
@@ -152,8 +179,9 @@
 
   // edit panel state
   let editContext = null;   // { daemon, domain, values }
-  let editMode    = 'scalar';   // 'scalar' (key fields) | 'v3' (SNMPv3 device list)
+  let editMode    = 'scalar';   // 'scalar' (key fields) | 'v3' (SNMPv3) | 'api' (vendor API)
   let v3Working   = null;       // working copy of v3_devices while the v3 panel is open
+  let apiWorking  = null;       // working copy of api_devices while the api panel is open
   // in-panel staged values (before Apply)
   const editDraft = new Map();  // key → value
 
@@ -326,18 +354,20 @@
           daemon, domain));
       }
     } else {
-      // Scalar settings table. Nested SNMPv3 keys (v3 / v3_devices) are excluded here
-      // and rendered by their own dedicated table below.
-      const scalarKeys = keys.filter(k => k !== V3_OBJECT_KEY && k !== V3_DEVICES_KEY);
+      // Scalar settings table. Nested credential keys (v3 / v3_devices / api_devices)
+      // are excluded here and rendered by their own dedicated tables below.
+      const scalarKeys = keys.filter(k =>
+        k !== V3_OBJECT_KEY && k !== V3_DEVICES_KEY && k !== API_DEVICES_KEY);
       card.appendChild(buildSettingsTable(
         DOMAIN_LABELS[domain] || domain, scalarKeys, values,
         () => openEditPanel(daemon, domain, values, null, scalarKeys),
         daemon, domain));
 
-      // SNMPv3 fallback is per-IP only: a device listed here is retried with v3 on a
-      // v2c timeout; everything else ends at v2c. Always shown so operators can add.
+      // Per-IP credential lists for the scan fallback chain: SNMPv3 (v2c timeout
+      // fallback) and vendor API (terminal stage). Always shown so operators can add.
       if (domain === 'scan') {
         card.appendChild(buildV3DevicesTable(daemon, domain, values));
+        card.appendChild(buildApiDevicesTable(daemon, domain, values));
       }
     }
 
@@ -446,7 +476,7 @@
 
   // ── SNMPv3 device-list editor (hosted in the right slide-over) ─────────────
   // The pencil opens the slide-over with the device list; per-device field entry
-  // reuses openV3Editor. Changes accumulate in v3Working and are staged on Apply.
+  // reuses openCredEditor. Changes accumulate in v3Working and are staged on Apply.
 
   function openV3Panel(daemon, domain, values) {
     editContext = { daemon, domain, values };
@@ -477,7 +507,7 @@
     addBtn.className = 'btn btn-ghost st-v3-add';
     addBtn.textContent = '+ Add device';
     addBtn.addEventListener('click', () => {
-      openV3Editor({
+      openCredEditor({
         title: 'Add SNMPv3 Device',
         creds: Object.assign({ ip: '' }, V3_DEFAULTS),
         showIp: true,
@@ -520,7 +550,7 @@
       editB.className = 'btn btn-ghost st-row-btn';
       editB.textContent = 'Edit';
       editB.addEventListener('click', () => {
-        openV3Editor({
+        openCredEditor({
           title: `Edit ${d.ip || 'Device'}`,
           creds: Object.assign({ ip: '' }, V3_DEFAULTS, d),
           showIp: true,
@@ -551,9 +581,183 @@
     closeEditPanel();
   }
 
+  // ── Vendor-API credential editor (per-IP array `api_devices`) ──────────────
+  // Mirrors the SNMPv3 editor exactly: a view-only table on the scan card, edited
+  // through the right slide-over. Staged as the whole array via stageComplex.
+
+  // View-only vendor-API table. The credential column is always masked.
+  function buildApiDevicesTable(daemon, domain, values) {
+    const devices = Array.isArray(values[API_DEVICES_KEY]) ? values[API_DEVICES_KEY] : [];
+
+    const wrap = document.createElement('div');
+    wrap.className = 'st-table-card';
+
+    const head = document.createElement('div');
+    head.className = 'st-table-head';
+    const t = document.createElement('span');
+    t.className = 'st-table-title';
+    t.textContent = 'Vendor API';
+    head.appendChild(t);
+    head.appendChild(buildEditIconBtn(() => openApiPanel(daemon, domain, values)));
+    wrap.appendChild(head);
+
+    const table = document.createElement('table');
+    table.className = 'st-table st-table-v3';
+    table.innerHTML =
+      '<thead><tr>' +
+      '<th>IP Address</th><th>Vendor</th><th>Username</th>' +
+      '<th>Credential</th><th>Verify TLS</th>' +
+      '</tr></thead>';
+
+    const tbody = document.createElement('tbody');
+
+    if (!devices.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5;
+      td.className = 'st-td-empty';
+      td.textContent = 'No API devices. SNMP-only devices need no entry here.';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      devices.forEach(d => {
+        const tr = document.createElement('tr');
+        const mk = (txt, cls) => {
+          const td = document.createElement('td');
+          if (cls) td.className = cls;
+          td.textContent = txt;
+          return td;
+        };
+        // API key takes precedence over username/password when present.
+        const cred = d.api_key ? 'API key · ••••••'
+                   : (d.password ? 'password · ••••••' : '—');
+        tr.appendChild(mk(d.ip || '(no ip)', 'st-td-ip'));
+        tr.appendChild(mk(d.vendor || '—'));
+        tr.appendChild(mk(d.username || '—'));
+        tr.appendChild(mk(cred, 'st-cred-muted'));
+        tr.appendChild(mk(d.verify_tls ? 'yes' : 'no'));
+        tbody.appendChild(tr);
+      });
+    }
+
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  function openApiPanel(daemon, domain, values) {
+    editContext = { daemon, domain, values };
+    editMode = 'api';
+
+    const staged = pending.get(stageKey(daemon, domain, API_DEVICES_KEY))?.newValue;
+    const src = staged ?? values[API_DEVICES_KEY] ?? [];
+    apiWorking = JSON.parse(JSON.stringify(Array.isArray(src) ? src : []));
+
+    const panel    = document.getElementById('stEditPanel');
+    const backdrop = document.getElementById('stEditBackdrop');
+    const titleEl  = document.getElementById('stEditTitle');
+    if (!panel) return;
+    titleEl.textContent = 'Edit — Vendor API';
+    renderApiPanelBody();
+    backdrop.classList.add('visible');
+    panel.classList.add('visible');
+  }
+
+  function renderApiPanelBody() {
+    const body = document.getElementById('stEditBody');
+    if (!body) return;
+    body.innerHTML = '';
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-ghost st-v3-add';
+    addBtn.textContent = '+ Add device';
+    addBtn.addEventListener('click', () => {
+      openCredEditor({
+        title: 'Add API Device',
+        fields: API_FIELDS,
+        creds: Object.assign({ ip: '' }, API_DEFAULTS),
+        showIp: true,
+        onSave: (c) => {
+          if (!c.ip) { setStatus('Device IP is required.', 'error'); return; }
+          apiWorking.push(coerceApiCred(c));
+          renderApiPanelBody();
+        },
+      });
+    });
+    body.appendChild(addBtn);
+
+    if (!apiWorking.length) {
+      const empty = document.createElement('div');
+      empty.className = 'st-edit-field-hint';
+      empty.style.padding = '10px 2px';
+      empty.textContent = 'No API devices. Add one to collect interface/ARP data over the vendor API.';
+      body.appendChild(empty);
+      return;
+    }
+
+    apiWorking.forEach((d, i) => {
+      const row = document.createElement('div');
+      row.className = 'st-v3-row';
+
+      const info = document.createElement('div');
+      info.className = 'st-v3-row-info';
+      const ip = document.createElement('span');
+      ip.className = 'st-v3-row-ip';
+      ip.textContent = d.ip || '(no ip)';
+      const sub = document.createElement('span');
+      sub.className = 'st-v3-row-sub';
+      sub.textContent = `${d.vendor || '(no vendor)'} · ${d.username || '(no user)'}`;
+      info.append(ip, sub);
+
+      const actions = document.createElement('div');
+      actions.className = 'st-v3-row-actions';
+      const editB = document.createElement('button');
+      editB.type = 'button';
+      editB.className = 'btn btn-ghost st-row-btn';
+      editB.textContent = 'Edit';
+      editB.addEventListener('click', () => {
+        openCredEditor({
+          title: `Edit ${d.ip || 'Device'}`,
+          fields: API_FIELDS,
+          // Stringify back for the form inputs (port number, verify_tls bool).
+          creds: Object.assign({ ip: '' }, API_DEFAULTS, d, {
+            port: String(d.port ?? API_DEFAULTS.port),
+            verify_tls: String(d.verify_tls === true || d.verify_tls === 'true'),
+          }),
+          showIp: true,
+          onSave: (c) => {
+            if (!c.ip) { setStatus('Device IP is required.', 'error'); return; }
+            apiWorking[i] = coerceApiCred(c);
+            renderApiPanelBody();
+          },
+        });
+      });
+      const delB = document.createElement('button');
+      delB.type = 'button';
+      delB.className = 'btn btn-ghost st-row-btn st-row-btn-danger';
+      delB.textContent = 'Remove';
+      delB.addEventListener('click', () => { apiWorking.splice(i, 1); renderApiPanelBody(); });
+      actions.append(editB, delB);
+
+      row.append(info, actions);
+      body.appendChild(row);
+    });
+  }
+
+  function applyApiPanel() {
+    if (!editContext) return;
+    const { daemon, domain } = editContext;
+    stageComplex(daemon, domain, API_DEVICES_KEY,
+                 originalComplex(daemon, domain, API_DEVICES_KEY) || [], apiWorking);
+    closeEditPanel();
+  }
+
   // Per-device field editor. Reuses the app's light .modal styling for consistency
   // (it sits above the slide-over, so it needs a higher z-index than the panel).
-  function openV3Editor({ title, creds, showIp, onSave }) {
+  // `fields` is the field spec (V3_FIELDS or API_FIELDS) — the editor is otherwise
+  // identical for both credential kinds.
+  function openCredEditor({ title, fields = V3_FIELDS, creds, showIp, onSave }) {
     document.getElementById('v3EditorOverlay')?.remove();
 
     const overlay = document.createElement('div');
@@ -585,8 +789,8 @@
     body.className = 'modal-body v3-editor-body';
 
     const inputs = {};
-    const fields = (showIp ? [{ key: 'ip', label: 'IP Address', type: 'text' }] : []).concat(V3_FIELDS);
-    fields.forEach(f => {
+    const allFields = (showIp ? [{ key: 'ip', label: 'IP Address', type: 'text' }] : []).concat(fields);
+    allFields.forEach(f => {
       const wrap = document.createElement('div');
       wrap.className = 'st-edit-field';
       const lbl = document.createElement('label');
@@ -632,7 +836,7 @@
     save.addEventListener('click', () => {
       const out = {};
       if (showIp) out.ip = (inputs.ip.value || '').trim();
-      V3_FIELDS.forEach(f => { out[f.key] = inputs[f.key].value; });
+      fields.forEach(f => { out[f.key] = inputs[f.key].value; });
       overlay.remove();
       onSave(out);
     });
@@ -686,6 +890,7 @@
     editContext = null;
     editMode = 'scalar';
     v3Working = null;
+    apiWorking = null;
     editDraft.clear();
   }
 
@@ -1392,7 +1597,9 @@
     document.getElementById('stEditCloseBtn')?.addEventListener('click', closeEditPanel);
     document.getElementById('stEditCancelBtn')?.addEventListener('click', closeEditPanel);
     document.getElementById('stEditApplyBtn')?.addEventListener('click', () => {
-      if (editMode === 'v3') applyV3Panel(); else applyEditPanel();
+      if (editMode === 'v3') applyV3Panel();
+      else if (editMode === 'api') applyApiPanel();
+      else applyEditPanel();
     });
     document.getElementById('stEditBackdrop')?.addEventListener('click', closeEditPanel);
     document.addEventListener('keydown', e => {

@@ -64,6 +64,8 @@ private:
     std::chrono::steady_clock::time_point m_startedAt{};
     std::chrono::steady_clock::time_point m_lastClientHelloSentAt{};
     std::chrono::steady_clock::time_point m_lastRuntimeReadySentAt{};
+
+    bool m_bootSlowWarned{false};  // warn-once latch for the slow-boot message
 };
 
 } // namespace pz::authd

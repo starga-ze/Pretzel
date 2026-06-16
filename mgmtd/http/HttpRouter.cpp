@@ -432,7 +432,7 @@ namespace
 {
 
 constexpr const char* kSettingsDaemons[] = {
-    "engined", "authd", "icmpd", "snmpd", "topologyd",
+    "engined", "authd", "icmpd", "scand", "topologyd",
 };
 
 // Service domains that are internal infrastructure — not user-configurable
@@ -836,7 +836,7 @@ std::vector<std::string> tailFile(const std::string& path, int maxLines)
 
 const std::string kLogDir = "/var/log/pretzel";
 const std::vector<std::string> kKnownDaemons = {
-    "ipcd", "engined", "mgmtd", "authd", "icmpd", "snmpd", "topologyd"
+    "ipcd", "engined", "mgmtd", "authd", "icmpd", "scand", "topologyd"
 };
 } // namespace
 

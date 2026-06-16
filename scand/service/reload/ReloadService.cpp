@@ -1,0 +1,21 @@
+#include "service/reload/ReloadService.h"
+
+#include "core/Core.h"
+#include "util/Logger.h"
+
+namespace pz::scand
+{
+
+void ReloadService::handleEvent(ScandServiceManager& /*serviceManager*/,
+                                const ReloadEvent& event)
+{
+    if (event.type() != ReloadEventType::ReceiveConfigReload)
+    {
+        return;
+    }
+
+    LOG_INFO("config reload received — scheduling daemon restart");
+    pz::core::Core::scheduleReload();
+}
+
+} // namespace pz::scand
