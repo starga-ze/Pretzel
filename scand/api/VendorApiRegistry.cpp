@@ -17,7 +17,7 @@ bool VendorApiRegistry::collect(const ApiCredential& cred, SnmpDevice& dev)
     const auto it = m_providers.find(cred.vendor);
     if (it == m_providers.end())
     {
-        LOG_DEBUG("VendorApiRegistry: no provider for vendor={} ip={}",
+        LOG_DEBUG("no provider for vendor (vendor={}, ip={})",
                   apiVendorToString(cred.vendor), dev.ip);
         return false;
     }

@@ -12,7 +12,12 @@ namespace pz::ipc
 // deployed together, so the codec's exact-match version check guards against a stale
 // binary that was not redeployed (the failure mode behind the snmpd zombie incident).
 inline constexpr std::uint8_t IPC_PROTOCOL_VERSION = 2;
-inline constexpr std::size_t IPC_MAX_FRAME_SIZE = 64 * 1024;
+// 1 MiB ceiling: ScanResult payloads scale with the discovered fleet (one entry
+// per interface/ARP/LLDP row), and a single PAN-OS appliance pulled in over the
+// vendor API can alone contribute >64 KiB of ARP/interface data. The receive ring
+// buffer (rx_buffer_size) must be >= this, since a frame is only dispatched once it
+// fits whole in the buffer.
+inline constexpr std::size_t IPC_MAX_FRAME_SIZE = 1024 * 1024;
 
 enum class IpcDaemon : std::uint8_t
 {

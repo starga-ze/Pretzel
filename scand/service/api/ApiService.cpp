@@ -28,6 +28,10 @@ std::map<std::string, ApiCredential> ApiService::loadCredentials() const
         if (ip.empty())
             continue;
 
+        // Disabled rows (enabled:false) are skipped; default true for back-compat.
+        if (!d.value("enabled", true))
+            continue;
+
         ApiCredential c;
         c.vendor    = apiVendorFromString(d.value("vendor", std::string()));
         c.host      = d.value("host",       std::string());
@@ -40,13 +44,13 @@ std::map<std::string, ApiCredential> ApiService::loadCredentials() const
 
         if (c.vendor == ApiVendor::Unknown)
         {
-            LOG_WARN("ApiService: unknown vendor for ip={} — skipping", ip);
+            LOG_WARN("unknown API vendor — skipping (ip={})", ip);
             continue;
         }
         out[ip] = std::move(c);
     }
 
-    LOG_INFO("ApiService: loaded {} API device credential(s)", out.size());
+    LOG_DEBUG("loaded API device credentials (count={})", out.size());
     return out;
 }
 

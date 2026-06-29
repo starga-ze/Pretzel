@@ -1,6 +1,7 @@
 #include "router/ScandRxRouter.h"
 
-#include "snmp/ScandPacket.h"
+#include "snmp/SnmpPacket.h"
+#include "api/ApiPacket.h"
 
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -34,21 +35,40 @@ void ScandRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     m_serviceManager->postEvent(std::move(event));
 }
 
-void ScandRxRouter::handleSnmpPacket(std::unique_ptr<ScandPacket> packet)
+void ScandRxRouter::handleSnmpPacket(std::unique_ptr<SnmpPacket> packet)
 {
     if (!m_serviceManager)
     {
-        LOG_WARN("ScandRxRouter: serviceManager is nullptr, dropping scan results");
+        LOG_WARN("serviceManager is nullptr, dropping SNMP scan results");
         return;
     }
 
     if (!packet)
     {
-        LOG_WARN("ScandRxRouter: null ScandPacket — skipping");
+        LOG_WARN("null SnmpPacket — skipping");
         return;
     }
 
-    LOG_DEBUG("ScandRxRouter: posting scan packet devices={}", packet->size());
+    LOG_DEBUG("posting SNMP scan packet (devices={})", packet->size());
+
+    m_serviceManager->postEvent(m_eventFactory->create(std::move(packet)));
+}
+
+void ScandRxRouter::handleApiPacket(std::unique_ptr<ApiPacket> packet)
+{
+    if (!m_serviceManager)
+    {
+        LOG_WARN("serviceManager is nullptr, dropping API scan results");
+        return;
+    }
+
+    if (!packet)
+    {
+        LOG_WARN("null ApiPacket — skipping");
+        return;
+    }
+
+    LOG_DEBUG("posting API scan packet (devices={})", packet->size());
 
     m_serviceManager->postEvent(m_eventFactory->create(std::move(packet)));
 }

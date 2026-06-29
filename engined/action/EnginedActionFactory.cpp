@@ -25,7 +25,7 @@ std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain 
         return std::make_unique<CommitAction>(static_cast<CommitActionType>(type));
 
     default:
-        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }

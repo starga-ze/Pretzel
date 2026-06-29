@@ -88,17 +88,20 @@ bool ipLess(const std::string& lhs, const std::string& rhs)
 }
 
 // Three-way taxonomy:
-//   host    — no SNMP (ICMP-reachable endpoint, e.g. laptop/PC)
+//   unknown — no SNMP, OR an SNMP responder we cannot positively identify as
+//             network gear or a server/endpoint (e.g. a generic IoT/embedded SNMP
+//             agent). "server" is no longer a catch-all — it requires a positive
+//             keyword match.
 //   network — SNMP-managed network gear (router/switch/firewall/ap/gateway)
-//   server  — SNMP-managed endpoint (hypervisor/bmc/server/windows/linux/printer),
-//             and the default for any SNMP responder we cannot positively identify
-//             as network gear. These keyword sets are intentionally simple — tune as
-//             the device population becomes clearer.
+//   server  — SNMP-managed endpoint, positively identified
+//             (hypervisor/bmc/server/windows/linux/printer).
+// These keyword sets are intentionally simple — tune as the device population
+// becomes clearer.
 void classify(const IpRecord& rep, std::string& type, std::string& subtype)
 {
     if (!rep.hasSnmp)
     {
-        type = "host";
+        type = "unknown";
         subtype = "unknown";
         return;
     }
@@ -141,8 +144,9 @@ void classify(const IpRecord& rep, std::string& type, std::string& subtype)
         { type = "server"; subtype = "printer"; return; }
     if (contains(s, "server")) { type = "server"; subtype = "server"; return; }
 
-    // SNMP-enabled but unrecognized: managed endpoint.
-    type = "server";
+    // SNMP-enabled but unrecognized: no positive signal either way, so don't
+    // assume "server" — fall back to unknown like a non-SNMP device.
+    type = "unknown";
     subtype = "unknown";
 }
 
@@ -336,11 +340,11 @@ std::vector<DeviceGroup> DeviceService::groups() const
         out.push_back(std::move(g));
     }
 
-    // Order: network → server → host; within a class, by primary IP.
+    // Order: network → server → unknown; within a class, by primary IP.
     auto rank = [](const std::string& t) {
         if (t == "network") return 0;
         if (t == "server")  return 1;
-        return 2;  // host
+        return 2;  // unknown
     };
     std::sort(out.begin(), out.end(), [&](const DeviceGroup& a, const DeviceGroup& b) {
         if (a.type != b.type)
@@ -348,7 +352,7 @@ std::vector<DeviceGroup> DeviceService::groups() const
         return ipLess(a.primaryIp, b.primaryIp);
     });
 
-    LOG_DEBUG("DeviceService: {} group(s) from {} IP(s)", out.size(), recs.size());
+    LOG_TRACE("grouped devices (groups={}, ips={})", out.size(), recs.size());
     return out;
 }
 

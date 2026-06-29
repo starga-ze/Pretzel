@@ -1,5 +1,7 @@
 #include "ipc/IpcConnection.h"
+#include "ipc/IpcProtocol.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdint>
 
@@ -9,10 +11,16 @@
 namespace pz::ipc
 {
 
+// A frame is only dispatched once it fits whole in the ring buffer (see
+// IpcHandler::drainRxFrames) and is only enqueued if it fits whole on the tx side,
+// so each buffer MUST be able to hold one maximum-size frame. Operator-supplied
+// sizes (from the running-config) are a floor-clamped hint, never allowed below
+// IPC_MAX_FRAME_SIZE — otherwise a large but legal frame stalls forever / fails to
+// enqueue even though the codec accepted it.
 IpcConnection::IpcConnection(int fd, std::size_t rxBuf, std::size_t txBuf)
     : m_fd(fd),
-      m_rx(rxBuf),
-      m_tx(txBuf)
+      m_rx(std::max(rxBuf, IPC_MAX_FRAME_SIZE)),
+      m_tx(std::max(txBuf, IPC_MAX_FRAME_SIZE))
 {
 }
 

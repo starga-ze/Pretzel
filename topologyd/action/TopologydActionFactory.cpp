@@ -22,7 +22,7 @@ std::unique_ptr<TopologydAction> TopologydActionFactory::create(TopologydActionD
             pz::ipc::IpcDaemon::Unknown);
 
     default:
-        LOG_WARN("unhandled domain={}",
+        LOG_WARN("unhandled domain (domain={})",
                  static_cast<std::uint32_t>(domain));
         return nullptr;
     }

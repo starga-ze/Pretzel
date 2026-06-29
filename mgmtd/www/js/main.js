@@ -20,7 +20,7 @@
              <line x1="6" y1="18" x2="6.01" y2="18"/>`,
       subitems: [
         { id: 'devices',         label: 'Devices',         href: 'devices.html' },
-        { id: 'rack-management', label: 'Rack Management', href: '#', soon: true },
+        { id: 'rack-management', label: 'Rack View', href: 'rack-management.html' },
       ],
     },
     {
@@ -66,6 +66,7 @@
       subitems: [
         { id: 'general',  label: 'General',  href: 'settings.html?tab=general' },
         { id: 'protocol', label: 'Protocol', href: 'settings.html?tab=protocol' },
+        { id: 'rack',     label: 'Rack List', href: 'settings.html?tab=rack' },
         { id: 'user',     label: 'User',     href: 'settings.html?tab=users', soon: true },
       ],
     },

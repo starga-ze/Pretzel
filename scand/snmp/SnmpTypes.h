@@ -1,6 +1,6 @@
 #pragma once
 
-#include "api/ApiTypes.h"
+#include "lldp/LldpTypes.h"
 
 #include <cstdint>
 #include <map>
@@ -34,18 +34,6 @@ struct SnmpIfEntry
     std::string mac;        // ifPhysAddress
 };
 
-// One LLDP neighbor (lldpRemTable) — a directly-connected device. The basis for L2
-// topology edges.
-struct SnmpLldpNeighbor
-{
-    uint32_t    localPort{0};   // lldpRemLocalPortNum (index)
-    std::string localPortName;  // lldpLocPortId/Desc for that local port
-    std::string remoteSysName;  // lldpRemSysName
-    std::string remoteSysDescr; // lldpRemSysDesc
-    std::string remotePortId;   // lldpRemPortId
-    std::string remoteChassisId;// lldpRemChassisId
-};
-
 // One ARP / ip-MIB ipNetToMedia entry: an IP↔MAC the device has learned. Used to
 // discover the MAC (hence vendor) of SNMP-less hosts.
 struct SnmpArpEntry
@@ -77,7 +65,7 @@ struct SnmpDevice
     std::vector<SnmpIfEntry> ifTable;
 
     // LLDP neighbors (topology edges).
-    std::vector<SnmpLldpNeighbor> lldpNeighbors;
+    std::vector<LldpNeighbor> lldpNeighbors;
 
     // ARP / ipNetToMedia entries (IP↔MAC the device has learned).
     std::vector<SnmpArpEntry> arpEntries;
@@ -124,6 +112,34 @@ struct SnmpScanConfig
     int          v2cProbeTimeoutMs{700};
     int          v2cProbeRetries{0};
 
+    // Per-IP v2c community overrides. A host listed here is probed with its own
+    // community instead of the global `community` above. Set in the GUI
+    // (settings -> SNMP, method "SNMPv2c") and stored as
+    // scand.service.scan.v2c_devices[].
+    std::map<std::string, std::string> v2cPerIp;
+
+    // The community to use for `ip`. SNMP is opt-in per device (see isRegistered),
+    // so this is only ever consulted for an already-registered IP: its own v2c
+    // override if set, otherwise the global default. Returns a reference into a
+    // member that outlives the snmp session setup, so the pointer handed to
+    // net-snmp stays valid.
+    const std::string& communityFor(const std::string& ip) const
+    {
+        const auto it = v2cPerIp.find(ip);
+        return it != v2cPerIp.end() ? it->second : community;
+    }
+
+    // True if `ip` has an explicit v2c or v3 entry. SNMP is opt-in per device — an
+    // IP with no entry here is never probed by SnmpEngine, regardless of how broad
+    // the IP list handed to SnmpEngine::startScan is. A device on the "api" scan
+    // method instead goes straight to ApiEngine and never appears here at all —
+    // each device has exactly one scan method, chosen in the GUI.
+    bool isRegistered(const std::string& ip) const
+    {
+        return v2cPerIp.count(ip) != 0 ||
+               v3PerIp.count(ip)  != 0;
+    }
+
     // SNMPv3 fallback is PER-IP ONLY: a host listed here is retried with its v3
     // credentials when the v2c probe times out. A host NOT listed simply ends at v2c
     // (no global default fallback). Keyed by device IP, set in the GUI
@@ -136,20 +152,6 @@ struct SnmpScanConfig
     {
         const auto it = v3PerIp.find(ip);
         return it != v3PerIp.end() ? &it->second : nullptr;
-    }
-
-    // Vendor-API credentials PER-IP — the terminal stage of the v2c -> v3 -> API
-    // chain. A host listed here is queried over its vendor HTTP API to fill the
-    // topology data (interface IPs, ARP, LLDP) its SNMP agent doesn't expose.
-    // Keyed by device IP, set in the GUI alongside the v3 creds and stored as
-    // scand.service.scan.api_devices[].
-    std::map<std::string, ApiCredential> apiPerIp;
-
-    // The API creds configured for an IP, or nullptr if the host has none.
-    const ApiCredential* apiFor(const std::string& ip) const
-    {
-        const auto it = apiPerIp.find(ip);
-        return it != apiPerIp.end() ? &it->second : nullptr;
     }
 };
 

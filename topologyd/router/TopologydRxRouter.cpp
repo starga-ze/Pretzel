@@ -16,17 +16,17 @@ void TopologydRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> ms
 {
     if (!m_serviceManager)
     {
-        LOG_ERROR("Topologyd RxRouter: service manager is not initialized");
+        LOG_ERROR("service manager is not initialized");
         return;
     }
 
     if (!msg)
     {
-        LOG_WARN("Topologyd RxRouter: received null IPC message — skipping");
+        LOG_WARN("received null IPC message — skipping");
         return;
     }
 
-    LOG_DEBUG("recv cmd={} src={}",
+    LOG_TRACE("recv (cmd={}, src={})",
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 

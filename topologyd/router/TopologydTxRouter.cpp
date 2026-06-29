@@ -20,7 +20,7 @@ void TopologydTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> ms
 
     if (!m_ipcClientHandler)
     {
-        LOG_ERROR("Topologyd TxRouter: IPC client handler is not initialized");
+        LOG_ERROR("IPC client handler is not initialized");
         return;
     }
 

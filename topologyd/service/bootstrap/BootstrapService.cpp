@@ -67,7 +67,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
-        LOG_ERROR("bootstrap: event factory is not initialized");
+        LOG_ERROR("event factory is not initialized");
         return nullptr;
     }
 
@@ -129,7 +129,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
     case State::Ready:
     {
         m_state = State::Running;
-        LOG_INFO("bootstrap: state changed to Running");
+        LOG_INFO("bootstrap complete (state=Running)");
         return nullptr;
     }
 
@@ -151,7 +151,7 @@ void BootstrapService::handleEvent(TopologydServiceManager& serviceManager,
 {
     if (!m_actionFactory)
     {
-        LOG_ERROR("bootstrap: action factory is not initialized");
+        LOG_ERROR("action factory is not initialized");
         return;
     }
 
@@ -172,7 +172,7 @@ void BootstrapService::handleEvent(TopologydServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("bootstrap: received empty ServerHello");
+            LOG_WARN("received empty ServerHello");
             return;
         }
 
@@ -195,7 +195,7 @@ void BootstrapService::handleEvent(TopologydServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("bootstrap: received empty RuntimeStart");
+            LOG_WARN("received empty RuntimeStart");
             return;
         }
 
@@ -204,7 +204,7 @@ void BootstrapService::handleEvent(TopologydServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event type={}",
+        LOG_WARN("unhandled event (type={})",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -221,12 +221,12 @@ void BootstrapService::handleAction(TopologydServiceManager& serviceManager,
     {
         if (m_state != State::WaitServerHello)
         {
-            LOG_DEBUG("skip SendClientHello state={}",
+            LOG_DEBUG("skip SendClientHello (state={})",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_DEBUG("bootstrap: sent ClientHello, awaiting ServerHello");
+        LOG_DEBUG("sent ClientHello, awaiting ServerHello");
         msg = buildClientHelloMessage();
         break;
     }
@@ -235,18 +235,18 @@ void BootstrapService::handleAction(TopologydServiceManager& serviceManager,
     {
         if (m_state != State::WaitRuntimeStart)
         {
-            LOG_DEBUG("skip SendRuntimeReady state={}",
+            LOG_DEBUG("skip SendRuntimeReady (state={})",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_DEBUG("bootstrap: sent RuntimeReady, awaiting RuntimeStart");
+        LOG_DEBUG("sent RuntimeReady, awaiting RuntimeStart");
         msg = buildRuntimeReadyMessage();
         break;
     }
 
     default:
-        LOG_WARN("unhandled action type={}",
+        LOG_WARN("unhandled action (type={})",
                  static_cast<std::uint32_t>(action.type()));
         return;
     }
@@ -261,7 +261,7 @@ void BootstrapService::onServerHello(TopologydServiceManager& serviceManager,
 
     if (m_state != State::WaitServerHello)
     {
-        LOG_WARN("ServerHello received in unexpected bootstrap state={}",
+        LOG_WARN("ServerHello received in unexpected bootstrap state (state={})",
                  static_cast<int>(m_state));
         return;
     }
@@ -269,7 +269,7 @@ void BootstrapService::onServerHello(TopologydServiceManager& serviceManager,
     m_state = State::WaitRuntimeStart;
     m_lastRuntimeReadySentAt = std::chrono::steady_clock::now();
 
-    LOG_DEBUG("bootstrap: state changed to WaitRuntimeStart");
+    LOG_DEBUG("state changed (state=WaitRuntimeStart)");
 
     auto action = m_actionFactory->create(
         TopologydActionDomain::Bootstrap,
@@ -284,14 +284,14 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 
     if (m_state != State::WaitRuntimeStart)
     {
-        LOG_WARN("RuntimeStart received in unexpected bootstrap state={}",
+        LOG_WARN("RuntimeStart received in unexpected bootstrap state (state={})",
                  static_cast<int>(m_state));
         return;
     }
 
     m_state = State::Ready;
 
-    LOG_DEBUG("bootstrap: state changed to Ready");
+    LOG_DEBUG("state changed (state=Ready)");
 }
 
 bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
@@ -303,7 +303,7 @@ bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
     if (now - m_startedAt >= bootstrapTimeout() && !m_bootSlowWarned)
     {
         m_bootSlowWarned = true;
-        LOG_WARN("bootstrap: still waiting in state={} after {}s — will keep retrying",
+        LOG_WARN("still waiting on bootstrap, will keep retrying (state={}, waited_s={})",
                  stateName,
                  std::chrono::duration_cast<std::chrono::seconds>(now - m_startedAt).count());
     }

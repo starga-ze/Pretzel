@@ -38,7 +38,7 @@ void HttpSession::onRead(beast::error_code ec, std::size_t)
 
     if (ec)
     {
-        LOG_DEBUG("Mgmtd HTTP read failed: {}", ec.message());
+        LOG_TRACE("HTTP read failed (error={})", ec.message());
         return;
     }
 
@@ -59,7 +59,7 @@ void HttpSession::onWrite(bool close, beast::error_code ec, std::size_t)
 {
     if (ec)
     {
-        LOG_DEBUG("Mgmtd HTTP write failed: {}", ec.message());
+        LOG_TRACE("HTTP write failed (error={})", ec.message());
         return;
     }
 

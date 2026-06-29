@@ -37,7 +37,7 @@ void IcmpdRxRouter::handleIcmpPacket(const std::string& srcIp,
 {
     if (!packet)
     {
-        LOG_WARN("ICMP packet is nullptr src={}", srcIp);
+        LOG_WARN("ICMP packet is nullptr (src={})", srcIp);
         return;
     }
 

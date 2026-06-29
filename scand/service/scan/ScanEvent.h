@@ -13,9 +13,10 @@ namespace pz::scand
 
 enum class ScanEventType : std::uint32_t
 {
-    Unknown                = 0,
+    Unknown            = 0,
     ReceiveScanRequest = 1,
-    ScanComplete           = 2,
+    SnmpScanComplete   = 2,  // SnmpEngine finished its v2c/v3 subset
+    ApiScanComplete    = 3,  // ApiEngine finished its vendor-API subset
 };
 
 class ScanEvent final : public ScandEvent
@@ -27,7 +28,7 @@ public:
     ScanEvent(ScanEventType type,
               std::unique_ptr<pz::ipc::IpcMessage> message);
 
-    // For ScanComplete — carries the responding devices.
+    // For SnmpScanComplete / ApiScanComplete — carries that engine's responding devices.
     ScanEvent(ScanEventType type,
               std::vector<SnmpDevice> devices);
 

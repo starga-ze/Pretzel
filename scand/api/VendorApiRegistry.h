@@ -11,7 +11,7 @@ namespace pz::scand
 {
 
 // Owns one provider per vendor and dispatches collect() by ApiCredential::vendor.
-// Construct once (e.g. as a member of SnmpEngine) and call collect() from worker
+// Construct once (as a member of ApiEngine) and call collect() from worker
 // threads. Providers must be stateless / thread-safe across concurrent collect()
 // calls — the current PAN-OS provider holds no per-call state.
 class VendorApiRegistry

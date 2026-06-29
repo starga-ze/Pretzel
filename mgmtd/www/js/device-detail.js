@@ -30,11 +30,11 @@
     const sub = SUBTYPE_LABEL[d.subtype] || '';
     if (d.type === 'network') return sub || 'Network';
     if (d.type === 'server')  return sub || 'Server';
-    return sub || 'Host';
+    return sub || 'Unknown';
   }
   function badgeCls(d) {
     return d.type === 'network' ? 'badge-network'
-         : d.type === 'server'  ? 'badge-server' : 'badge-host';
+         : d.type === 'server'  ? 'badge-server' : 'badge-unknown';
   }
 
   function item(label, value, mono) {
@@ -134,7 +134,6 @@
           ${item('Description', d.sys_descr)}
           ${item('Object ID', d.sys_object_id, true)}
           ${item('Contact', d.sys_contact)}
-          ${item('Location', d.sys_location)}
           ${uptime ? item('Uptime', uptime) : ''}
         </div>
       </div>` : `
@@ -158,6 +157,7 @@
         <div class="device-detail-grid" style="padding:16px">
           ${d.vendor ? `<div class="dg-item"><span class="dg-label">Vendor</span><span class="dg-value">${escHtml(d.vendor)}</span></div>` : ''}
           ${d.host_mac ? `<div class="dg-item"><span class="dg-label">Host MAC</span><span class="dg-value"><code>${escHtml(d.host_mac)}</code></span></div>` : ''}
+          <div class="dg-item"><span class="dg-label">Rack Location</span><span class="dg-value">${d.location ? escHtml(d.location) : '<span class="muted">unassigned</span>'}</span></div>
           <div class="dg-item"><span class="dg-label">IP Addresses</span><span class="dg-value">${ipList}</span></div>
           <div class="dg-item dg-wide"><span class="dg-label">Interface MACs</span><span class="dg-value">${macList}</span></div>
         </div>

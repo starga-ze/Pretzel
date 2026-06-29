@@ -87,7 +87,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
-        LOG_ERROR("bootstrap: event factory is not initialized");
+        LOG_ERROR("event factory is not initialized");
         return nullptr;
     }
 
@@ -101,7 +101,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         m_state = State::WaitHandshake;
         m_lastClientHelloSentAt = now;
 
-        LOG_DEBUG("bootstrap: scheduling ClientHello");
+        LOG_DEBUG("scheduling ClientHello");
 
         return m_eventFactory->create(
             EnginedEventDomain::Bootstrap,
@@ -116,7 +116,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastClientHelloSentAt = now;
 
-            LOG_DEBUG("bootstrap: retrying ClientHello");
+            LOG_DEBUG("retrying ClientHello");
 
             return m_eventFactory->create(
                 EnginedEventDomain::Bootstrap,
@@ -134,9 +134,9 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         // reload, and (b) keep the SyncRequest heartbeat going.
         if (m_isReload && now - m_reloadStartedAt >= reloadTimeout())
         {
-            LOG_ERROR("bootstrap: reload to version={} did not converge within {}s — "
-                      "abandoning reload (it stays the committed intent; daemons adopt "
-                      "it as they restart)", m_targetVersion,
+            LOG_ERROR("reload did not converge in time, abandoning reload — it stays the "
+                      "committed intent, daemons adopt it as they restart "
+                      "(target_version={}, timeout_s={})", m_targetVersion,
                       std::chrono::duration_cast<std::chrono::seconds>(reloadTimeout()).count());
             m_isReload = false;
 
@@ -179,7 +179,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
 {
     if (!m_actionFactory)
     {
-        LOG_ERROR("bootstrap: action factory is not initialized");
+        LOG_ERROR("action factory is not initialized");
         return;
     }
 
@@ -200,7 +200,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("bootstrap: received empty ServerHello");
+            LOG_WARN("received empty ServerHello");
             return;
         }
 
@@ -257,7 +257,7 @@ void BootstrapService::handleEvent(EnginedServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event type={}",
+        LOG_WARN("unhandled event (type={})",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -274,12 +274,12 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
     {
         if (m_state != State::WaitHandshake)
         {
-            LOG_DEBUG("skip SendClientHello state={}",
+            LOG_DEBUG("skip SendClientHello (state={})",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_INFO("bootstrap: sent ClientHello, awaiting ServerHello");
+        LOG_INFO("sent ClientHello, awaiting ServerHello");
         msg = buildClientHelloMessage();
         break;
     }
@@ -288,7 +288,7 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
     {
         if (m_state != State::Reconcile)
         {
-            LOG_DEBUG("skip SendSyncRequest state={}",
+            LOG_DEBUG("skip SendSyncRequest (state={})",
                       static_cast<int>(m_state));
             return;
         }
@@ -300,7 +300,7 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
 
     case BootstrapActionType::SendRuntimeStart:
     {
-        LOG_INFO("Tx RuntimeStart (broadcast, target version={})", m_targetVersion);
+        LOG_INFO("Tx RuntimeStart, broadcast (target_version={})", m_targetVersion);
         msg = buildRuntimeStartMessage();
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
 
@@ -319,7 +319,7 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
         m_bootstrapped = true;
         if (firstConvergence)
         {
-            LOG_INFO("bootstrap: initial convergence complete at version={}", m_targetVersion);
+            LOG_INFO("initial convergence complete (target_version={})", m_targetVersion);
         }
 
         if (m_isReload)
@@ -352,7 +352,7 @@ void BootstrapService::handleAction(EnginedServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled action type={}",
+        LOG_WARN("unhandled action (type={})",
                  static_cast<std::uint32_t>(action.type()));
         return;
     }
@@ -367,7 +367,7 @@ void BootstrapService::onServerHello(EnginedServiceManager& serviceManager,
 
     if (m_state != State::WaitHandshake)
     {
-        LOG_WARN("ServerHello in unexpected state={}",
+        LOG_WARN("ServerHello in unexpected state (state={})",
                  static_cast<int>(m_state));
         return;
     }
@@ -375,7 +375,7 @@ void BootstrapService::onServerHello(EnginedServiceManager& serviceManager,
     m_state = State::Reconcile;
     m_lastSyncRequestSentAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("bootstrap: handshake complete — entering Reconcile (target version={})",
+    LOG_INFO("handshake complete, entering Reconcile (target_version={})",
              m_targetVersion);
 
     auto action = m_actionFactory->create(
@@ -390,7 +390,7 @@ void BootstrapService::onSyncResponse(EnginedServiceManager& serviceManager,
 {
     if (m_state != State::Reconcile)
     {
-        LOG_WARN("SyncResponse in unexpected state={}",
+        LOG_WARN("SyncResponse in unexpected state (state={})",
                  static_cast<int>(m_state));
         return;
     }
@@ -407,7 +407,7 @@ void BootstrapService::onSyncResponse(EnginedServiceManager& serviceManager,
     {
         // Not every daemon is connected and at the target version yet — keep waiting.
         // The SyncRequest heartbeat in schedule() will bring the next snapshot.
-        LOG_DEBUG("fleet not yet converged to version={}", m_targetVersion);
+        LOG_DEBUG("fleet not yet converged (target_version={})", m_targetVersion);
         dumpProcessMap();
         return;
     }
@@ -456,8 +456,8 @@ void BootstrapService::warnIfBootSlow(std::chrono::steady_clock::time_point now,
     }
 
     m_lastBootWarnAt = now;
-    LOG_WARN("bootstrap: still waiting in state={} after {}s — service daemons not yet "
-             "converged to version={}; will keep retrying",
+    LOG_WARN("still waiting on bootstrap, service daemons not yet converged, will keep "
+             "retrying (state={}, waited_s={}, target_version={})",
              stateName,
              std::chrono::duration_cast<std::chrono::seconds>(now - m_startedAt).count(),
              m_targetVersion);
@@ -481,7 +481,7 @@ void BootstrapService::initProcessMap()
     // version will correctly read as not-yet-converged.
     m_targetVersion = pz::config::Config::runningConfigVersion();
 
-    LOG_INFO("bootstrap: cold-start target running-config version={}", m_targetVersion);
+    LOG_INFO("cold-start target running-config (target_version={})", m_targetVersion);
 }
 
 void BootstrapService::scheduleServiceReload()
@@ -499,7 +499,7 @@ void BootstrapService::scheduleServiceReload()
     m_isReload = true;
     m_reloadStartedAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("service-layer reload — converging to running-config version={}",
+    LOG_INFO("service-layer reload, converging to running-config (target_version={})",
              m_targetVersion);
 }
 
@@ -532,7 +532,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
         {
             if (!item.contains("daemon") || !item["daemon"].is_string())
             {
-                LOG_WARN("SyncResponse daemon item invalid: {}", item.dump());
+                LOG_WARN("SyncResponse daemon item invalid (item={})", item.dump());
                 continue;
             }
 
@@ -546,7 +546,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
             auto it = m_processMap.find(daemon);
             if (it == m_processMap.end())
             {
-                LOG_TRACE("ignore unknown daemon: {}", daemonName);
+                LOG_TRACE("ignore unknown daemon (daemon={})", daemonName);
                 continue;
             }
 
@@ -569,7 +569,7 @@ bool BootstrapService::updateProcessMap(const pz::ipc::IpcMessage& msg)
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("SyncResponse json parse failed: {}", e.what());
+        LOG_ERROR("SyncResponse json parse failed (error={})", e.what());
         return false;
     }
 

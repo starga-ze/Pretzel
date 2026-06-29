@@ -66,7 +66,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
-        LOG_ERROR("bootstrap: event factory is not initialized");
+        LOG_ERROR("event factory is not initialized");
         return nullptr;
     }
 
@@ -82,7 +82,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         m_state = State::WaitServerHello;
         m_lastClientHelloSentAt = now;
 
-        LOG_DEBUG("bootstrap: scheduling ClientHello");
+        LOG_DEBUG("scheduling ClientHello");
 
         return m_eventFactory->create(
             MgmtdEventDomain::Bootstrap,
@@ -100,7 +100,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastClientHelloSentAt = now;
 
-            LOG_DEBUG("bootstrap: retrying ClientHello");
+            LOG_DEBUG("retrying ClientHello");
 
             return m_eventFactory->create(
                 MgmtdEventDomain::Bootstrap,
@@ -121,7 +121,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastRuntimeReadySentAt = now;
 
-            LOG_DEBUG("bootstrap: retrying RuntimeReady");
+            LOG_DEBUG("retrying RuntimeReady");
 
             return m_eventFactory->create(
                 MgmtdEventDomain::Bootstrap,
@@ -134,7 +134,7 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
     case State::Ready:
     {
         m_state = State::Running;
-        LOG_INFO("bootstrap: state changed to Running");
+        LOG_INFO("bootstrap complete (state=Running)");
         return nullptr;
     }
 
@@ -156,7 +156,7 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
 {
     if (!m_actionFactory)
     {
-        LOG_ERROR("bootstrap: action factory is not initialized");
+        LOG_ERROR("action factory is not initialized");
         return;
     }
 
@@ -177,7 +177,7 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("bootstrap: received empty ServerHello");
+            LOG_WARN("received empty ServerHello");
             return;
         }
 
@@ -200,7 +200,7 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("bootstrap: received empty RuntimeStart");
+            LOG_WARN("received empty RuntimeStart");
             return;
         }
 
@@ -209,7 +209,7 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event type={}",
+        LOG_WARN("unhandled event (type={})",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -226,12 +226,12 @@ void BootstrapService::handleAction(MgmtdServiceManager& serviceManager,
     {
         if (m_state != State::WaitServerHello)
         {
-            LOG_DEBUG("skip SendClientHello state={}",
+            LOG_DEBUG("skip SendClientHello (state={})",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_INFO("bootstrap: sent ClientHello, awaiting ServerHello");
+        LOG_INFO("sent ClientHello, awaiting ServerHello");
         msg = buildClientHelloMessage();
         break;
     }
@@ -240,18 +240,18 @@ void BootstrapService::handleAction(MgmtdServiceManager& serviceManager,
     {
         if (m_state != State::WaitRuntimeStart)
         {
-            LOG_DEBUG("skip SendRuntimeReady state={}",
+            LOG_DEBUG("skip SendRuntimeReady (state={})",
                       static_cast<int>(m_state));
             return;
         }
 
-        LOG_INFO("bootstrap: sent RuntimeReady, awaiting RuntimeStart");
+        LOG_INFO("sent RuntimeReady, awaiting RuntimeStart");
         msg = buildRuntimeReadyMessage();
         break;
     }
 
     default:
-        LOG_WARN("unhandled action type={}",
+        LOG_WARN("unhandled action (type={})",
                  static_cast<std::uint32_t>(action.type()));
         return;
     }
@@ -266,7 +266,7 @@ void BootstrapService::onServerHello(MgmtdServiceManager& serviceManager,
 
     if (m_state != State::WaitServerHello)
     {
-        LOG_WARN("ServerHello in unexpected state={}",
+        LOG_WARN("ServerHello in unexpected state (state={})",
                  static_cast<int>(m_state));
         return;
     }
@@ -274,7 +274,7 @@ void BootstrapService::onServerHello(MgmtdServiceManager& serviceManager,
     m_state = State::WaitRuntimeStart;
     m_lastRuntimeReadySentAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("bootstrap: state changed to WaitRuntimeStart");
+    LOG_DEBUG("state changed (state=WaitRuntimeStart)");
 
     auto action = m_actionFactory->create(
         MgmtdActionDomain::Bootstrap,
@@ -289,14 +289,15 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 
     if (m_state != State::WaitRuntimeStart)
     {
-        LOG_DEBUG("RuntimeStart received in state={} — ignoring (expected after config reload)",
+        LOG_DEBUG("RuntimeStart received unexpectedly — ignoring, expected after config "
+                  "reload (state={})",
                   static_cast<int>(m_state));
         return;
     }
 
     m_state = State::Ready;
 
-    LOG_INFO("bootstrap: state changed to Ready");
+    LOG_DEBUG("state changed (state=Ready)");
 }
 
 bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
@@ -312,7 +313,7 @@ bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
         return false;
     }
 
-    LOG_ERROR("bootstrap: timed out — state={}", stateName);
+    LOG_ERROR("bootstrap timed out (state={})", stateName);
 
     m_state = State::Failed;
     return true;

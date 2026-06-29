@@ -24,7 +24,7 @@ void AdminService::handleEvent(EnginedServiceManager& /*serviceManager*/,
     const pz::ipc::IpcMessage* in = event.message();
     if (!in || in->getPayload().empty())
     {
-        LOG_WARN("AdminService: empty AdminPasswordUpdate — dropping");
+        LOG_WARN("empty AdminPasswordUpdate — dropping");
         return;
     }
 
@@ -41,7 +41,7 @@ void AdminService::updatePassword(const std::string& payloadJson)
     }
     catch (const std::exception& e)
     {
-        LOG_WARN("AdminService: failed to parse AdminPasswordUpdate payload: {}", e.what());
+        LOG_WARN("failed to parse AdminPasswordUpdate payload (error={})", e.what());
         return;
     }
 
@@ -51,7 +51,7 @@ void AdminService::updatePassword(const std::string& payloadJson)
 
     if (username.empty() || hash.empty() || salt.empty())
     {
-        LOG_WARN("AdminService: AdminPasswordUpdate missing fields — dropping");
+        LOG_WARN("AdminPasswordUpdate missing fields — dropping");
         return;
     }
 
@@ -65,9 +65,9 @@ void AdminService::updatePassword(const std::string& payloadJson)
         {hash, salt, username});
 
     if (ok)
-        LOG_INFO("AdminService: password updated for user '{}' (local_users)", username);
+        LOG_INFO("password updated in local_users (user={})", username);
     else
-        LOG_WARN("AdminService: local_users update failed for user '{}'", username);
+        LOG_WARN("local_users update failed (user={})", username);
 }
 
 } // namespace pz::engined

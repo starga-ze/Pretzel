@@ -85,14 +85,14 @@ void Core::checkReload()
         return;
     }
 
-    LOG_INFO("{}: SIGHUP received, reloading config", m_name);
+    LOG_INFO("SIGHUP received, reloading config (daemon={})", m_name);
     pz::config::Config::invalidateConfigCache();
     onReload();
 }
 
 void Core::onReload()
 {
-    LOG_INFO("{}: config reload — restarting process", m_name);
+    LOG_INFO("config reload, restarting process (daemon={})", m_name);
 
     // Reconstruct original argv from /proc/self/cmdline (null-separated tokens).
     std::vector<std::string> argStrings;
@@ -108,7 +108,7 @@ void Core::onReload()
 
     if (argStrings.empty())
     {
-        LOG_ERROR("{}: restart aborted — could not read /proc/self/cmdline", m_name);
+        LOG_ERROR("restart aborted — could not read /proc/self/cmdline (daemon={})", m_name);
         return;
     }
 
@@ -145,7 +145,7 @@ void Core::onReload()
     ::execv("/proc/self/exe", argv.data());
 
     // execv only returns on failure.
-    LOG_ERROR("{}: execv failed: {}", m_name, std::strerror(errno));
+    LOG_ERROR("execv failed (daemon={}, error={})", m_name, std::strerror(errno));
 }
 
 void Core::writePidFile()

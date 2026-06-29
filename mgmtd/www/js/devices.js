@@ -1,4 +1,4 @@
-/* devices.js — grouped/classified device inventory (Network / Server / Host) */
+/* devices.js — grouped/classified device inventory (Network / Server / Unknown) */
 (function () {
   'use strict';
 
@@ -34,11 +34,11 @@
     const sub = SUBTYPE_LABEL[d.subtype] || '';
     if (d.type === 'network') return sub || 'Network';
     if (d.type === 'server')  return sub || 'Server';
-    return sub || 'Host';
+    return sub || 'Unknown';
   }
   function badgeCls(d) {
     return d.type === 'network' ? 'badge-network'
-         : d.type === 'server'  ? 'badge-server' : 'badge-host';
+         : d.type === 'server'  ? 'badge-server' : 'badge-unknown';
   }
   function typeBadge(d) {
     return `<span class="type-badge ${badgeCls(d)}">${escHtml(typeLabel(d))}</span>`;
@@ -66,7 +66,7 @@
       <td class="col-ip">${ipCell(d)}</td>
       <td class="col-hostname">${hostnameCell(d)}</td>
       <td class="col-type">${typeBadge(d)}</td>
-      <td class="col-location">${muted(d.sys_location)}</td>
+      <td class="col-location">${muted(d.location)}</td>
       <td class="col-actions">
         <a class="btn-sm details-btn" href="device-detail.html?ip=${encodeURIComponent(d.primary_ip)}">Details</a>
       </td>`;
@@ -142,7 +142,7 @@
     return d.primary_ip.includes(q)
       || d.ips.some(ip => ip.includes(q))
       || (d.hostname || '').toLowerCase().includes(q)
-      || (d.sys_location || '').toLowerCase().includes(q);
+      || (d.location || '').toLowerCase().includes(q);
   }
 
   function fillSection(type, bodyId, badgeId, sectionId, list) {
@@ -168,8 +168,8 @@
       filtered.filter(d => d.type === 'network'));
     fillSection('server', 'serverBody', 'serverBadge', 'serverSection',
       filtered.filter(d => d.type === 'server'));
-    fillSection('host', 'hostBody', 'hostBadge', 'hostSection',
-      filtered.filter(d => d.type === 'host'));
+    fillSection('unknown', 'unknownBody', 'unknownBadge', 'unknownSection',
+      filtered.filter(d => d.type === 'unknown'));
   }
 
   async function load() {
@@ -178,15 +178,15 @@
       if (!data) return;
 
       allDevices = data.devices || [];
-      const s = data.summary || { total: 0, network: 0, server: 0, hosts: 0 };
+      const s = data.summary || { total: 0, network: 0, server: 0, unknown: 0 };
       document.getElementById('sumTotal').textContent   = s.total;
       document.getElementById('sumNetwork').textContent = s.network;
       document.getElementById('sumServer').textContent  = s.server;
-      document.getElementById('sumHosts').textContent   = s.hosts;
+      document.getElementById('sumUnknown').textContent = s.unknown;
 
       applyFilters();
     } catch (e) {
-      ['networkBody', 'serverBody', 'hostBody'].forEach(id => {
+      ['networkBody', 'serverBody', 'unknownBody'].forEach(id => {
         const tb = document.getElementById(id);
         if (tb) tb.innerHTML = `<tr><td colspan="6" class="loading-row error">Failed to load: ${escHtml(e.message || e)}</td></tr>`;
       });

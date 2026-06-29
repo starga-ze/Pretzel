@@ -22,7 +22,7 @@ bool IpcdProcess::start()
 
     if (!m_serviceManager)
     {
-        LOG_ERROR("Ipcd process: service manager is not initialized");
+        LOG_ERROR("service manager is not initialized");
         return false;
     }
 

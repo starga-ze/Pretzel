@@ -49,9 +49,9 @@
           <div class="card-value" id="sumServer">--</div>
           <div class="card-sub">SNMP-managed endpoints</div>
         </div>
-        <div class="card device-cat-card cat-host">
-          <div class="card-label">Host</div>
-          <div class="card-value" id="sumHosts">--</div>
+        <div class="card device-cat-card cat-unknown">
+          <div class="card-label">Unknown</div>
+          <div class="card-value" id="sumUnknown">--</div>
           <div class="card-sub">ICMP only (no SNMP)</div>
         </div>
       </div>
@@ -68,7 +68,7 @@
           <button class="table-filter-chip active" data-filter="all">All</button>
           <button class="table-filter-chip" data-filter="network">Network</button>
           <button class="table-filter-chip" data-filter="server">Server</button>
-          <button class="table-filter-chip" data-filter="host">Host</button>
+          <button class="table-filter-chip" data-filter="unknown">Unknown</button>
         </div>
       </div>
 
@@ -118,11 +118,11 @@
         </table>
       </div>
 
-      <!-- Hosts -->
-      <div class="section-card device-section cat-host" id="hostSection">
+      <!-- Unknown -->
+      <div class="section-card device-section cat-unknown" id="unknownSection">
         <div class="section-header">
-          <span class="section-title"><span class="cat-dot"></span>Hosts</span>
-          <span class="devices-count-badge" id="hostBadge">--</span>
+          <span class="section-title"><span class="cat-dot"></span>Unknown</span>
+          <span class="devices-count-badge" id="unknownBadge">--</span>
         </div>
         <table class="device-table">
           <thead>
@@ -135,7 +135,7 @@
               <th class="col-actions"></th>
             </tr>
           </thead>
-          <tbody id="hostBody">
+          <tbody id="unknownBody">
             <tr><td colspan="6" class="loading-row">Loading…</td></tr>
           </tbody>
         </table>

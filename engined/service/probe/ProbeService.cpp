@@ -51,7 +51,7 @@ ProbeService::schedule(std::chrono::steady_clock::time_point now)
     {
         if (now - m_requestedAt >= responseTimeout())
         {
-            LOG_WARN("ProbeService: ProbeResult timed out — clearing pending");
+            LOG_WARN("ProbeResult timed out — clearing pending");
             m_pending = false;
         }
         return nullptr;
@@ -81,7 +81,7 @@ void ProbeService::handleEvent(EnginedServiceManager& serviceManager,
         break;
 
     default:
-        LOG_WARN("ProbeService: unhandled event type={}",
+        LOG_WARN("unhandled event (type={})",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -103,7 +103,7 @@ void ProbeService::sendProbeRequest(EnginedServiceManager& serviceManager)
     m_pending     = true;
     m_requestedAt = std::chrono::steady_clock::now();
 
-    LOG_DEBUG("ProbeService: sending ProbeRequest to icmpd");
+    LOG_DEBUG("sending ProbeRequest to icmpd");
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
@@ -116,7 +116,7 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
     const pz::ipc::IpcMessage* msg = event.message();
     if (!msg || msg->getPayload().empty())
     {
-        LOG_WARN("ProbeService: empty ProbeResult — keeping previous alive snapshot");
+        LOG_WARN("empty ProbeResult — keeping previous alive snapshot");
         return;
     }
 
@@ -134,11 +134,11 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
     }
     catch (const std::exception& e)
     {
-        LOG_WARN("ProbeService: failed to parse ProbeResult: {}", e.what());
+        LOG_WARN("failed to parse ProbeResult (error={})", e.what());
         return;
     }
 
-    LOG_INFO("ProbeService: ProbeResult alive={} ips={}", aliveCount, ips.size());
+    LOG_INFO("probe complete (alive={}, total={})", aliveCount, ips.size());
 
     // Build an IP→MAC map from every device's learned ARP table (probe_devices.
     // arp_entries) so SNMP-less hosts can be tagged with a MAC + OUI vendor (laptop/

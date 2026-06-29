@@ -24,7 +24,7 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(MgmtdEventDomain domain, s
         return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
 
     default:
-        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -33,7 +33,7 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<pz::ipc::I
 {
     if (!msg)
     {
-        LOG_DEBUG("Mgmtd event factory: received empty message — skipping");
+        LOG_DEBUG("received empty message — skipping");
         return nullptr;
     }
 
@@ -54,7 +54,7 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<pz::ipc::I
                                                std::move(msg));
 
     default:
-        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 }

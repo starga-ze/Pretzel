@@ -23,7 +23,7 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("heartbeat: received empty request");
+            LOG_WARN("received empty heartbeat request");
             return;
         }
 
@@ -56,7 +56,7 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
 
         m_hasData.store(true, std::memory_order_relaxed);
 
-        LOG_TRACE("updated heartbeat result len={}", m_latestJson.size());
+        LOG_TRACE("updated heartbeat result (len={})", m_latestJson.size());
 
         // mgmtd is read-only w.r.t. the DB: engined persists the heartbeat snapshot
         // (state_snapshot table) when it builds the result. Here we only cache the
@@ -65,7 +65,7 @@ void HeartbeatService::handleEvent(MgmtdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event type={}",
+        LOG_WARN("unhandled event (type={})",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -89,7 +89,7 @@ void HeartbeatService::handleAction(MgmtdServiceManager& serviceManager,
 
         auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-        LOG_TRACE("Tx HeartbeatResponse dst={}",
+        LOG_TRACE("Tx HeartbeatResponse (dst={})",
                   pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
@@ -97,7 +97,7 @@ void HeartbeatService::handleAction(MgmtdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled action type={}",
+        LOG_WARN("unhandled action (type={})",
                  static_cast<std::uint32_t>(action.type()));
         break;
     }

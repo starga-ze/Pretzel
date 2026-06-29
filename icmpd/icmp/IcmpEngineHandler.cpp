@@ -30,17 +30,17 @@ bool IcmpEngineHandler::handleRecv(int fd,
         break;
 
     case IcmpIoResult::BufferFull:
-        LOG_WARN("rx queue full fd={} queued={}",
+        LOG_WARN("rx queue full (fd={}, queued={})",
                  fd,
                  conn.rxQueueSize());
         break;
 
     case IcmpIoResult::PeerClosed:
-        LOG_WARN("recv peer closed fd={}", fd);
+        LOG_WARN("recv peer closed (fd={})", fd);
         return false;
 
     case IcmpIoResult::Error:
-        LOG_WARN("recv failed fd={} errno={}", fd, outErrno);
+        LOG_WARN("recv failed (fd={}, errno={})", fd, outErrno);
         return false;
     }
 
@@ -75,15 +75,15 @@ bool IcmpEngineHandler::handleSend(int fd,
         return true;
 
     case IcmpIoResult::BufferFull:
-        LOG_WARN("unexpected tx buffer full fd={}", fd);
+        LOG_WARN("unexpected tx buffer full (fd={})", fd);
         return true;
 
     case IcmpIoResult::PeerClosed:
-        LOG_WARN("send peer closed fd={}", fd);
+        LOG_WARN("send peer closed (fd={})", fd);
         return false;
 
     case IcmpIoResult::Error:
-        LOG_WARN("send failed fd={} errno={}", fd, outErrno);
+        LOG_WARN("send failed (fd={}, errno={})", fd, outErrno);
         return false;
     }
 
@@ -91,7 +91,7 @@ bool IcmpEngineHandler::handleSend(int fd,
     {
         if (!epoll.mod(fd, EPOLLIN | EPOLLRDHUP))
         {
-            LOG_ERROR("epoll mod remove EPOLLOUT failed fd={}", fd);
+            LOG_ERROR("epoll mod remove EPOLLOUT failed (fd={})", fd);
             return false;
         }
     }
@@ -105,7 +105,7 @@ bool IcmpEngineHandler::ingress(int fd,
 {
     if (frame.empty())
     {
-        LOG_WARN("ingress packet is empty fd={} src={}", fd, srcIp);
+        LOG_WARN("ingress packet is empty (fd={}, src={})", fd, srcIp);
         return false;
     }
 
@@ -113,7 +113,7 @@ bool IcmpEngineHandler::ingress(int fd,
     const auto rc = m_codec.decode(frame, packet);
     if (rc != IcmpDecodeResult::Ok)
     {
-        LOG_WARN("ingress decode failed fd={} src={} rc={} size={}",
+        LOG_WARN("ingress decode failed (fd={}, src={}, rc={}, size={})",
                  fd,
                  srcIp,
                  static_cast<int>(rc),
@@ -123,15 +123,15 @@ bool IcmpEngineHandler::ingress(int fd,
 
     if (!packet)
     {
-        LOG_WARN("ingress decode returned nullptr fd={} src={}", fd, srcIp);
+        LOG_WARN("ingress decode returned nullptr (fd={}, src={})", fd, srcIp);
         return true;
     }
 
-    LOG_TRACE("ICMP Ingress Packet dump src={}:\n{}", srcIp, packet->dump());
+    LOG_TRACE("ICMP ingress packet dump (src={}):\n{}", srcIp, packet->dump());
 
     if (!m_rxRouter)
     {
-        LOG_WARN("rxRouter is nullptr, drop packet src={}", srcIp);
+        LOG_WARN("rxRouter is nullptr, drop packet (src={})", srcIp);
         return true;
     }
 
@@ -144,7 +144,7 @@ void IcmpEngineHandler::egress(std::unique_ptr<IcmpPacket> packet,
 {
     if (!packet)
     {
-        LOG_WARN("egress packet is nullptr dst={}", dstIp);
+        LOG_WARN("egress packet is nullptr (dst={})", dstIp);
         return;
     }
 
@@ -160,12 +160,12 @@ void IcmpEngineHandler::egress(std::unique_ptr<IcmpPacket> packet,
         return;
     }
 
-    LOG_TRACE("ICMP Egress Request dump dst={}:\n{}", dstIp, packet->dump());
+    LOG_TRACE("ICMP egress packet dump (dst={}):\n{}", dstIp, packet->dump());
 
     std::vector<std::uint8_t> frame = m_codec.encode(packet);
     if (frame.empty())
     {
-        LOG_WARN("encode failed dst={}", dstIp);
+        LOG_WARN("encode failed (dst={})", dstIp);
         return;
     }
 

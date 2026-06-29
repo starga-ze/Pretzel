@@ -11,9 +11,9 @@
       "ipc": {
         "socket_path": "/run/pretzel/ipcd.sock",
         "max_connections": 128,
-        "max_frame_size": 65536,
-        "rx_buffer_size": 65536,
-        "tx_buffer_size": 65536,
+        "max_frame_size": 1048576,
+        "rx_buffer_size": 1048576,
+        "tx_buffer_size": 1048576,
         "ipc_retry_attempts": 10,
         "ipc_retry_delay_ms": 1000
       },
@@ -54,6 +54,9 @@
       "scan": {
         "poll_interval_sec": 60,
         "response_timeout_sec": 30
+      },
+      "rack": {
+        "racks": []
       }
     }
   },

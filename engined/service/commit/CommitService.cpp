@@ -49,7 +49,7 @@ void CommitService::sendQueueStatus(EnginedServiceManager& serviceManager) const
     msg->setPayload(std::vector<uint8_t>(payload.begin(), payload.end()));
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
-    LOG_DEBUG("CommitService: queue snapshot sent — {} task(s)", m_queue.size());
+    LOG_DEBUG("queue snapshot sent (tasks={})", m_queue.size());
 }
 
 void CommitService::startNext(EnginedServiceManager& serviceManager)
@@ -83,7 +83,7 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
         const pz::ipc::IpcMessage* msg = event.message();
         if (!msg || msg->getPayload().empty())
         {
-            LOG_ERROR("CommitService: SettingsCommitRequest payload is empty");
+            LOG_ERROR("SettingsCommitRequest payload is empty");
             return;
         }
 
@@ -93,7 +93,7 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
         task.status  = TaskStatus::Pending;
         m_queue.push_back(std::move(task));
 
-        LOG_INFO("CommitService: task {} enqueued — queue size={}", m_queue.back().id, m_queue.size());
+        LOG_INFO("task enqueued (id={}, queue_size={})", m_queue.back().id, m_queue.size());
         sendQueueStatus(serviceManager);
 
         // Start immediately if this is the only task (no Running task exists).
@@ -114,7 +114,7 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
             if (t.status == TaskStatus::Running)
             {
                 t.status = TaskStatus::Done;
-                LOG_INFO("CommitService: task {} done", t.id);
+                LOG_DEBUG("task done (id={})", t.id);
                 break;
             }
         }
@@ -143,7 +143,7 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
             if (t.status == TaskStatus::Running)
             {
                 t.status = TaskStatus::Failed;
-                LOG_ERROR("CommitService: task {} failed — reload did not converge", t.id);
+                LOG_ERROR("task failed, reload did not converge (id={})", t.id);
                 break;
             }
         }
@@ -162,7 +162,7 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("CommitService: unhandled event type={}",
+        LOG_WARN("unhandled event (type={})",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -186,7 +186,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
 
         if (!running)
         {
-            LOG_ERROR("CommitService: ApplyCommit fired but no Running task found");
+            LOG_ERROR("ApplyCommit fired but no Running task found");
             return;
         }
 
@@ -197,7 +197,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
         }
         catch (const std::exception& e)
         {
-            LOG_ERROR("CommitService: failed to parse commit payload — {}", e.what());
+            LOG_ERROR("failed to parse commit payload (error={})", e.what());
             running->status = TaskStatus::Failed;
             sendQueueStatus(serviceManager);
             startNext(serviceManager);
@@ -206,7 +206,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
 
         if (!changes.is_array())
         {
-            LOG_ERROR("CommitService: payload root must be a JSON array");
+            LOG_ERROR("payload root must be a JSON array");
             running->status = TaskStatus::Failed;
             sendQueueStatus(serviceManager);
             startNext(serviceManager);
@@ -227,7 +227,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
 
             if (daemon.empty() || domain.empty() || !change.contains("values"))
             {
-                LOG_WARN("CommitService: skipping malformed change entry");
+                LOG_WARN("skipping malformed change entry");
                 failed++;
                 continue;
             }
@@ -235,7 +235,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
             const json& values = change["values"];
             if (!values.is_object())
             {
-                LOG_WARN("CommitService: 'values' not object daemon={} domain={}", daemon, domain);
+                LOG_WARN("'values' not object (daemon={}, domain={})", daemon, domain);
                 failed++;
                 continue;
             }
@@ -250,14 +250,14 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
             }
 
             root[daemon][parent][domain].merge_patch(values);
-            LOG_INFO("CommitService: staged daemon={} {}.{} keys={}",
+            LOG_DEBUG("staged (daemon={}, domain={}.{}, keys={})",
                      daemon, parent, domain, values.size());
             applied++;
         }
 
         if (applied == 0)
         {
-            LOG_ERROR("CommitService: no changes staged — task {} failed", running->id);
+            LOG_ERROR("no changes staged, task failed (id={})", running->id);
             running->status = TaskStatus::Failed;
             sendQueueStatus(serviceManager);
             startNext(serviceManager);
@@ -267,15 +267,15 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
         // Persist as a brand-new running_config version (history append).
         if (!pz::config::Config::commitConfig(root))
         {
-            LOG_ERROR("CommitService: commitConfig failed — task {} failed", running->id);
+            LOG_ERROR("commitConfig failed, task failed (id={})", running->id);
             running->status = TaskStatus::Failed;
             sendQueueStatus(serviceManager);
             startNext(serviceManager);
             return;
         }
 
-        LOG_INFO("CommitService: task {} — {} staged, {} skipped — committed new "
-                 "running_config version; scheduling reload",
+        LOG_INFO("committed new running_config version, scheduling reload "
+                 "(id={}, staged={}, skipped={})",
                  running->id, applied, failed);
 
         static constexpr pz::ipc::IpcDaemon kServiceDaemons[] = {
@@ -293,7 +293,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
             cfgMsg->setCmd(pz::ipc::IpcCmd::ConfigReload);
             cfgMsg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
             serviceManager.txRouter().handleIpcMessage(std::move(cfgMsg));
-            LOG_INFO("CommitService: ConfigReload sent to {}", pz::ipc::IpcProtocol::daemonToStr(dst));
+            LOG_DEBUG("ConfigReload sent (dst={})", pz::ipc::IpcProtocol::daemonToStr(dst));
         }
 
         pz::config::Config::invalidateConfigCache();
@@ -303,7 +303,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("CommitService: unhandled action type={}",
+        LOG_WARN("unhandled action (type={})",
                  static_cast<std::uint32_t>(action.type()));
         break;
     }

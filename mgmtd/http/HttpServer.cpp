@@ -98,7 +98,7 @@ bool HttpServer::initTlsContext()
 
     if (ec)
     {
-        LOG_ERROR("Mgmtd HTTPS set_options failed: {}", ec.message());
+        LOG_ERROR("HTTPS set_options failed (error={})", ec.message());
         return false;
     }
 
@@ -108,7 +108,7 @@ bool HttpServer::initTlsContext()
     m_sslContext->use_certificate_chain_file(certPath, ec);
     if (ec)
     {
-        LOG_ERROR("Mgmtd HTTPS load cert failed path={} error={}", certPath, ec.message());
+        LOG_ERROR("HTTPS load cert failed (path={}, error={})", certPath, ec.message());
         return false;
     }
 
@@ -119,11 +119,11 @@ bool HttpServer::initTlsContext()
 
     if (ec)
     {
-        LOG_ERROR("Mgmtd HTTPS load key failed path={} error={}", keyPath, ec.message());
+        LOG_ERROR("HTTPS load key failed (path={}, error={})", keyPath, ec.message());
         return false;
     }
 
-    LOG_INFO("Mgmtd HTTPS enabled cert={} key={}", certPath, keyPath);
+    LOG_INFO("HTTPS enabled (cert={}, key={})", certPath, keyPath);
     return true;
 }
 
@@ -133,7 +133,7 @@ bool HttpServer::init()
     const auto address = boost::asio::ip::make_address(m_listenAddress, ec);
     if (ec)
     {
-        LOG_ERROR("Mgmtd HTTP invalid listen address {}: {}", m_listenAddress, ec.message());
+        LOG_ERROR("invalid listen address (address={}, error={})", m_listenAddress, ec.message());
         return false;
     }
 

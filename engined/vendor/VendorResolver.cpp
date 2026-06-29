@@ -86,11 +86,11 @@ void VendorResolver::loadOui()
                 m_oui.emplace(std::move(prefix), std::move(vendor));
         }
 
-        LOG_INFO("VendorResolver: loaded {} OUI entries from {}", m_oui.size(), path);
+        LOG_INFO("loaded OUI entries (count={}, path={})", m_oui.size(), path);
         return;
     }
 
-    LOG_WARN("VendorResolver: no oui.tsv found — host vendor lookup disabled");
+    LOG_WARN("no oui.tsv found — host vendor lookup disabled");
 }
 
 std::string VendorResolver::vendorForMac(const std::string& mac) const

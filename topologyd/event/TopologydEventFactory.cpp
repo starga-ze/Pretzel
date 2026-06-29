@@ -29,7 +29,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(TopologydEventDoma
         return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
 
     default:
-        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -39,7 +39,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
 {
     if (!msg)
     {
-        LOG_DEBUG("Topologyd event factory: received empty message — skipping");
+        LOG_DEBUG("received empty message — skipping");
         return nullptr;
     }
 
@@ -61,7 +61,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 
     default:
-        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 }

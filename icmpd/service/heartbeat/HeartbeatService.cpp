@@ -21,7 +21,7 @@ void HeartbeatService::handleEvent(IcmpdServiceManager& serviceManager,
         const auto* msg = event.message();
         if (!msg)
         {
-            LOG_WARN("heartbeat: received empty request");
+            LOG_WARN("received empty heartbeat request");
             return;
         }
 
@@ -36,7 +36,7 @@ void HeartbeatService::handleEvent(IcmpdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event type={}",
+        LOG_WARN("unhandled event (type={})",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -60,7 +60,7 @@ void HeartbeatService::handleAction(IcmpdServiceManager& serviceManager,
 
         auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-        LOG_TRACE("Tx HeartbeatResponse dst={}",
+        LOG_TRACE("Tx HeartbeatResponse (dst={})",
                   pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
@@ -68,7 +68,7 @@ void HeartbeatService::handleAction(IcmpdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled action type={}",
+        LOG_WARN("unhandled action (type={})",
                  static_cast<std::uint32_t>(action.type()));
         break;
     }

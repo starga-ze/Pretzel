@@ -20,9 +20,12 @@ namespace pz::scand
 class SnmpProtocol
 {
 public:
-    // Configure an already snmp_sess_init'd session for SNMPv2c.
+    // Configure an already snmp_sess_init'd session for SNMPv2c. `community` is
+    // resolved per-IP by the caller (SnmpScanConfig::communityFor); cfg supplies
+    // the shared probe timeout/retries.
     static void configureV2c(snmp_session& sess,
                              const std::string& peer,
+                             const std::string& community,
                              const SnmpScanConfig& cfg);
 
     // Configure a session for SNMPv3 (USM) using the given credentials (resolved
@@ -57,9 +60,8 @@ public:
     // Walk IF-MIB ifTable + ifXTable into dev.ifTable (interface inventory).
     static void walkIfTable(void* sessp, SnmpDevice& dev);
 
-    // Walk LLDP-MIB lldpRemTable (+ lldpLocPortTable for local port names) into
-    // dev.lldpNeighbors — the device's directly-connected neighbors (topology edges).
-    static void walkLldpNeighbors(void* sessp, SnmpDevice& dev);
+    // LLDP (lldpRemTable) is walked by lldp::LldpProtocol, not here — see
+    // lldp/LldpProtocol.h.
 
     // Walk ip-MIB ipNetToMediaTable (ARP) into dev.arpEntries (IP↔MAC).
     static void walkArpTable(void* sessp, SnmpDevice& dev);

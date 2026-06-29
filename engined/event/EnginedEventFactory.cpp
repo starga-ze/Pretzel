@@ -40,7 +40,7 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(EnginedEventDomain dom
         return std::make_unique<AdminEvent>(static_cast<AdminEventType>(type));
 
     default:
-        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -49,7 +49,7 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
 {
     if (!msg)
     {
-        LOG_DEBUG("Engined event factory: received empty message — skipping");
+        LOG_DEBUG("received empty message — skipping");
         return nullptr;
     }
 
@@ -81,7 +81,7 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
         return std::make_unique<AdminEvent>(AdminEventType::ReceivePasswordUpdate, std::move(msg));
 
     default:
-        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 }

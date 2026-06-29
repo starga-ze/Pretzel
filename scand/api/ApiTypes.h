@@ -32,13 +32,15 @@ inline const char* apiVendorToString(ApiVendor v)
     }
 }
 
-// Per-IP vendor-API credentials. The terminal stage of the v2c -> v3 -> API
-// collection chain: a device listed here is queried over its vendor HTTP API to
-// fill the topology data (interface IPs, ARP, LLDP) that its SNMP agent doesn't
-// expose. PAN-OS, for example, answers sysName/ifTable over SNMPv3 but returns
-// "No Such Object" for the ip-MIB address tables — those come from here instead.
+// Per-IP vendor-API credentials. A device whose scan method is "api" (chosen in
+// the GUI, mutually exclusive with v2c/v3) is queried entirely over its vendor
+// HTTP API by ApiEngine — independent of and parallel to SnmpEngine, not a
+// fallback stage after SNMP. PAN-OS, for example, answers sysName/ifTable over
+// SNMPv3 but returns "No Such Object" for the ip-MIB address tables; a PAN-OS
+// device that needs those should be registered under the api method instead.
 //
-// Set in the GUI (settings -> API) and stored as scand.service.api.devices[].
+// Set in the GUI (settings -> SNMP, method "API") and stored as
+// scand.service.scan.api_devices[].
 struct ApiCredential
 {
     ApiVendor   vendor{ApiVendor::Unknown};

@@ -15,7 +15,7 @@ std::unique_ptr<MgmtdAction> MgmtdActionFactory::create(MgmtdActionDomain domain
         return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
 
     default:
-        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }

@@ -8,16 +8,15 @@
 namespace pz::scand
 {
 
-// Service-layer seam for the vendor-API collection stage. Owns the API-specific
+// Service-layer seam for the vendor-API scan method. Owns the API-specific
 // configuration knowledge (scand.service.scan.api_devices[]) and keeps it out of
 // the SNMP-focused ScanService.
 //
-// It deliberately has no IPC Event/Action plumbing: API collection is not a
-// separate request from engined, it's the terminal stage of the v2c -> v3 -> API
-// chain that runs inside one SNMP scan cycle. ScanService folds the credentials
-// this returns into the SnmpScanConfig; the engine executes the stage in a worker
-// thread via VendorApiRegistry. Future API-only operations (on-demand refresh,
-// per-vendor health checks) would attach here.
+// It deliberately has no IPC Event/Action plumbing of its own: ScanService calls
+// loadCredentials() when it splits an incoming ScanRequest by method, then hands
+// the result to ApiEngine via TxRouter — mirroring how it builds SnmpScanConfig for
+// SnmpEngine. Future API-only operations (on-demand refresh, per-vendor health
+// checks) would attach here.
 class ApiService
 {
 public:

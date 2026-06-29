@@ -20,14 +20,14 @@ bool IcmpSocket::open()
 {
     if (m_fd >= 0)
     {
-        LOG_WARN("IcmpSocket already opened fd={}", m_fd);
+        LOG_WARN("IcmpSocket already opened (fd={})", m_fd);
         return true;
     }
 
     if (!createSocket())
         return false;
 
-    LOG_INFO("IcmpSocket ready fd={}", m_fd);
+    LOG_INFO("IcmpSocket ready (fd={})", m_fd);
     return true;
 }
 
@@ -50,7 +50,7 @@ bool IcmpSocket::createSocket()
     m_fd = ::socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (m_fd < 0)
     {
-        LOG_ERROR("socket(AF_INET, SOCK_RAW, IPPROTO_ICMP) failed errno={}", errno);
+        LOG_ERROR("socket(AF_INET, SOCK_RAW, IPPROTO_ICMP) failed (errno={})", errno);
         return false;
     }
 
@@ -58,7 +58,7 @@ bool IcmpSocket::createSocket()
     {
         const int savedErrno = errno;
 
-        LOG_ERROR("setNonBlocking failed fd={} errno={}", m_fd, savedErrno);
+        LOG_ERROR("setNonBlocking failed (fd={}, errno={})", m_fd, savedErrno);
 
         ::close(m_fd);
         m_fd = -1;

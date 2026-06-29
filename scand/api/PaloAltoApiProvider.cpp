@@ -74,7 +74,7 @@ bool withResult(const std::string& xml, Fn&& fn)
     }
     catch (const std::exception& e)
     {
-        LOG_WARN("PaloAltoApiProvider: XML parse error: {}", e.what());
+        LOG_WARN("XML parse error (error={})", e.what());
         return false;
     }
 }
@@ -95,7 +95,7 @@ std::string PaloAltoApiProvider::resolveApiKey(const ApiCredential& cred,
                                             cred.timeoutMs, cred.verifyTls);
     if (!resp.ok)
     {
-        LOG_WARN("PaloAltoApiProvider: keygen failed host={} status={} err={}",
+        LOG_WARN("keygen failed (host={}, status={}, error={})",
                  host, resp.status, resp.error);
         return {};
     }
@@ -117,7 +117,7 @@ std::string PaloAltoApiProvider::op(const ApiCredential& cred, const std::string
                                        cred.timeoutMs, cred.verifyTls);
     if (!resp.ok)
     {
-        LOG_WARN("PaloAltoApiProvider: op failed host={} status={} err={}",
+        LOG_WARN("op failed (host={}, status={}, error={})",
                  host, resp.status, resp.error);
         return {};
     }
@@ -241,7 +241,7 @@ void PaloAltoApiProvider::parseArp(const std::string& xml, SnmpDevice& dev)
 
 void PaloAltoApiProvider::parseLldp(const std::string& xml, SnmpDevice& dev)
 {
-    std::vector<SnmpLldpNeighbor> neighbors;
+    std::vector<LldpNeighbor> neighbors;
     withResult(xml, [&](const pt::ptree& result) {
         for (const auto& kv : result)
         {
@@ -262,7 +262,7 @@ void PaloAltoApiProvider::parseLldp(const std::string& xml, SnmpDevice& dev)
                     continue;
                 const auto& n = nkv.second;
 
-                SnmpLldpNeighbor nb;
+                LldpNeighbor nb;
                 nb.localPort       = localIdx;
                 nb.localPortName   = localName;
                 nb.remoteChassisId = n.get<std::string>("chassis-id", "");
@@ -303,7 +303,7 @@ bool PaloAltoApiProvider::collect(const ApiCredential& cred, SnmpDevice& dev)
     const std::string apiKey = resolveApiKey(cred, host);
     if (apiKey.empty())
     {
-        LOG_WARN("PaloAltoApiProvider: no API key for host={} — skipping", host);
+        LOG_WARN("no API key — skipping (host={})", host);
         return false;
     }
 
@@ -331,9 +331,9 @@ bool PaloAltoApiProvider::collect(const ApiCredential& cred, SnmpDevice& dev)
                         dev.arpEntries.size() != beforeArp ||
                         !dev.lldpNeighbors.empty();
 
-    LOG_INFO("PaloAltoApiProvider: host={} interfaces={} arp={} lldp={}",
-             host, dev.interfaces.size(), dev.arpEntries.size(),
-             dev.lldpNeighbors.size());
+    LOG_DEBUG("collected (host={}, interfaces={}, arp={}, lldp={})",
+              host, dev.interfaces.size(), dev.arpEntries.size(),
+              dev.lldpNeighbors.size());
     return gained;
 }
 

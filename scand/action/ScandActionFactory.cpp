@@ -19,7 +19,7 @@ std::unique_ptr<ScandAction> ScandActionFactory::create(ScandActionDomain domain
         return std::make_unique<ScanAction>(static_cast<ScanActionType>(type), "");
 
     default:
-        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }

@@ -41,7 +41,7 @@ bool IpcServer::init()
 
     m_initialized = true;
 
-    LOG_INFO("IpcServer initialized path={}, self={}", m_cfg.socketPath, 
+    LOG_INFO("IPC server initialized (path={}, self={})", m_cfg.socketPath,
             pz::ipc::IpcProtocol::daemonToStr(m_selfId));
     return true;
 }
@@ -56,7 +56,7 @@ bool IpcServer::poll(int timeoutMs)
             return true;
         }
 
-        LOG_WARN("epoll wait failed errno={}", errno);
+        LOG_WARN("epoll wait failed (errno={})", errno);
         return false;
     }
 
@@ -76,13 +76,13 @@ bool IpcServer::enqueueFrame(int fd, std::vector<std::uint8_t> frame)
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
     {
-        LOG_WARN("IPC server: send rejected — client not connected");
+        LOG_WARN("send rejected — client not connected");
         return false;
     }
 
     if (frame.empty())
     {
-        LOG_WARN("IPC server: outgoing frame is empty");
+        LOG_WARN("outgoing frame is empty");
         return false;
     }
 
@@ -90,14 +90,14 @@ bool IpcServer::enqueueFrame(int fd, std::vector<std::uint8_t> frame)
 
     if (!conn.write(frame))
     {
-        LOG_WARN("tx buffer full fd={} frame={}bytes",
+        LOG_WARN("tx buffer full (fd={}, frame_bytes={})",
                  fd, frame.size());
         return false;
     }
 
     if (!m_epoll.mod(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP))
     {
-        LOG_ERROR("epoll mod add EPOLLOUT failed fd={}", fd);
+        LOG_ERROR("epoll mod add EPOLLOUT failed (fd={})", fd);
         m_handler->closeConnection(fd, m_connections, m_epoll);
         return false;
     }
@@ -109,7 +109,7 @@ bool IpcServer::initEpoll()
 {
     if (!m_epoll.init())
     {
-        LOG_ERROR("IPC server: epoll initialization failed");
+        LOG_ERROR("epoll initialization failed");
         return false;
     }
 
@@ -121,23 +121,23 @@ bool IpcServer::initListenSocket()
     m_listener = std::make_unique<pz::socket::UnixDomainSocket>(m_cfg.socketPath);
     if (!m_listener)
     {
-        LOG_ERROR("IPC server: failed to allocate listener");
+        LOG_ERROR("failed to allocate listener");
         return false;
     }
 
     if (!m_listener->open())
     {
-        LOG_ERROR("listener open failed path={}", m_cfg.socketPath);
+        LOG_ERROR("listener open failed (path={})", m_cfg.socketPath);
         return false;
     }
 
     if (!m_epoll.add(m_listener->fd(), EPOLLIN | EPOLLRDHUP))
     {
-        LOG_ERROR("epoll add listen fd failed fd={}", m_listener->fd());
+        LOG_ERROR("epoll add listen fd failed (fd={})", m_listener->fd());
         return false;
     }
 
-    LOG_INFO("listen fd registered fd={}", m_listener->fd());
+    LOG_INFO("listen fd registered (fd={})", m_listener->fd());
     return true;
 }
 
@@ -159,7 +159,7 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
     {
         if (isClose)
         {
-            LOG_ERROR("listen fd abnormal events=0x{:x}", events);
+            LOG_ERROR("listen fd abnormal (events=0x{:x})", events);
             return;
         }
 
@@ -173,13 +173,13 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
     {
-        LOG_WARN("unknown fd event fd={} events=0x{:x}", fd, events);
+        LOG_WARN("unknown fd event (fd={}, events=0x{:x})", fd, events);
         return;
     }
 
     if (isClose)
     {
-        LOG_DEBUG("connection close event fd={} events=0x{:x}", fd, events);
+        LOG_DEBUG("connection close event (fd={}, events=0x{:x})", fd, events);
         m_handler->closeConnection(fd, m_connections, m_epoll);
         return;
     }

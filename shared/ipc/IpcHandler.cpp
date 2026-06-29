@@ -24,15 +24,15 @@ bool IpcHandler::handleRecv(int fd, IpcConnection& conn, pz::io::Epoll& epoll)
         break;
 
     case IoResult::PeerClosed:
-        LOG_INFO("peer closed fd={}", fd);
+        LOG_INFO("peer closed (fd={})", fd);
         return false;
 
     case IoResult::BufferFull:
-        LOG_WARN("rx buffer full fd={}, closing", fd);
+        LOG_WARN("rx buffer full, closing (fd={})", fd);
         return false;
 
     case IoResult::Error:
-        LOG_ERROR("recv failed fd={} errno={}", fd, ioErrno);
+        LOG_ERROR("recv failed (fd={}, errno={})", fd, ioErrno);
         return false;
     }
 
@@ -49,7 +49,7 @@ bool IpcHandler::handleSend(int fd, IpcConnection& conn, pz::io::Epoll& epoll)
     case IoResult::Ok:
         if (!epoll.mod(fd, EPOLLIN | EPOLLRDHUP))
         {
-            LOG_ERROR("epoll mod remove EPOLLOUT failed fd={}", fd);
+            LOG_ERROR("epoll mod remove EPOLLOUT failed (fd={})", fd);
             return false;
         }
         return true;
@@ -57,21 +57,21 @@ bool IpcHandler::handleSend(int fd, IpcConnection& conn, pz::io::Epoll& epoll)
     case IoResult::WouldBlock:
         if (!epoll.mod(fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP))
         {
-            LOG_ERROR("epoll mod keep EPOLLOUT failed fd={}", fd);
+            LOG_ERROR("epoll mod keep EPOLLOUT failed (fd={})", fd);
             return false;
         }
         return true;
 
     case IoResult::PeerClosed:
-        LOG_INFO("peer closed while flushing fd={}", fd);
+        LOG_INFO("peer closed while flushing (fd={})", fd);
         return false;
 
     case IoResult::BufferFull:
-        LOG_ERROR("unexpected BufferFull during flush fd={}", fd);
+        LOG_ERROR("unexpected BufferFull during flush (fd={})", fd);
         return false;
 
     case IoResult::Error:
-        LOG_ERROR("flushTx failed fd={} errno={}", fd, ioErrno);
+        LOG_ERROR("flushTx failed (fd={}, errno={})", fd, ioErrno);
         return false;
     }
 
@@ -82,7 +82,7 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 {
     auto& rx = conn.rx();
 
-    LOG_TRACE("[RX Buffer State] fd={} buffer: used={}/{} ({:.2f}%) free={}", fd,
+    LOG_TRACE("rx buffer state (fd={}, used={}/{}, used_pct={:.2f}, free={})", fd,
               rx.readable(), rx.capacity(),
               rx.capacity() > 0
                   ? (static_cast<double>(rx.readable()) * 100.0 /
@@ -98,7 +98,7 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
         std::uint8_t headerBuf[sizeof(IpcWireHeader)]{};
         if (rx.peek(headerBuf, sizeof(headerBuf)) < sizeof(headerBuf))
         {
-            LOG_TRACE("incomplete header fd={} readable={} headerLen={}",
+            LOG_TRACE("incomplete header (fd={}, readable={}, header_len={})",
                       fd, rx.readable(), sizeof(IpcWireHeader));
             return true;
         }
@@ -112,21 +112,21 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 
         if (peekRc == IpcPeekResult::InvalidFrame)
         {
-            LOG_ERROR("invalid frame header fd={} readable={}",
+            LOG_ERROR("invalid frame header (fd={}, readable={})",
                       fd, rx.readable());
             return false;
         }
 
         if (frameSize == 0 || frameSize > IPC_MAX_FRAME_SIZE)
         {
-            LOG_ERROR("invalid frame size fd={} frameSize={} maxFrameSize={}",
+            LOG_ERROR("invalid frame size (fd={}, frame_size={}, max_frame_size={})",
                       fd, frameSize, IPC_MAX_FRAME_SIZE);
             return false;
         }
 
         if (rx.readable() < frameSize)
         {
-            LOG_TRACE("incomplete frame fd={} readable={} frameSize={}",
+            LOG_TRACE("incomplete frame (fd={}, readable={}, frame_size={})",
                       fd, rx.readable(), frameSize);
             return true;
         }
@@ -139,12 +139,12 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
                 frameSize
             };
 
-            LOG_TRACE("frame ready fd={} frameSize={} contiguous=true",
+            LOG_TRACE("frame ready (fd={}, frame_size={}, contiguous=true)",
                       fd, frameSize);
 
             if (!ingress(fd, frame))
             {
-                LOG_ERROR("ingress failed fd={} frameSize={}",
+                LOG_ERROR("ingress failed (fd={}, frame_size={})",
                           fd, frameSize);
                 return false;
             }
@@ -156,7 +156,7 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 
             if (rx.peek(frameBuf.data(), frameSize) < frameSize)
             {
-                LOG_ERROR("failed to peek wrapped frame fd={} readable={} frameSize={}",
+                LOG_ERROR("failed to peek wrapped frame (fd={}, readable={}, frame_size={})",
                           fd, rx.readable(), frameSize);
                 return false;
             }
@@ -166,12 +166,12 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
                 frameBuf.size()
             };
 
-            LOG_TRACE("frame ready fd={} frameSize={} contiguous=false firstChunk={}",
+            LOG_TRACE("frame ready (fd={}, frame_size={}, contiguous=false, first_chunk={})",
                       fd, frameSize, rx.readLen());
 
             if (!ingress(fd, frame))
             {
-                LOG_ERROR("ingress failed fd={} frameSize={}",
+                LOG_ERROR("ingress failed (fd={}, frame_size={})",
                           fd, frameSize);
                 return false;
             }

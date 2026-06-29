@@ -32,7 +32,7 @@ void HttpsSession::onHandshake(beast::error_code ec)
 {
     if (ec)
     {
-        LOG_DEBUG("Mgmtd HTTPS handshake failed: {}", ec.message());
+        LOG_TRACE("HTTPS handshake failed (error={})", ec.message());
         return;
     }
 
@@ -60,7 +60,7 @@ void HttpsSession::onRead(beast::error_code ec, std::size_t)
 
     if (ec)
     {
-        LOG_DEBUG("Mgmtd HTTPS read failed: {}", ec.message());
+        LOG_TRACE("HTTPS read failed (error={})", ec.message());
         return;
     }
 
@@ -84,7 +84,7 @@ void HttpsSession::onWrite(bool close, beast::error_code ec, std::size_t)
 {
     if (ec)
     {
-        LOG_DEBUG("Mgmtd HTTPS write failed: {}", ec.message());
+        LOG_TRACE("HTTPS write failed (error={})", ec.message());
         return;
     }
 
@@ -109,7 +109,7 @@ void HttpsSession::onShutdown(beast::error_code ec)
 {
     if (ec && ec != boost::asio::error::eof)
     {
-        LOG_DEBUG("Mgmtd HTTPS shutdown failed: {}", ec.message());
+        LOG_TRACE("HTTPS shutdown failed (error={})", ec.message());
     }
 }
 

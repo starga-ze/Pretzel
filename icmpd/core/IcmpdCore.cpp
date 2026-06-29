@@ -35,7 +35,7 @@ bool IcmpdCore::onInit()
             m_loggerConfig.maxFileSize,
             m_loggerConfig.maxFiles);
 
-    LOG_INFO("Icmpd onInit()...");
+    LOG_INFO("icmpd: starting up");
 
     /* ThreadManager init */
     m_threadManager = std::make_unique<pz::util::ThreadManager>();

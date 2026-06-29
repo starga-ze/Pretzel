@@ -19,7 +19,7 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager || !m_txRouter)
     {
-        LOG_ERROR("dependencies not ready serviceManager={} txRouter={}",
+        LOG_ERROR("dependencies not ready (serviceManager={}, txRouter={})",
                   static_cast<bool>(m_serviceManager),
                   static_cast<bool>(m_txRouter));
         return;
@@ -27,11 +27,11 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
     if (!msg)
     {
-        LOG_WARN("Ipcd RxRouter: received null IPC message — skipping");
+        LOG_WARN("received null IPC message — skipping");
         return;
     }
 
-    LOG_TRACE("recv cmd={} src={}",
+    LOG_TRACE("recv (cmd={}, src={})",
               pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
@@ -49,7 +49,7 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     }
 
     default:
-        LOG_TRACE("bypass routing cmd={}", pz::ipc::IpcProtocol::cmdToStr(cmd));
+        LOG_TRACE("bypass routing (cmd={})", pz::ipc::IpcProtocol::cmdToStr(cmd));
         m_txRouter->handleIpcMessage(std::move(msg));
         break;
     }

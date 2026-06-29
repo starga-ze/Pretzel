@@ -40,7 +40,7 @@ bool AuthService::loadCredential()
     m_mustChange = false;
     m_loaded     = false;
 
-    LOG_WARN("AuthService: no readable local_users credential — refusing logins until "
+    LOG_WARN("no readable local_users credential — refusing logins until "
              "it is available (retrying)");
     return false;
 }

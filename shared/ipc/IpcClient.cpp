@@ -69,7 +69,7 @@ bool IpcClient::init()
         {
             m_initialized = true;
 
-            LOG_INFO("IpcClient initialized path={} self={} attempt={}",
+            LOG_INFO("IpcClient initialized (path={}, self={}, attempt={})",
                      m_cfg.socketPath,
                      IpcProtocol::daemonToStr(m_selfId),
                      attempt);
@@ -82,7 +82,7 @@ bool IpcClient::init()
         if (attempt == maxAttempts)
             break;
 
-        LOG_WARN("connect attempt {}/{} failed path={} self={}, retrying in {}ms",
+        LOG_WARN("connect attempt failed, retrying (attempt={}/{}, path={}, self={}, retry_ms={})",
                  attempt,
                  maxAttempts,
                  m_cfg.socketPath,
@@ -92,7 +92,7 @@ bool IpcClient::init()
         std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
     }
 
-    LOG_ERROR("failed to connect after {} attempts path={} self={}",
+    LOG_ERROR("failed to connect (attempts={}, path={}, self={})",
               maxAttempts,
               m_cfg.socketPath,
               IpcProtocol::daemonToStr(m_selfId));
@@ -109,7 +109,7 @@ bool IpcClient::poll(int timeoutMs)
             return true;
         }
 
-        LOG_WARN("Epoll wait failed errno={}", errno);
+        LOG_WARN("epoll wait failed (errno={})", errno);
         return false;
     }
 
@@ -128,25 +128,25 @@ bool IpcClient::enqueueFrame(std::vector<std::uint8_t> frame)
 {
     if (!m_conn || !m_socket || m_state != State::Connected)
     {
-        LOG_WARN("IPC server: send rejected — client not connected");
+        LOG_WARN("send rejected — client not connected");
         return false;
     }
 
     if (frame.empty())
     {
-        LOG_WARN("IPC server: outgoing frame is empty");
+        LOG_WARN("outgoing frame is empty");
         return false;
     }
 
     if (!m_conn->write(frame))
     {
-        LOG_WARN("tx buffer full frame={}bytes", frame.size());
+        LOG_WARN("tx buffer full (frame_bytes={})", frame.size());
         return false;
     }
 
     if (!m_epoll.mod(m_socket->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP))
     {
-        LOG_ERROR("epoll mod add EPOLLOUT failed fd={}", m_socket->fd());
+        LOG_ERROR("epoll mod add EPOLLOUT failed (fd={})", m_socket->fd());
         closeConnection();
         return false;
     }
@@ -200,7 +200,7 @@ bool IpcClient::connectServer()
     const auto rc = m_socket->connect();
     if (rc == pz::socket::UnixDomainSocket::ConnectResult::Failed)
     {
-        LOG_ERROR("connect failed path={}", m_cfg.socketPath);
+        LOG_ERROR("connect failed (path={})", m_cfg.socketPath);
         return false;
     }
 
@@ -222,12 +222,12 @@ bool IpcClient::connectServer()
 
         if (!m_epoll.add(m_socket->fd(), EPOLLIN | EPOLLRDHUP))
         {
-            LOG_ERROR("epoll add connected fd failed fd={}", m_socket->fd());
+            LOG_ERROR("epoll add connected fd failed (fd={})", m_socket->fd());
             closeConnection();
             return false;
         }
 
-        LOG_INFO("connected immediately fd={}", m_socket->fd());
+        LOG_INFO("connected immediately (fd={})", m_socket->fd());
         return true;
     }
 
@@ -235,12 +235,12 @@ bool IpcClient::connectServer()
 
     if (!m_epoll.add(m_socket->fd(), EPOLLIN | EPOLLOUT | EPOLLRDHUP))
     {
-        LOG_ERROR("epoll add connecting fd failed fd={}", m_socket->fd());
+        LOG_ERROR("epoll add connecting fd failed (fd={})", m_socket->fd());
         closeConnection();
         return false;
     }
 
-    LOG_INFO("connecting fd={}", m_socket->fd());
+    LOG_INFO("connecting (fd={})", m_socket->fd());
     return true;
 }
 
@@ -273,7 +273,7 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
     /* Socket fd */
     if (!m_socket || fd != m_socket->fd())
     {
-        LOG_WARN("unknown fd event fd={} events=0x{:x}", fd, events);
+        LOG_WARN("unknown fd event (fd={}, events=0x{:x})", fd, events);
         return;
     }
 
@@ -297,7 +297,7 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
     /* Connected fd */
     if (m_state != State::Connected || !m_conn)
     {
-        LOG_WARN("event ignored in invalid state fd={} state={} events=0x{:x}",
+        LOG_WARN("event ignored in invalid state (fd={}, state={}, events=0x{:x})",
                  fd,
                  static_cast<int>(m_state),
                  events);
@@ -306,7 +306,7 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
 
     if (isClose)
     {
-        LOG_INFO("connection close event fd={} events=0x{:x}", fd, events);
+        LOG_INFO("connection close event (fd={}, events=0x{:x})", fd, events);
         closeConnection();
         return;
     }

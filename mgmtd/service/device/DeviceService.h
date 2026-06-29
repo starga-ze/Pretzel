@@ -24,8 +24,10 @@ struct DeviceInterface
 //
 // type taxonomy (3-way):
 //   "network" — SNMP-managed network gear (router/switch/firewall/ap/gateway)
-//   "server"  — SNMP-managed endpoint (hypervisor/bmc/server/windows/linux/printer)
-//   "host"    — ICMP-reachable only, no SNMP (general endpoint, e.g. laptop/PC)
+//   "server"  — SNMP-managed endpoint, positively identified
+//               (hypervisor/bmc/server/windows/linux/printer)
+//   "unknown" — no SNMP, OR an SNMP responder with no positive identification
+//               (general endpoint, e.g. laptop/PC/IoT — "server" is not a default)
 struct DeviceGroup
 {
     std::string              primaryIp;       // representative IP (SNMP-bearing first, lowest IP)
@@ -33,7 +35,7 @@ struct DeviceGroup
     std::vector<std::string> interfaceMacs;   // union of interface MACs (sorted, deduped)
     std::vector<DeviceInterface> interfaces;  // union of IP-bearing interfaces
 
-    std::string type{"host"};      // "network" | "server" | "host"
+    std::string type{"unknown"};   // "network" | "server" | "unknown"
     std::string subtype{"unknown"};// router/switch/firewall/ap/gateway/hypervisor/bmc/server/windows/linux/printer/unknown
 
     std::string   hostname;        // sys_name
@@ -59,7 +61,7 @@ struct DeviceGroup
 class DeviceService
 {
 public:
-    // Returns all device groups, sorted network-first then host, each by primary IP.
+    // Returns all device groups, sorted network-first then unknown, each by primary IP.
     std::vector<DeviceGroup> groups() const;
 };
 

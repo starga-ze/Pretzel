@@ -2,7 +2,6 @@
 
 #include "snmp/SnmpEngineHandler.h"
 #include "snmp/SnmpTypes.h"
-#include "api/VendorApiRegistry.h"
 #include "io/Epoll.h"
 
 #include <atomic>
@@ -65,40 +64,24 @@ private:
     static int snmpCallback(int op, snmp_session* sp, int reqId,
                             snmp_pdu* pdu, void* magic);
 
-    // ── blocking worker-pool path (v3 SNMP + vendor API stages) ──────────────
+    // ── blocking worker-pool path (v3 SNMP only) ──────────────────────────────
     // net-snmp performs v3 engineID discovery synchronously on the first send
-    // (proven: blocks timeout*(retries+1) regardless of DONT_PROBE / sec level),
-    // and vendor HTTP APIs block too — so both run on worker threads, never on the
-    // main loop. A job is the unit of off-loop work: optionally run the v3 SNMP
-    // stage, then (if the device still lacks topology data and has API creds) run
-    // the vendor-API stage. The result is one refined device per IP.
-    struct WorkJob
-    {
-        SnmpDevice device;          // ip always set; may carry v2c data already
-        bool       runV3{false};    // run the v3 SNMP stage before the API stage
-    };
-
+    // (proven: blocks timeout*(retries+1) regardless of DONT_PROBE / sec level), so
+    // it runs on worker threads, never on the main loop. A job is just the IP to
+    // retry over v3 once its v2c probe has timed out.
     struct WorkResult
     {
         SnmpDevice device;
-        bool       responded{false}; // gathered data over SNMP and/or the API
+        bool       responded{false};
     };
 
     void       startV3Workers();
     void       stopV3Workers();
     void       v3WorkerLoop();                       // worker thread body
     SnmpDevice probeV3Blocking(const std::string& ip); // runs in a worker thread
-    void       enqueueWork(WorkJob job);             // main thread
+    void       enqueueWork(std::string ip);           // main thread
     void       drainV3Results();                     // main thread
     void       checkScanComplete();                  // main thread
-
-    // True when the device still lacks the topology essentials the vendor API can
-    // provide (interface IPs / ARP). Gates the API stage so fully-SNMP devices that
-    // happen to have API creds don't incur needless HTTP calls.
-    static bool deviceNeedsApi(const SnmpDevice& dev)
-    {
-        return dev.interfaces.empty() || dev.arpEntries.empty();
-    }
 
     static constexpr int kMaxEvents     = 64;
     static constexpr int kV3WorkerCount = 32;
@@ -117,16 +100,12 @@ private:
 
     // worker pool + thread-safe queues
     std::vector<std::thread> m_workers;
-    std::queue<WorkJob>      m_v3Queue;
+    std::queue<std::string>  m_v3Queue;
     std::mutex               m_v3QueueMu;
     std::condition_variable  m_v3QueueCv;
     std::queue<WorkResult>   m_v3Results;
     std::mutex               m_v3ResultsMu;
     std::atomic<bool>        m_stop{false};
-
-    // Vendor-API providers (PAN-OS, ...). collect() is called from worker threads;
-    // providers are stateless / thread-safe across concurrent calls.
-    VendorApiRegistry        m_apiRegistry;
 
     std::unique_ptr<SnmpEngineHandler> m_handler;
 };

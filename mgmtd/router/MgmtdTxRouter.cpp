@@ -21,7 +21,7 @@ void MgmtdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
     if (!m_ipcClientHandler)
     {
-        LOG_ERROR("Mgmtd TxRouter: IPC client handler is not initialized");
+        LOG_ERROR("IPC client handler is not initialized");
         return;
     }
 

@@ -19,7 +19,7 @@ std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(IcmpdActionDomain domain
         return std::make_unique<ProbeAction>(static_cast<ProbeActionType>(type));
 
     default:
-        LOG_WARN("Unhandled action domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled action domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }

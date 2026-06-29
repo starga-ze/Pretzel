@@ -42,6 +42,13 @@ bool ScandCore::onInit()
         return false;
     }
 
+    m_apiEngine = std::make_unique<ApiEngine>();
+    if (!m_apiEngine->init())
+    {
+        LOG_ERROR("failed to initialize ApiEngine");
+        return false;
+    }
+
     m_threadManager = std::make_unique<pz::util::ThreadManager>();
     if (!m_threadManager)
     {
@@ -62,7 +69,8 @@ bool ScandCore::onInit()
 
     m_rxRouter = std::make_unique<ScandRxRouter>(m_eventFactory.get());
     m_txRouter = std::make_unique<ScandTxRouter>(m_ipcClient->handler(),
-                                                  m_snmpEngine.get());
+                                                  m_snmpEngine->handler(),
+                                                  m_apiEngine->handler());
 
     if (!m_txRouter or !m_rxRouter)
     {
@@ -83,7 +91,8 @@ bool ScandCore::onInit()
 
     m_process = std::make_unique<ScandProcess>(m_ipcClient.get(),
                                                m_serviceManager.get(),
-                                               m_snmpEngine.get());
+                                               m_snmpEngine.get(),
+                                               m_apiEngine.get());
 
     if (!m_process)
     {
@@ -94,8 +103,9 @@ bool ScandCore::onInit()
     m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
     m_rxRouter->setServiceManager(m_serviceManager.get());
 
-    // Bind SnmpEngineHandler so it can deliver results back to the RxRouter.
+    // Bind the engine handlers so they can deliver results back to the RxRouter.
     m_snmpEngine->handler()->setRxRouter(m_rxRouter.get());
+    m_apiEngine->handler()->setRxRouter(m_rxRouter.get());
 
     return true;
 }

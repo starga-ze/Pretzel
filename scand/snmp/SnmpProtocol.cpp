@@ -12,6 +12,7 @@
 #undef LOG_DEBUG
 
 #include "snmp/SnmpProtocol.h"
+#include "snmp/SnmpWalk.h"
 #include "util/Logger.h"
 
 #include <algorithm>
@@ -69,46 +70,9 @@ const oid kIfHighSpeed[] = {1,3,6,1,2,1,31,1,1,1,15};
 const oid kIfAlias[]     = {1,3,6,1,2,1,31,1,1,1,18};
 constexpr size_t kIfXColLen = 11;
 
-// LLDP-MIB lldpRemTable columns (1.0.8802.1.1.2.1.4.1.1.N); index =
-// {timeMark, lldpRemLocalPortNum, lldpRemIndex}.
-const oid kLldpRemChassisId[] = {1,0,8802,1,1,2,1,4,1,1,5};
-const oid kLldpRemPortId[]    = {1,0,8802,1,1,2,1,4,1,1,7};
-const oid kLldpRemSysName[]   = {1,0,8802,1,1,2,1,4,1,1,9};
-const oid kLldpRemSysDesc[]   = {1,0,8802,1,1,2,1,4,1,1,10};
-constexpr size_t kLldpRemColLen = 11;
-
-// LLDP-MIB lldpLocPortTable lldpLocPortDesc (1.0.8802.1.1.2.1.3.7.1.4); index =
-// lldpLocPortNum.
-const oid kLldpLocPortDesc[] = {1,0,8802,1,1,2,1,3,7,1,4};
-constexpr size_t kLldpLocColLen = 11;
-
 // ip-MIB ipNetToMediaPhysAddress (ARP): 1.3.6.1.2.1.4.22.1.2; index = {ifIndex, ip}.
 const oid kIpNetToMediaPhys[] = {1,3,6,1,2,1,4,22,1,2};
 constexpr size_t kArpColLen = 10;
-
-std::string macToStr(const u_char* b, size_t len);  // defined below
-
-// Read an integer-typed varbind, or 0.
-long varInt(const netsnmp_variable_list* var)
-{
-    return (var->val.integer != nullptr) ? *var->val.integer : 0;
-}
-
-// Render an octet-string varbind: printable ASCII as text, otherwise hex (colon-
-// separated), which suits MAC-style chassis/port IDs.
-std::string octetDisplay(const netsnmp_variable_list* var)
-{
-    if (var->type != ASN_OCTET_STR || var->val.string == nullptr)
-        return {};
-    const u_char* s = var->val.string;
-    const size_t  n = var->val_len;
-    bool printable = n > 0;
-    for (size_t i = 0; i < n; ++i)
-        if (s[i] < 0x20 || s[i] > 0x7e) { printable = false; break; }
-    if (printable)
-        return std::string(reinterpret_cast<const char*>(s), n);
-    return macToStr(s, n);
-}
 
 // Render a 4-byte IPv4 (network order) as dotted decimal.
 std::string ipv4BytesToStr(const u_char* b)
@@ -126,67 +90,6 @@ std::string ipFromOidSuffix(const oid* name, size_t nameLen, size_t colLen)
            std::to_string(name[colLen + 2]) + '.' + std::to_string(name[colLen + 3]);
 }
 
-// GETNEXT-walk a single MIB column on an open session handle, invoking `onVar` for
-// each in-subtree varbind. Bounded against runaway agents.
-template <class F>
-void walkColumn(void* sessp, const oid* base, size_t baseLen, F&& onVar)
-{
-    oid    cur[MAX_OID_LEN];
-    size_t curLen = baseLen;
-    std::memcpy(cur, base, baseLen * sizeof(oid));
-
-    for (int guard = 0; guard < 4096; ++guard)
-    {
-        netsnmp_pdu* pdu = snmp_pdu_create(SNMP_MSG_GETNEXT);
-        snmp_add_null_var(pdu, cur, curLen);
-
-        netsnmp_pdu* resp = nullptr;
-        const int status = snmp_sess_synch_response(sessp, pdu, &resp);
-
-        if (status != STAT_SUCCESS || resp == nullptr ||
-            resp->errstat != SNMP_ERR_NOERROR || resp->variables == nullptr)
-        {
-            if (resp) snmp_free_pdu(resp);
-            break;
-        }
-
-        netsnmp_variable_list* var = resp->variables;
-
-        bool inSubtree = var->name_length >= baseLen;
-        for (size_t i = 0; inSubtree && i < baseLen; ++i)
-            if (var->name[i] != base[i]) inSubtree = false;
-
-        if (!inSubtree ||
-            var->type == SNMP_ENDOFMIBVIEW ||
-            var->type == SNMP_NOSUCHOBJECT ||
-            var->type == SNMP_NOSUCHINSTANCE)
-        {
-            snmp_free_pdu(resp);
-            break;
-        }
-
-        onVar(var);
-
-        std::memcpy(cur, var->name, var->name_length * sizeof(oid));
-        curLen = var->name_length;
-        snmp_free_pdu(resp);
-    }
-}
-
-std::string macToStr(const u_char* b, size_t len)
-{
-    static const char* hexd = "0123456789ABCDEF";
-    std::string s;
-    s.reserve(len * 3);
-    for (size_t i = 0; i < len; ++i)
-    {
-        if (i) s += ':';
-        s += hexd[(b[i] >> 4) & 0xF];
-        s += hexd[b[i] & 0xF];
-    }
-    return s;
-}
-
 std::string oidToStr(const oid* name, size_t len)
 {
     std::string out;
@@ -202,13 +105,14 @@ std::string oidToStr(const oid* name, size_t len)
 
 void SnmpProtocol::configureV2c(snmp_session& sess,
                                 const std::string& peer,
+                                const std::string& community,
                                 const SnmpScanConfig& cfg)
 {
     sess.peername      = const_cast<char*>(peer.c_str());
     sess.version       = SNMP_VERSION_2c;
     sess.community     = reinterpret_cast<u_char*>(
-                             const_cast<char*>(cfg.community.c_str()));
-    sess.community_len = cfg.community.size();
+                             const_cast<char*>(community.c_str()));
+    sess.community_len = community.size();
     // Short probe timeout — we only need to learn whether v2c works; a v3-only
     // host falls back fast instead of waiting the full v3 fetch timeout.
     sess.timeout       = static_cast<long>(cfg.v2cProbeTimeoutMs) * 1000L;
@@ -222,7 +126,7 @@ bool SnmpProtocol::configureV3(snmp_session& sess,
 {
     if (v3.user.empty())
     {
-        LOG_WARN("SnmpProtocol: v3 user is empty, cannot configure v3");
+        LOG_WARN("v3 user is empty, cannot configure v3");
         return false;
     }
 
@@ -272,7 +176,7 @@ bool SnmpProtocol::configureV3(snmp_session& sess,
                         sess.securityAuthKey, &sess.securityAuthKeyLen)
                 != SNMPERR_SUCCESS)
         {
-            LOG_WARN("SnmpProtocol: auth key generation failed user={}", v3.user);
+            LOG_WARN("auth key generation failed (user={})", v3.user);
             return false;
         }
     }
@@ -298,7 +202,7 @@ bool SnmpProtocol::configureV3(snmp_session& sess,
                         sess.securityPrivKey, &sess.securityPrivKeyLen)
                 != SNMPERR_SUCCESS)
         {
-            LOG_WARN("SnmpProtocol: priv key generation failed user={}", v3.user);
+            LOG_WARN("priv key generation failed (user={})", v3.user);
             return false;
         }
     }
@@ -494,7 +398,7 @@ void SnmpProtocol::walkInterfaceAddrs(void* sessp, SnmpDevice& dev)
         dev.interfaces.push_back(std::move(iface));
     }
 
-    LOG_DEBUG("SnmpProtocol: ip={} interfaces={}", dev.ip, dev.interfaces.size());
+    LOG_TRACE("walked interfaces (ip={}, interfaces={})", dev.ip, dev.interfaces.size());
 }
 
 void SnmpProtocol::walkIfTable(void* sessp, SnmpDevice& dev)
@@ -536,53 +440,9 @@ void SnmpProtocol::walkIfTable(void* sessp, SnmpDevice& dev)
         if (e.name.empty()) e.name = e.descr;     // fall back to ifDescr
         dev.ifTable.push_back(std::move(e));
     }
-    LOG_DEBUG("SnmpProtocol: ip={} ifTable={}", dev.ip, dev.ifTable.size());
+    LOG_TRACE("walked ifTable (ip={}, if_table={})", dev.ip, dev.ifTable.size());
 }
 
-void SnmpProtocol::walkLldpNeighbors(void* sessp, SnmpDevice& dev)
-{
-    if (sessp == nullptr)
-        return;
-
-    // Local port names: lldpLocPortNum -> port desc.
-    std::map<uint32_t, std::string> locPortName;
-    walkColumn(sessp, kLldpLocPortDesc, kLldpLocColLen, [&](netsnmp_variable_list* var) {
-        if (var->name_length > kLldpLocColLen)
-            locPortName[static_cast<uint32_t>(var->name[kLldpLocColLen])] = octetDisplay(var);
-    });
-
-    // Remote table, keyed by (localPortNum, remIndex).
-    std::map<std::pair<uint32_t, uint32_t>, SnmpLldpNeighbor> byKey;
-    auto keyOf = [](const netsnmp_variable_list* var) -> std::pair<uint32_t, uint32_t> {
-        // index after column = {timeMark, localPortNum, remIndex}
-        if (var->name_length < kLldpRemColLen + 3) return {0, 0};
-        return {static_cast<uint32_t>(var->name[kLldpRemColLen + 1]),
-                static_cast<uint32_t>(var->name[kLldpRemColLen + 2])};
-    };
-
-    walkColumn(sessp, kLldpRemSysName, kLldpRemColLen, [&](netsnmp_variable_list* var) {
-        byKey[keyOf(var)].remoteSysName = octetDisplay(var);
-    });
-    walkColumn(sessp, kLldpRemSysDesc, kLldpRemColLen, [&](netsnmp_variable_list* var) {
-        byKey[keyOf(var)].remoteSysDescr = octetDisplay(var);
-    });
-    walkColumn(sessp, kLldpRemPortId, kLldpRemColLen, [&](netsnmp_variable_list* var) {
-        byKey[keyOf(var)].remotePortId = octetDisplay(var);
-    });
-    walkColumn(sessp, kLldpRemChassisId, kLldpRemColLen, [&](netsnmp_variable_list* var) {
-        byKey[keyOf(var)].remoteChassisId = octetDisplay(var);
-    });
-
-    for (auto& [key, n] : byKey)
-    {
-        n.localPort = key.first;
-        auto it = locPortName.find(key.first);
-        if (it != locPortName.end())
-            n.localPortName = it->second;
-        dev.lldpNeighbors.push_back(std::move(n));
-    }
-    LOG_DEBUG("SnmpProtocol: ip={} lldpNeighbors={}", dev.ip, dev.lldpNeighbors.size());
-}
 
 void SnmpProtocol::walkArpTable(void* sessp, SnmpDevice& dev)
 {
@@ -602,7 +462,7 @@ void SnmpProtocol::walkArpTable(void* sessp, SnmpDevice& dev)
         if (!e.ip.empty())
             dev.arpEntries.push_back(std::move(e));
     });
-    LOG_DEBUG("SnmpProtocol: ip={} arpEntries={}", dev.ip, dev.arpEntries.size());
+    LOG_TRACE("walked arpTable (ip={}, arp_entries={})", dev.ip, dev.arpEntries.size());
 }
 
 } // namespace pz::scand

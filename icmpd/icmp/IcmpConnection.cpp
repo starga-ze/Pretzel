@@ -108,7 +108,7 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
 
         if (::inet_pton(AF_INET, frame.dstIp.c_str(), &addr.sin_addr) != 1)
         {
-            LOG_WARN("ICMP Tx drop: invalid dstIp={}", frame.dstIp);
+            LOG_WARN("Tx drop, invalid dstIp (dst={})", frame.dstIp);
             m_txQueue.pop();
             continue;
         }
@@ -124,7 +124,7 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
         {
             if (static_cast<std::size_t>(n) != frame.bytes.size())
             {
-                LOG_WARN("ICMP Tx drop: partial send dst={} sent={} expected={}",
+                LOG_WARN("Tx drop, partial send (dst={}, sent={}, expected={})",
                          frame.dstIp,
                          n,
                          frame.bytes.size());
@@ -139,7 +139,7 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
 
         if (n == 0)
         {
-            LOG_WARN("ICMP Tx drop: sendto returned 0 dst={}", frame.dstIp);
+            LOG_WARN("Tx drop, sendto returned 0 (dst={})", frame.dstIp);
             m_txQueue.pop();
             continue;
         }
@@ -163,7 +163,7 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
         case EINVAL:
         case EADDRNOTAVAIL:
         case EMSGSIZE:
-            LOG_WARN("ICMP Tx drop: dst={} size={} errno={}",
+            LOG_WARN("Tx drop (dst={}, size={}, errno={})",
                      frame.dstIp,
                      frame.bytes.size(),
                      err);

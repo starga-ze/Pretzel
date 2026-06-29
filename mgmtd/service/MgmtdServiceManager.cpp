@@ -123,7 +123,7 @@ void MgmtdServiceManager::completeReload()
     // picks up the values that engined just persisted to the DB.
     pz::config::Config::invalidateConfigCache();
     m_reloadStatus.store(static_cast<int>(ReloadStatus::Complete), std::memory_order_release);
-    LOG_INFO("reload complete elapsed={}ms", reloadElapsedMs());
+    LOG_INFO("reload complete (elapsed_ms={})", reloadElapsedMs());
 }
 
 MgmtdServiceManager::ReloadStatus MgmtdServiceManager::reloadStatus() const

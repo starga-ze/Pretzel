@@ -27,6 +27,13 @@
       subtitle: 'Discovery protocol configuration.',
       protocols: ['icmp', 'snmp', 'lldp'],
     },
+    rack: {
+      label:    'Rack List',
+      title:    'Rack List',
+      subtitle: 'Define racks (name + description). Assign devices in Resource ▸ Rack Management.',
+      daemons:  [],
+      domains:  [],
+    },
     users: {
       label:    'User',
       title:    'User Management',
@@ -47,7 +54,7 @@
     },
     snmp: {
       label:    'SNMP',
-      subtitle: 'SNMP polling parameters, community string, and SNMPv3 credentials.',
+      subtitle: 'Global polling parameters and the per-device scan table (SNMPv2c / SNMPv3 / API).',
       daemons:  ['scand'],
       domains:  ['scan'],
     },
@@ -73,13 +80,12 @@
     poll_interval_sec:          'Poll Interval (s)',
     response_timeout_sec:       'Response Timeout (s)',
     // SNMP (scand/scan)
-    community:                  'Community String',
     port:                       'Port',
-    timeout_sec:                'Timeout (s)',
-    retries:                    'Retries',
+    timeout_sec:                'Poll Timeout (s)',
+    retries:                    'Poll Retries',
     max_concurrent:             'Max Concurrent',
-    v2c_probe_timeout_ms:       'v2c Probe Timeout (ms)',
-    v2c_probe_retries:          'v2c Probe Retries',
+    v2c_probe_timeout_ms:       'Reachability Probe Timeout (ms)',
+    v2c_probe_retries:          'Reachability Probe Retries',
   };
 
   // One-line descriptions shown in the table's Description column (view-only context).
@@ -93,13 +99,12 @@
     reply_max_wait_timeout_sec: 'Hard cap on waiting for replies in a cycle.',
     poll_interval_sec:          'How often engined polls daemon health.',
     response_timeout_sec:       'Timeout waiting for a daemon heartbeat reply.',
-    community:                  'SNMP v2c community string used for polling.',
     port:                       'UDP port for SNMP requests.',
-    timeout_sec:                'Per-request response timeout.',
-    retries:                    'Retry attempts per request after a timeout.',
+    timeout_sec:                'Timeout for the actual data-gathering poll, once a device is known reachable.',
+    retries:                    'Retry attempts for the data-gathering poll after a timeout.',
     max_concurrent:             'Maximum simultaneous SNMP sessions.',
-    v2c_probe_timeout_ms:       'Initial v2c reachability probe timeout.',
-    v2c_probe_retries:          'Retries for the initial v2c reachability probe.',
+    v2c_probe_timeout_ms:       'Timeout for the quick "is this host alive over v2c?" check that runs before the full poll.',
+    v2c_probe_retries:          'Retries for that quick reachability check, separate from the poll retries above.',
   };
 
   const KEY_PLACEHOLDER = {
@@ -140,10 +145,11 @@
     auth_protocol: 'SHA', auth_password: '', priv_protocol: 'AES', priv_password: '',
   };
 
-  // Vendor-API credentials (scand/scan, key `api_devices`) — the terminal stage of
-  // the v2c -> v3 -> API collection chain. A device listed here is queried over its
-  // vendor HTTP API to fill the topology data (interface IPs, ARP, LLDP) its SNMP
-  // agent doesn't expose (e.g. PAN-OS). Per-IP array, edited like v3_devices.
+  // Vendor-API credentials (scand/scan, key `api_devices`) — the "API" scan method,
+  // run entirely independently of v2c/v3 by its own engine. A device listed here is
+  // queried over its vendor HTTP API to fill the topology data (interface IPs, ARP,
+  // LLDP) its SNMP agent doesn't expose (e.g. PAN-OS). Per-IP array, edited like
+  // v3_devices.
   const API_DEVICES_KEY = 'api_devices';
   const API_FIELDS = [
     { key: 'vendor',     label: 'Vendor',             type: 'select', options: ['paloalto'] },
@@ -167,6 +173,100 @@
     return out;
   }
 
+  // Per-IP v2c community overrides (scand/scan, key `v2c_devices`). A device here
+  // is probed with its own community instead of the global one. New: lets v2c be
+  // managed per-device alongside v3/api in the unified Scan Devices table.
+  const V2C_DEVICES_KEY = 'v2c_devices';
+  const V2C_FIELDS = [
+    { key: 'community', label: 'Community', type: 'select-or-custom', options: ['public', 'private'] },
+  ];
+  const V2C_DEFAULTS = { community: '' };
+
+  // ── Unified Scan Devices model ─────────────────────────────────────────────
+  // Each device picks exactly one scan method (v2c / v3 / api) here — there's no
+  // fallback chain between them; scand runs SnmpEngine (v2c/v3) and ApiEngine (api)
+  // as two independent engines and merges their results. Rather than three
+  // separate tables, one "Scan Devices" table lists every device; each row's
+  // `method` selects which underlying config array it lives in and which
+  // parameter set applies. METHODS is the single source of truth tying a method
+  // id to its array key, field spec, defaults, and the row-summary renderer.
+  const METHODS = {
+    v2c: {
+      label:   'SNMPv2c',
+      arrayKey: V2C_DEVICES_KEY,
+      fields:   V2C_FIELDS,
+      defaults: V2C_DEFAULTS,
+      // What the Details column shows for this method. public/private aren't real
+      // secrets (they're the well-known SNMP defaults) so show them plainly; only
+      // mask a custom community string.
+      summary: d => {
+        const c = String(d.community || '');
+        if (!c) return [['Community', '—']];
+        const isPreset = c === 'public' || c === 'private';
+        return [['Community', isPreset ? c : '••••••']];
+      },
+    },
+    v3: {
+      label:   'SNMPv3',
+      arrayKey: V3_DEVICES_KEY,
+      fields:   V3_FIELDS,
+      defaults: V3_DEFAULTS,
+      summary: d => [
+        ['User',     d.user || '(no user)'],
+        ['Security', d.security_level || 'authPriv'],
+      ],
+    },
+    api: {
+      label:   'API',
+      arrayKey: API_DEVICES_KEY,
+      fields:   API_FIELDS,
+      defaults: API_DEFAULTS,
+      summary: d => [
+        ['Vendor', d.vendor || '(no vendor)'],
+        ['Auth',   d.api_key ? 'API key' : (d.password ? 'Username/password' : 'No credential')],
+      ],
+    },
+  };
+  const METHOD_ORDER = ['v2c', 'v3', 'api'];
+
+  // Reverse map: which method owns a given array key (used when regrouping).
+  const KEY_TO_METHOD = {
+    [V2C_DEVICES_KEY]: 'v2c',
+    [V3_DEVICES_KEY]:  'v3',
+    [API_DEVICES_KEY]: 'api',
+  };
+
+  // ── Validation helpers ─────────────────────────────────────────────────────
+  function isValidIp(s) {
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(s).trim());
+    if (!m) return false;
+    return m.slice(1).every(o => { const n = Number(o); return n >= 0 && n <= 255; });
+  }
+  function isValidPort(s) {
+    const n = Number(s);
+    return Number.isInteger(n) && n >= 1 && n <= 65535;
+  }
+  // Per-method required-field / format validation. Returns a {field: message} map.
+  function validateScanDevice(dev, existingIps) {
+    const errs = {};
+    const ip = (dev.ip || '').trim();
+    if (!ip)                       errs.ip = 'IP address is required.';
+    else if (!isValidIp(ip))       errs.ip = 'Enter a valid IPv4 address (e.g. 192.168.1.10).';
+    else if (existingIps.has(ip))  errs.ip = 'A device with this IP already exists.';
+
+    if (dev.method === 'v2c') {
+      if (!(dev.community || '').trim()) errs.community = 'Community string is required.';
+    } else if (dev.method === 'v3') {
+      if (!(dev.user || '').trim()) errs.user = 'User is required for SNMPv3.';
+    } else if (dev.method === 'api') {
+      if (!(dev.vendor || '').trim()) errs.vendor = 'Vendor is required.';
+      if (!isValidPort(dev.port))     errs.port = 'Port must be 1–65535.';
+      if (!(dev.api_key || '').trim() && !(dev.password || '').trim())
+        errs.password = 'Provide an API key or a username/password.';
+    }
+    return errs;
+  }
+
   // ── State ─────────────────────────────────────────────────────────────────
 
   let currentData      = null;
@@ -179,11 +279,20 @@
 
   // edit panel state
   let editContext = null;   // { daemon, domain, values }
-  let editMode    = 'scalar';   // 'scalar' (key fields) | 'v3' (SNMPv3) | 'api' (vendor API)
-  let v3Working   = null;       // working copy of v3_devices while the v3 panel is open
-  let apiWorking  = null;       // working copy of api_devices while the api panel is open
+  let editMode    = 'scalar';   // 'scalar' (key fields) | 'rack' (device allocation)
   // in-panel staged values (before Apply)
   const editDraft = new Map();  // key → value
+
+  // Rack slide-over state. editMode is 'rackNew' (Add Rack form) or 'rackEdit' (device
+  // allocation). rackAllocDraft is the in-panel working copy of a rack's devices[].
+  let rackDevices = [];     // /api/devices inventory for the device dropdown (cached)
+  let rackEditIdx = null;   // index of the rack being allocated
+  let rackAllocDraft = [];  // [{ device, ip, unit, size }] staged in the panel before Apply
+
+  // Scan Devices table view-state (persists across re-renders of the card).
+  let sdSearch = '';                          // free-text filter (ip/method/details)
+  let sdMethodFilter = 'all';                 // 'all' | 'v2c' | 'v3' | 'api'
+  let sdSort = { col: 'ip', dir: 'asc' };     // sortable column + direction
 
   // list editor callback
   let listEditorCallback = null;
@@ -354,20 +463,22 @@
           daemon, domain));
       }
     } else {
-      // Scalar settings table. Nested credential keys (v3 / v3_devices / api_devices)
-      // are excluded here and rendered by their own dedicated tables below.
+      // Scalar settings table. Nested credential keys (v3 object + the per-IP
+      // device arrays) are excluded here and rendered by the Scan Devices table.
+      // The global v2c `community` default is excluded too — every v2c device now
+      // sets its own community in the Scan Devices table, so showing a second,
+      // easy-to-miss "default" copy here is more confusing than useful.
       const scalarKeys = keys.filter(k =>
-        k !== V3_OBJECT_KEY && k !== V3_DEVICES_KEY && k !== API_DEVICES_KEY);
+        k !== V3_OBJECT_KEY && k !== V3_DEVICES_KEY &&
+        k !== API_DEVICES_KEY && k !== V2C_DEVICES_KEY && k !== 'community');
       card.appendChild(buildSettingsTable(
         DOMAIN_LABELS[domain] || domain, scalarKeys, values,
         () => openEditPanel(daemon, domain, values, null, scalarKeys),
         daemon, domain));
 
-      // Per-IP credential lists for the scan fallback chain: SNMPv3 (v2c timeout
-      // fallback) and vendor API (terminal stage). Always shown so operators can add.
+      // Unified per-device scan table (v2c / v3 / vendor-API in one place).
       if (domain === 'scan') {
-        card.appendChild(buildV3DevicesTable(daemon, domain, values));
-        card.appendChild(buildApiDevicesTable(daemon, domain, values));
+        card.appendChild(buildScanDevicesTable(daemon, domain));
       }
     }
 
@@ -387,437 +498,539 @@
     return currentData?.daemons?.[daemon]?.[domain]?.[key];
   }
 
-  // Stage (or clear) a complex object/array change and re-render the card.
-  function stageComplex(daemon, domain, key, oldValue, newValue) {
+  // Set (or clear) a staged complex change WITHOUT re-rendering — lets a caller
+  // stage several array keys (e.g. all three device arrays) before one re-render.
+  function setComplexPending(daemon, domain, key, oldValue, newValue) {
     const sk = stageKey(daemon, domain, key);
     if (JSON.stringify(oldValue ?? null) === JSON.stringify(newValue ?? null)) {
       pending.delete(sk);
     } else {
       pending.set(sk, { daemon, domain, key, oldValue, newValue });
     }
+  }
+
+  // Re-render one domain card with all of its pending changes merged in.
+  function reRenderDomainCard(daemon, domain) {
+    if (!currentData || !container) return;
+    const base = Object.assign({}, currentData?.daemons?.[daemon]?.[domain] || {});
+    pending.forEach(c => {
+      if (c.daemon === daemon && c.domain === domain) base[c.key] = c.newValue;
+    });
+    const card = container.querySelector(
+      `.settings-domain-card[data-daemon="${cssEsc(daemon)}"][data-domain="${cssEsc(domain)}"]`);
+    if (card) card.replaceWith(buildDomainCard(daemon, domain, base));
+  }
+
+  // Stage (or clear) a complex object/array change and re-render the card.
+  function stageComplex(daemon, domain, key, oldValue, newValue) {
+    setComplexPending(daemon, domain, key, oldValue, newValue);
     refreshPendingBadge();
+    reRenderDomainCard(daemon, domain);
+  }
 
-    if (currentData && container) {
-      const base = Object.assign({}, currentData?.daemons?.[daemon]?.[domain] || {});
-      pending.forEach(c => {
-        if (c.daemon === daemon && c.domain === domain) base[c.key] = c.newValue;
+  // ── Unified Scan Devices table ─────────────────────────────────────────────
+  // One table for all three per-device scan methods. Each row is a device tagged
+  // with a `method`; on save the rows are regrouped back into the three config
+  // arrays (v2c_devices / v3_devices / api_devices). Edits stage directly into
+  // `pending` (no separate slide-over) so the table itself is the editing surface
+  // — toggling, adding, editing and removing all re-render in place.
+
+  // Effective value of an array key = staged change if present, else live value.
+  function effectiveArray(daemon, domain, key) {
+    const staged = pending.get(stageKey(daemon, domain, key))?.newValue;
+    const live   = currentData?.daemons?.[daemon]?.[domain]?.[key];
+    const src    = staged ?? live ?? [];
+    return Array.isArray(src) ? JSON.parse(JSON.stringify(src)) : [];
+  }
+
+  // Flatten the three config arrays into one device list, tagging each with its
+  // method and a normalized `enabled` flag (default true for legacy rows).
+  function loadScanDevices(daemon, domain) {
+    const out = [];
+    METHOD_ORDER.forEach(method => {
+      effectiveArray(daemon, domain, METHODS[method].arrayKey).forEach(d => {
+        out.push(Object.assign({}, d, { method, enabled: d.enabled !== false }));
       });
-      const card = container.querySelector(
-        `.settings-domain-card[data-daemon="${cssEsc(daemon)}"][data-domain="${cssEsc(domain)}"]`);
-      if (card) card.replaceWith(buildDomainCard(daemon, domain, base));
+    });
+    return out;
+  }
+
+  // Normalize one device row for persistence: keep ip + the chosen method's
+  // fields, coerce API types, and emit `enabled` only when false (true is the
+  // backend default, so this keeps untouched arrays byte-identical / undiffed).
+  function cleanScanDevice(dev) {
+    const m = METHODS[dev.method];
+    const out = { ip: (dev.ip || '').trim() };
+    if (dev.enabled === false) out.enabled = false;
+    m.fields.forEach(f => { if (dev[f.key] !== undefined) out[f.key] = dev[f.key]; });
+    return dev.method === 'api' ? coerceApiCred(out) : out;
+  }
+
+  // Regroup the unified list back into the three config arrays, stage each that
+  // changed (vs the live original), then refresh badge + re-render once.
+  function persistScanDevices(daemon, domain, list) {
+    const groups = { v2c: [], v3: [], api: [] };
+    list.forEach(d => { if (groups[d.method]) groups[d.method].push(cleanScanDevice(d)); });
+    METHOD_ORDER.forEach(method => {
+      const key = METHODS[method].arrayKey;
+      setComplexPending(daemon, domain, key,
+                        originalComplex(daemon, domain, key) || [], groups[method]);
+    });
+    refreshPendingBadge();
+    reRenderDomainCard(daemon, domain);
+  }
+
+  // Set of IPs already in use, optionally excluding one row (the one being edited).
+  function scanDeviceIps(list, exceptIdx) {
+    const s = new Set();
+    list.forEach((d, i) => { if (i !== exceptIdx && d.ip) s.add(String(d.ip).trim()); });
+    return s;
+  }
+
+  // Sort IPs numerically by octet when valid, else lexically.
+  function ipSortKey(ip) {
+    if (isValidIp(ip)) return String(ip).trim().split('.').map(o => o.padStart(3, '0')).join('.');
+    return String(ip || '');
+  }
+
+  function methodBadge(method) {
+    const span = document.createElement('span');
+    span.className = `sd-badge sd-badge-${method}`;
+    span.textContent = METHODS[method]?.label || method;
+    return span;
+  }
+
+  // Apply the active search / method-filter / sort to the list for display.
+  // Returns [{ d, i }] keeping each device's original index for in-place mutation.
+  function viewScanDevices(list) {
+    let rows = list.map((d, i) => ({ d, i }));
+    if (sdMethodFilter !== 'all') rows = rows.filter(r => r.d.method === sdMethodFilter);
+    const q = sdSearch.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(r => {
+        const details = METHODS[r.d.method].summary(r.d).map(([label, value]) => `${label} ${value}`).join(' ');
+        const hay = `${r.d.ip} ${METHODS[r.d.method].label} ${details}`;
+        return hay.toLowerCase().includes(q);
+      });
     }
+    const dir = sdSort.dir === 'desc' ? -1 : 1;
+    rows.sort((a, b) => {
+      let av, bv;
+      if (sdSort.col === 'method')      { av = a.d.method; bv = b.d.method; }
+      else if (sdSort.col === 'status') { av = a.d.enabled ? 0 : 1; bv = b.d.enabled ? 0 : 1; }
+      else                              { av = ipSortKey(a.d.ip); bv = ipSortKey(b.d.ip); }
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return 0;
+    });
+    return rows;
   }
 
-  // A credential cell shows the protocol plus a masked indicator — never the actual
-  // password. "—" when the security level doesn't use that layer or no password is set.
-  function credCell(used, proto, pw) {
-    if (!used) return '—';
-    return `${proto || '—'} · ${pw ? '••••••' : '—'}`;
-  }
-
-  // View-only SNMPv3 table. Editing happens in the right slide-over (openV3Panel),
-  // opened by the standard pencil button — consistent with the other settings cards.
-  function buildV3DevicesTable(daemon, domain, values) {
-    const devices = Array.isArray(values[V3_DEVICES_KEY]) ? values[V3_DEVICES_KEY] : [];
+  function buildScanDevicesTable(daemon, domain) {
+    const list = loadScanDevices(daemon, domain);
 
     const wrap = document.createElement('div');
-    wrap.className = 'st-table-card';
+    wrap.className = 'st-table-card sd-card';
 
+    // ── Header: title + count + Add ──
     const head = document.createElement('div');
     head.className = 'st-table-head';
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'sd-title-wrap';
     const t = document.createElement('span');
     t.className = 'st-table-title';
-    t.textContent = 'SNMPv3';
-    head.appendChild(t);
-    head.appendChild(buildEditIconBtn(() => openV3Panel(daemon, domain, values)));
-    wrap.appendChild(head);
-
-    const table = document.createElement('table');
-    table.className = 'st-table st-table-v3';
-    table.innerHTML =
-      '<thead><tr>' +
-      '<th>IP Address</th><th>User</th><th>Security Level</th>' +
-      '<th>Auth</th><th>Priv</th>' +
-      '</tr></thead>';
-
-    const tbody = document.createElement('tbody');
-
-    if (!devices.length) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 5;
-      td.className = 'st-td-empty';
-      td.textContent = 'No per-IP overrides. The default credentials apply to all devices.';
-      tr.appendChild(td);
-      tbody.appendChild(tr);
-    } else {
-      devices.forEach(d => {
-        const lvl = d.security_level || 'authPriv';
-        const tr = document.createElement('tr');
-        const mk = (txt, cls) => {
-          const td = document.createElement('td');
-          if (cls) td.className = cls;
-          td.textContent = txt;
-          return td;
-        };
-        tr.appendChild(mk(d.ip || '(no ip)', 'st-td-ip'));
-        tr.appendChild(mk(d.user || '—'));
-        tr.appendChild(mk(lvl));
-        tr.appendChild(mk(credCell(lvl !== 'noAuthNoPriv', d.auth_protocol, d.auth_password), 'st-cred-muted'));
-        tr.appendChild(mk(credCell(lvl === 'authPriv', d.priv_protocol, d.priv_password), 'st-cred-muted'));
-        tbody.appendChild(tr);
-      });
-    }
-
-    table.appendChild(tbody);
-    wrap.appendChild(table);
-    return wrap;
-  }
-
-  // ── SNMPv3 device-list editor (hosted in the right slide-over) ─────────────
-  // The pencil opens the slide-over with the device list; per-device field entry
-  // reuses openCredEditor. Changes accumulate in v3Working and are staged on Apply.
-
-  function openV3Panel(daemon, domain, values) {
-    editContext = { daemon, domain, values };
-    editMode = 'v3';
-
-    // Seed the working copy from any staged change, else the live value.
-    const staged = pending.get(stageKey(daemon, domain, V3_DEVICES_KEY))?.newValue;
-    const src = staged ?? values[V3_DEVICES_KEY] ?? [];
-    v3Working = JSON.parse(JSON.stringify(Array.isArray(src) ? src : []));
-
-    const panel    = document.getElementById('stEditPanel');
-    const backdrop = document.getElementById('stEditBackdrop');
-    const titleEl  = document.getElementById('stEditTitle');
-    if (!panel) return;
-    titleEl.textContent = 'Edit — SNMPv3';
-    renderV3PanelBody();
-    backdrop.classList.add('visible');
-    panel.classList.add('visible');
-  }
-
-  function renderV3PanelBody() {
-    const body = document.getElementById('stEditBody');
-    if (!body) return;
-    body.innerHTML = '';
+    t.textContent = 'Scan Devices';
+    const count = document.createElement('span');
+    count.className = 'sd-count';
+    titleWrap.append(t, count);
+    head.appendChild(titleWrap);
 
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
-    addBtn.className = 'btn btn-ghost st-v3-add';
-    addBtn.textContent = '+ Add device';
+    addBtn.className = 'btn btn-primary sd-add-btn';
+    addBtn.innerHTML =
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">' +
+      '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add Device';
     addBtn.addEventListener('click', () => {
-      openCredEditor({
-        title: 'Add SNMPv3 Device',
-        creds: Object.assign({ ip: '' }, V3_DEFAULTS),
-        showIp: true,
-        onSave: (c) => {
-          if (!c.ip) { setStatus('Device IP is required.', 'error'); return; }
-          v3Working.push(c);
-          renderV3PanelBody();
-        },
+      openScanDeviceEditor({
+        title: 'Add Scan Device',
+        device: null,
+        existingIps: scanDeviceIps(list, -1),
+        onSave: (dev) => { list.push(dev); persistScanDevices(daemon, domain, list); },
       });
     });
-    body.appendChild(addBtn);
-
-    if (!v3Working.length) {
-      const empty = document.createElement('div');
-      empty.className = 'st-edit-field-hint';
-      empty.style.padding = '10px 2px';
-      empty.textContent = 'No per-IP overrides. The default credentials apply to all devices.';
-      body.appendChild(empty);
-      return;
-    }
-
-    v3Working.forEach((d, i) => {
-      const row = document.createElement('div');
-      row.className = 'st-v3-row';
-
-      const info = document.createElement('div');
-      info.className = 'st-v3-row-info';
-      const ip = document.createElement('span');
-      ip.className = 'st-v3-row-ip';
-      ip.textContent = d.ip || '(no ip)';
-      const sub = document.createElement('span');
-      sub.className = 'st-v3-row-sub';
-      sub.textContent = `${d.user || '(no user)'} · ${d.security_level || 'authPriv'}`;
-      info.append(ip, sub);
-
-      const actions = document.createElement('div');
-      actions.className = 'st-v3-row-actions';
-      const editB = document.createElement('button');
-      editB.type = 'button';
-      editB.className = 'btn btn-ghost st-row-btn';
-      editB.textContent = 'Edit';
-      editB.addEventListener('click', () => {
-        openCredEditor({
-          title: `Edit ${d.ip || 'Device'}`,
-          creds: Object.assign({ ip: '' }, V3_DEFAULTS, d),
-          showIp: true,
-          onSave: (c) => {
-            if (!c.ip) { setStatus('Device IP is required.', 'error'); return; }
-            v3Working[i] = c;
-            renderV3PanelBody();
-          },
-        });
-      });
-      const delB = document.createElement('button');
-      delB.type = 'button';
-      delB.className = 'btn btn-ghost st-row-btn st-row-btn-danger';
-      delB.textContent = 'Remove';
-      delB.addEventListener('click', () => { v3Working.splice(i, 1); renderV3PanelBody(); });
-      actions.append(editB, delB);
-
-      row.append(info, actions);
-      body.appendChild(row);
-    });
-  }
-
-  function applyV3Panel() {
-    if (!editContext) return;
-    const { daemon, domain } = editContext;
-    stageComplex(daemon, domain, V3_DEVICES_KEY,
-                 originalComplex(daemon, domain, V3_DEVICES_KEY) || [], v3Working);
-    closeEditPanel();
-  }
-
-  // ── Vendor-API credential editor (per-IP array `api_devices`) ──────────────
-  // Mirrors the SNMPv3 editor exactly: a view-only table on the scan card, edited
-  // through the right slide-over. Staged as the whole array via stageComplex.
-
-  // View-only vendor-API table. The credential column is always masked.
-  function buildApiDevicesTable(daemon, domain, values) {
-    const devices = Array.isArray(values[API_DEVICES_KEY]) ? values[API_DEVICES_KEY] : [];
-
-    const wrap = document.createElement('div');
-    wrap.className = 'st-table-card';
-
-    const head = document.createElement('div');
-    head.className = 'st-table-head';
-    const t = document.createElement('span');
-    t.className = 'st-table-title';
-    t.textContent = 'Vendor API';
-    head.appendChild(t);
-    head.appendChild(buildEditIconBtn(() => openApiPanel(daemon, domain, values)));
+    head.appendChild(addBtn);
     wrap.appendChild(head);
 
-    const table = document.createElement('table');
-    table.className = 'st-table st-table-v3';
-    table.innerHTML =
-      '<thead><tr>' +
-      '<th>IP Address</th><th>Vendor</th><th>Username</th>' +
-      '<th>Credential</th><th>Verify TLS</th>' +
-      '</tr></thead>';
+    // ── Toolbar: search + method filter chips ──
+    const toolbar = document.createElement('div');
+    toolbar.className = 'sd-toolbar';
 
-    const tbody = document.createElement('tbody');
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'sd-search';
+    searchWrap.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+      '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'sd-search-input';
+    search.placeholder = 'Search IP, method, details…';
+    search.value = sdSearch;
+    search.addEventListener('input', () => { sdSearch = search.value; renderBody(); });
+    searchWrap.appendChild(search);
+    toolbar.appendChild(searchWrap);
 
-    if (!devices.length) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 5;
-      td.className = 'st-td-empty';
-      td.textContent = 'No API devices. SNMP-only devices need no entry here.';
-      tr.appendChild(td);
-      tbody.appendChild(tr);
-    } else {
-      devices.forEach(d => {
-        const tr = document.createElement('tr');
-        const mk = (txt, cls) => {
-          const td = document.createElement('td');
-          if (cls) td.className = cls;
-          td.textContent = txt;
-          return td;
-        };
-        // API key takes precedence over username/password when present.
-        const cred = d.api_key ? 'API key · ••••••'
-                   : (d.password ? 'password · ••••••' : '—');
-        tr.appendChild(mk(d.ip || '(no ip)', 'st-td-ip'));
-        tr.appendChild(mk(d.vendor || '—'));
-        tr.appendChild(mk(d.username || '—'));
-        tr.appendChild(mk(cred, 'st-cred-muted'));
-        tr.appendChild(mk(d.verify_tls ? 'yes' : 'no'));
-        tbody.appendChild(tr);
+    const filters = document.createElement('div');
+    filters.className = 'sd-filters';
+    const filterDefs = [['all', 'All']].concat(METHOD_ORDER.map(m => [m, METHODS[m].label]));
+    filterDefs.forEach(([id, label]) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'sd-chip' + (sdMethodFilter === id ? ' active' : '');
+      chip.dataset.filter = id;
+      chip.textContent = label;
+      chip.addEventListener('click', () => {
+        sdMethodFilter = id;
+        filters.querySelectorAll('.sd-chip').forEach(c =>
+          c.classList.toggle('active', c.dataset.filter === id));
+        renderBody();
       });
-    }
+      filters.appendChild(chip);
+    });
+    toolbar.appendChild(filters);
+    wrap.appendChild(toolbar);
 
+    // ── Table ──
+    const cols = [
+      { id: 'status',  label: '',           sortable: true,  cls: 'sd-col-status' },
+      { id: 'ip',      label: 'IP Address', sortable: true,  cls: 'sd-col-ip' },
+      { id: 'method',  label: 'Method',     sortable: true,  cls: 'sd-col-method' },
+      { id: 'details', label: 'Details',    sortable: false, cls: '' },
+      { id: 'actions', label: '',           sortable: false, cls: 'sd-col-actions' },
+    ];
+    const table = document.createElement('table');
+    table.className = 'st-table sd-table';
+    const thead = document.createElement('thead');
+    const htr = document.createElement('tr');
+    cols.forEach(c => {
+      const th = document.createElement('th');
+      if (c.cls) th.className = c.cls;
+      th.textContent = c.label;
+      if (c.sortable) {
+        th.classList.add('sd-th-sort');
+        if (sdSort.col === c.id) th.classList.add(sdSort.dir === 'desc' ? 'sd-sort-desc' : 'sd-sort-asc');
+        th.addEventListener('click', () => {
+          if (sdSort.col === c.id) sdSort.dir = sdSort.dir === 'asc' ? 'desc' : 'asc';
+          else { sdSort.col = c.id; sdSort.dir = 'asc'; }
+          reRenderDomainCard(daemon, domain);   // refresh header arrows + order
+        });
+      }
+      htr.appendChild(th);
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
     table.appendChild(tbody);
     wrap.appendChild(table);
+
+    function renderBody() {
+      tbody.innerHTML = '';
+      count.textContent = list.length ? String(list.length) : '';
+      const rows = viewScanDevices(list);
+      if (!rows.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = cols.length;
+        td.className = 'st-td-empty';
+        td.textContent = list.length
+          ? 'No devices match the current filter.'
+          : 'No scan devices. Click “Add Device” to register one.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+      rows.forEach(({ d, i }) => tbody.appendChild(buildScanDeviceRow(daemon, domain, list, d, i)));
+    }
+
+    renderBody();
     return wrap;
   }
 
-  function openApiPanel(daemon, domain, values) {
-    editContext = { daemon, domain, values };
-    editMode = 'api';
+  function buildScanDeviceRow(daemon, domain, list, d, idx) {
+    const tr = document.createElement('tr');
+    if (!d.enabled) tr.classList.add('sd-row-disabled');
 
-    const staged = pending.get(stageKey(daemon, domain, API_DEVICES_KEY))?.newValue;
-    const src = staged ?? values[API_DEVICES_KEY] ?? [];
-    apiWorking = JSON.parse(JSON.stringify(Array.isArray(src) ? src : []));
+    // Enable/disable toggle
+    const tdStatus = document.createElement('td');
+    tdStatus.className = 'sd-col-status';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'sd-toggle' + (d.enabled ? ' on' : '');
+    toggle.setAttribute('role', 'switch');
+    toggle.setAttribute('aria-checked', d.enabled ? 'true' : 'false');
+    toggle.title = d.enabled ? 'Enabled — click to disable' : 'Disabled — click to enable';
+    toggle.innerHTML = '<span class="sd-toggle-knob"></span>';
+    toggle.addEventListener('click', () => {
+      list[idx].enabled = !list[idx].enabled;
+      persistScanDevices(daemon, domain, list);
+    });
+    tdStatus.appendChild(toggle);
+    tr.appendChild(tdStatus);
 
-    const panel    = document.getElementById('stEditPanel');
-    const backdrop = document.getElementById('stEditBackdrop');
-    const titleEl  = document.getElementById('stEditTitle');
-    if (!panel) return;
-    titleEl.textContent = 'Edit — Vendor API';
-    renderApiPanelBody();
-    backdrop.classList.add('visible');
-    panel.classList.add('visible');
-  }
+    // IP
+    const tdIp = document.createElement('td');
+    tdIp.className = 'sd-col-ip st-td-ip';
+    tdIp.textContent = d.ip || '(no ip)';
+    tr.appendChild(tdIp);
 
-  function renderApiPanelBody() {
-    const body = document.getElementById('stEditBody');
-    if (!body) return;
-    body.innerHTML = '';
+    // Method badge
+    const tdM = document.createElement('td');
+    tdM.className = 'sd-col-method';
+    tdM.appendChild(methodBadge(d.method));
+    tr.appendChild(tdM);
 
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'btn btn-ghost st-v3-add';
-    addBtn.textContent = '+ Add device';
-    addBtn.addEventListener('click', () => {
-      openCredEditor({
-        title: 'Add API Device',
-        fields: API_FIELDS,
-        creds: Object.assign({ ip: '' }, API_DEFAULTS),
-        showIp: true,
-        onSave: (c) => {
-          if (!c.ip) { setStatus('Device IP is required.', 'error'); return; }
-          apiWorking.push(coerceApiCred(c));
-          renderApiPanelBody();
-        },
+    // Details — label/value pairs, e.g. "Community: public", "User: admin · Security: authPriv"
+    const tdD = document.createElement('td');
+    tdD.className = 'sd-details';
+    METHODS[d.method].summary(d).forEach(([label, value], i) => {
+      if (i > 0) tdD.appendChild(document.createTextNode(' · '));
+      const lbl = document.createElement('span');
+      lbl.className = 'sd-details-label';
+      lbl.textContent = `${label}: `;
+      tdD.appendChild(lbl);
+      const val = document.createElement('span');
+      val.className = 'sd-details-value';
+      val.textContent = value;
+      tdD.appendChild(val);
+    });
+    tr.appendChild(tdD);
+
+    // Actions
+    const tdA = document.createElement('td');
+    tdA.className = 'sd-col-actions';
+    const editB = sdIconBtn('edit', 'Edit', () => {
+      openScanDeviceEditor({
+        title: `Edit ${d.ip || 'Device'}`,
+        device: d,
+        existingIps: scanDeviceIps(list, idx),
+        onSave: (dev) => { list[idx] = dev; persistScanDevices(daemon, domain, list); },
       });
     });
-    body.appendChild(addBtn);
+    const delB = sdIconBtn('trash', 'Remove', () => {
+      list.splice(idx, 1);
+      persistScanDevices(daemon, domain, list);
+    });
+    delB.classList.add('sd-action-danger');
+    tdA.append(editB, delB);
+    tr.appendChild(tdA);
 
-    if (!apiWorking.length) {
-      const empty = document.createElement('div');
-      empty.className = 'st-edit-field-hint';
-      empty.style.padding = '10px 2px';
-      empty.textContent = 'No API devices. Add one to collect interface/ARP data over the vendor API.';
-      body.appendChild(empty);
-      return;
+    return tr;
+  }
+
+  function sdIconBtn(kind, label, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sd-icon-btn';
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    const paths = {
+      edit:  '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+      trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+    };
+    b.innerHTML =
+      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+      `stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[kind]}</svg>`;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  // Add/edit a single scan device. A method selector swaps the parameter fields
+  // live; Save validates (required fields, IP format, duplicate IP) before
+  // handing the normalized {ip, method, enabled, ...params} back to onSave.
+  function openScanDeviceEditor({ title, device, existingIps, onSave }) {
+    document.getElementById('sdEditorOverlay')?.remove();
+
+    const isEdit = !!device;
+    const draft = Object.assign(
+      { ip: '', method: 'v2c', enabled: true },
+      device ? JSON.parse(JSON.stringify(device)) : {});
+
+    // Seed defaults for the active method; API values are typed in config but the
+    // form inputs are strings, so stringify them for editing.
+    function seedDefaults() {
+      const defs = METHODS[draft.method].defaults;
+      Object.keys(defs).forEach(k => { if (draft[k] === undefined) draft[k] = defs[k]; });
+      if (draft.method === 'api') {
+        draft.port       = String(draft.port ?? METHODS.api.defaults.port);
+        draft.verify_tls = String(draft.verify_tls === true || draft.verify_tls === 'true');
+      }
     }
-
-    apiWorking.forEach((d, i) => {
-      const row = document.createElement('div');
-      row.className = 'st-v3-row';
-
-      const info = document.createElement('div');
-      info.className = 'st-v3-row-info';
-      const ip = document.createElement('span');
-      ip.className = 'st-v3-row-ip';
-      ip.textContent = d.ip || '(no ip)';
-      const sub = document.createElement('span');
-      sub.className = 'st-v3-row-sub';
-      sub.textContent = `${d.vendor || '(no vendor)'} · ${d.username || '(no user)'}`;
-      info.append(ip, sub);
-
-      const actions = document.createElement('div');
-      actions.className = 'st-v3-row-actions';
-      const editB = document.createElement('button');
-      editB.type = 'button';
-      editB.className = 'btn btn-ghost st-row-btn';
-      editB.textContent = 'Edit';
-      editB.addEventListener('click', () => {
-        openCredEditor({
-          title: `Edit ${d.ip || 'Device'}`,
-          fields: API_FIELDS,
-          // Stringify back for the form inputs (port number, verify_tls bool).
-          creds: Object.assign({ ip: '' }, API_DEFAULTS, d, {
-            port: String(d.port ?? API_DEFAULTS.port),
-            verify_tls: String(d.verify_tls === true || d.verify_tls === 'true'),
-          }),
-          showIp: true,
-          onSave: (c) => {
-            if (!c.ip) { setStatus('Device IP is required.', 'error'); return; }
-            apiWorking[i] = coerceApiCred(c);
-            renderApiPanelBody();
-          },
-        });
-      });
-      const delB = document.createElement('button');
-      delB.type = 'button';
-      delB.className = 'btn btn-ghost st-row-btn st-row-btn-danger';
-      delB.textContent = 'Remove';
-      delB.addEventListener('click', () => { apiWorking.splice(i, 1); renderApiPanelBody(); });
-      actions.append(editB, delB);
-
-      row.append(info, actions);
-      body.appendChild(row);
-    });
-  }
-
-  function applyApiPanel() {
-    if (!editContext) return;
-    const { daemon, domain } = editContext;
-    stageComplex(daemon, domain, API_DEVICES_KEY,
-                 originalComplex(daemon, domain, API_DEVICES_KEY) || [], apiWorking);
-    closeEditPanel();
-  }
-
-  // Per-device field editor. Reuses the app's light .modal styling for consistency
-  // (it sits above the slide-over, so it needs a higher z-index than the panel).
-  // `fields` is the field spec (V3_FIELDS or API_FIELDS) — the editor is otherwise
-  // identical for both credential kinds.
-  function openCredEditor({ title, fields = V3_FIELDS, creds, showIp, onSave }) {
-    document.getElementById('v3EditorOverlay')?.remove();
+    seedDefaults();
 
     const overlay = document.createElement('div');
-    overlay.id = 'v3EditorOverlay';
-    overlay.className = 'modal-overlay v3-editor-overlay visible';
-
+    overlay.id = 'sdEditorOverlay';
+    overlay.className = 'modal-overlay v3-editor-overlay sd-editor-overlay';
     const modal = document.createElement('div');
-    modal.className = 'modal v3-editor-modal';
+    modal.className = 'modal v3-editor-modal sd-editor-modal';
+
+    // Slide back out before detaching, mirroring the .st-edit-panel close motion.
+    function closeOverlay() {
+      overlay.classList.remove('visible');
+      overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
+    }
 
     const header = document.createElement('div');
     header.className = 'modal-header';
     header.innerHTML =
-      `<div class="modal-header-left">` +
-      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">` +
-      `<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>` +
-      `<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>` +
+      '<div class="modal-header-left"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/>' +
+      '<line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/></svg>' +
       `<span class="modal-title">${title}</span></div>`;
     const closeBtn = document.createElement('button');
     closeBtn.className = 'modal-close';
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.innerHTML =
-      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">` +
-      `<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-    closeBtn.addEventListener('click', () => overlay.remove());
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+      'stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.addEventListener('click', closeOverlay);
     header.appendChild(closeBtn);
     modal.appendChild(header);
 
     const body = document.createElement('div');
     body.className = 'modal-body v3-editor-body';
+    modal.appendChild(body);
 
-    const inputs = {};
-    const allFields = (showIp ? [{ key: 'ip', label: 'IP Address', type: 'text' }] : []).concat(fields);
-    allFields.forEach(f => {
-      const wrap = document.createElement('div');
-      wrap.className = 'st-edit-field';
+    function field(key, label, type, options) {
+      const fw = document.createElement('div');
+      fw.className = 'st-edit-field';
       const lbl = document.createElement('label');
       lbl.className = 'st-edit-field-label';
-      lbl.textContent = f.label;
-      wrap.appendChild(lbl);
+      lbl.textContent = label;
+      fw.appendChild(lbl);
+
+      // Preset dropdown (e.g. SNMP community public/private) with a "Custom…"
+      // fallback for devices that don't use the convention default — the device's
+      // actual community string can be anything, so we can't lock this to a fixed set.
+      if (type === 'select-or-custom') {
+        const CUSTOM = '__custom__';
+        const isPreset = options.includes(draft[key]);
+        const select = document.createElement('select');
+        select.className = 'settings-field-input';
+        select.dataset.fkey = key;
+        options.forEach(o => {
+          const op = document.createElement('option');
+          op.value = o; op.textContent = o; select.appendChild(op);
+        });
+        const customOpt = document.createElement('option');
+        customOpt.value = CUSTOM; customOpt.textContent = 'Custom…';
+        select.appendChild(customOpt);
+        select.value = isPreset ? draft[key] : CUSTOM;
+
+        const customInput = document.createElement('input');
+        customInput.type = 'password';
+        customInput.className = 'settings-field-input settings-field-input-text sd-custom-input';
+        customInput.placeholder = 'Enter custom value';
+        customInput.dataset.fkey = key;
+        customInput.style.display = isPreset ? 'none' : '';
+        customInput.value = isPreset ? '' : (draft[key] || '');
+
+        select.addEventListener('change', () => {
+          if (select.value === CUSTOM) {
+            customInput.style.display = '';
+            customInput.value = '';
+            draft[key] = '';
+            customInput.focus();
+          } else {
+            customInput.style.display = 'none';
+            draft[key] = select.value;
+          }
+          clearErr(key);
+        });
+        customInput.addEventListener('input', () => { draft[key] = customInput.value; clearErr(key); });
+
+        fw.appendChild(select);
+        fw.appendChild(customInput);
+        const err = document.createElement('div');
+        err.className = 'sd-field-err';
+        err.dataset.errFor = key;
+        fw.appendChild(err);
+        return fw;
+      }
 
       let input;
-      if (f.type === 'select') {
+      if (type === 'select') {
         input = document.createElement('select');
         input.className = 'settings-field-input';
-        f.options.forEach(o => {
-          const opt = document.createElement('option');
-          opt.value = o; opt.textContent = o;
-          input.appendChild(opt);
+        options.forEach(o => {
+          const op = document.createElement('option');
+          op.value = o; op.textContent = o; input.appendChild(op);
         });
       } else {
         input = document.createElement('input');
-        input.type = f.type === 'password' ? 'password' : 'text';
+        input.type = type === 'password' ? 'password' : 'text';
         input.className = 'settings-field-input settings-field-input-text';
       }
-      input.value = creds[f.key] !== undefined ? creds[f.key] : '';
-      inputs[f.key] = input;
-      wrap.appendChild(input);
-      body.appendChild(wrap);
-    });
-    modal.appendChild(body);
+      input.value = draft[key] !== undefined ? draft[key] : '';
+      input.dataset.fkey = key;
+      input.addEventListener('input',  () => { draft[key] = input.value; clearErr(key); });
+      input.addEventListener('change', () => { draft[key] = input.value; });
+      fw.appendChild(input);
+      const err = document.createElement('div');
+      err.className = 'sd-field-err';
+      err.dataset.errFor = key;
+      fw.appendChild(err);
+      return fw;
+    }
+
+    function clearErr(key) {
+      body.querySelector(`[data-err-for="${key}"]`)?.replaceChildren();
+      body.querySelector(`[data-fkey="${key}"]`)?.classList.remove('sd-input-err');
+    }
+    function showErrs(errs) {
+      body.querySelectorAll('[data-err-for]').forEach(e => { e.textContent = ''; });
+      body.querySelectorAll('.sd-input-err').forEach(i => i.classList.remove('sd-input-err'));
+      Object.entries(errs).forEach(([k, msg]) => {
+        const e   = body.querySelector(`[data-err-for="${k}"]`);
+        const inp = body.querySelector(`[data-fkey="${k}"]`);
+        if (e)   e.textContent = msg;
+        if (inp) inp.classList.add('sd-input-err');
+      });
+    }
+
+    function renderFields() {
+      body.innerHTML = '';
+      body.appendChild(field('ip', 'IP Address', 'text'));
+
+      // Method segmented selector
+      const mw = document.createElement('div');
+      mw.className = 'st-edit-field';
+      const mlbl = document.createElement('label');
+      mlbl.className = 'st-edit-field-label';
+      mlbl.textContent = 'Scan Method';
+      mw.appendChild(mlbl);
+      const seg = document.createElement('div');
+      seg.className = 'sd-method-seg';
+      METHOD_ORDER.forEach(m => {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'sd-method-opt' + (draft.method === m ? ' active' : '');
+        opt.textContent = METHODS[m].label;
+        opt.addEventListener('click', () => {
+          if (draft.method === m) return;
+          draft.method = m;
+          seedDefaults();
+          renderFields();
+        });
+        seg.appendChild(opt);
+      });
+      mw.appendChild(seg);
+      body.appendChild(mw);
+
+      // Method-specific fields
+      METHODS[draft.method].fields.forEach(f => body.appendChild(field(f.key, f.label, f.type, f.options)));
+    }
+    renderFields();
 
     const footer = document.createElement('div');
     footer.className = 'modal-footer';
@@ -828,16 +1041,18 @@
     cancel.type = 'button';
     cancel.className = 'btn btn-ghost';
     cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => overlay.remove());
+    cancel.addEventListener('click', closeOverlay);
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'btn btn-primary';
-    save.textContent = 'Save';
+    save.textContent = isEdit ? 'Update' : 'Add';
     save.addEventListener('click', () => {
-      const out = {};
-      if (showIp) out.ip = (inputs.ip.value || '').trim();
-      fields.forEach(f => { out[f.key] = inputs[f.key].value; });
-      overlay.remove();
+      draft.ip = (draft.ip || '').trim();
+      const errs = validateScanDevice(draft, existingIps);
+      if (Object.keys(errs).length) { showErrs(errs); return; }
+      closeOverlay();
+      const out = { ip: draft.ip, method: draft.method, enabled: draft.enabled !== false };
+      METHODS[draft.method].fields.forEach(f => { out[f.key] = draft[f.key]; });
       onSave(out);
     });
     actions.append(cancel, save);
@@ -845,8 +1060,10 @@
     modal.appendChild(footer);
 
     overlay.appendChild(modal);
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeOverlay(); });
     document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('visible'));
+    setTimeout(() => body.querySelector('[data-fkey="ip"]')?.focus(), 0);
   }
 
   // ── Edit slide-over panel ─────────────────────────────────────────────────
@@ -889,12 +1106,14 @@
     document.getElementById('stEditBackdrop')?.classList.remove('visible');
     editContext = null;
     editMode = 'scalar';
-    v3Working = null;
-    apiWorking = null;
+    rackEditIdx = null;
+    rackAllocDraft = [];
     editDraft.clear();
   }
 
   function applyEditPanel() {
+    if (editMode === 'rackNew')  { applyRackAdd();   return; }
+    if (editMode === 'rackEdit') { applyRackAlloc(); return; }
     if (!editContext) return;
     const { daemon, domain, values } = editContext;
 
@@ -1171,6 +1390,266 @@
     container.appendChild(div);
   }
 
+  // ── Rack List editor (Configuration ▸ Rack) ────────────────────────────────
+  // Layout only: each rack is { name, description, type, devices:[] }. `type` is the
+  // rack size (U height) chosen from RACK_TYPES; the Resource ▸ Rack Management page
+  // lays out that many U slots and owns devices[] (preserved verbatim here).
+  const RACK_TYPES = ['42U', '48U', '24U', '12U', '9U', '6U'];
+  function rackEsc(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function stageRacks(next) {
+    setComplexPending('engined', 'rack', 'racks', originalComplex('engined', 'rack', 'racks'), next);
+    refreshPendingBadge();
+    renderRackList();
+  }
+
+  async function ensureRackDevices() {
+    if (rackDevices.length) return;
+    try {
+      const resp = await fetchJSON('/api/devices');
+      const d = resp ? await resp.json() : null;
+      rackDevices = (d && d.devices) || [];
+    } catch (_) { rackDevices = []; }
+  }
+
+  function rackPanel() {
+    return {
+      panel: document.getElementById('stEditPanel'),
+      backdrop: document.getElementById('stEditBackdrop'),
+      title: document.getElementById('stEditTitle'),
+      body: document.getElementById('stEditBody'),
+    };
+  }
+  function showRackPanel(p) { p.backdrop.classList.add('visible'); p.panel.classList.add('visible'); }
+
+  // ── Add Rack (slide-over form: name + description + type) ───────────────────
+  function openRackAdd() {
+    editMode = 'rackNew';
+    editContext = null; editDraft.clear(); rackEditIdx = null;
+    const p = rackPanel();
+    if (!p.panel || !p.body) return;
+    p.title.textContent = 'Add Rack';
+    p.body.innerHTML = `
+      <div class="st-edit-field">
+        <label class="st-edit-field-label">Name</label>
+        <input type="text" class="settings-field-input" data-role="rkName" placeholder="Rack name…" />
+      </div>
+      <div class="st-edit-field">
+        <label class="st-edit-field-label">Description</label>
+        <input type="text" class="settings-field-input" data-role="rkDesc" placeholder="Optional…" />
+      </div>
+      <div class="st-edit-field">
+        <label class="st-edit-field-label">Type</label>
+        <select class="settings-field-input" data-role="rkType">
+          ${RACK_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
+        </select>
+      </div>`;
+    showRackPanel(p);
+    setTimeout(() => p.body.querySelector('[data-role="rkName"]')?.focus(), 0);
+  }
+
+  function applyRackAdd() {
+    const body = document.getElementById('stEditBody');
+    const name = body.querySelector('[data-role="rkName"]').value.trim();
+    if (!name) { alert('Rack name is required.'); return; }
+    const racks = effectiveArray('engined', 'rack', 'racks');
+    if (racks.some(r => r.name === name)) { alert('A rack with that name already exists.'); return; }
+    const desc = body.querySelector('[data-role="rkDesc"]').value.trim();
+    const type = body.querySelector('[data-role="rkType"]').value;
+    stageRacks(racks.concat([{ name, description: desc, type, devices: [] }]));
+    closeEditPanel();
+  }
+
+  // ── Edit Rack allocation (slide-over: pick device → pick U range) ───────────
+  async function openRackAlloc(idx) {
+    const racks = effectiveArray('engined', 'rack', 'racks');
+    const r = racks[idx];
+    if (!r) return;
+    rackEditIdx = idx;
+    editMode = 'rackEdit';
+    editContext = null; editDraft.clear();
+    rackAllocDraft = JSON.parse(JSON.stringify(r.devices || []));   // working copy
+
+    await ensureRackDevices();
+
+    const p = rackPanel();
+    if (!p.panel || !p.body) return;
+    p.title.textContent = `Edit — ${r.name}`;
+    renderRackAllocBody(r);
+    showRackPanel(p);
+  }
+
+  function rackOccupied(draft) {
+    // unit -> true for every U covered by a draft allocation (unit..unit+size-1).
+    const occ = {};
+    draft.forEach(d => { const s = d.size || 1; for (let i = 0; i < s; i++) occ[d.unit + i] = true; });
+    return occ;
+  }
+
+  function renderRackAllocBody(r) {
+    const body = document.getElementById('stEditBody');
+    const height = parseInt(r.type, 10) || 42;
+    const occ = rackOccupied(rackAllocDraft);
+
+    const assignedIps = new Set(rackAllocDraft.map(d => d.ip));
+    const devOpts = '<option value="">— select device —</option>' + rackDevices.slice()
+      .filter(d => !assignedIps.has(d.primary_ip))
+      .sort((a, b) => (a.hostname || a.primary_ip).localeCompare(b.hostname || b.primary_ip))
+      .map(d => `<option value="${rackEsc(d.primary_ip)}" data-name="${rackEsc(d.hostname || d.primary_ip)}">${rackEsc(d.hostname || d.primary_ip)} (${rackEsc(d.primary_ip)})</option>`).join('');
+    const uOpts = sel => Array.from({ length: height }, (_, i) => height - i)
+      .map(n => `<option value="${n}"${n === sel ? ' selected' : ''}>U${n}</option>`).join('');
+
+    const list = rackAllocDraft.length ? rackAllocDraft
+      .slice().sort((a, b) => b.unit - a.unit)
+      .map(d => {
+        const end = d.unit + (d.size || 1) - 1;
+        const range = d.size > 1 ? `U${d.unit}–U${end}` : `U${d.unit}`;
+        return `<div class="rk-alloc-item">
+          <span class="rk-alloc-range">${range}</span>
+          <span class="rk-dev-name">${rackEsc(d.device || d.ip)}</span>
+          <code class="rk-dev-ip">${rackEsc(d.ip)}</code>
+          <button class="rack-del rk-alloc-del" data-ip="${rackEsc(d.ip)}" title="Remove">×</button>
+        </div>`;
+      }).join('') : '<div class="st-edit-field-hint">No devices allocated yet.</div>';
+
+    const freeUnits = height - Object.keys(occ).length;
+    body.innerHTML = `
+      <div class="rk-edit-summary">
+        <div class="rk-edit-rackname">${rackEsc(r.name)}</div>
+        <div class="rk-edit-meta">${rackEsc(r.type || '42U')} · ${freeUnits}U free · ${rackAllocDraft.length} device(s)</div>
+        ${r.description ? `<div class="rk-edit-desc">${rackEsc(r.description)}</div>` : ''}
+      </div>
+
+      <div class="rk-edit-section">
+        <div class="rk-edit-section-title">Allocated devices</div>
+        <div class="rk-alloc-list">${list}</div>
+      </div>
+
+      <div class="rk-edit-section">
+        <div class="rk-edit-section-title">Add device</div>
+        ${rackDevices.length ? `
+          <label class="rk-field-label">Device</label>
+          <select class="settings-field-input" data-role="aDev">${devOpts}</select>
+          <label class="rk-field-label">Units</label>
+          <div class="rk-range-row">
+            <select class="settings-field-input rk-range-sel" data-role="aFrom">${uOpts(1)}</select>
+            <span class="rk-range-sep">to</span>
+            <select class="settings-field-input rk-range-sel" data-role="aTo">${uOpts(1)}</select>
+            <button class="btn btn-sm btn-primary rk-add-btn" data-role="aAdd">Add</button>
+          </div>
+          <div class="rk-field-hint">A device can span multiple units (e.g. U5 → U8).</div>
+        ` : '<div class="st-edit-field-hint">No devices discovered yet — run a probe/scan first.</div>'}
+      </div>`;
+
+    body.querySelectorAll('.rk-alloc-del').forEach(b => b.addEventListener('click', () => {
+      rackAllocDraft = rackAllocDraft.filter(d => d.ip !== b.dataset.ip);
+      renderRackAllocBody(r);
+    }));
+    const addBtn = body.querySelector('[data-role="aAdd"]');
+    if (addBtn) addBtn.addEventListener('click', () => {
+      const devSel = body.querySelector('[data-role="aDev"]');
+      const ip = devSel.value;
+      if (!ip) { alert('Select a device.'); return; }
+      let from = parseInt(body.querySelector('[data-role="aFrom"]').value, 10);
+      let to   = parseInt(body.querySelector('[data-role="aTo"]').value, 10);
+      if (from > to) { const t = from; from = to; to = t; }
+      const occNow = rackOccupied(rackAllocDraft);
+      for (let n = from; n <= to; n++) {
+        if (occNow[n]) { alert(`U${n} is already occupied.`); return; }
+      }
+      const opt = devSel.selectedOptions[0];
+      rackAllocDraft.push({ device: (opt && opt.dataset.name) || ip, ip, unit: from, size: to - from + 1 });
+      renderRackAllocBody(r);
+    });
+  }
+
+  function applyRackAlloc() {
+    const racks = effectiveArray('engined', 'rack', 'racks');
+    if (rackEditIdx == null || !racks[rackEditIdx]) { closeEditPanel(); return; }
+    racks[rackEditIdx] = Object.assign({}, racks[rackEditIdx], { devices: rackAllocDraft });
+    stageRacks(racks);
+    closeEditPanel();
+  }
+
+  // Read-only allocation summary shown when a rack row is expanded.
+  function rackAllocSummary(r) {
+    const devs = (r.devices || []).slice().sort((a, b) => b.unit - a.unit);
+    if (!devs.length) return '<div class="rk-detail-empty">No devices allocated.</div>';
+    return devs.map(d => {
+      const size = d.size || 1;
+      const range = size > 1 ? `U${d.unit}–U${d.unit + size - 1}` : `U${d.unit}`;
+      return `<div class="rk-detail-item">
+        <span class="rk-detail-range">${range}</span>
+        <span class="rk-detail-name">${rackEsc(d.device || d.ip)}</span>
+        <code class="rk-detail-ip">${rackEsc(d.ip)}</code>
+      </div>`;
+    }).join('');
+  }
+
+  function renderRackList() {
+    container.innerHTML = '';
+    const racks = effectiveArray('engined', 'rack', 'racks');
+
+    const chevron = '<svg class="rk-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
+    const card = document.createElement('div');
+    card.className = 'section-card rk-list-card';
+    card.innerHTML = `
+      <div class="section-header">
+        <span class="section-title">Racks <span class="devices-count-badge">${racks.length}</span></span>
+        <button class="btn btn-primary btn-sm" data-role="rkAdd">+ Add Rack</button>
+      </div>
+      <table class="device-table rk-table">
+        <thead><tr>
+          <th class="rk-col-exp"></th>
+          <th>Name</th><th>Description</th><th>Type</th><th class="rk-col-dev">Devices</th>
+          <th class="rk-col-act"></th>
+        </tr></thead>
+        <tbody>
+          ${racks.length ? racks.map((r, i) => {
+            const count = (r.devices || []).length;
+            return `<tr class="rk-row" data-i="${i}">
+              <td class="rk-col-exp"><button class="rk-exp-btn" data-i="${i}" aria-label="Show allocation">${chevron}</button></td>
+              <td><strong>${rackEsc(r.name)}</strong></td>
+              <td>${r.description ? rackEsc(r.description) : '<span class="muted">—</span>'}</td>
+              <td class="muted">${rackEsc(r.type || '42U')}</td>
+              <td class="rk-col-dev"><span class="rk-dev-count">${count}</span></td>
+              <td class="rk-col-act">
+                <button class="btn btn-ghost btn-sm rk-edit-btn" data-i="${i}">Edit</button>
+                <button class="rk-del-btn" data-i="${i}" title="Delete rack" aria-label="Delete rack">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </td>
+            </tr>
+            <tr class="rk-detail-row" data-i="${i}" hidden><td colspan="6">
+              <div class="rk-detail">${rackAllocSummary(r)}</div>
+            </td></tr>`;
+          }).join('') : `<tr><td colspan="6" class="muted" style="padding:16px">No racks yet — click “Add Rack”.</td></tr>`}
+        </tbody>
+      </table>`;
+    container.appendChild(card);
+
+    card.querySelector('[data-role="rkAdd"]').addEventListener('click', openRackAdd);
+    card.querySelectorAll('.rk-del-btn').forEach(b => b.addEventListener('click', () => {
+      const i = parseInt(b.dataset.i, 10);
+      if (confirm('Delete this rack? Its device allocation is removed too.'))
+        stageRacks(racks.filter((_, idx) => idx !== i));
+    }));
+    card.querySelectorAll('.rk-edit-btn').forEach(b => b.addEventListener('click', () => {
+      openRackAlloc(parseInt(b.dataset.i, 10));
+    }));
+    card.querySelectorAll('.rk-exp-btn').forEach(b => b.addEventListener('click', () => {
+      const i = b.dataset.i;
+      const detail = card.querySelector(`tr.rk-detail-row[data-i="${i}"]`);
+      const open = detail.hasAttribute('hidden');
+      if (open) detail.removeAttribute('hidden'); else detail.setAttribute('hidden', '');
+      b.classList.toggle('expanded', open);
+    }));
+  }
+
   function renderTabContent(data) {
     container.innerHTML = '';
     const tab = TABS[activeTab];
@@ -1181,6 +1660,15 @@
       const proto = PROTOCOLS[activeProto];
       const any = renderDomains(data, proto.daemons, proto.domains);
       if (!any) emptyState(`${proto.label} configuration is not available yet.`);
+      return;
+    }
+
+    // Rack List: layout (name + description) lives in running-config
+    // (engined.service.rack.racks). Edits stage into `pending` like the other complex
+    // arrays and commit through the normal Review/Commit flow. Device allocation is done
+    // separately on the Resource ▸ Rack Management page.
+    if (activeTab === 'rack') {
+      renderRackList();
       return;
     }
 
@@ -1596,11 +2084,7 @@
     // Edit panel
     document.getElementById('stEditCloseBtn')?.addEventListener('click', closeEditPanel);
     document.getElementById('stEditCancelBtn')?.addEventListener('click', closeEditPanel);
-    document.getElementById('stEditApplyBtn')?.addEventListener('click', () => {
-      if (editMode === 'v3') applyV3Panel();
-      else if (editMode === 'api') applyApiPanel();
-      else applyEditPanel();
-    });
+    document.getElementById('stEditApplyBtn')?.addEventListener('click', applyEditPanel);
     document.getElementById('stEditBackdrop')?.addEventListener('click', closeEditPanel);
     document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {

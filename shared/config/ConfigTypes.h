@@ -20,10 +20,10 @@ struct IpcConfig
     std::string socketPath;
 
     uint32_t maxConnections{128};
-    uint32_t maxFrameSize{65536};
+    uint32_t maxFrameSize{1048576};
 
-    uint32_t rxBufferSize{65536};
-    uint32_t txBufferSize{65536};
+    uint32_t rxBufferSize{1048576};
+    uint32_t txBufferSize{1048576};
 };
 
 }

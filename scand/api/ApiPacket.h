@@ -9,17 +9,16 @@
 namespace pz::scand
 {
 
-// Typed container for a completed SNMP scan sweep. The SnmpEngineHandler wraps the
-// decoded results into an ScandPacket and hands it through the RxRouter to the event
-// factory — mirroring icmpd's IcmpPacket so the router never deals in raw STL or
-// service-layer types. Result-only for now; the natural extension point for scan
-// metadata (scan id, source request, timings).
-class ScandPacket final
+// Typed container for a completed vendor-API scan sweep. Mirrors SnmpPacket
+// (scand/snmp/SnmpPacket.h) — ApiEngineHandler wraps ApiEngine's decoded results
+// into one of these and hands it through the RxRouter to the event factory, never
+// constructed inline in the router.
+class ApiPacket final
 {
 public:
-    ScandPacket() = default;
+    ApiPacket() = default;
 
-    explicit ScandPacket(std::vector<SnmpDevice> devices)
+    explicit ApiPacket(std::vector<SnmpDevice> devices)
         : m_devices(std::move(devices))
     {
     }

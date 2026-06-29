@@ -29,7 +29,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(IcmpdEventDomain domain, s
         return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
 
     default:
-        LOG_WARN("Unhandled event domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled event domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -38,7 +38,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<pz::ipc::I
 {
     if (!msg)
     {
-        LOG_DEBUG("Icmpd event factory: received empty message — skipping");
+        LOG_DEBUG("received empty message — skipping");
         return nullptr;
     }
 
@@ -60,7 +60,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<pz::ipc::I
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 
     default:
-        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 
@@ -88,7 +88,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp,
         return std::make_unique<ProbeEvent>(ProbeEventType::EchoReply, srcIp, std::move(packet));
 
     default:
-        LOG_WARN("Unhandled type={}", static_cast<int>(packet->type()));
+        LOG_WARN("unhandled ICMP type (type={})", static_cast<int>(packet->type()));
         return nullptr;
     }
 

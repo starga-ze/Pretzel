@@ -18,6 +18,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <sys/statvfs.h>
 #include <utility>
 
@@ -51,7 +52,7 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
 {
     const std::string target(req.target());
 
-    LOG_TRACE("Mgmtd HTTP request method={} target={}", req.method_string(), target);
+    LOG_TRACE("HTTP request (method={}, target={})", req.method_string(), target);
 
     // ── Public API routes (no auth required) ──────────────────────────────
     if (target == "/metrics" && req.method() == http::verb::get)
@@ -264,7 +265,7 @@ HttpRouter::Response HttpRouter::handleLogin(const Request& req)
     }
     catch (const std::exception& e)
     {
-        LOG_WARN("Mgmtd login bad request: {}", e.what());
+        LOG_WARN("login bad request (error={})", e.what());
         return makeResponse(http::status::bad_request,
                             R"({"error":"bad request"})",
                             "application/json; charset=utf-8",
@@ -357,7 +358,7 @@ HttpRouter::Response HttpRouter::handleChangePassword(const Request& req)
         // against it and the forced-change gate opens (m_mustChange cleared).
         m_authService->applyCredential(cred.passwordHash, cred.salt);
 
-        LOG_INFO("Mgmtd admin password change sent to engined for user '{}'", user);
+        LOG_INFO("admin password change sent to engined (user={})", user);
         return makeResponse(http::status::ok,
                             R"({"status":"ok"})",
                             "application/json; charset=utf-8",
@@ -365,7 +366,7 @@ HttpRouter::Response HttpRouter::handleChangePassword(const Request& req)
     }
     catch (const std::exception& e)
     {
-        LOG_WARN("Mgmtd change-password bad request: {}", e.what());
+        LOG_WARN("change-password bad request (error={})", e.what());
         return makeResponse(http::status::bad_request,
                             R"({"error":"bad request"})",
                             "application/json; charset=utf-8",
@@ -521,7 +522,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
     {
         if (!change.contains("daemon") || !change.contains("domain") || !change.contains("values"))
         {
-            LOG_WARN("Mgmtd handleSettingsCommit: skipping entry missing daemon/domain/values");
+            LOG_WARN("skipping settings-commit entry missing daemon/domain/values");
             failed++;
             continue;
         }
@@ -532,7 +533,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
 
         if (!values.is_object())
         {
-            LOG_WARN("Mgmtd handleSettingsCommit: values not object daemon={} domain={}", daemon, domain);
+            LOG_WARN("settings-commit values not an object (daemon={}, domain={})", daemon, domain);
             failed++;
             continue;
         }
@@ -543,7 +544,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
 
         if (!knownDaemon)
         {
-            LOG_WARN("Mgmtd handleSettingsCommit: unknown daemon={}", daemon);
+            LOG_WARN("settings-commit unknown daemon (daemon={})", daemon);
             failed++;
             continue;
         }
@@ -567,7 +568,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
 
         m_serviceManager->txRouter().handleIpcMessage(std::move(msg));
         m_serviceManager->startReload();
-        LOG_INFO("Mgmtd SettingsCommitRequest sent to engined ({} change(s))", applied);
+        LOG_INFO("SettingsCommitRequest sent to engined (changes={})", applied);
     }
 
     const http::status status = (failed == 0)
@@ -731,17 +732,42 @@ HttpRouter::Response HttpRouter::handleDevices(const Request& req)
     json devices = json::array();
     int networkCount = 0;
     int serverCount  = 0;
-    int hostCount    = 0;
+    int unknownCount = 0;
 
     if (m_serviceManager)
     {
         const auto groups = m_serviceManager->deviceService().groups();
 
+        // Rack allocation lives in running-config (engined.service.rack.racks); each
+        // allocated device carries a literal {device, ip, status}. Build ip -> rack-name
+        // so the Devices view can show which rack a device is declared in (replacing SNMP
+        // sysLocation). The green/red reconciliation against probe state is done client-side.
+        std::unordered_map<std::string, std::string> rackByIp;
+        {
+            const auto& eng  = pz::config::Config::daemonConfig("engined");
+            const auto  svc  = eng.value("service", json::object());
+            const auto  rack = svc.value("rack", json::object());
+            for (const auto& rk : rack.value("racks", json::array()))
+            {
+                const std::string name = rk.value("name", "");
+                for (const auto& d : rk.value("devices", json::array()))
+                    rackByIp[d.value("ip", "")] = name;
+            }
+        }
+
         for (const auto& g : groups)
         {
             if (g.type == "network")      ++networkCount;
             else if (g.type == "server")  ++serverCount;
-            else                          ++hostCount;
+            else                          ++unknownCount;
+
+            // location = name of the rack this device's IP is allocated to (if any).
+            std::string location;
+            for (const auto& ip : g.ips)
+            {
+                auto it = rackByIp.find(ip);
+                if (it != rackByIp.end()) { location = it->second; break; }
+            }
 
             json ifaces = json::array();
             for (const auto& itf : g.interfaces)
@@ -764,7 +790,7 @@ HttpRouter::Response HttpRouter::handleDevices(const Request& req)
                 {"sys_descr",         g.sysDescr},
                 {"sys_object_id",     g.sysObjectId},
                 {"sys_contact",       g.sysContact},
-                {"sys_location",      g.sysLocation},
+                {"location",          location},
                 {"sys_up_time_ticks", g.sysUpTimeTicks},
                 {"interface_macs",    g.interfaceMacs},
                 {"interfaces",        std::move(ifaces)},
@@ -777,10 +803,10 @@ HttpRouter::Response HttpRouter::handleDevices(const Request& req)
     }
 
     body["summary"] = {
-        {"total",   networkCount + serverCount + hostCount},
+        {"total",   networkCount + serverCount + unknownCount},
         {"network", networkCount},
         {"server",  serverCount},
-        {"hosts",   hostCount},
+        {"unknown", unknownCount},
     };
     body["devices"] = std::move(devices);
 

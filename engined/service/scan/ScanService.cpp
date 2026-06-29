@@ -12,6 +12,8 @@
 #include <nlohmann/json.hpp>
 
 #include <string>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace pz::engined
@@ -33,6 +35,36 @@ std::chrono::milliseconds responseTimeout()
     return std::chrono::seconds(s.value("response_timeout_sec", 30));
 }
 
+// IPs explicitly registered in the scan settings (scand.service.scan device
+// lists). SNMP is opt-in: only these IPs are ever sent to scand for scanning,
+// regardless of ICMP discovery, so an operator-added device is polled even when
+// it does not answer ping, and an unregistered ICMP-alive host is never probed.
+// Disabled rows (enabled:false) are skipped; default true for backward
+// compatibility. Deduplicated as a defensive measure — each device is meant to
+// have exactly one scan method (v2c_devices / v3_devices / api_devices, chosen in
+// the GUI), but this still guards against a stale config listing the same IP
+// under more than one.
+std::vector<std::string> registeredDeviceIps()
+{
+    std::vector<std::string> out;
+    std::unordered_set<std::string> seen;
+    const auto& scan = pz::config::Config::serviceSection("scand", "scan");
+    for (const char* key : {"v2c_devices", "v3_devices", "api_devices"})
+    {
+        if (!scan.contains(key) || !scan[key].is_array())
+            continue;
+        for (const auto& d : scan[key])
+        {
+            if (!d.is_object() || !d.value("enabled", true))
+                continue;
+            const std::string ip = d.value("ip", std::string());
+            if (!ip.empty() && seen.insert(ip).second)
+                out.push_back(ip);
+        }
+    }
+    return out;
+}
+
 } // namespace
 
 void ScanService::start()
@@ -49,7 +81,7 @@ ScanService::schedule(std::chrono::steady_clock::time_point now)
     {
         if (now - m_requestedAt >= responseTimeout())
         {
-            LOG_WARN("ScanService: ScanResult timed out — clearing pending");
+            LOG_WARN("ScanResult timed out — clearing pending");
             m_pending = false;
         }
         return nullptr;
@@ -81,7 +113,7 @@ void ScanService::handleEvent(EnginedServiceManager& serviceManager,
         const pz::ipc::IpcMessage* in = event.message();
         if (!in || in->getPayload().empty())
         {
-            LOG_WARN("ScanService: empty ScanResult — dropping");
+            LOG_WARN("empty ScanResult — dropping");
             return;
         }
 
@@ -92,7 +124,7 @@ void ScanService::handleEvent(EnginedServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("ScanService: unhandled event type={}",
+        LOG_WARN("unhandled event (type={})",
                  static_cast<std::uint32_t>(event.type()));
         break;
     }
@@ -100,10 +132,16 @@ void ScanService::handleEvent(EnginedServiceManager& serviceManager,
 
 void ScanService::sendScanRequest(EnginedServiceManager& serviceManager)
 {
-    const auto ips = serviceManager.aliveIps();
+    // SNMP scan set = explicitly-registered devices only (scand.service.scan
+    // v2c/v3/api device lists). ICMP-discovered "alive" hosts with no registration
+    // are intentionally excluded — SNMP is opt-in per device, never a blind sweep
+    // of every alive IP. ICMP reachability itself is tracked independently by
+    // ProbeService and is unaffected by this list.
+    std::vector<std::string> ips = registeredDeviceIps();
+
     if (ips.empty())
     {
-        LOG_DEBUG("ScanService: no alive IPs yet — skipping scan trigger");
+        LOG_DEBUG("no registered SNMP/API devices — skipping scan trigger");
         return;
     }
 
@@ -124,7 +162,7 @@ void ScanService::sendScanRequest(EnginedServiceManager& serviceManager)
     m_pending     = true;
     m_requestedAt = std::chrono::steady_clock::now();
 
-    LOG_INFO("ScanService: sending ScanRequest to scand ips={}", ips.size());
+    LOG_INFO("sending ScanRequest to scand (ips={})", ips.size());
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
@@ -139,7 +177,7 @@ void ScanService::persistDevices(EnginedServiceManager& serviceManager,
     }
     catch (const std::exception& e)
     {
-        LOG_WARN("ScanService: failed to parse ScanResult payload: {}", e.what());
+        LOG_WARN("failed to parse ScanResult payload (error={})", e.what());
         return;
     }
 
@@ -214,7 +252,7 @@ void ScanService::persistDevices(EnginedServiceManager& serviceManager,
             ++written;
     }
 
-    LOG_INFO("ScanService: persisted {} SNMP device(s) to probe_devices", written);
+    LOG_INFO("scan complete, persisted to probe_devices (written={})", written);
 }
 
 } // namespace pz::engined

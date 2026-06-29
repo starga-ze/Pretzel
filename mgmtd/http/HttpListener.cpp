@@ -28,40 +28,40 @@ bool HttpListener::open()
     m_acceptor.open(m_endpoint.protocol(), ec);
     if (ec)
     {
-        LOG_ERROR("Mgmtd HTTP acceptor open failed: {}", ec.message());
+        LOG_ERROR("acceptor open failed (error={})", ec.message());
         return false;
     }
 
     m_acceptor.set_option(boost::asio::socket_base::reuse_address(true), ec);
     if (ec)
     {
-        LOG_ERROR("Mgmtd HTTP reuse_address failed: {}", ec.message());
+        LOG_ERROR("reuse_address failed (error={})", ec.message());
         return false;
     }
 
     m_acceptor.bind(m_endpoint, ec);
     if (ec)
     {
-        LOG_ERROR("Mgmtd HTTP bind failed: {}", ec.message());
+        LOG_ERROR("bind failed (error={})", ec.message());
         return false;
     }
 
     m_acceptor.listen(boost::asio::socket_base::max_listen_connections, ec);
     if (ec)
     {
-        LOG_ERROR("Mgmtd HTTP listen failed: {}", ec.message());
+        LOG_ERROR("listen failed (error={})", ec.message());
         return false;
     }
 
     if (m_sslContext)
     {
-        LOG_INFO("Mgmtd HTTPS listener opened {}:{}",
+        LOG_INFO("HTTPS listener opened (address={}, port={})",
                  m_endpoint.address().to_string(),
                  m_endpoint.port());
     }
     else
     {
-        LOG_INFO("Mgmtd HTTP listener opened {}:{}",
+        LOG_INFO("HTTP listener opened (address={}, port={})",
                  m_endpoint.address().to_string(),
                  m_endpoint.port());
     }
@@ -99,7 +99,7 @@ void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
     }
     else
     {
-        LOG_DEBUG("Mgmtd HTTP accept failed: {}", ec.message());
+        LOG_TRACE("accept failed (error={})", ec.message());
     }
 
     doAccept();

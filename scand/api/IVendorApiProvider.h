@@ -7,13 +7,13 @@ namespace pz::scand
 {
 
 // Strategy interface for a vendor's management API. One implementation per vendor
-// family (PaloAlto today). The engine's API stage looks the provider up by vendor
-// in VendorApiRegistry and calls collect() inside a worker thread.
+// family (PaloAlto today). ApiEngine looks the provider up by vendor in
+// VendorApiRegistry and calls collect() inside a worker thread.
 //
-// collect() AUGMENTS the device in place — it fills the topology fields the SNMP
-// stages couldn't (interfaces / ifTable / arpEntries / lldpNeighbors) and may fill
-// identity fields (sysName, etc.) when they're still empty. It must not clobber
-// data already gathered over SNMP unless it has something strictly better.
+// collect() fills `dev` from scratch — ApiEngine runs this as the device's only
+// collection method (no SNMP data to augment), so identity fields (sysName, etc.)
+// and topology fields (interfaces / ifTable / arpEntries / lldpNeighbors) all come
+// from here.
 class IVendorApiProvider
 {
 public:

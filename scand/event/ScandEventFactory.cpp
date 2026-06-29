@@ -5,7 +5,8 @@
 #include "service/scan/ScanEvent.h"
 #include "service/reload/ReloadEvent.h"
 
-#include "snmp/ScandPacket.h"
+#include "snmp/SnmpPacket.h"
+#include "api/ApiPacket.h"
 
 #include "util/Logger.h"
 
@@ -34,7 +35,7 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(ScandEventDomain domain, s
         return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
 
     default:
-        LOG_WARN("unhandled domain={}", static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
@@ -43,7 +44,7 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<pz::ipc::I
 {
     if (!msg)
     {
-        LOG_DEBUG("Scand event factory: received empty message — skipping");
+        LOG_DEBUG("received empty message — skipping");
         return nullptr;
     }
 
@@ -65,20 +66,32 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<pz::ipc::I
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 
     default:
-        LOG_WARN("unhandled cmd={}", static_cast<int>(msg->getCmd()));
+        LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
 }
 
-std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<ScandPacket> packet)
+std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<SnmpPacket> packet)
 {
     if (!packet)
     {
-        LOG_WARN("Scand event factory: null scan packet — skipping");
+        LOG_WARN("null SNMP scan packet — skipping");
         return nullptr;
     }
 
-    return std::make_unique<ScanEvent>(ScanEventType::ScanComplete,
+    return std::make_unique<ScanEvent>(ScanEventType::SnmpScanComplete,
+                                       std::move(packet->devices()));
+}
+
+std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<ApiPacket> packet)
+{
+    if (!packet)
+    {
+        LOG_WARN("null API scan packet — skipping");
+        return nullptr;
+    }
+
+    return std::make_unique<ScanEvent>(ScanEventType::ApiScanComplete,
                                        std::move(packet->devices()));
 }
 

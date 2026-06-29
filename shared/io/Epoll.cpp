@@ -33,7 +33,7 @@ bool Epoll::createEpoll()
     m_epFd = ::epoll_create1(0);
     if (m_epFd < 0)
     {
-        LOG_ERROR("epoll_create1 failed errno={}", errno);
+        LOG_ERROR("epoll_create1 failed (errno={})", errno);
         return false;
     }
     return true;
@@ -44,7 +44,7 @@ bool Epoll::createEventFd()
     m_eventFd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (m_eventFd < 0)
     {
-        LOG_ERROR("eventfd failed errno={}", errno);
+        LOG_ERROR("eventfd failed (errno={})", errno);
         return false;
     }
     return true;
