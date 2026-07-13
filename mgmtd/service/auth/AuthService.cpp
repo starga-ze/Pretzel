@@ -62,9 +62,27 @@ AuthService::LoginResult AuthService::login(const std::string& username,
 
     const auto sessionId = generateSessionId();
 
-    m_sessions[sessionId] = Session{now() + m_sessionTtlSec};
+    m_sessions[sessionId] = Session{now() + m_sessionTtlSec, m_username};
 
     return LoginResult{true, sessionId, m_mustChange};
+}
+
+std::string AuthService::createSsoSession(const std::string& username)
+{
+    // Sessions are opaque tokens keyed by id (validateSession checks existence + expiry,
+    // not identity). The single operator role means no per-user authorization is attached
+    // here — the username is retained only so the UI can show who is signed in.
+    const auto sessionId = generateSessionId();
+    m_sessions[sessionId] = Session{now() + m_sessionTtlSec, username};
+    return sessionId;
+}
+
+std::string AuthService::sessionUser(const std::string& sessionId) const
+{
+    auto it = m_sessions.find(sessionId);
+    if (it == m_sessions.end() || now() > it->second.expiresAt)
+        return {};
+    return it->second.username;
 }
 
 bool AuthService::checkPassword(const std::string& username,

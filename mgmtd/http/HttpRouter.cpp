@@ -7,20 +7,27 @@
 #include "router/MgmtdTxRouter.h"
 
 #include "config/Config.h"
+#include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <ctime>
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <sys/statvfs.h>
 #include <utility>
+#include <vector>
 
 namespace pz::mgmtd
 {
@@ -70,6 +77,24 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
         return handleLogin(req);
     }
 
+    // SSO (Okta via authd) — all public: they run before any session exists.
+    if (target == "/api/auth/sso/info" && req.method() == http::verb::get)
+    {
+        return handleSsoInfo(req);
+    }
+    if (target == "/api/auth/sso/login" && req.method() == http::verb::get)
+    {
+        return handleSsoLogin(req);
+    }
+    if (target == "/api/auth/saml/acs" && req.method() == http::verb::post)
+    {
+        return handleSamlAcs(req);
+    }
+    if (target.rfind("/api/auth/saml/result", 0) == 0 && req.method() == http::verb::get)
+    {
+        return handleSamlResult(req);
+    }
+
     // ── Auth-required API routes ──────────────────────────────────────────
     if (target == "/api/logout" && req.method() == http::verb::post)
     {
@@ -97,6 +122,15 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
             R"({"error":"password change required","code":"MUST_CHANGE_PASSWORD"})",
             "application/json; charset=utf-8",
             req.version(), req.keep_alive());
+    }
+
+    if (target == "/api/whoami" && req.method() == http::verb::get)
+    {
+        if (!isAuthenticated(req))
+        {
+            return unauthorized(req.version(), req.keep_alive());
+        }
+        return handleWhoami(req);
     }
 
     if (target == "/api/status" && req.method() == http::verb::get)
@@ -163,6 +197,15 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
         if (!isAuthenticated(req))
             return unauthorized(req.version(), req.keep_alive());
         return handleNodeMetrics(req);
+    }
+
+    // Laboratory: client POSTs a canvas-rasterized PDF; we reflect it back as a real
+    // server-served attachment so the download URL is this route (not blob:/data:).
+    if (target == "/api/lab/cidi-export" && req.method() == http::verb::post)
+    {
+        if (!isAuthenticated(req))
+            return unauthorized(req.version(), req.keep_alive());
+        return handleLabExport(req);
     }
 
     // ── Static files ──────────────────────────────────────────────────────
@@ -372,6 +415,25 @@ HttpRouter::Response HttpRouter::handleChangePassword(const Request& req)
                             "application/json; charset=utf-8",
                             req.version(), req.keep_alive());
     }
+}
+
+HttpRouter::Response HttpRouter::handleWhoami(const Request& req)
+{
+    // Identify the signed-in user for the UI. Prefer the per-session identity (the SSO
+    // subject/email, or the local admin name); fall back to the local operator name for
+    // legacy sessions minted before the session carried a username.
+    std::string user;
+    if (m_authService)
+    {
+        user = m_authService->sessionUser(extractSession(req));
+        if (user.empty())
+            user = m_authService->username();
+    }
+
+    const json out = {{"username", user}};
+    return makeResponse(http::status::ok, out.dump(),
+                        "application/json; charset=utf-8",
+                        req.version(), req.keep_alive());
 }
 
 HttpRouter::Response HttpRouter::handleStatus(const Request& req)
@@ -1000,6 +1062,376 @@ HttpRouter::Response HttpRouter::handleNodeMetrics(const Request& req)
     return makeResponse(http::status::ok, body.dump(),
                         "application/json; charset=utf-8",
                         req.version(), req.keep_alive());
+}
+
+// ── SSO (Okta via authd) helpers ────────────────────────────────────────────
+namespace
+{
+
+std::string ssoRandomHex(std::size_t nBytes)
+{
+    static const char* hex = "0123456789abcdef";
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<int> dist(0, 15);
+    std::string s;
+    s.reserve(nBytes * 2);
+    for (std::size_t i = 0; i < nBytes * 2; ++i) s.push_back(hex[dist(gen)]);
+    return s;
+}
+
+std::string ssoUtcNow()
+{
+    std::time_t t = std::time(nullptr);
+    std::tm tm{};
+    gmtime_r(&t, &tm);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
+    return buf;
+}
+
+std::string ssoBase64(const std::string& in)
+{
+    static const char* tbl =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve((in.size() + 2) / 3 * 4);
+    const auto* d = reinterpret_cast<const unsigned char*>(in.data());
+    std::size_t len = in.size(), i = 0;
+    for (; i + 2 < len; i += 3)
+    {
+        std::uint32_t n = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+        out.push_back(tbl[(n >> 18) & 63]); out.push_back(tbl[(n >> 12) & 63]);
+        out.push_back(tbl[(n >> 6) & 63]);  out.push_back(tbl[n & 63]);
+    }
+    if (i < len)
+    {
+        std::uint32_t n = d[i] << 16;
+        if (i + 1 < len) n |= d[i + 1] << 8;
+        out.push_back(tbl[(n >> 18) & 63]);
+        out.push_back(tbl[(n >> 12) & 63]);
+        out.push_back((i + 1 < len) ? tbl[(n >> 6) & 63] : '=');
+        out.push_back('=');
+    }
+    return out;
+}
+
+// application/x-www-form-urlencoded decode ('+' → space, %XX → byte).
+std::string ssoUrlDecode(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); ++i)
+    {
+        char c = s[i];
+        if (c == '+') { out.push_back(' '); }
+        else if (c == '%' && i + 2 < s.size())
+        {
+            auto hexv = [](char h) -> int {
+                if (h >= '0' && h <= '9') return h - '0';
+                if (h >= 'a' && h <= 'f') return h - 'a' + 10;
+                if (h >= 'A' && h <= 'F') return h - 'A' + 10;
+                return -1;
+            };
+            int hi = hexv(s[i + 1]), lo = hexv(s[i + 2]);
+            if (hi >= 0 && lo >= 0) { out.push_back(static_cast<char>((hi << 4) | lo)); i += 2; }
+            else out.push_back(c);
+        }
+        else out.push_back(c);
+    }
+    return out;
+}
+
+// Extract and URL-decode a field from an x-www-form-urlencoded body.
+std::string ssoFormField(const std::string& body, const std::string& key)
+{
+    const std::string pfx = key + "=";
+    std::size_t pos = 0;
+    while (pos < body.size())
+    {
+        std::size_t amp = body.find('&', pos);
+        std::string pair = body.substr(pos, amp == std::string::npos ? std::string::npos : amp - pos);
+        if (pair.rfind(pfx, 0) == 0) return ssoUrlDecode(pair.substr(pfx.size()));
+        if (amp == std::string::npos) break;
+        pos = amp + 1;
+    }
+    return {};
+}
+
+std::string ssoHtmlAttr(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s)
+    {
+        switch (c)
+        {
+        case '&': out += "&amp;";  break;
+        case '"': out += "&quot;"; break;
+        case '<': out += "&lt;";   break;
+        case '>': out += "&gt;";   break;
+        default:  out.push_back(c);
+        }
+    }
+    return out;
+}
+
+// The service.auth block from authd's running config (method + oidc/saml settings).
+nlohmann::json ssoAuthConfig()
+{
+    const auto& root = pz::config::Config::daemonConfig("authd");
+    return root.value("service", nlohmann::json::object())
+               .value("auth", nlohmann::json::object());
+}
+
+// Standard base64 decode (skips non-alphabet chars such as whitespace; stops at '=').
+std::string labBase64Decode(const std::string& in)
+{
+    auto val = [](char c) -> int {
+        if (c >= 'A' && c <= 'Z') return c - 'A';
+        if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+        if (c >= '0' && c <= '9') return c - '0' + 52;
+        if (c == '+') return 62;
+        if (c == '/') return 63;
+        return -1;
+    };
+    std::string out;
+    out.reserve(in.size() * 3 / 4);
+    int buf = 0, bits = 0;
+    for (char c : in)
+    {
+        if (c == '=') break;
+        const int v = val(c);
+        if (v < 0) continue;
+        buf = (buf << 6) | v;
+        bits += 6;
+        if (bits >= 8)
+        {
+            bits -= 8;
+            out.push_back(static_cast<char>((buf >> bits) & 0xFF));
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+HttpRouter::Response HttpRouter::handleSsoInfo(const Request& req)
+{
+    const auto auth = ssoAuthConfig();
+    const std::string method = auth.value("method", std::string("oidc"));
+    bool enabled = false;
+    if (method == "saml")
+        enabled = auth.value("saml", json::object()).value("enabled", false);
+    else
+        enabled = auth.value("oidc", json::object()).value("enabled", false);
+
+    // Gate federated login behind admin provisioning. While the local admin is still on
+    // the factory-default password (must_change), the forced password-change gate 403s
+    // every /api/* call — so an SSO session would authenticate only to hit that wall.
+    // Report SSO as disabled until an admin account has been set up; the login page
+    // hides the "Sign in with Okta" button on {enabled:false}.
+    const bool adminSetup = !(m_authService && m_authService->mustChangePassword());
+    enabled = enabled && adminSetup;
+
+    const json out = {{"enabled", enabled},
+                      {"method", method},
+                      {"label", "Sign in with Okta"},
+                      {"admin_setup_required", !adminSetup}};
+    return makeResponse(http::status::ok, out.dump(),
+                        "application/json; charset=utf-8",
+                        req.version(), req.keep_alive());
+}
+
+HttpRouter::Response HttpRouter::handleSsoLogin(const Request& req)
+{
+    auto redirectErr = [&](const std::string& code) {
+        auto r = makeResponse(http::status::found, "", "text/plain",
+                              req.version(), req.keep_alive());
+        r.set(http::field::location, "/index.html?sso_error=" + code);
+        return r;
+    };
+
+    // Defense in depth for the SSO gate: even if a stale page still shows the button,
+    // refuse to start the IdP round-trip while the local admin is unprovisioned — the
+    // resulting session would only 403 on every /api/*. Mirrors handleSsoInfo.
+    if (m_authService && m_authService->mustChangePassword())
+        return redirectErr("setup_required");
+
+    const auto auth = ssoAuthConfig();
+    if (auth.value("method", std::string("oidc")) != "saml")
+        return redirectErr("not_configured");
+
+    const auto saml = auth.value("saml", json::object());
+    if (!saml.value("enabled", false))
+        return redirectErr("disabled");
+
+    const std::string idp = saml.value("idp_sso_url", "");
+    const std::string sp  = saml.value("sp_entity_id", "");
+    const std::string acs = saml.value("acs_url", "");
+    if (idp.empty() || acs.empty())
+        return redirectErr("misconfigured");
+
+    // SP-initiated AuthnRequest over the HTTP-POST binding (base64, no DEFLATE). It is
+    // unsigned (public parameters), so mgmtd builds it directly; authd remains the sole
+    // verifier of the returned SAMLResponse.
+    const std::string id  = "_" + ssoRandomHex(16);
+    const std::string xml =
+        "<samlp:AuthnRequest xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\""
+        " xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\""
+        " ID=\"" + id + "\" Version=\"2.0\" IssueInstant=\"" + ssoUtcNow() + "\""
+        " Destination=\"" + idp + "\""
+        " ProtocolBinding=\"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\""
+        " AssertionConsumerServiceURL=\"" + acs + "\">"
+        "<saml:Issuer>" + sp + "</saml:Issuer></samlp:AuthnRequest>";
+
+    const std::string html =
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Redirecting…</title></head>"
+        "<body onload=\"document.forms[0].submit()\">"
+        "<form method=\"POST\" action=\"" + ssoHtmlAttr(idp) + "\">"
+        "<input type=\"hidden\" name=\"SAMLRequest\" value=\"" + ssoHtmlAttr(ssoBase64(xml)) + "\"/>"
+        "<noscript><button type=\"submit\">Continue to Okta</button></noscript>"
+        "</form></body></html>";
+
+    return makeResponse(http::status::ok, html, "text/html; charset=utf-8",
+                        req.version(), req.keep_alive());
+}
+
+HttpRouter::Response HttpRouter::handleSamlAcs(const Request& req)
+{
+    auto redirectErr = [&](const std::string& code) {
+        auto r = makeResponse(http::status::found, "", "text/plain",
+                              req.version(), req.keep_alive());
+        r.set(http::field::location, "/index.html?sso_error=" + code);
+        return r;
+    };
+
+    const std::string samlResponse = ssoFormField(req.body(), "SAMLResponse");
+    if (samlResponse.empty())   return redirectErr("no_saml_response");
+    if (!m_serviceManager)      return redirectErr("unavailable");
+
+    // Hand the SAMLResponse to authd for verification (fire-and-forget). The verdict
+    // returns asynchronously via MgmtdRxRouter, keyed by this ticket (= IPC seqNo).
+    const std::uint32_t ticket = m_ssoTicket++;
+    const json payload = {{"saml_response", samlResponse}};
+    const std::string ps = payload.dump();
+
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
+    msg->setDst(pz::ipc::IpcDaemon::Authd);
+    msg->setCmd(pz::ipc::IpcCmd::AuthSamlAcsRequest);
+    msg->setSeqNo(ticket);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+    msg->setPayload(std::vector<std::uint8_t>(ps.begin(), ps.end()));
+    m_serviceManager->txRouter().handleIpcMessage(std::move(msg));
+
+    // "Signing in…" page polls for the verdict; on success the poll response sets the
+    // session cookie and redirects to the dashboard.
+    const std::string t = std::to_string(ticket);
+    const std::string html =
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>Signing in…</title></head>"
+        "<body><p style=\"font-family:sans-serif\">Signing in…</p><script>"
+        "(function(){var t=" + t + ",n=0;"
+        "function go(){n++;if(n>40){location.href='/index.html?sso_error=timeout';return;}"
+        "fetch('/api/auth/saml/result?ticket='+t).then(function(r){return r.json();})"
+        ".then(function(d){"
+        "if(d.status==='ok'){location.href=d.redirect||'/dashboard.html';}"
+        "else if(d.status==='error'){location.href='/index.html?sso_error='+encodeURIComponent(d.error||'failed');}"
+        "else{setTimeout(go,600);}"
+        "}).catch(function(){setTimeout(go,900);});}"
+        "go();})();"
+        "</script></body></html>";
+
+    return makeResponse(http::status::ok, html, "text/html; charset=utf-8",
+                        req.version(), req.keep_alive());
+}
+
+HttpRouter::Response HttpRouter::handleSamlResult(const Request& req)
+{
+    auto jsonResp = [&](const json& j) {
+        return makeResponse(http::status::ok, j.dump(),
+                            "application/json; charset=utf-8",
+                            req.version(), req.keep_alive());
+    };
+
+    const std::string target(req.target());
+    std::uint32_t ticket = 0;
+    if (auto pos = target.find("ticket="); pos != std::string::npos)
+        ticket = static_cast<std::uint32_t>(std::strtoul(target.c_str() + pos + 7, nullptr, 10));
+
+    if (!m_serviceManager || ticket == 0)
+        return jsonResp({{"status", "error"}, {"error", "bad ticket"}});
+
+    auto result = m_serviceManager->takeSsoResult(ticket);
+    if (!result)
+        return jsonResp({{"status", "pending"}});
+
+    try
+    {
+        const auto verdict = json::parse(*result);
+        if (verdict.value("success", false))
+        {
+            const std::string user = verdict.value("username", "");
+            const std::string sid  = m_authService
+                                    ? m_authService->createSsoSession(user)
+                                    : std::string();
+            if (sid.empty())
+                return jsonResp({{"status", "error"}, {"error", "session error"}});
+
+            auto res = makeResponse(http::status::ok,
+                                    json({{"status", "ok"}, {"redirect", "/dashboard.html"}}).dump(),
+                                    "application/json; charset=utf-8",
+                                    req.version(), req.keep_alive());
+            res.set(http::field::set_cookie,
+                    "session=" + sid + "; HttpOnly; Path=/; SameSite=Strict");
+            LOG_INFO("sso login ok (user={})", user);
+            return res;
+        }
+        return jsonResp({{"status", "error"},
+                         {"error", verdict.value("error", std::string("verification failed"))}});
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("sso result parse error: {}", e.what());
+        return jsonResp({{"status", "error"}, {"error", "bad result"}});
+    }
+}
+
+// ── /api/lab/cidi-export ──────────────────────────────────────────────────────
+// The browser rasterizes the records on a <canvas>, wraps that image in a PDF, and
+// POSTs it here (base64, form field "pdf"). We decode and stream it straight back as
+// an attachment. Net effect: the download is served from THIS real server route — the
+// event's File download URL is https://<host>/api/lab/cidi-export, not a blob:/data:
+// URL — while the file's content stays canvas pixels (no selectable text).
+HttpRouter::Response HttpRouter::handleLabExport(const Request& req)
+{
+    std::string pdf = labBase64Decode(ssoFormField(req.body(), "pdf"));
+    if (pdf.empty())
+    {
+        return makeResponse(http::status::bad_request,
+                            R"({"error":"empty pdf"})",
+                            "application/json; charset=utf-8",
+                            req.version(), req.keep_alive());
+    }
+
+    std::string filename = ssoFormField(req.body(), "name");
+    filename.erase(std::remove_if(filename.begin(), filename.end(),
+        [](char c) { return c == '"' || c == '\\' || c == '/' || c == '\r' || c == '\n'; }),
+        filename.end());
+    if (filename.empty()) filename = "cidi-export.pdf";
+
+    const std::size_t bytes = pdf.size();
+
+    Response res{http::status::ok, req.version()};
+    res.set(http::field::server,              "pz-mgmtd");
+    res.set(http::field::content_type,        "application/pdf");
+    res.set(http::field::content_disposition, "attachment; filename=\"" + filename + "\"");
+    res.keep_alive(req.keep_alive());
+    res.body() = std::move(pdf);
+    res.prepare_payload();
+
+    LOG_INFO("lab cidi-export served (name={}, bytes={})", filename, bytes);
+    return res;
 }
 
 } // namespace pz::mgmtd

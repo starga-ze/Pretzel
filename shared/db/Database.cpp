@@ -121,13 +121,21 @@ BEGIN
     -- Daemon rename (snmpd -> scand): move the top-level config section so the renamed
     -- daemon finds its settings (incl. v3 / vendor-API credentials) across every
     -- running_config version and the startup_config baseline. Idempotent — once moved,
-    -- the `? 'snmpd'` guard is false. daemon_map's stale nested key is unused by code.
+    -- the `? 'snmpd'` guard is false.
     UPDATE running_config SET config_json =
         (config_json - 'snmpd') || jsonb_build_object('scand', config_json->'snmpd')
         WHERE config_json ? 'snmpd';
     UPDATE startup_config SET config_json =
         (config_json - 'snmpd') || jsonb_build_object('scand', config_json->'snmpd')
         WHERE config_json ? 'snmpd';
+    -- Drop the dead ipcd.service.daemon_map: routing uses the compiled IpcDaemon enum,
+    -- never this config key, and its numbering had drifted from the enum. Strip the
+    -- stale nested key from every persisted version. Idempotent — once removed, the
+    -- `? 'daemon_map'` guard is false.
+    UPDATE running_config SET config_json = config_json #- '{ipcd,service,daemon_map}'
+        WHERE config_json #> '{ipcd,service}' ? 'daemon_map';
+    UPDATE startup_config SET config_json = config_json #- '{ipcd,service,daemon_map}'
+        WHERE config_json #> '{ipcd,service}' ? 'daemon_map';
 END $migrate$;
 )SQL";
 

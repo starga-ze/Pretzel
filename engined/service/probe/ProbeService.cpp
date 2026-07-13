@@ -138,7 +138,10 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
         return;
     }
 
-    LOG_INFO("probe complete (alive={}, total={})", aliveCount, ips.size());
+    // "received_ips" is the number of alive IPs carried in this ProbeResult — not the
+    // icmpd sweep size (that is icmpd's own "total="). It equals aliveCount; both are
+    // logged as a consistency check between the "alive" field and the "ips" array.
+    LOG_INFO("probe complete (alive={}, received_ips={})", aliveCount, ips.size());
 
     // Build an IP→MAC map from every device's learned ARP table (probe_devices.
     // arp_entries) so SNMP-less hosts can be tagged with a MAC + OUI vendor (laptop/

@@ -73,6 +73,9 @@ bool AuthdCore::onInit()
         return false;
     }
 
+    // Wire the auth/OIDC settings from the running config into AuthService.
+    m_serviceManager->configure(cfg);
+
     m_process = std::make_unique<AuthdProcess>(m_ipcClient.get(), m_serviceManager.get());
 
     if (!m_process)

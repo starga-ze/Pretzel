@@ -62,9 +62,10 @@
         if (cell) {
           const d = cell.d, online = isOnline(d.ip), size = d.size || 1;
           const label = size > 1 ? `U${d.unit}–U${d.unit + size - 1}` : `U${n}`;
+          const multi = size > 1 ? ' rk-u-multi' : '';
           const span = size > 1
             ? ` style="height:calc(var(--rk-uh) * ${size} + var(--rk-gap) * ${size - 1})"` : '';
-          rows += `<div class="rk-u rk-u-filled ${online ? '' : 'rk-dev-disabled'}"${span}>
+          rows += `<div class="rk-u rk-u-filled${multi} ${online ? '' : 'rk-dev-disabled'}"${span}>
             <span class="rk-u-num">${label}</span>
             <span class="status-dot ${online ? 'alive' : 'dead'}"></span>
             <span class="rk-dev-name">${escHtml(d.device || d.ip)}</span>

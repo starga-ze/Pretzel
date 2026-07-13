@@ -53,10 +53,12 @@ std::chrono::milliseconds replyMaxWaitTimeout()
     return std::chrono::seconds(probeConfig().value("reply_max_wait_timeout_sec", 15));
 }
 
-// Returns comma-separated CIDR list as individual strings.
+// Returns the comma-separated scan_cidr list as individual strings. No compiled
+// default: when scan_cidr is absent/blank the result is empty and the caller skips the
+// sweep — icmpd probes only what the operator explicitly configured.
 std::vector<std::string> probeScanCidrs()
 {
-    const std::string raw = probeConfig().value("scan_cidr", std::string("192.168.0.0/23"));
+    const std::string raw = probeConfig().value("scan_cidr", std::string());
     std::vector<std::string> result;
     std::stringstream ss(raw);
     std::string token;
@@ -67,8 +69,6 @@ std::vector<std::string> probeScanCidrs()
         if (b != std::string::npos)
             result.push_back(token.substr(b, e - b + 1));
     }
-    if (result.empty())
-        result.push_back("192.168.0.0/23");
     return result;
 }
 
@@ -241,6 +241,17 @@ void ProbeService::handleAction(IcmpdServiceManager& serviceManager,
         }
 
         beginProbeSession();
+
+        // No scan target configured -> beginProbeSession left the set empty and went
+        // Idle. Reply to engined's poll now with an empty ProbeResult (alive=0) instead
+        // of entering the send/wait cycle, so the poll still gets a well-formed answer.
+        if (m_targets.empty())
+        {
+            auto result = m_actionFactory->create(
+                IcmpdActionDomain::Probe,
+                static_cast<std::uint32_t>(ProbeActionType::SendProbeResult));
+            serviceManager.postAction(std::move(result));
+        }
         break;
     }
 
@@ -278,8 +289,24 @@ void ProbeService::beginProbeSession()
 
     // Build targets from all configured CIDRs, deduplicating by IP.
     const auto cidrs = probeScanCidrs();
-    std::unordered_map<std::string, bool> seen;
+
     m_targets.clear();
+    m_targetIndexByIp.clear();
+    m_nextSendIndex = 0;
+
+    // No scan target configured (scan_cidr absent/blank). There is no compiled default,
+    // so there is nothing to sweep. Leave the target set empty and go Idle; the
+    // StartProbe handler emits a well-formed empty ProbeResult (alive=0) so engined's
+    // poll still gets an answer each round instead of icmpd silently doing nothing.
+    if (cidrs.empty())
+    {
+        m_lastAliveCount = 0;
+        m_state = State::Idle;
+        LOG_INFO("no scan_cidr configured — skipping probe sweep (reporting 0 alive)");
+        return;
+    }
+
+    std::unordered_map<std::string, bool> seen;
 
     for (const auto& cidr : cidrs)
     {

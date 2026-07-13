@@ -59,6 +59,12 @@
              <line x1="8" y1="9" x2="10" y2="9"/>`,
     },
     {
+      type: 'link', id: 'laboratory', label: 'Laboratory', href: 'laboratory.html',
+      icon: `<path d="M9 3h6"/>
+             <path d="M10 3v6.5L4.6 18.2A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.7-2.8L14 9.5V3"/>
+             <line x1="7" y1="15" x2="17" y2="15"/>`,
+    },
+    {
       type: 'group', id: 'configuration', label: 'Configuration',
       icon: `<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77
                       a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91
@@ -182,7 +188,22 @@
 
     html += `</nav>
       <div class="sidebar-footer">
-        <div class="nav-item" data-tooltip="v0.1.0-dev"
+        <div class="nav-item nav-user" id="navUser" data-tooltip="Signed in">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          <span class="nav-label nav-user-name" id="navUserName">--</span>
+        </div>
+        <button type="button" class="nav-item nav-logout" id="navLogout" data-tooltip="Log out">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span class="nav-label">Log out</span>
+        </button>
+        <div class="nav-item nav-version" data-tooltip="v0.1.0-dev"
              style="cursor:default;opacity:.35;pointer-events:none;">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <circle cx="12" cy="12" r="10"/>
@@ -379,6 +400,32 @@
     window.addEventListener('scroll', hide, true);
   }
 
+  // ── User footer (identity + logout) ───────────────────────────────────────
+  // Fills the signed-in user's name (GET /api/whoami) and wires the logout button
+  // (POST /api/logout, then back to the login page). Failures degrade quietly — the
+  // footer just shows a dash rather than blocking the page.
+
+  function initUserFooter() {
+    const nameEl = document.getElementById('navUserName');
+    const userEl = document.getElementById('navUser');
+
+    fetch('/api/whoami', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(info => {
+        const name = info && info.username ? info.username : '—';
+        if (nameEl) nameEl.textContent = name;
+        if (userEl) userEl.setAttribute('data-tooltip', name);
+      })
+      .catch(() => { if (nameEl) nameEl.textContent = '—'; });
+
+    document.getElementById('navLogout')?.addEventListener('click', async () => {
+      try {
+        await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+      } catch (_) { /* logout is best-effort; redirect regardless */ }
+      window.location.href = '/index.html';
+    });
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -386,6 +433,7 @@
     initSidebar();
     initFlyouts();
     initTooltips();
+    initUserFooter();
   });
 
   /* ── Shared utils ── */

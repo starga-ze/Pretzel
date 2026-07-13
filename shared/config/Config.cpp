@@ -3,11 +3,13 @@
 #include "db/Database.h"
 #include "util/PasswordHash.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <optional>
+#include <thread>
 
 namespace pz::config
 {
@@ -186,9 +188,30 @@ std::uint64_t& runningConfigVersionCache()
     return s_version;
 }
 
+// engined is the config seeder — the only caller of preflight(), which creates the
+// schema and seeds running_config version 1. It must NEVER wait for running_config in
+// loadRunningConfigRoot(): it is the process that produces it, so waiting would stall
+// the very seed the readers are waiting on. Latched true at the top of preflight().
+bool& seederProcess()
+{
+    static bool s_seeder = false;
+    return s_seeder;
+}
+
+// A reader that finds running_config empty is almost certainly racing engined's
+// cold-start seed (single writer creates + seeds version 1). Wait, bounded, for the
+// seed to land instead of latching the startup-file (version 0) into the cache —
+// otherwise the daemon reports applied_version=0 forever and the fleet never
+// converges. Ceiling comfortably covers engined's ensureSchema + seedStore.
+constexpr int kSeedWaitMaxAttempts = 30;   // 30 * 500ms = 15s ceiling
+constexpr int kSeedWaitDelayMs     = 500;
+
 // Implements the load decision tree (see Config.h):
 //   Case B: running_config has a latest version  -> use it.
-//   Case A: empty table OR DB unreachable        -> use the startup-config file.
+//   Case A: empty table (racing the seed)        -> readers wait for engined to seed,
+//                                                    then use it; the seeder / timeout
+//                                                    falls back to the startup file.
+//   DB unreachable                               -> fall back to the startup file.
 // Fully defensive: any failure falls back to the startup-config file.
 nlohmann::json loadRunningConfigRoot()
 {
@@ -203,7 +226,34 @@ nlohmann::json loadRunningConfigRoot()
         return std::move(latest->second);
     }
 
-    return readStartupFile();      // Case A: empty DB (engined seeds it via preflight)
+    // Case A: DB reachable but running_config empty. For the seeder (engined) this is
+    // the genuine factory-fresh path — fall through to the startup file so it can seed
+    // version 1. For every other daemon an empty table almost always means we are
+    // racing engined's cold-start seed; adopting version 0 here would latch it into the
+    // cache and the daemon would report applied_version=0 forever, so the fleet never
+    // converges (mgmtd et al. stall in WaitRuntimeStart). Wait, bounded, for the seed.
+    if (!seederProcess())
+    {
+        for (int attempt = 1; attempt <= kSeedWaitMaxAttempts; ++attempt)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(kSeedWaitDelayMs));
+
+            if (auto latest = latestRunningConfig())
+            {
+                runningConfigVersionCache() = latest->first;
+                std::cerr << "config: running_config appeared after "
+                          << attempt * kSeedWaitDelayMs << "ms (version="
+                          << latest->first << ")" << std::endl;
+                return std::move(latest->second);
+            }
+        }
+        std::cerr << "config: running_config still empty after "
+                  << kSeedWaitMaxAttempts * kSeedWaitDelayMs
+                  << "ms — falling back to startup-config (version 0, degraded)"
+                  << std::endl;
+    }
+
+    return readStartupFile();      // seeder's factory path, or reader's degraded fallback
 }
 
 // ── In-process cache ──
@@ -322,6 +372,11 @@ nlohmann::json Config::runningConfigRoot()
 
 bool Config::preflight()
 {
+    // engined-only entry point. Mark this process as the config seeder so its own
+    // loadRunningConfigRoot() never waits for running_config — it is the writer that
+    // produces it. Latched even if the DB is momentarily down (retried by the caller).
+    seederProcess() = true;
+
     // engined-only: connect, create the schema (single-writer DDL), then seed the
     // config store. Returns false if the DB is unreachable so the caller can retry.
     if (!bootstrapDatabase())

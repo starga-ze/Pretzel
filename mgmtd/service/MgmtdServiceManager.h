@@ -20,6 +20,7 @@
 #include <optional>
 #include <queue>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace pz::mgmtd
@@ -59,6 +60,12 @@ public:
     void        setCommitQueue(std::string snapshotJson);
     std::string commitQueueSnapshot() const;
 
+    // SSO (authd) verification results, keyed by the request ticket (IPC seqNo). The
+    // ACS handler sends the request; MgmtdRxRouter stores the AuthSamlAcsResponse here;
+    // the browser poll consumes it. Same single main-loop thread, so no locking.
+    void                       setSsoResult(std::uint32_t ticket, std::string resultJson);
+    std::optional<std::string> takeSsoResult(std::uint32_t ticket);
+
 private:
     MgmtdEventFactory* m_eventFactory{nullptr};
     MgmtdActionFactory* m_actionFactory{nullptr};
@@ -77,6 +84,8 @@ private:
     std::chrono::steady_clock::time_point m_reloadStartedAt{};
 
     std::string        m_commitQueueSnapshot{"[]"};
+
+    std::unordered_map<std::uint32_t, std::string> m_ssoResults;
 };
 
 } // namespace pz::mgmtd

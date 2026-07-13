@@ -2,6 +2,8 @@
 
 #include "util/Logger.h"
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 
 namespace pz::authd
@@ -15,13 +17,28 @@ AuthdServiceManager::AuthdServiceManager(AuthdEventFactory* eventFactory,
       m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_reloadService(std::make_unique<ReloadService>())
+      m_reloadService(std::make_unique<ReloadService>()),
+      m_authService(std::make_unique<AuthService>())
 {
 }
 
 void AuthdServiceManager::start()
 {
     m_bootstrapService->start();
+}
+
+void AuthdServiceManager::configure(const nlohmann::json& config)
+{
+    // The auth section is optional; AuthService::configure tolerates it being absent
+    // (OIDC simply stays disabled and only local login works).
+    if (config.contains("service") && config["service"].contains("auth"))
+    {
+        m_authService->configure(config["service"]["auth"]);
+    }
+    else
+    {
+        m_authService->configure(nlohmann::json::object());
+    }
 }
 
 void AuthdServiceManager::schedule()
@@ -87,6 +104,11 @@ HeartbeatService& AuthdServiceManager::heartbeatService()
 ReloadService& AuthdServiceManager::reloadService()
 {
     return *m_reloadService;
+}
+
+AuthService& AuthdServiceManager::authService()
+{
+    return *m_authService;
 }
 
 AuthdTxRouter& AuthdServiceManager::txRouter()

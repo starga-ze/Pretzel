@@ -150,8 +150,44 @@
     }
   }
 
+  /* Reveal the "Sign in with Okta" button only when the server reports federated
+     login is configured (GET /api/auth/sso/info → {enabled, method, label}).
+     Clicking it hands the browser to the server, which 302-redirects to the IdP. */
+  function initSso() {
+    const section = document.getElementById('ssoSection');
+    const btn     = document.getElementById('ssoBtn');
+    if (!section || !btn) return;
+
+    // Shown by default so the button is visible before the backend
+    // /api/auth/sso/info route exists. Once that route is live, an explicit
+    // {enabled:false} hides it again (and {label} overrides the button text).
+    section.style.display = '';
+    fetch('/api/auth/sso/info', { headers: { 'Accept': 'application/json' } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(info => {
+        if (!info) return;
+        if (info.enabled === false) section.style.display = 'none';
+        else if (info.label) btn.textContent = info.label;
+      })
+      .catch(() => { /* backend route not up yet — keep it visible for now */ });
+
+    btn.addEventListener('click', () => {
+      window.location.href = '/api/auth/sso/login';
+    });
+  }
+
+  /* Surface an SSO failure passed back on the redirect: …/index.html?sso_error=… */
+  function showSsoErrorFromUrl() {
+    try {
+      const e = new URLSearchParams(window.location.search).get('sso_error');
+      if (e) showError('SSO sign-in failed: ' + e);
+    } catch { /* ignore */ }
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     initPasswordToggle();
+    initSso();
+    showSsoErrorFromUrl();
     document.getElementById('loginBtn')?.addEventListener('click', doLogin);
     document.getElementById('changeBtn')?.addEventListener('click', doChangePassword);
     /* Submit on Enter — routes to whichever card is visible. */

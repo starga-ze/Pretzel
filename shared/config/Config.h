@@ -17,8 +17,10 @@ namespace pz::config
 //
 // Decision tree at load (loadRunningConfigRoot):
 //   * running_config has rows  -> adopt the latest version (normal reboot).
-//   * running_config is empty   -> adopt the startup-config file (factory-fresh),
-//                                  and mgmtd seeds it as version 1 (seedStore()).
+//   * running_config is empty   -> engined (the seeder) writes version 1 via
+//                                  preflight()/seedStore() from the startup-config file;
+//                                  every other daemon WAITS (bounded) for that seed so
+//                                  it boots on version 1 rather than latching version 0.
 //   * DB unreachable            -> fall back to the startup-config file.
 //
 // The effective config for a daemon is merge_patch(root["global"], root[daemon]),

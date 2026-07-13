@@ -34,6 +34,11 @@ public:
     LoginResult login(const std::string& username,
                       const std::string& password);
 
+    // Mints a session for a user already authenticated out-of-band (SSO via authd).
+    // No password is involved; returns the new session id (cookie value). SSO users
+    // are never subject to the local forced-password-change flow.
+    std::string createSsoSession(const std::string& username);
+
     // Verifies a username/password against the stored hash WITHOUT creating a session
     // (used to confirm the current password before a change).
     bool checkPassword(const std::string& username, const std::string& password) const;
@@ -60,10 +65,15 @@ public:
     bool validateSession(const std::string& sessionId);
     void logout(const std::string& sessionId);
 
+    // Identifier of the user who owns a live session (local admin name, or the SSO
+    // subject/email for a federated login). Empty when the session is unknown/expired.
+    std::string sessionUser(const std::string& sessionId) const;
+
 private:
     struct Session
     {
         std::uint64_t expiresAt {0};
+        std::string   username;
     };
 
     static std::uint64_t now();

@@ -66,9 +66,6 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::SyncResponse: return "SyncResponse";
     case IpcCmd::RuntimeReady: return "RuntimeReady";
     case IpcCmd::RuntimeStart: return "RuntimeStart";
-    case IpcCmd::RuntimeStop:  return "RuntimeStop";
-    case IpcCmd::ApiRequest:   return "ApiRequest";
-    case IpcCmd::ApiResponse:  return "ApiResponse";
     case IpcCmd::Error:             return "Error";
     case IpcCmd::ProbeResult:       return "ProbeResult";
     case IpcCmd::HeartbeatRequest:  return "HeartbeatRequest";
@@ -83,6 +80,16 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
     case IpcCmd::ScanResult:            return "ScanResult";
     case IpcCmd::AdminPasswordUpdate:   return "AdminPasswordUpdate";
     case IpcCmd::ProbeRequest:          return "ProbeRequest";
+    case IpcCmd::AuthLoginRequest:          return "AuthLoginRequest";
+    case IpcCmd::AuthLoginResponse:         return "AuthLoginResponse";
+    case IpcCmd::AuthOidcStartRequest:      return "AuthOidcStartRequest";
+    case IpcCmd::AuthOidcStartResponse:     return "AuthOidcStartResponse";
+    case IpcCmd::AuthOidcCallbackRequest:   return "AuthOidcCallbackRequest";
+    case IpcCmd::AuthOidcCallbackResponse:  return "AuthOidcCallbackResponse";
+    case IpcCmd::AuthSamlStartRequest:      return "AuthSamlStartRequest";
+    case IpcCmd::AuthSamlStartResponse:     return "AuthSamlStartResponse";
+    case IpcCmd::AuthSamlAcsRequest:        return "AuthSamlAcsRequest";
+    case IpcCmd::AuthSamlAcsResponse:       return "AuthSamlAcsResponse";
     default:                            return "Unknown";
     }
 }
@@ -116,10 +123,6 @@ std::string IpcProtocol::flagsToStr(std::uint8_t flags)
     if (hasFlag(flags, IpcFlag::Broadcast))
     {
         append("Broadcast");
-    }
-    if (hasFlag(flags, IpcFlag::Retransmit))
-    {
-        append("Retransmit");
     }
 
     return out;

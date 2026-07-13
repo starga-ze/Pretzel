@@ -5,7 +5,6 @@
   "//admin": "login lives hashed in the local_users table (engined seeds a default and",
   "//admin2": "applies changes), NOT here; SNMP v3 credentials are entered via the mgmtd",
   "//snmp": "web UI at runtime (stored in running_config, not here).",
-
   "global": {
     "system": {
       "ipc": {
@@ -30,7 +29,6 @@
       }
     }
   },
-
   "engined": {
     "daemon_name": "pz-engined",
     "system": {
@@ -60,7 +58,6 @@
       }
     }
   },
-
   "authd": {
     "daemon_name": "pz-authd",
     "system": {
@@ -69,9 +66,24 @@
         "file": "/var/log/pretzel/authd.log"
       }
     },
-    "service": {}
+    "service": {
+      "auth": {
+        "method": "saml",
+        "saml": {
+          "enabled": true,
+          "idp_sso_url": "https://integrator-2719940.okta.com/app/integrator-2719940_pretzel_1/exk14z80dym2GZBVE698/sso/saml",
+          "idp_entity_id": "http://www.okta.com/exk14z80dym2GZBVE698",
+          "idp_cert_pem": "-----BEGIN CERTIFICATE-----\nMIIDtDCCApygAwIBAgIGAZ9AqZ+3MA0GCSqGSIb3DQEBCwUAMIGaMQswCQYDVQQG\nEwJVUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNj\nbzENMAsGA1UECgwET2t0YTEUMBIGA1UECwwLU1NPUHJvdmlkZXIxGzAZBgNVBAMM\nEmludGVncmF0b3ItMjcxOTk0MDEcMBoGCSqGSIb3DQEJARYNaW5mb0Bva3RhLmNv\nbTAeFw0yNjA3MDgwNzM3MDZaFw0zNjA3MDgwNzM4MDZaMIGaMQswCQYDVQQGEwJV\nUzETMBEGA1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNU2FuIEZyYW5jaXNjbzEN\nMAsGA1UECgwET2t0YTEUMBIGA1UECwwLU1NPUHJvdmlkZXIxGzAZBgNVBAMMEmlu\ndGVncmF0b3ItMjcxOTk0MDEcMBoGCSqGSIb3DQEJARYNaW5mb0Bva3RhLmNvbTCC\nASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALuZ0jSd56e8Jb9+Y/OwJmnu\nvHDpSt+zDb1S3SPpB6Ko+QmEo9m+8TL95Do/dXZ8IcsKm27ztUh8Tvj6r2UTLgrY\nPpbL0L4ywjdYISyUXhr249KhyN7TvfqXfxbmx5MF31V4z+7CJDp9fecfMXnLbtsj\nEkuFhx/u54WR3LHF0jWalgXeV1UBQsII9TG99992qbqTk8jJT3nJ+UuilShV3c7Q\nNAR60oQ/BUZkokIGZIOw0Hhw6v0Fi39jdGXoF/Bix10gWdXnNHRzw12TaCIS0ZPG\n3Vri0HQb2w1ffgzwdpOe8RXuvnMyUYFYp/t6dyIiJ46d2wjy2MjFBIxTyd5wIAMC\nAwEAATANBgkqhkiG9w0BAQsFAAOCAQEAYkXB6WGgp1X5sHMuxmPVdBmOzDnjmkJx\nUEtYeqK+/nu6rmzbs5aUTppwPOkw/fHUyLC0W2jy9Nxivf6RJz9gUT4mz2708dVk\nI8sSJTXJvoC5RZGsQ3egM2Sc52iCZmSS0g6FgIZ7jW41gqLFzMPy76adDLOpGj+I\nPQiVxm55N+vbjYXh5XJuDhKMYW/+s24Ai3rxju964nNjIU/6p4n76Y/yvSfSCmGV\nLb+Ll2JnKw1uDIq2VeOE+nVdcv7Y36AsQheYb8kwuZQb9w08TuMVSek3G2+IyDvT\nEwrqcwNNL/Ku3LOubGZnJgbvqwOpsikwrvoEF4DEK1oJeHQqaE/drw==\n-----END CERTIFICATE-----",
+          "sp_entity_id": "https://192.168.0.82/saml/metadata",
+          "acs_url": "https://192.168.0.82/api/auth/saml/acs",
+          "admin_group": "",
+          "groups_attr": "groups",
+          "email_attr": "",
+          "clock_skew_sec": 120
+        }
+      }
+    }
   },
-
   "icmpd": {
     "daemon_name": "pz-icmpd",
     "system": {
@@ -82,8 +94,6 @@
     },
     "service": {
       "probe": {
-        "scan_cidr": "192.168.0.0/23",
-        "excluded_ips": "192.168.0.82",
         "batch_size": 32,
         "batch_interval_ms": 20,
         "cycle_interval_sec": 30,
@@ -92,7 +102,6 @@
       }
     }
   },
-
   "ipcd": {
     "daemon_name": "pz-ipcd",
     "system": {
@@ -104,19 +113,9 @@
     "service": {
       "router": {
         "allow_unknown_dst": false
-      },
-      "daemon_map": {
-        "ipcd": 1,
-        "engined": 2,
-        "mgmtd": 3,
-        "authd": 4,
-        "scand": 5,
-        "icmpd": 6,
-        "topologyd": 7
       }
     }
   },
-
   "mgmtd": {
     "daemon_name": "pz-mgmtd",
     "system": {
@@ -142,7 +141,6 @@
       }
     }
   },
-
   "scand": {
     "daemon_name": "pz-scand",
     "system": {
@@ -164,7 +162,6 @@
       }
     }
   },
-
   "topologyd": {
     "daemon_name": "pz-topologyd",
     "system": {

@@ -10,10 +10,11 @@ COMMAND_MAP = {
     "uninstall": "script/uninstall.py",
     "start": "script/start.py",
     "stop": "script/stop.py",
+    "reset": "script/reset.py",
     "tar": "script/tar.py",
 }
 
-NEED_ROOT = {"install", "start", "stop"}
+NEED_ROOT = {"install", "start", "stop", "reset"}
 
 
 def ensure_root(cmd):
@@ -31,7 +32,7 @@ def ensure_root(cmd):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: ./pretzel [build|clean|install|uninstall|start|stop|tar]")
+        print("Usage: ./pretzel [build|clean|install|uninstall|start|stop|reset|tar]")
         sys.exit(1)
 
     cmd = sys.argv[1]

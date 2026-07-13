@@ -3,6 +3,7 @@
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/reload/ReloadEvent.h"
+#include "service/auth/AuthEvent.h"
 
 #include "util/Logger.h"
 
@@ -54,6 +55,21 @@ std::unique_ptr<AuthdEvent> AuthdEventFactory::create(std::unique_ptr<pz::ipc::I
 
     case pz::ipc::IpcCmd::ConfigReload:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
+
+    case pz::ipc::IpcCmd::AuthLoginRequest:
+        return std::make_unique<AuthEvent>(AuthEventType::ReceiveLoginRequest, std::move(msg));
+
+    case pz::ipc::IpcCmd::AuthOidcStartRequest:
+        return std::make_unique<AuthEvent>(AuthEventType::ReceiveOidcStartRequest, std::move(msg));
+
+    case pz::ipc::IpcCmd::AuthOidcCallbackRequest:
+        return std::make_unique<AuthEvent>(AuthEventType::ReceiveOidcCallbackRequest, std::move(msg));
+
+    case pz::ipc::IpcCmd::AuthSamlStartRequest:
+        return std::make_unique<AuthEvent>(AuthEventType::ReceiveSamlStartRequest, std::move(msg));
+
+    case pz::ipc::IpcCmd::AuthSamlAcsRequest:
+        return std::make_unique<AuthEvent>(AuthEventType::ReceiveSamlAcsRequest, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

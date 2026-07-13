@@ -362,6 +362,25 @@ html, body {
   flex-shrink: 0;
 }
 
+/* Signed-in user row: shows identity, not interactive. */
+.nav-user { cursor: default; opacity: .75; }
+.nav-user:hover { background: transparent; opacity: .75; }
+.nav-user-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Logout button reuses .nav-item; reset native <button> chrome and tint on hover. */
+.nav-logout {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+}
+.nav-logout:hover { color: var(--danger, #e5484d); opacity: 1; }
+
 /* ══════════════════════════════════════
    COLLAPSED ICON RAIL — toggle button
    (shown only when sidebar is collapsed)
@@ -3247,11 +3266,12 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .rk-detail-empty { padding: 4px 0; color: var(--text-muted); font-size: 12.5px; }
 
 /* ---- Rack View (Resource ▸ Rack View) — read-only ---- */
+/* Flex (not grid) so cards are centred and wrap to the next row once the row fills. */
 .rack-view-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px; align-items: start;
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start;
+  gap: 16px;
 }
-.rack-view-card { --rk-uh: 30px; --rk-gap: 4px; }
+.rack-view-card { --rk-uh: 30px; --rk-gap: 4px; flex: 0 0 320px; width: 320px; }
 .rk-u-list { padding: 12px; display: flex; flex-direction: column; gap: var(--rk-gap); }
 .rk-u {
   display: flex; align-items: center; gap: 9px; min-height: var(--rk-uh);
@@ -3262,8 +3282,15 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .rk-u-empty  { background: var(--surface-2); border-style: dashed; }
 .rk-u-filled.rk-dev-disabled { opacity: .55; }
 .rk-u-num {
-  flex: 0 0 58px; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  color: var(--text-muted); text-align: right; white-space: nowrap;
+  flex: 0 0 44px; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  color: var(--text-muted); text-align: center; white-space: nowrap;
+}
+/* Multi-U device: range label runs vertically along the block height (rack-spine look)
+   so it never overflows horizontally, however many units it spans. */
+.rk-u-multi .rk-u-num {
+  writing-mode: vertical-rl; text-orientation: mixed;
+  align-self: stretch; display: flex; align-items: center; justify-content: center;
+  letter-spacing: .03em;
 }
 .rk-u .status-dot { flex: 0 0 8px; }
 .rk-u .rk-dev-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

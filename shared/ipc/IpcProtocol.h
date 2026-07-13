@@ -52,14 +52,10 @@ enum class IpcCmd : std::uint16_t
     //   {"daemon":"icmpd","applied_version":V}. V is the config version the daemon has
     //   applied. A bare daemon-name string (legacy) is tolerated as applied_version=0.
     // RuntimeStart: engined -> broadcast, payload = JSON {"target_version":V} — the epoch
-    //   the fleet has converged to. RuntimeStop: reserved.
+    //   the fleet has converged to.
     RuntimeReady = 5,
     RuntimeStart = 6,
-    RuntimeStop  = 7,
 
-    ApiRequest   = 100,
-    ApiResponse  = 101,
-    
     Error        = 102,
 
     // Unicast from icmpd to engined: payload = JSON {"alive":N,"ips":[...]}.
@@ -105,6 +101,38 @@ enum class IpcCmd : std::uint16_t
     // Unicast from engined to icmpd: no payload. Triggers one ICMP probe cycle.
     // icmpd replies with ProbeResult once the cycle completes.
     ProbeRequest = 115,
+
+    // ── Auth (mgmtd <-> authd) ──────────────────────────────────────────────
+    // authd is the auth authority: it verifies local credentials and drives the
+    // Okta OIDC transaction. mgmtd relays the browser round-trip and owns the
+    // session cookie. Every response echoes the request seqNo for correlation.
+    //
+    // AuthLoginRequest : mgmtd -> authd, JSON {"username","password"}.
+    // AuthLoginResponse: authd -> mgmtd, JSON
+    //   {"success":bool,"username":"...","must_change":bool,"error":"..."}.
+    AuthLoginRequest  = 116,
+    AuthLoginResponse = 117,
+
+    // AuthOidcStartRequest : mgmtd -> authd, JSON {} (redirect_uri comes from config).
+    // AuthOidcStartResponse: authd -> mgmtd, JSON {"success":bool,"authorize_url","state"}.
+    AuthOidcStartRequest  = 118,
+    AuthOidcStartResponse = 119,
+
+    // AuthOidcCallbackRequest : mgmtd -> authd, JSON {"code","state"}.
+    // AuthOidcCallbackResponse: authd -> mgmtd, JSON
+    //   {"success":bool,"username":"<email>","error":"..."}.
+    AuthOidcCallbackRequest  = 120,
+    AuthOidcCallbackResponse = 121,
+
+    // SAML 2.0 (selected via service.auth.method = "saml").
+    // AuthSamlStartRequest : mgmtd -> authd, JSON {"relay_state":"..."}.
+    // AuthSamlStartResponse: authd -> mgmtd, JSON {"success","redirect_url","request_id","error"}.
+    AuthSamlStartRequest  = 122,
+    AuthSamlStartResponse = 123,
+    // AuthSamlAcsRequest : mgmtd -> authd, JSON {"saml_response":"<base64>"} (from the ACS POST).
+    // AuthSamlAcsResponse: authd -> mgmtd, JSON {"success","username","error"}.
+    AuthSamlAcsRequest  = 124,
+    AuthSamlAcsResponse = 125,
 };
 
 enum class IpcFlag : std::uint8_t
@@ -113,8 +141,7 @@ enum class IpcFlag : std::uint8_t
     Request   = 0x01,
     Response  = 0x02,
     Error     = 0x04,
-    Broadcast = 0x08,
-    Retransmit = 0x10
+    Broadcast = 0x08
 };
 
 #pragma pack(push, 1)

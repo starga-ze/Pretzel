@@ -117,7 +117,7 @@ void HeartbeatService::handleEvent(EnginedServiceManager& serviceManager,
                 HeartbeatActionType::SendHeartbeatRequest, daemon));
         }
 
-        LOG_DEBUG("sent heartbeat requests (daemons={})", m_pendingCount);
+        LOG_TRACE("sent heartbeat requests (daemons={})", m_pendingCount);
         break;
     }
 
@@ -200,7 +200,7 @@ void HeartbeatService::handleAction(EnginedServiceManager& serviceManager,
             reinterpret_cast<const std::uint8_t*>(jsonStr.data()),
             jsonStr.size());
 
-        LOG_DEBUG("Tx HeartbeatResult to mgmtd");
+        LOG_TRACE("Tx HeartbeatResult to mgmtd");
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
         break;

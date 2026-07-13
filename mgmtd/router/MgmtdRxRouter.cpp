@@ -49,6 +49,16 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
+    // SSO (SAML) verification result from authd — keyed by the request ticket (seqNo);
+    // the browser poll (/api/auth/saml/result) consumes it.
+    if (msg->getCmd() == pz::ipc::IpcCmd::AuthSamlAcsResponse)
+    {
+        const auto& pl = msg->getPayload();
+        m_serviceManager->setSsoResult(msg->getSeqNo(),
+                                       std::string(pl.begin(), pl.end()));
+        return;
+    }
+
     std::unique_ptr<MgmtdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));

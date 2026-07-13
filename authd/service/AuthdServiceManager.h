@@ -5,8 +5,11 @@
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
 #include "service/reload/ReloadService.h"
+#include "service/auth/AuthService.h"
 
 #include "router/AuthdTxRouter.h"
+
+#include <nlohmann/json_fwd.hpp>
 
 #include <queue>
 
@@ -26,6 +29,10 @@ public:
 
     void start() override;
 
+    // Forwards the "auth" section of the authd config JSON to AuthService (Okta setup).
+    // Called once from AuthdCore after construction; safe if the section is absent.
+    void configure(const nlohmann::json& config);
+
     void schedule() override;
     void postEvent(std::unique_ptr<AuthdEvent> event) override;
     void postAction(std::unique_ptr<AuthdAction> action) override;
@@ -34,6 +41,7 @@ public:
     BootstrapService& bootstrapService();
     HeartbeatService& heartbeatService();
     ReloadService& reloadService();
+    AuthService& authService();
 
     AuthdTxRouter& txRouter();
 
@@ -45,6 +53,7 @@ private:
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ReloadService> m_reloadService;
+    std::unique_ptr<AuthService> m_authService;
 
     std::queue<std::unique_ptr<AuthdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<AuthdAction>> m_actionQueue;

@@ -15,7 +15,8 @@ enum class AuthdEventDomain : std::uint32_t
     Unknown   = 0,
     Bootstrap = 1,
     Heartbeat = 2,
-    Reload    = 3
+    Reload    = 3,
+    Auth      = 4
 };
 
 class AuthdEvent : public pz::event::Event

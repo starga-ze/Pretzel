@@ -149,4 +149,27 @@ std::string MgmtdServiceManager::commitQueueSnapshot() const
     return m_commitQueueSnapshot;
 }
 
+void MgmtdServiceManager::setSsoResult(std::uint32_t ticket, std::string resultJson)
+{
+    // Bound the map so abandoned tickets (browser closed before the poll consumed the
+    // result) cannot grow it without limit.
+    if (m_ssoResults.size() > 256)
+    {
+        m_ssoResults.clear();
+    }
+    m_ssoResults[ticket] = std::move(resultJson);
+}
+
+std::optional<std::string> MgmtdServiceManager::takeSsoResult(std::uint32_t ticket)
+{
+    auto it = m_ssoResults.find(ticket);
+    if (it == m_ssoResults.end())
+    {
+        return std::nullopt;   // still pending (or unknown ticket)
+    }
+    std::string out = std::move(it->second);
+    m_ssoResults.erase(it);
+    return out;
+}
+
 } // namespace pz::mgmtd
