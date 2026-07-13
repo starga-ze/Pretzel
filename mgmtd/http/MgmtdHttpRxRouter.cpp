@@ -1,4 +1,4 @@
-#include "http/HttpRouter.h"
+#include "http/MgmtdHttpRxRouter.h"
 
 #include "http/HttpCache.h"
 #include "service/auth/AuthService.h"
@@ -44,7 +44,7 @@ static constexpr const char* kPublicPages[] = {
     "/js/login.js",  // loaded on the login page without a session
 };
 
-HttpRouter::HttpRouter(MetricService*             metricService,
+MgmtdHttpRxRouter::MgmtdHttpRxRouter(MetricService*             metricService,
                        AuthService*               authService,
                        MgmtdServiceManager*       serviceManager,
                        std::shared_ptr<HttpCache> cache)
@@ -55,7 +55,7 @@ HttpRouter::HttpRouter(MetricService*             metricService,
 {
 }
 
-HttpRouter::Response HttpRouter::handle(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::dispatch(const Request& req)
 {
     const std::string target(req.target());
 
@@ -241,7 +241,7 @@ HttpRouter::Response HttpRouter::handle(const Request& req)
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
-HttpRouter::Response HttpRouter::handleMetric(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleMetric(const Request& req)
 {
     if (!m_metricService)
     {
@@ -259,7 +259,7 @@ HttpRouter::Response HttpRouter::handleMetric(const Request& req)
                         req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleHealth(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleHealth(const Request& req)
 {
     return makeResponse(http::status::ok,
                         R"({"status":"ok","daemon":"mgmtd"})",
@@ -268,7 +268,7 @@ HttpRouter::Response HttpRouter::handleHealth(const Request& req)
                         req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleLogin(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLogin(const Request& req)
 {
     if (!m_authService)
     {
@@ -317,7 +317,7 @@ HttpRouter::Response HttpRouter::handleLogin(const Request& req)
     }
 }
 
-HttpRouter::Response HttpRouter::handleLogout(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLogout(const Request& req)
 {
     if (m_authService)
     {
@@ -333,7 +333,7 @@ HttpRouter::Response HttpRouter::handleLogout(const Request& req)
     return res;
 }
 
-HttpRouter::Response HttpRouter::handleChangePassword(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleChangePassword(const Request& req)
 {
     if (!m_authService)
     {
@@ -417,7 +417,7 @@ HttpRouter::Response HttpRouter::handleChangePassword(const Request& req)
     }
 }
 
-HttpRouter::Response HttpRouter::handleWhoami(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleWhoami(const Request& req)
 {
     // Identify the signed-in user for the UI. Prefer the per-session identity (the SSO
     // subject/email, or the local admin name); fall back to the local operator name for
@@ -436,7 +436,7 @@ HttpRouter::Response HttpRouter::handleWhoami(const Request& req)
                         req.version(), req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleStatus(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleStatus(const Request& req)
 {
     json body;
 
@@ -502,11 +502,14 @@ constexpr const char* kSettingsDaemons[] = {
 // at runtime and not shown in the Settings UI.
 constexpr const char* kHiddenDomains[] = {
     "bootstrap",
+    // SAML/IdP config is infrastructure set in the startup-config, not operator config;
+    // it has no settings-UI tab, so don't ship it to every authenticated session.
+    "auth",
 };
 
 } // namespace
 
-HttpRouter::Response HttpRouter::handleSettingsGet(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsGet(const Request& req)
 {
     json daemons = json::object();
 
@@ -547,7 +550,7 @@ HttpRouter::Response HttpRouter::handleSettingsGet(const Request& req)
                         req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsCommit(const Request& req)
 {
     auto badRequest = [&](const char* error)
     {
@@ -650,7 +653,7 @@ HttpRouter::Response HttpRouter::handleSettingsCommit(const Request& req)
                         req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleReloadStatus(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleReloadStatus(const Request& req)
 {
     json body;
 
@@ -679,7 +682,7 @@ HttpRouter::Response HttpRouter::handleReloadStatus(const Request& req)
                         req.version(), req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleCommitQueue(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleCommitQueue(const Request& req)
 {
     const std::string snapshot = m_serviceManager
         ? m_serviceManager->commitQueueSnapshot()
@@ -692,7 +695,7 @@ HttpRouter::Response HttpRouter::handleCommitQueue(const Request& req)
                         req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleStatic(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleStatic(const Request& req)
 {
     if (!m_cache)
     {
@@ -728,18 +731,18 @@ HttpRouter::Response HttpRouter::handleStatic(const Request& req)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-bool HttpRouter::isAuthenticated(const Request& req) const
+bool MgmtdHttpRxRouter::isAuthenticated(const Request& req) const
 {
     if (!m_authService) return false;
     return m_authService->validateSession(extractSession(req));
 }
 
-bool HttpRouter::isStaticTarget(const std::string& target) const
+bool MgmtdHttpRxRouter::isStaticTarget(const std::string& target) const
 {
     return target.rfind("/api", 0) != 0;
 }
 
-std::string HttpRouter::extractSession(const Request& req) const
+std::string MgmtdHttpRxRouter::extractSession(const Request& req) const
 {
     auto it = req.find(http::field::cookie);
     if (it == req.end()) return {};
@@ -762,7 +765,7 @@ std::string HttpRouter::extractSession(const Request& req) const
 }
 
 
-HttpRouter::Response HttpRouter::unauthorized(unsigned version, bool keepAlive)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::unauthorized(unsigned version, bool keepAlive)
 {
     return makeResponse(http::status::unauthorized,
                         R"({"error":"unauthorized"})",
@@ -771,7 +774,7 @@ HttpRouter::Response HttpRouter::unauthorized(unsigned version, bool keepAlive)
                         keepAlive);
 }
 
-HttpRouter::Response HttpRouter::makeResponse(http::status status,
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::makeResponse(http::status status,
                                               std::string  body,
                                               std::string  contentType,
                                               unsigned     version,
@@ -788,7 +791,7 @@ HttpRouter::Response HttpRouter::makeResponse(http::status status,
 
 // ── /api/devices ─────────────────────────────────────────────────────────────
 
-HttpRouter::Response HttpRouter::handleDevices(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleDevices(const Request& req)
 {
     json body;
     json devices = json::array();
@@ -928,7 +931,7 @@ const std::vector<std::string> kKnownDaemons = {
 };
 } // namespace
 
-HttpRouter::Response HttpRouter::handleLogs(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLogs(const Request& req)
 {
     const std::string target(req.target());
     std::string daemon  = queryParam(target, "daemon");
@@ -1043,7 +1046,7 @@ CpuSnapshot s_cpuPrev;
 double      s_cpuPct{0.0};
 } // namespace
 
-HttpRouter::Response HttpRouter::handleNodeMetrics(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleNodeMetrics(const Request& req)
 {
     const auto cur = readCpuSnapshot();
     if (s_cpuPrev.total > 0 && cur.total > s_cpuPrev.total)
@@ -1216,7 +1219,7 @@ std::string labBase64Decode(const std::string& in)
 
 } // namespace
 
-HttpRouter::Response HttpRouter::handleSsoInfo(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSsoInfo(const Request& req)
 {
     const auto auth = ssoAuthConfig();
     const std::string method = auth.value("method", std::string("oidc"));
@@ -1243,7 +1246,7 @@ HttpRouter::Response HttpRouter::handleSsoInfo(const Request& req)
                         req.version(), req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleSsoLogin(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSsoLogin(const Request& req)
 {
     auto redirectErr = [&](const std::string& code) {
         auto r = makeResponse(http::status::found, "", "text/plain",
@@ -1297,7 +1300,7 @@ HttpRouter::Response HttpRouter::handleSsoLogin(const Request& req)
                         req.version(), req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleSamlAcs(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSamlAcs(const Request& req)
 {
     auto redirectErr = [&](const std::string& code) {
         auto r = makeResponse(http::status::found, "", "text/plain",
@@ -1346,7 +1349,7 @@ HttpRouter::Response HttpRouter::handleSamlAcs(const Request& req)
                         req.version(), req.keep_alive());
 }
 
-HttpRouter::Response HttpRouter::handleSamlResult(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSamlResult(const Request& req)
 {
     auto jsonResp = [&](const json& j) {
         return makeResponse(http::status::ok, j.dump(),
@@ -1403,7 +1406,7 @@ HttpRouter::Response HttpRouter::handleSamlResult(const Request& req)
 // an attachment. Net effect: the download is served from THIS real server route — the
 // event's File download URL is https://<host>/api/lab/cidi-export, not a blob:/data:
 // URL — while the file's content stays canvas pixels (no selectable text).
-HttpRouter::Response HttpRouter::handleLabExport(const Request& req)
+MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLabExport(const Request& req)
 {
     std::string pdf = labBase64Decode(ssoFormField(req.body(), "pdf"));
     if (pdf.empty())

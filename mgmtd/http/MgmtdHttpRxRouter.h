@@ -1,5 +1,7 @@
 #pragma once
 
+#include "http/HttpHandler.h"
+
 #include <boost/beast/http.hpp>
 
 #include <cstdint>
@@ -16,18 +18,20 @@ class MgmtdServiceManager;
 
 namespace http = boost::beast::http;
 
-class HttpRouter
+// mgmtd's concrete HTTP handler: the admin/web REST API + static frontend. Plugs into
+// the shared pz::http transport (listener/session) via the HttpHandler contract.
+class MgmtdHttpRxRouter
 {
 public:
-    using Request  = http::request<http::string_body>;
-    using Response = http::response<http::string_body>;
+    using Request  = pz::http::HttpHandler::Request;
+    using Response = pz::http::HttpHandler::Response;
 
-    HttpRouter(MetricService*             metricService,
+    MgmtdHttpRxRouter(MetricService*             metricService,
                AuthService*               authService,
                MgmtdServiceManager*       serviceManager,
                std::shared_ptr<HttpCache> cache);
 
-    Response handle(const Request& req);
+    Response dispatch(const Request& req);
 
 private:
     Response handleMetric  (const Request& req);

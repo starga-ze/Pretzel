@@ -7,17 +7,21 @@ namespace pz::ipc
 class IpcClient;
 }
 
+namespace pz::http
+{
+class HttpServer;
+}
+
 namespace pz::mgmtd
 {
 
-class HttpServer;
 class MgmtdServiceManager;
 
 class MgmtdProcess : public pz::process::Process
 {
 public:
     MgmtdProcess(pz::ipc::IpcClient* ipcClient,
-                 HttpServer* httpServer,
+                 pz::http::HttpServer* httpServer,
                  MgmtdServiceManager* serviceManager);
     ~MgmtdProcess() override = default;
 
@@ -26,7 +30,7 @@ public:
 
 private:
     pz::ipc::IpcClient* m_ipcClient {nullptr};
-    HttpServer* m_httpServer {nullptr};
+    pz::http::HttpServer* m_httpServer {nullptr};
     MgmtdServiceManager* m_serviceManager {nullptr};
 };
 

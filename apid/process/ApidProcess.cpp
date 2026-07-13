@@ -1,11 +1,11 @@
-#include "process/MgmtdProcess.h"
+#include "process/ApidProcess.h"
 
 #include "http/HttpServer.h"
 #include "ipc/IpcClient.h"
-#include "service/MgmtdServiceManager.h"
+#include "service/ApidServiceManager.h"
 #include "util/Logger.h"
 
-namespace pz::mgmtd
+namespace pz::apid
 {
 
 namespace
@@ -13,16 +13,16 @@ namespace
 constexpr int kIpcClientTimeoutMs = 10;
 }
 
-MgmtdProcess::MgmtdProcess(pz::ipc::IpcClient* ipcClient,
-                           pz::http::HttpServer* httpServer,
-                           MgmtdServiceManager* serviceManager)
+ApidProcess::ApidProcess(pz::ipc::IpcClient* ipcClient,
+                         pz::http::HttpServer* httpServer,
+                         ApidServiceManager* serviceManager)
     : m_ipcClient(ipcClient),
       m_httpServer(httpServer),
       m_serviceManager(serviceManager)
 {
 }
 
-bool MgmtdProcess::start()
+bool ApidProcess::start()
 {
     if (!m_httpServer)
     {
@@ -40,7 +40,7 @@ bool MgmtdProcess::start()
     return true;
 }
 
-void MgmtdProcess::tick()
+void ApidProcess::tick()
 {
     if (m_ipcClient)
     {
@@ -59,4 +59,4 @@ void MgmtdProcess::tick()
     }
 }
 
-} // namespace pz::mgmtd
+} // namespace pz::apid

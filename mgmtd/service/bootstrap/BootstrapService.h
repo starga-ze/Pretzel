@@ -16,11 +16,16 @@ class MgmtdActionFactory;
 class BootstrapService
 {
 public:
+    // mgmtd is infrastructure (web/admin plane), NOT a config-convergence participant —
+    // engined never gates on it (see engined BootstrapService::initProcessMap) and it is
+    // not restarted on config reload. Its readiness is therefore the completed IPC
+    // handshake alone: Init -> WaitServerHello -> Ready -> Running. It does NOT wait for
+    // the fleet-wide RuntimeStart (a signal it isn't part of and would race/miss on a
+    // late connect); any RuntimeStart it receives is ignored.
     enum class State
     {
         Init,
         WaitServerHello,
-        WaitRuntimeStart,
         Ready,
         Running,
         Failed
@@ -63,7 +68,6 @@ private:
 
     std::chrono::steady_clock::time_point m_startedAt{};
     std::chrono::steady_clock::time_point m_lastClientHelloSentAt{};
-    std::chrono::steady_clock::time_point m_lastRuntimeReadySentAt{};
 };
 
 } // namespace pz::mgmtd

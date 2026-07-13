@@ -278,10 +278,14 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
+    // Only the first RuntimeStart (while in WaitRuntimeStart) advances bootstrap. engined
+    // re-broadcasts RuntimeStart to the whole fleet whenever ANY daemon (re)connects (see
+    // engined's blessedGeneration), so an already-running daemon keeps receiving it — this
+    // is expected, benign steady-state traffic, not an error.
     if (m_state != State::WaitRuntimeStart)
     {
-        LOG_WARN("RuntimeStart received in unexpected bootstrap state (state={})",
-                 static_cast<int>(m_state));
+        LOG_TRACE("RuntimeStart ignored (already past handshake, state={})",
+                  static_cast<int>(m_state));
         return;
     }
 

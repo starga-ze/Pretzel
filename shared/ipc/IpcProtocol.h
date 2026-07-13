@@ -29,6 +29,7 @@ enum class IpcDaemon : std::uint8_t
     Scand     = 5,
     Topologyd = 6,
     Mgmtd     = 7,
+    Apid      = 8,
 
     Broadcast = 255
 };

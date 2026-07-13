@@ -1,12 +1,12 @@
 #pragma once
 
-#include "event/MgmtdEvent.h"
+#include "event/ApidEvent.h"
 #include "ipc/IpcMessage.h"
 
 #include <cstdint>
 #include <memory>
 
-namespace pz::mgmtd
+namespace pz::apid
 {
 
 enum class BootstrapEventType : std::uint32_t
@@ -17,15 +17,15 @@ enum class BootstrapEventType : std::uint32_t
     ReceiveRuntimeStart = 3
 };
 
-class BootstrapEvent final : public MgmtdEvent
+class BootstrapEvent final : public ApidEvent
 {
 public:
     explicit BootstrapEvent(BootstrapEventType type);
 
     BootstrapEvent(BootstrapEventType type,
-                        std::unique_ptr<pz::ipc::IpcMessage> message);
+                   std::unique_ptr<pz::ipc::IpcMessage> message);
 
-    void dispatch(MgmtdServiceManager& serviceManager) override;
+    void dispatch(ApidServiceManager& serviceManager) override;
 
     BootstrapEventType type() const;
     const pz::ipc::IpcMessage* message() const;
@@ -36,4 +36,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::mgmtd
+} // namespace pz::apid

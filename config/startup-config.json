@@ -5,6 +5,12 @@
   "//admin": "login lives hashed in the local_users table (engined seeds a default and",
   "//admin2": "applies changes), NOT here; SNMP v3 credentials are entered via the mgmtd",
   "//snmp": "web UI at runtime (stored in running_config, not here).",
+  "//tiers": "This baseline carries only (a) infrastructure that cannot live in the DB",
+  "//tiers2": "(ipc/logger/http/db/SAML) and (b) operator-facing config seeded for the UI",
+  "//tiers3": "(icmp scan_cidr/excluded_ips, snmp community/devices, racks). Internal",
+  "//tiers4": "tuning (heartbeat/bootstrap/probe-batch/scan-timeouts) is NOT here — each",
+  "//tiers5": "daemon reads it via config.value(key, <compiled default>), so it is owned",
+  "//tiers6": "by the code defaults and never surfaces in the settings UI.",
   "global": {
     "system": {
       "ipc": {
@@ -20,13 +26,6 @@
         "max_file_size": 5242880,
         "max_files": 100
       }
-    },
-    "service": {
-      "bootstrap": {
-        "client_hello_interval_sec": 1,
-        "runtime_ready_interval_sec": 1,
-        "bootstrap_timeout_sec": 10
-      }
     }
   },
   "engined": {
@@ -38,21 +37,6 @@
       }
     },
     "service": {
-      "bootstrap": {
-        "sync_request_interval_sec": 1
-      },
-      "heartbeat": {
-        "poll_interval_sec": 5,
-        "response_timeout_sec": 2
-      },
-      "probe": {
-        "poll_interval_sec": 30,
-        "response_timeout_sec": 20
-      },
-      "scan": {
-        "poll_interval_sec": 60,
-        "response_timeout_sec": 30
-      },
       "rack": {
         "racks": []
       }
@@ -94,11 +78,8 @@
     },
     "service": {
       "probe": {
-        "batch_size": 32,
-        "batch_interval_ms": 20,
-        "cycle_interval_sec": 30,
-        "reply_idle_timeout_sec": 5,
-        "reply_max_wait_timeout_sec": 15
+        "scan_cidr": "",
+        "excluded_ips": ""
       }
     }
   },
@@ -152,12 +133,6 @@
     "service": {
       "scan": {
         "community": "public",
-        "port": 161,
-        "timeout_sec": 2,
-        "retries": 1,
-        "max_concurrent": 10,
-        "v2c_probe_timeout_ms": 700,
-        "v2c_probe_retries": 0,
         "v3_devices": []
       }
     }
@@ -171,5 +146,21 @@
       }
     },
     "service": {}
+  },
+  "apid": {
+    "daemon_name": "pz-apid",
+    "system": {
+      "logger": {
+        "name": "pz-apid",
+        "file": "/var/log/pretzel/apid.log"
+      }
+    },
+    "service": {
+      "http": {
+        "listen_address": "0.0.0.0",
+        "listen_port": 8443,
+        "tls_enabled": false
+      }
+    }
   }
 }

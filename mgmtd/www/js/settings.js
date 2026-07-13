@@ -14,13 +14,6 @@
   // ── Tab definitions ──────────────────────────────────────────────────────
 
   const TABS = {
-    general: {
-      label:    'General',
-      title:    'General',
-      subtitle: 'Global service behavior and health-check parameters.',
-      daemons:  ['engined'],
-      domains:  ['heartbeat'],
-    },
     protocol: {
       label:    'Protocol',
       title:    'Protocol',
@@ -471,10 +464,16 @@
       const scalarKeys = keys.filter(k =>
         k !== V3_OBJECT_KEY && k !== V3_DEVICES_KEY &&
         k !== API_DEVICES_KEY && k !== V2C_DEVICES_KEY && k !== 'community');
-      card.appendChild(buildSettingsTable(
-        DOMAIN_LABELS[domain] || domain, scalarKeys, values,
-        () => openEditPanel(daemon, domain, values, null, scalarKeys),
-        daemon, domain));
+      // Only render the scalar table when there is something to show. With internal
+      // tuning now living in compiled defaults (not config), the scan domain often has
+      // no scalar keys left — just the per-device table below — so an empty card here
+      // would be dead chrome.
+      if (scalarKeys.length) {
+        card.appendChild(buildSettingsTable(
+          DOMAIN_LABELS[domain] || domain, scalarKeys, values,
+          () => openEditPanel(daemon, domain, values, null, scalarKeys),
+          daemon, domain));
+      }
 
       // Unified per-device scan table (v2c / v3 / vendor-API in one place).
       if (domain === 'scan') {

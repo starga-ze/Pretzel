@@ -32,11 +32,6 @@ std::chrono::milliseconds clientHelloInterval()
     return std::chrono::seconds(bootstrapConfig().value("client_hello_interval_sec", 1));
 }
 
-std::chrono::milliseconds runtimeReadyInterval()
-{
-    return std::chrono::seconds(bootstrapConfig().value("runtime_ready_interval_sec", 1));
-}
-
 std::chrono::milliseconds bootstrapTimeout()
 {
     return std::chrono::seconds(bootstrapConfig().value("bootstrap_timeout_sec", 10));
@@ -56,7 +51,6 @@ void BootstrapService::start()
     m_state = State::Init;
     m_startedAt = std::chrono::steady_clock::now();
     m_lastClientHelloSentAt = {};
-    m_lastRuntimeReadySentAt = {};
 
     LOG_INFO("bootstrap started");
 }
@@ -105,27 +99,6 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
             return m_eventFactory->create(
                 MgmtdEventDomain::Bootstrap,
                 static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
-        }
-
-        return nullptr;
-    }
-
-    case State::WaitRuntimeStart:
-    {
-        if (checkTimeout(now, "WaitRuntimeStart"))
-        {
-            return nullptr;
-        }
-
-        if (now - m_lastRuntimeReadySentAt >= runtimeReadyInterval())
-        {
-            m_lastRuntimeReadySentAt = now;
-
-            LOG_DEBUG("retrying RuntimeReady");
-
-            return m_eventFactory->create(
-                MgmtdEventDomain::Bootstrap,
-                static_cast<std::uint32_t>(BootstrapEventType::SendRuntimeReady));
         }
 
         return nullptr;
@@ -185,16 +158,6 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
         break;
     }
 
-    case BootstrapEventType::SendRuntimeReady:
-    {
-        auto action = m_actionFactory->create(
-            MgmtdActionDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapActionType::SendRuntimeReady));
-
-        serviceManager.postAction(std::move(action));
-        break;
-    }
-
     case BootstrapEventType::ReceiveRuntimeStart:
     {
         const auto* msg = event.message();
@@ -236,20 +199,6 @@ void BootstrapService::handleAction(MgmtdServiceManager& serviceManager,
         break;
     }
 
-    case BootstrapActionType::SendRuntimeReady:
-    {
-        if (m_state != State::WaitRuntimeStart)
-        {
-            LOG_DEBUG("skip SendRuntimeReady (state={})",
-                      static_cast<int>(m_state));
-            return;
-        }
-
-        LOG_INFO("sent RuntimeReady, awaiting RuntimeStart");
-        msg = buildRuntimeReadyMessage();
-        break;
-    }
-
     default:
         LOG_WARN("unhandled action (type={})",
                  static_cast<std::uint32_t>(action.type()));
@@ -271,33 +220,26 @@ void BootstrapService::onServerHello(MgmtdServiceManager& serviceManager,
         return;
     }
 
-    m_state = State::WaitRuntimeStart;
-    m_lastRuntimeReadySentAt = std::chrono::steady_clock::now();
+    // Handshake complete. Report RuntimeReady once — purely informational (lets ipcd /
+    // engined observe mgmtd's applied config version); nothing gates on it. mgmtd is
+    // infrastructure, so it becomes Ready here rather than waiting for the fleet-wide
+    // RuntimeStart it isn't a participant in.
+    serviceManager.txRouter().handleIpcMessage(buildRuntimeReadyMessage());
 
-    LOG_DEBUG("state changed (state=WaitRuntimeStart)");
+    m_state = State::Ready;
 
-    auto action = m_actionFactory->create(
-        MgmtdActionDomain::Bootstrap,
-        static_cast<std::uint32_t>(BootstrapActionType::SendRuntimeReady));
-
-    serviceManager.postAction(std::move(action));
+    LOG_INFO("sent RuntimeReady; handshake complete (state=Ready)");
 }
 
 void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
-    if (m_state != State::WaitRuntimeStart)
-    {
-        LOG_DEBUG("RuntimeStart received unexpectedly — ignoring, expected after config "
-                  "reload (state={})",
-                  static_cast<int>(m_state));
-        return;
-    }
-
-    m_state = State::Ready;
-
-    LOG_DEBUG("state changed (state=Ready)");
+    // mgmtd is infrastructure and is not a config-convergence participant, so the
+    // fleet-wide RuntimeStart broadcast carries nothing it needs. It still receives the
+    // broadcast (engined re-emits it after every config reload); mgmtd simply ignores
+    // it — commit completion is signalled separately via ConfigReloadResponse.
+    LOG_TRACE("RuntimeStart ignored (mgmtd is not gated on fleet convergence)");
 }
 
 bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,

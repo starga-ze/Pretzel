@@ -1,22 +1,23 @@
 #include "http/HttpListener.h"
 
+#include "http/HttpHandler.h"
 #include "http/HttpSession.h"
 #include "http/HttpsSession.h"
 #include "util/Logger.h"
 
 #include <functional>
 
-namespace pz::mgmtd
+namespace pz::http
 {
 
 HttpListener::HttpListener(boost::asio::io_context& ioContext,
                            tcp::endpoint endpoint,
-                           std::shared_ptr<HttpRouter> router,
+                           std::shared_ptr<HttpHandler> handler,
                            std::shared_ptr<boost::asio::ssl::context> sslContext)
     : m_ioContext(ioContext),
       m_endpoint(endpoint),
       m_acceptor(ioContext),
-      m_router(std::move(router)),
+      m_handler(std::move(handler)),
       m_sslContext(std::move(sslContext))
 {
 }
@@ -89,12 +90,12 @@ void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
         if (m_sslContext)
         {
             std::make_shared<HttpsSession>(std::move(socket),
-                                           m_router,
+                                           m_handler,
                                            m_sslContext)->run();
         }
         else
         {
-            std::make_shared<HttpSession>(std::move(socket), m_router)->run();
+            std::make_shared<HttpSession>(std::move(socket), m_handler)->run();
         }
     }
     else
@@ -105,4 +106,4 @@ void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
     doAccept();
 }
 
-} // namespace pz::mgmtd
+} // namespace pz::http

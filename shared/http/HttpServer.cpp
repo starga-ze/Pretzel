@@ -1,34 +1,23 @@
 #include "http/HttpServer.h"
 
-#include "http/HttpCache.h"
+#include "http/HttpHandler.h"
 #include "http/HttpListener.h"
-#include "http/HttpRouter.h"
-#include "service/MgmtdServiceManager.h"
 #include "util/Logger.h"
 
 #include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl.hpp>
 
 #include <cstdlib>
 
-namespace pz::mgmtd
+namespace pz::http
 {
 
 namespace
 {
 
-// Resolves the install root for read-only static assets (web frontend, etc.).
-// Defaults to the FHS-style /opt/pretzel/share install location; overridable
-// via PRETZEL_SHARE_DIR for alternate deployments/testing.
-std::string shareDir()
-{
-    const char* value = std::getenv("PRETZEL_SHARE_DIR");
-    return (value && *value) ? std::string(value) : "/opt/pretzel/share";
-}
-
-// Resolves the config root for relative cert/key paths in running-config.
-// Defaults to the FHS-style /etc/pretzel; overridable via PRETZEL_CONFIG_DIR
-// (kept in sync with pz::config::Config's resolution).
+// Config root for relative cert/key paths. Kept in sync with pz::config::Config's
+// resolution (PRETZEL_CONFIG_DIR, default /etc/pretzel).
 std::string configDir()
 {
     const char* value = std::getenv("PRETZEL_CONFIG_DIR");
@@ -42,17 +31,13 @@ HttpServer::HttpServer(std::string listenAddress,
                        bool tlsEnabled,
                        std::string certFile,
                        std::string keyFile,
-                       MetricService* metricService,
-                       AuthService* authService,
-                       MgmtdServiceManager* serviceManager)
+                       std::shared_ptr<HttpHandler> handler)
     : m_listenAddress(std::move(listenAddress)),
       m_listenPort(listenPort),
       m_tlsEnabled(tlsEnabled),
       m_certFile(std::move(certFile)),
       m_keyFile(std::move(keyFile)),
-      m_metricService(metricService),
-      m_authService(authService),
-      m_serviceManager(serviceManager)
+      m_handler(std::move(handler))
 {
 }
 
@@ -63,7 +48,7 @@ std::string HttpServer::resolvePath(const std::string& path) const
         return path;
     }
 
-    if (!path.empty() && path.front() == '/')
+    if (path.front() == '/')
     {
         return path;
     }
@@ -142,13 +127,10 @@ bool HttpServer::init()
         return false;
     }
 
-    auto cache = std::make_shared<HttpCache>(shareDir() + "/mgmtd/www");
-    auto router = std::make_shared<HttpRouter>(m_metricService, m_authService, m_serviceManager, cache);
-
     const auto endpoint = boost::asio::ip::tcp::endpoint(address, m_listenPort);
     m_listener = std::make_shared<HttpListener>(m_ioContext,
                                                 endpoint,
-                                                router,
+                                                m_handler,
                                                 m_sslContext);
 
     if (!m_listener->open())
@@ -171,4 +153,4 @@ void HttpServer::stop()
     m_ioContext.stop();
 }
 
-} // namespace pz::mgmtd
+} // namespace pz::http

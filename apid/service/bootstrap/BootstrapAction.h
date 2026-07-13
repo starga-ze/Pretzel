@@ -1,10 +1,10 @@
 #pragma once
 
-#include "action/MgmtdAction.h"
+#include "action/ApidAction.h"
 
 #include <cstdint>
 
-namespace pz::mgmtd
+namespace pz::apid
 {
 
 enum class BootstrapActionType : std::uint32_t
@@ -13,17 +13,17 @@ enum class BootstrapActionType : std::uint32_t
     SendClientHello = 1
 };
 
-class BootstrapAction final : public MgmtdAction
+class BootstrapAction final : public ApidAction
 {
 public:
     explicit BootstrapAction(BootstrapActionType type);
 
     BootstrapActionType type() const;
 
-    void dispatch(MgmtdServiceManager& serviceManager) override;
+    void dispatch(ApidServiceManager& serviceManager) override;
 
 private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };
 
-} // namespace pz::mgmtd
+} // namespace pz::apid

@@ -70,7 +70,6 @@
                       a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91
                       a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>`,
       subitems: [
-        { id: 'general',  label: 'General',  href: 'settings.html?tab=general' },
         { id: 'protocol', label: 'Protocol', href: 'settings.html?tab=protocol' },
         { id: 'rack',     label: 'Rack List', href: 'settings.html?tab=rack' },
         { id: 'user',     label: 'User',     href: 'settings.html?tab=users', soon: true },

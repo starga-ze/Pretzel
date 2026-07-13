@@ -51,6 +51,7 @@ const char* IpcProtocol::daemonToStr(IpcDaemon daemon) noexcept
     case IpcDaemon::Scand:     return "scand";
     case IpcDaemon::Topologyd: return "topologyd";
     case IpcDaemon::Mgmtd:     return "mgmtd";
+    case IpcDaemon::Apid:      return "apid";
     case IpcDaemon::Broadcast: return "broadcast";
     default:                   return "unknown";
     }
@@ -163,6 +164,11 @@ pz::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
     if (daemon == "mgmtd")
     {
         return IpcDaemon::Mgmtd;
+    }
+
+    if (daemon == "apid")
+    {
+        return IpcDaemon::Apid;
     }
 
     if (daemon == "broadcast")

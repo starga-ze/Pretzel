@@ -1,10 +1,27 @@
 #include "core/MgmtdCore.h"
 
+#include "http/HttpCache.h"
+#include "http/MgmtdHttpRxRouter.h"
+#include "http/MgmtdHttpHandler.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <thread>
+
+namespace
+{
+
+// Install root for read-only static assets (web frontend). Defaults to the FHS-style
+// /opt/pretzel/share; overridable via PRETZEL_SHARE_DIR for alternate deployments.
+std::string shareDir()
+{
+    const char* value = std::getenv("PRETZEL_SHARE_DIR");
+    return (value && *value) ? std::string(value) : "/opt/pretzel/share";
+}
+
+} // namespace
 
 namespace pz::mgmtd
 {
@@ -69,14 +86,23 @@ bool MgmtdCore::onInit()
         m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
     }
 
-    m_httpServer = std::make_unique<HttpServer>(m_httpConfig.listenAddress,
-                                                m_httpConfig.listenPort,
-                                                m_httpConfig.tlsEnabled,
-                                                m_httpConfig.certFile,
-                                                m_httpConfig.keyFile,
-                                                &m_serviceManager->metricService(),
-                                                &m_serviceManager->authService(),
-                                                m_serviceManager.get());
+    // Router (HTTP) + Handler layers. The router dispatches synchronously to the mgmtd
+    // services and owns the static-asset cache; the handler is a thin transport adapter
+    // that borrows it. Cross-daemon calls (authd SAML, engined commit) go out through the
+    // IPC TxRouter from the router's handlers.
+    auto httpCache = std::make_shared<HttpCache>(shareDir() + "/mgmtd/www");
+    m_httpRxRouter = std::make_unique<MgmtdHttpRxRouter>(&m_serviceManager->metricService(),
+                                                         &m_serviceManager->authService(),
+                                                         m_serviceManager.get(),
+                                                         httpCache);
+    auto httpHandler = std::make_shared<MgmtdHttpHandler>(m_httpRxRouter.get());
+
+    m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress,
+                                                          m_httpConfig.listenPort,
+                                                          m_httpConfig.tlsEnabled,
+                                                          m_httpConfig.certFile,
+                                                          m_httpConfig.keyFile,
+                                                          std::move(httpHandler));
     if (!m_httpServer || !m_httpServer->init())
     {
         LOG_ERROR("failed to initialize HTTP server");
