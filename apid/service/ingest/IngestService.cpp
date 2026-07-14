@@ -1,8 +1,12 @@
 #include "service/ingest/IngestService.h"
 
-#include "service/ingest/HttpEvent.h"
+#include "service/ingest/IngestEvent.h"
+#include "service/ingest/IngestResponseAction.h"
+#include "service/ApidServiceManager.h"
 
 #include "util/Logger.h"
+
+#include <memory>
 
 #include <nlohmann/json.hpp>
 
@@ -27,13 +31,19 @@ IngestService::IngestService()
 {
 }
 
-void IngestService::handleEvent(ApidServiceManager& serviceManager, const HttpEvent& event)
+void IngestService::handleEvent(ApidServiceManager& serviceManager, const IngestEvent& event)
 {
-    (void)serviceManager;  // used once EgressReport forwarding is wired to the TxRouter
+    pz::http::HttpResponse resp;  // default 404 for unmatched routes
+    route(event.request(), resp);
 
-    const auto& req  = event.request();
-    auto&       resp = event.response();
+    // Deliver asynchronously via the parked connection's responder — the HTTP analogue of
+    // an IPC egress action.
+    serviceManager.postAction(
+        std::make_unique<IngestResponseAction>(event.responder(), std::move(resp)));
+}
 
+void IngestService::route(const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
     // Public liveness probe.
     if (req.method == "GET" && req.target == "/health")
     {

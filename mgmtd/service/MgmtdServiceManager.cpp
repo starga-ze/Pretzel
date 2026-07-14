@@ -105,6 +105,11 @@ DeviceService& MgmtdServiceManager::deviceService()
     return *m_deviceService;
 }
 
+WebService& MgmtdServiceManager::webService()
+{
+    return m_webService;
+}
+
 MgmtdTxRouter& MgmtdServiceManager::txRouter()
 {
     return *m_txRouter;

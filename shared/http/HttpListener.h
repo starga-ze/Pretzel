@@ -5,6 +5,7 @@
 #include <boost/asio/ssl/context.hpp>
 
 #include <memory>
+#include <string>
 
 namespace pz::http
 {
@@ -21,7 +22,8 @@ public:
     HttpListener(boost::asio::io_context& ioContext,
                  tcp::endpoint endpoint,
                  std::shared_ptr<HttpHandler> handler,
-                 std::shared_ptr<boost::asio::ssl::context> sslContext);
+                 std::shared_ptr<boost::asio::ssl::context> sslContext,
+                 std::string serverName);
 
     bool open();
     void run();
@@ -36,6 +38,7 @@ private:
     tcp::acceptor m_acceptor;
     std::shared_ptr<HttpHandler> m_handler;
     std::shared_ptr<boost::asio::ssl::context> m_sslContext;
+    std::string m_serverName;
 };
 
 } // namespace pz::http

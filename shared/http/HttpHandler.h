@@ -1,30 +1,33 @@
 #pragma once
 
-#include <boost/beast/http.hpp>
+#include "http/HttpMessage.h"
+#include "http/HttpResponder.h"
+
+#include <memory>
 
 namespace pz::http
 {
 
-namespace beast = boost::beast;
-
-// Transport-facing contract for the HTTP server, mirroring pz::ipc::IpcHandler for the
-// IPC transport. The listener/session layer depends only on this base — never on a
-// concrete router — so each daemon (mgmtd, apid, authd, ...) plugs in its own handler
-// that turns a parsed request into a response.
+// Transport-facing contract for the HTTP server, mirroring pz::ipc's ingress path. The
+// listener/session layer depends only on this base — never on a concrete router — so each
+// daemon (mgmtd, apid, ...) plugs in its own handler that forwards a request into the
+// event/action machinery.
 //
-// handle() runs on the server's single io_context poll thread and must NOT block (e.g.
-// on an IPC round-trip); asynchronous flows are split across requests (the client polls
-// a result endpoint) — see mgmtd's SAML handlers for the pattern.
+// It is beast-free and asynchronous: the session translates the parsed request into a
+// transport-agnostic HttpRequest and passes it with a responder. handle() forwards
+// both to the daemon router (which posts an HttpEvent) and returns immediately — it must
+// NOT block. The response is produced later by the service layer and delivered through
+// responder->send(), exactly as IPC egress is a queued action. Flows that must await a
+// cross-daemon reply are split across requests (the client polls a result endpoint) — see
+// mgmtd's SAML handlers.
 class HttpHandler
 {
 public:
-    using Request  = beast::http::request<beast::http::string_body>;
-    using Response = beast::http::response<beast::http::string_body>;
-
     HttpHandler() = default;
     virtual ~HttpHandler() = default;
 
-    virtual Response handle(const Request& req) = 0;
+    virtual void handle(HttpRequest request,
+                        std::shared_ptr<HttpResponder> responder) = 0;
 };
 
 } // namespace pz::http

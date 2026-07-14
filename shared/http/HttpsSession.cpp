@@ -1,5 +1,6 @@
 #include "http/HttpsSession.h"
 
+#include "http/HttpBeast.h"
 #include "util/Logger.h"
 
 #include <boost/asio/ssl.hpp>
@@ -9,9 +10,11 @@ namespace pz::http
 
 HttpsSession::HttpsSession(tcp::socket socket,
                            std::shared_ptr<HttpHandler> handler,
-                           std::shared_ptr<boost::asio::ssl::context> sslContext)
+                           std::shared_ptr<boost::asio::ssl::context> sslContext,
+                           std::string serverName)
     : m_stream(std::move(socket), *sslContext),
-      m_handler(std::move(handler))
+      m_handler(std::move(handler)),
+      m_serverName(std::move(serverName))
 {
 }
 
@@ -63,17 +66,20 @@ void HttpsSession::onRead(beast::error_code ec, std::size_t)
         return;
     }
 
-    auto response = m_handler->handle(m_request);
-    const bool close = response.need_eof();
+    // Ingress: hand a transport-agnostic request + this session (as responder) to the
+    // handler. It posts an HttpEvent and returns; the response arrives later via send().
+    m_handler->handle(detail::toRequest(m_request), shared_from_this());
+}
 
-    m_responseHolder =
-        std::make_shared<beast::http::response<beast::http::string_body>>(std::move(response));
+void HttpsSession::send(HttpResponse response)
+{
+    bool close = false;
+    auto res = detail::toBeastResponse(m_request, std::move(response), m_serverName, close);
 
-    auto& responseRef =
-        *static_cast<beast::http::response<beast::http::string_body>*>(m_responseHolder.get());
+    m_responseHolder = res;  // keep the response alive for the duration of the write
 
     beast::http::async_write(m_stream,
-                             responseRef,
+                             *res,
                              beast::bind_front_handler(&HttpsSession::onWrite,
                                                        shared_from_this(),
                                                        close));

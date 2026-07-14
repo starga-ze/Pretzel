@@ -1,7 +1,6 @@
 #include "core/MgmtdCore.h"
 
-#include "http/HttpCache.h"
-#include "http/MgmtdHttpRxRouter.h"
+#include "http/StaticFileCache.h"
 #include "http/MgmtdHttpHandler.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -86,22 +85,25 @@ bool MgmtdCore::onInit()
         m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
     }
 
-    // Router (HTTP) + Handler layers. The router dispatches synchronously to the mgmtd
-    // services and owns the static-asset cache; the handler is a thin transport adapter
-    // that borrows it. Cross-daemon calls (authd SAML, engined commit) go out through the
-    // IPC TxRouter from the router's handlers.
-    auto httpCache = std::make_shared<HttpCache>(shareDir() + "/mgmtd/www");
-    m_httpRxRouter = std::make_unique<MgmtdHttpRxRouter>(&m_serviceManager->metricService(),
-                                                         &m_serviceManager->authService(),
-                                                         m_serviceManager.get(),
-                                                         httpCache);
-    auto httpHandler = std::make_shared<MgmtdHttpHandler>(m_httpRxRouter.get());
+    // HTTP ingress mirrors IPC: the transport-facing MgmtdHttpHandler translates beast <->
+    // DTOs and forwards to MgmtdRxRouter::dispatchHttp, which posts a WebEvent to the
+    // WebService through the ServiceManager queue; the response is delivered asynchronously
+    // via a WebResponseAction. The static-asset cache the WebService serves from is built
+    // here from the share dir and injected. PRETZEL_MGMTD_STATIC_RELOAD=1 reads assets from
+    // disk per request (frontend iteration without a restart); default preloads into memory.
+    const char* reloadEnv = std::getenv("PRETZEL_MGMTD_STATIC_RELOAD");
+    const bool  staticReload = reloadEnv && *reloadEnv && std::string(reloadEnv) != "0";
+    auto httpCache = std::make_shared<pz::http::StaticFileCache>(
+        shareDir() + "/mgmtd/www", staticReload);
+    m_serviceManager->webService().setCache(httpCache);
+    auto httpHandler = std::make_shared<MgmtdHttpHandler>(m_rxRouter.get());
 
     m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress,
                                                           m_httpConfig.listenPort,
                                                           m_httpConfig.tlsEnabled,
                                                           m_httpConfig.certFile,
                                                           m_httpConfig.keyFile,
+                                                          "pz-mgmtd",
                                                           std::move(httpHandler));
     if (!m_httpServer || !m_httpServer->init())
     {

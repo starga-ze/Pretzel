@@ -13,7 +13,8 @@ class ApidServiceManager;
 enum class ApidActionDomain : std::uint32_t
 {
     Unknown   = 0,
-    Bootstrap = 1
+    Bootstrap = 1,
+    Http      = 2
 };
 
 class ApidAction : public pz::action::Action

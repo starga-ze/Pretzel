@@ -108,7 +108,7 @@ void Logger::Init(const std::string& logger_name, const std::string& log_filepat
     spdlog::set_default_logger(s_logger);
 
     /* Spdlog Level */
-    spdlog::set_level(spdlog::level::info);
+    spdlog::set_level(spdlog::level::debug);
 
     auto console_fmt = std::make_unique<spdlog::pattern_formatter>();
     console_fmt->add_flag<short_level_flag>('!');

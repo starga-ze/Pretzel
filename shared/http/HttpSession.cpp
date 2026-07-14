@@ -1,13 +1,17 @@
 #include "http/HttpSession.h"
 
+#include "http/HttpBeast.h"
 #include "util/Logger.h"
 
 namespace pz::http
 {
 
-HttpSession::HttpSession(tcp::socket socket, std::shared_ptr<HttpHandler> handler)
+HttpSession::HttpSession(tcp::socket socket,
+                         std::shared_ptr<HttpHandler> handler,
+                         std::string serverName)
     : m_socket(std::move(socket)),
-      m_handler(std::move(handler))
+      m_handler(std::move(handler)),
+      m_serverName(std::move(serverName))
 {
 }
 
@@ -41,16 +45,20 @@ void HttpSession::onRead(beast::error_code ec, std::size_t)
         return;
     }
 
-    auto response = m_handler->handle(m_request);
-    const bool close = response.need_eof();
+    // Ingress: hand a transport-agnostic request + this session (as responder) to the
+    // handler. It posts an HttpEvent and returns; the response arrives later via send().
+    m_handler->handle(detail::toRequest(m_request), shared_from_this());
+}
 
-    m_responseHolder =
-        std::make_shared<beast::http::response<beast::http::string_body>>(std::move(response));
-    auto& responseRef =
-        *static_cast<beast::http::response<beast::http::string_body>*>(m_responseHolder.get());
+void HttpSession::send(HttpResponse response)
+{
+    bool close = false;
+    auto res = detail::toBeastResponse(m_request, std::move(response), m_serverName, close);
+
+    m_responseHolder = res;  // keep the response alive for the duration of the write
 
     beast::http::async_write(m_socket,
-                             responseRef,
+                             *res,
                              beast::bind_front_handler(&HttpSession::onWrite,
                                                        shared_from_this(),
                                                        close));

@@ -10,6 +10,7 @@
 #include "service/metrics/MetricService.h"
 #include "service/heartbeat/HeartbeatService.h"
 #include "service/device/DeviceService.h"
+#include "service/web/WebService.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -48,6 +49,7 @@ public:
     BootstrapService& bootstrapService();
     HeartbeatService& heartbeatService();
     DeviceService& deviceService();
+    WebService& webService();
 
     MgmtdTxRouter& txRouter();
 
@@ -76,6 +78,7 @@ private:
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<DeviceService> m_deviceService;
+    WebService m_webService;
 
     std::queue<std::unique_ptr<MgmtdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<MgmtdAction>> m_actionQueue;

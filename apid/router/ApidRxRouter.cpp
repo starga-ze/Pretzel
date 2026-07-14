@@ -1,6 +1,6 @@
 #include "router/ApidRxRouter.h"
 
-#include "service/ingest/HttpEvent.h"
+#include "service/ingest/IngestEvent.h"
 
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -40,19 +40,14 @@ void ApidRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     m_serviceManager->postEvent(std::move(event));
 }
 
-pz::http::HttpResponse ApidRxRouter::dispatchHttp(const pz::http::HttpRequestView& req)
+void ApidRxRouter::dispatchHttp(pz::http::HttpRequest req,
+                                std::shared_ptr<pz::http::HttpResponder> responder)
 {
-    // Shared slot the service fills; kept alive here while the event (which holds a copy)
-    // is processed. Seeded with the default 404 for unmatched routes.
-    auto response = std::make_shared<pz::http::HttpResponse>();
-
-    m_serviceManager->postEvent(std::make_unique<HttpEvent>(req, response));
-
-    // ServiceManager::execute() drains the queue synchronously within this call, so the
-    // response is filled by the time it returns.
-    m_serviceManager->execute();
-
-    return *response;
+    // Post and return. The event is drained by the ServiceManager on this same tick (its
+    // execute() runs right after the HTTP poll that produced this call); the service fills a
+    // response and posts an IngestResponseAction that calls responder->send().
+    m_serviceManager->postEvent(
+        std::make_unique<IngestEvent>(std::move(req), std::move(responder)));
 }
 
 } // namespace pz::apid

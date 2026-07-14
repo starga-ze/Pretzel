@@ -1,10 +1,8 @@
-#include "http/MgmtdHttpRxRouter.h"
+#include "service/web/WebService.h"
 
-#include "http/HttpCache.h"
-#include "service/auth/AuthService.h"
-#include "service/metrics/MetricService.h"
+#include "service/web/WebEvent.h"
+#include "service/web/WebResponseAction.h"
 #include "service/MgmtdServiceManager.h"
-#include "router/MgmtdTxRouter.h"
 
 #include "config/Config.h"
 #include "ipc/IpcMessage.h"
@@ -14,13 +12,12 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <chrono>
+#include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <ctime>
 #include <deque>
-#include <filesystem>
 #include <fstream>
+#include <memory>
 #include <random>
 #include <sstream>
 #include <string>
@@ -34,9 +31,11 @@ namespace pz::mgmtd
 
 using json = nlohmann::json;
 
-// Static pages that do NOT require a session.
-// Everything else under "/" is protected.
-static constexpr const char* kPublicPages[] = {
+namespace
+{
+
+// Static pages that do NOT require a session. Everything else under "/" is protected.
+constexpr const char* kPublicPages[] = {
     "/",
     "/index.html",
     "/css/main.css",
@@ -44,168 +43,159 @@ static constexpr const char* kPublicPages[] = {
     "/js/login.js",  // loaded on the login page without a session
 };
 
-MgmtdHttpRxRouter::MgmtdHttpRxRouter(MetricService*             metricService,
-                       AuthService*               authService,
-                       MgmtdServiceManager*       serviceManager,
-                       std::shared_ptr<HttpCache> cache)
-    : m_metricService(metricService),
-      m_authService(authService),
-      m_serviceManager(serviceManager),
-      m_cache(std::move(cache))
+// Fill a response slot in one shot; content type defaults to JSON.
+void fill(pz::http::HttpResponse& r,
+          int                     status,
+          std::string             body,
+          std::string             contentType = "application/json; charset=utf-8")
 {
+    r.status      = status;
+    r.contentType = std::move(contentType);
+    r.body        = std::move(body);
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::dispatch(const Request& req)
+// Shorthand for 401 Unauthorized.
+void unauthorized(pz::http::HttpResponse& r)
 {
-    const std::string target(req.target());
+    fill(r, 401, R"({"error":"unauthorized"})");
+}
 
-    LOG_TRACE("HTTP request (method={}, target={})", req.method_string(), target);
+} // namespace
+
+void WebService::setCache(std::shared_ptr<pz::http::StaticFileCache> cache)
+{
+    m_cache = std::move(cache);
+}
+
+void WebService::handleEvent(MgmtdServiceManager& sm, const WebEvent& event)
+{
+    Response resp;  // default 404 for unmatched routes
+    route(sm, event.request(), resp);
+
+    // Deliver asynchronously via the parked connection's responder (HTTP egress action).
+    sm.postAction(std::make_unique<WebResponseAction>(event.responder(), std::move(resp)));
+}
+
+void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& resp)
+{
+    const std::string& target = req.target;
+
+    LOG_TRACE("HTTP request (method={}, target={})", req.method, target);
 
     // ── Public API routes (no auth required) ──────────────────────────────
-    if (target == "/metrics" && req.method() == http::verb::get)
-    {
-        return handleMetric(req);
-    }
+    if (target == "/metrics" && req.method == "GET")
+        return handleMetric(sm, req, resp);
 
-    if (target == "/health" && req.method() == http::verb::get)
-    {
-        return handleHealth(req);
-    }
+    if (target == "/health" && req.method == "GET")
+        return handleHealth(sm, req, resp);
 
-    if (target == "/api/login" && req.method() == http::verb::post)
-    {
-        return handleLogin(req);
-    }
+    if (target == "/api/login" && req.method == "POST")
+        return handleLogin(sm, req, resp);
 
     // SSO (Okta via authd) — all public: they run before any session exists.
-    if (target == "/api/auth/sso/info" && req.method() == http::verb::get)
-    {
-        return handleSsoInfo(req);
-    }
-    if (target == "/api/auth/sso/login" && req.method() == http::verb::get)
-    {
-        return handleSsoLogin(req);
-    }
-    if (target == "/api/auth/saml/acs" && req.method() == http::verb::post)
-    {
-        return handleSamlAcs(req);
-    }
-    if (target.rfind("/api/auth/saml/result", 0) == 0 && req.method() == http::verb::get)
-    {
-        return handleSamlResult(req);
-    }
+    if (target == "/api/auth/sso/info" && req.method == "GET")
+        return handleSsoInfo(sm, req, resp);
+    if (target == "/api/auth/sso/login" && req.method == "GET")
+        return handleSsoLogin(sm, req, resp);
+    if (target == "/api/auth/saml/acs" && req.method == "POST")
+        return handleSamlAcs(sm, req, resp);
+    if (target.rfind("/api/auth/saml/result", 0) == 0 && req.method == "GET")
+        return handleSamlResult(sm, req, resp);
 
     // ── Auth-required API routes ──────────────────────────────────────────
-    if (target == "/api/logout" && req.method() == http::verb::post)
+    if (target == "/api/logout" && req.method == "POST")
     {
         // logout is safe to call even without a valid session
-        return handleLogout(req);
+        return handleLogout(sm, req, resp);
     }
 
-    if (target == "/api/change-password" && req.method() == http::verb::post)
+    if (target == "/api/change-password" && req.method == "POST")
     {
-        if (!isAuthenticated(req))
-        {
-            return unauthorized(req.version(), req.keep_alive());
-        }
-        return handleChangePassword(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleChangePassword(sm, req, resp);
     }
 
     // Forced password-change gate: while the admin is still on the factory default,
     // an authenticated session may only reach /api/logout and /api/change-password
     // (both handled above). Every other /api/* call is blocked until it is changed.
     if (target.rfind("/api/", 0) == 0 &&
-        m_authService && isAuthenticated(req) && m_authService->mustChangePassword())
+        isAuthenticated(sm, req) && sm.authService().mustChangePassword())
     {
-        return makeResponse(
-            http::status::forbidden,
-            R"({"error":"password change required","code":"MUST_CHANGE_PASSWORD"})",
-            "application/json; charset=utf-8",
-            req.version(), req.keep_alive());
+        return fill(resp, 403,
+                    R"({"error":"password change required","code":"MUST_CHANGE_PASSWORD"})");
     }
 
-    if (target == "/api/whoami" && req.method() == http::verb::get)
+    if (target == "/api/whoami" && req.method == "GET")
     {
-        if (!isAuthenticated(req))
-        {
-            return unauthorized(req.version(), req.keep_alive());
-        }
-        return handleWhoami(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleWhoami(sm, req, resp);
     }
 
-    if (target == "/api/status" && req.method() == http::verb::get)
+    if (target == "/api/status" && req.method == "GET")
     {
-        if (!isAuthenticated(req))
-        {
-            return unauthorized(req.version(), req.keep_alive());
-        }
-        return handleStatus(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleStatus(sm, req, resp);
     }
 
-    if (target == "/api/settings" && req.method() == http::verb::get)
+    if (target == "/api/settings" && req.method == "GET")
     {
-        if (!isAuthenticated(req))
-        {
-            return unauthorized(req.version(), req.keep_alive());
-        }
-        return handleSettingsGet(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleSettingsGet(sm, req, resp);
     }
 
-    if (target == "/api/settings/commit" && req.method() == http::verb::post)
+    if (target == "/api/settings/commit" && req.method == "POST")
     {
-        if (!isAuthenticated(req))
-        {
-            return unauthorized(req.version(), req.keep_alive());
-        }
-        return handleSettingsCommit(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleSettingsCommit(sm, req, resp);
     }
 
-    if (target == "/api/settings/reload-status" && req.method() == http::verb::get)
+    if (target == "/api/settings/reload-status" && req.method == "GET")
     {
-        if (!isAuthenticated(req))
-        {
-            return unauthorized(req.version(), req.keep_alive());
-        }
-        return handleReloadStatus(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleReloadStatus(sm, req, resp);
     }
 
-    if (target == "/api/settings/commit-queue" && req.method() == http::verb::get)
+    if (target == "/api/settings/commit-queue" && req.method == "GET")
     {
-        if (!isAuthenticated(req))
-        {
-            return unauthorized(req.version(), req.keep_alive());
-        }
-        return handleCommitQueue(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleCommitQueue(sm, req, resp);
     }
 
-    if (target == "/api/devices" && req.method() == http::verb::get)
+    if (target == "/api/devices" && req.method == "GET")
     {
-        if (!isAuthenticated(req))
-            return unauthorized(req.version(), req.keep_alive());
-        return handleDevices(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleDevices(sm, req, resp);
     }
 
-    if (target.rfind("/api/logs", 0) == 0 && req.method() == http::verb::get)
+    if (target.rfind("/api/logs", 0) == 0 && req.method == "GET")
     {
-        if (!isAuthenticated(req))
-            return unauthorized(req.version(), req.keep_alive());
-        return handleLogs(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleLogs(sm, req, resp);
     }
 
-    if (target == "/api/node-metrics" && req.method() == http::verb::get)
+    if (target == "/api/node-metrics" && req.method == "GET")
     {
-        if (!isAuthenticated(req))
-            return unauthorized(req.version(), req.keep_alive());
-        return handleNodeMetrics(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleNodeMetrics(sm, req, resp);
     }
 
     // Laboratory: client POSTs a canvas-rasterized PDF; we reflect it back as a real
     // server-served attachment so the download URL is this route (not blob:/data:).
-    if (target == "/api/lab/cidi-export" && req.method() == http::verb::post)
+    if (target == "/api/lab/cidi-export" && req.method == "POST")
     {
-        if (!isAuthenticated(req))
-            return unauthorized(req.version(), req.keep_alive());
-        return handleLabExport(req);
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleLabExport(sm, req, resp);
     }
 
     // ── Static files ──────────────────────────────────────────────────────
@@ -218,163 +208,87 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::dispatch(const Request& req)
             if (target == p) { isPublic = true; break; }
         }
 
-        if (!isPublic && !isAuthenticated(req))
+        if (!isPublic && !isAuthenticated(sm, req))
         {
             // Redirect browsers to login page instead of a bare 401.
-            Response res{http::status::found, req.version()};
-            res.set(http::field::server,   "pz-mgmtd");
-            res.set(http::field::location, "/index.html");
-            res.keep_alive(req.keep_alive());
-            res.prepare_payload();
-            return res;
+            resp.status      = 302;
+            resp.contentType = "text/plain; charset=utf-8";
+            resp.body.clear();
+            resp.location    = "/index.html";
+            return;
         }
 
-        return handleStatic(req);
+        return handleStatic(sm, req, resp);
     }
 
-    return makeResponse(http::status::not_found,
-                        R"({"error":"not found"})",
-                        "application/json; charset=utf-8",
-                        req.version(),
-                        req.keep_alive());
+    // Unmatched: leave the default 404 the response was seeded with.
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleMetric(const Request& req)
+void WebService::handleMetric(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
-    if (!m_metricService)
-    {
-        return makeResponse(http::status::service_unavailable,
-                            "# mgmtd metric service unavailable\n",
-                            "text/plain; version=0.0.4; charset=utf-8",
-                            req.version(),
-                            req.keep_alive());
-    }
-
-    return makeResponse(http::status::ok,
-                        m_metricService->renderPrometheus(),
-                        "text/plain; version=0.0.4; charset=utf-8",
-                        req.version(),
-                        req.keep_alive());
+    (void)req;
+    fill(resp, 200,
+         sm.metricService().renderPrometheus(),
+         "text/plain; version=0.0.4; charset=utf-8");
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleHealth(const Request& req)
+void WebService::handleHealth(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
-    return makeResponse(http::status::ok,
-                        R"({"status":"ok","daemon":"mgmtd"})",
-                        "application/json; charset=utf-8",
-                        req.version(),
-                        req.keep_alive());
+    (void)sm; (void)req;
+    fill(resp, 200, R"({"status":"ok","daemon":"mgmtd"})");
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLogin(const Request& req)
+void WebService::handleLogin(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
-    if (!m_authService)
-    {
-        return makeResponse(http::status::service_unavailable,
-                            R"({"error":"auth unavailable"})",
-                            "application/json; charset=utf-8",
-                            req.version(),
-                            req.keep_alive());
-    }
-
     try
     {
-        const auto body     = json::parse(req.body());
+        const auto body     = json::parse(req.body);
         const auto username = body.at("username").get<std::string>();
         const auto password = body.at("password").get<std::string>();
 
-        const auto result = m_authService->login(username, password);
+        const auto result = sm.authService().login(username, password);
         if (!result.success)
-        {
-            return makeResponse(http::status::unauthorized,
-                                R"({"error":"invalid credentials"})",
-                                "application/json; charset=utf-8",
-                                req.version(),
-                                req.keep_alive());
-        }
+            return fill(resp, 401, R"({"error":"invalid credentials"})");
 
         // Signal must_change so the client forces a password change before proceeding.
         const json okBody = {{"status", "ok"}, {"must_change", result.mustChange}};
-        auto res = makeResponse(http::status::ok,
-                                okBody.dump(),
-                                "application/json; charset=utf-8",
-                                req.version(),
-                                req.keep_alive());
-        res.set(http::field::set_cookie,
-                "session=" + result.sessionId + "; HttpOnly; Path=/; SameSite=Strict");
-        return res;
+        fill(resp, 200, okBody.dump());
+        resp.setCookie =
+            "session=" + result.sessionId + "; HttpOnly; Path=/; SameSite=Strict";
     }
     catch (const std::exception& e)
     {
         LOG_WARN("login bad request (error={})", e.what());
-        return makeResponse(http::status::bad_request,
-                            R"({"error":"bad request"})",
-                            "application/json; charset=utf-8",
-                            req.version(),
-                            req.keep_alive());
+        fill(resp, 400, R"({"error":"bad request"})");
     }
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLogout(const Request& req)
+void WebService::handleLogout(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
-    if (m_authService)
-    {
-        m_authService->logout(extractSession(req));
-    }
+    sm.authService().logout(extractSession(req));
 
-    auto res = makeResponse(http::status::ok,
-                            R"({"status":"logged_out"})",
-                            "application/json; charset=utf-8",
-                            req.version(),
-                            req.keep_alive());
-    res.set(http::field::set_cookie, "session=; Path=/; Max-Age=0");
-    return res;
+    fill(resp, 200, R"({"status":"logged_out"})");
+    resp.setCookie = "session=; Path=/; Max-Age=0";
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleChangePassword(const Request& req)
+void WebService::handleChangePassword(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
-    if (!m_authService)
-    {
-        return makeResponse(http::status::service_unavailable,
-                            R"({"error":"auth unavailable"})",
-                            "application/json; charset=utf-8",
-                            req.version(), req.keep_alive());
-    }
-
     try
     {
-        const auto body    = json::parse(req.body());
+        const auto body    = json::parse(req.body);
         const auto oldPass = body.at("old_password").get<std::string>();
         const auto newPass = body.at("new_password").get<std::string>();
 
         if (newPass.empty())
-        {
-            return makeResponse(http::status::bad_request,
-                                R"({"error":"new password must not be empty"})",
-                                "application/json; charset=utf-8",
-                                req.version(), req.keep_alive());
-        }
+            return fill(resp, 400, R"({"error":"new password must not be empty"})");
 
         // Single operator account: the username is whatever the (authenticated)
         // session's admin is. Require the current password before changing it.
-        const std::string& user = m_authService->username();
-        if (!m_authService->checkPassword(user, oldPass))
-        {
-            return makeResponse(http::status::unauthorized,
-                                R"({"error":"current password is incorrect"})",
-                                "application/json; charset=utf-8",
-                                req.version(), req.keep_alive());
-        }
-
-        if (!m_serviceManager)
-        {
-            return makeResponse(http::status::service_unavailable,
-                                R"({"error":"engine unavailable"})",
-                                "application/json; charset=utf-8",
-                                req.version(), req.keep_alive());
-        }
+        const std::string& user = sm.authService().username();
+        if (!sm.authService().checkPassword(user, oldPass))
+            return fill(resp, 401, R"({"error":"current password is incorrect"})");
 
         // mgmtd is read-only w.r.t. the DB: compute the new credential and hand the
         // WRITE to engined (the single DB writer) over IPC. The HTTP server runs on the
@@ -382,7 +296,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleChangePassword(const Reques
         // blocking confirm would stall the very loop that flushes this IPC frame,
         // deadlocking itself. Instead we send and adopt the credential optimistically;
         // engined persists it, and the DB stays the source of truth across restarts.
-        const auto cred = m_authService->makeCredential(newPass);
+        const auto cred = sm.authService().makeCredential(newPass);
 
         const json payload = {{"username",      user},
                               {"password_hash", cred.passwordHash},
@@ -395,79 +309,65 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleChangePassword(const Reques
         msg->setCmd(pz::ipc::IpcCmd::AdminPasswordUpdate);
         msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
         msg->setPayload(std::vector<uint8_t>(payloadStr.begin(), payloadStr.end()));
-        m_serviceManager->txRouter().handleIpcMessage(std::move(msg));
+        sm.txRouter().handleIpcMessage(std::move(msg));
 
         // Adopt the new credential into memory immediately: subsequent logins verify
         // against it and the forced-change gate opens (m_mustChange cleared).
-        m_authService->applyCredential(cred.passwordHash, cred.salt);
+        sm.authService().applyCredential(cred.passwordHash, cred.salt);
 
         LOG_INFO("admin password change sent to engined (user={})", user);
-        return makeResponse(http::status::ok,
-                            R"({"status":"ok"})",
-                            "application/json; charset=utf-8",
-                            req.version(), req.keep_alive());
+        fill(resp, 200, R"({"status":"ok"})");
     }
     catch (const std::exception& e)
     {
         LOG_WARN("change-password bad request (error={})", e.what());
-        return makeResponse(http::status::bad_request,
-                            R"({"error":"bad request"})",
-                            "application/json; charset=utf-8",
-                            req.version(), req.keep_alive());
+        fill(resp, 400, R"({"error":"bad request"})");
     }
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleWhoami(const Request& req)
+void WebService::handleWhoami(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
     // Identify the signed-in user for the UI. Prefer the per-session identity (the SSO
     // subject/email, or the local admin name); fall back to the local operator name for
     // legacy sessions minted before the session carried a username.
-    std::string user;
-    if (m_authService)
-    {
-        user = m_authService->sessionUser(extractSession(req));
-        if (user.empty())
-            user = m_authService->username();
-    }
+    std::string user = sm.authService().sessionUser(extractSession(req));
+    if (user.empty())
+        user = sm.authService().username();
 
     const json out = {{"username", user}};
-    return makeResponse(http::status::ok, out.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(), req.keep_alive());
+    fill(resp, 200, out.dump());
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleStatus(const Request& req)
+void WebService::handleStatus(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
+    (void)req;
     json body;
 
     body["uptime_seconds"] = 0.0;
 
     json daemons = json::array();
 
-    if (m_serviceManager)
+    const auto& hb = sm.heartbeatService();
+    if (hb.hasData())
     {
-        const auto& hb = m_serviceManager->heartbeatService();
-        if (hb.hasData())
+        try
         {
-            try
-            {
-                const auto hbRoot = json::parse(hb.latestJson());
+            const auto hbRoot = json::parse(hb.latestJson());
 
-                body["timestamp_ms"] = hbRoot.value("timestamp_ms", json(nullptr));
+            body["timestamp_ms"] = hbRoot.value("timestamp_ms", json(nullptr));
 
-                for (const auto& d : hbRoot.value("daemons", json::array()))
-                {
-                    json entry;
-                    entry["name"]       = d.value("name", "unknown");
-                    entry["status"]     = d.value("status", "dead");
-                    entry["latency_ms"] = d.contains("latency_ms") ? d["latency_ms"] : json(nullptr);
-                    daemons.push_back(std::move(entry));
-                }
-            }
-            catch (...)
+            for (const auto& d : hbRoot.value("daemons", json::array()))
             {
-                // keep daemons array as-is on parse failure
+                json entry;
+                entry["name"]       = d.value("name", "unknown");
+                entry["status"]     = d.value("status", "dead");
+                entry["latency_ms"] = d.contains("latency_ms") ? d["latency_ms"] : json(nullptr);
+                daemons.push_back(std::move(entry));
             }
+        }
+        catch (...)
+        {
+            // keep daemons array as-is on parse failure
         }
     }
 
@@ -484,11 +384,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleStatus(const Request& req)
         {{"source", "engined"}, {"message", "heartbeat polling active"}},
     });
 
-    return makeResponse(http::status::ok,
-                        body.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(),
-                        req.keep_alive());
+    fill(resp, 200, body.dump());
 }
 
 namespace
@@ -509,8 +405,9 @@ constexpr const char* kHiddenDomains[] = {
 
 } // namespace
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsGet(const Request& req)
+void WebService::handleSettingsGet(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
+    (void)sm; (void)req;
     json daemons = json::object();
 
     for (const auto* name : kSettingsDaemons)
@@ -543,28 +440,20 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsGet(const Request& 
     json body;
     body["daemons"] = std::move(daemons);
 
-    return makeResponse(http::status::ok,
-                        body.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(),
-                        req.keep_alive());
+    fill(resp, 200, body.dump());
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsCommit(const Request& req)
+void WebService::handleSettingsCommit(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
     auto badRequest = [&](const char* error)
     {
-        return makeResponse(http::status::bad_request,
-                            json{{"error", error}}.dump(),
-                            "application/json; charset=utf-8",
-                            req.version(),
-                            req.keep_alive());
+        fill(resp, 400, json{{"error", error}}.dump());
     };
 
     json input;
     try
     {
-        input = json::parse(req.body());
+        input = json::parse(req.body);
     }
     catch (const std::exception&)
     {
@@ -573,9 +462,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsCommit(const Reques
 
     // Body: { "changes": [ {daemon, domain, values}, ... ] }
     if (!input.contains("changes") || !input["changes"].is_array())
-    {
         return badRequest("expected {changes: [{daemon, domain, values}]}");
-    }
 
     const json& changes = input["changes"];
 
@@ -621,7 +508,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsCommit(const Reques
 
     // Forward valid changes to engined as SettingsCommitRequest.
     // engined owns persistence (Config::commitConfig) and service-layer restart.
-    if (applied > 0 && m_serviceManager)
+    if (applied > 0)
     {
         const std::string payload = validChanges.dump();
         auto msg = std::make_unique<pz::ipc::IpcMessage>();
@@ -631,14 +518,14 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsCommit(const Reques
         msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
         msg->setPayload(std::vector<uint8_t>(payload.begin(), payload.end()));
 
-        m_serviceManager->txRouter().handleIpcMessage(std::move(msg));
-        m_serviceManager->startReload();
+        sm.txRouter().handleIpcMessage(std::move(msg));
+        sm.startReload();
         LOG_INFO("SettingsCommitRequest sent to engined (changes={})", applied);
     }
 
-    const http::status status = (failed == 0)
-        ? http::status::ok
-        : (applied > 0 ? http::status::ok : http::status::internal_server_error);
+    const int status = (failed == 0)
+        ? 200
+        : (applied > 0 ? 200 : 500);
 
     json body;
     body["applied"]   = applied;
@@ -646,27 +533,15 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSettingsCommit(const Reques
     body["results"]   = json::array();
     body["reloading"] = (applied > 0);
 
-    return makeResponse(status,
-                        body.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(),
-                        req.keep_alive());
+    fill(resp, status, body.dump());
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleReloadStatus(const Request& req)
+void WebService::handleReloadStatus(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
+    (void)req;
     json body;
 
-    if (!m_serviceManager)
-    {
-        body["status"] = "idle";
-        body["elapsed_ms"] = 0;
-        return makeResponse(http::status::ok, body.dump(),
-                            "application/json; charset=utf-8",
-                            req.version(), req.keep_alive());
-    }
-
-    const auto s = m_serviceManager->reloadStatus();
+    const auto s = sm.reloadStatus();
 
     if (s == MgmtdServiceManager::ReloadStatus::Reloading)
         body["status"] = "reloading";
@@ -675,79 +550,55 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleReloadStatus(const Request&
     else
         body["status"] = "idle";
 
-    body["elapsed_ms"] = m_serviceManager->reloadElapsedMs();
+    body["elapsed_ms"] = sm.reloadElapsedMs();
 
-    return makeResponse(http::status::ok, body.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(), req.keep_alive());
+    fill(resp, 200, body.dump());
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleCommitQueue(const Request& req)
+void WebService::handleCommitQueue(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
-    const std::string snapshot = m_serviceManager
-        ? m_serviceManager->commitQueueSnapshot()
-        : "[]";
-
-    return makeResponse(http::status::ok,
-                        snapshot,
-                        "application/json; charset=utf-8",
-                        req.version(),
-                        req.keep_alive());
+    (void)req;
+    fill(resp, 200, sm.commitQueueSnapshot());
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleStatic(const Request& req)
+void WebService::handleStatic(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
+    (void)sm;
     if (!m_cache)
-    {
-        return makeResponse(http::status::service_unavailable,
-                            "static cache unavailable",
-                            "text/plain; charset=utf-8",
-                            req.version(),
-                            req.keep_alive());
-    }
+        return fill(resp, 503, "static cache unavailable", "text/plain; charset=utf-8");
 
     // Strip query string before cache lookup (?tab=icmp, etc.)
-    std::string staticPath(req.target());
+    std::string staticPath(req.target);
     const auto qpos = staticPath.find('?');
     if (qpos != std::string::npos)
         staticPath.erase(qpos);
 
     auto file = m_cache->get(staticPath);
     if (!file)
-    {
-        return makeResponse(http::status::not_found,
-                            "not found",
-                            "text/plain; charset=utf-8",
-                            req.version(),
-                            req.keep_alive());
-    }
+        return fill(resp, 404, "not found", "text/plain; charset=utf-8");
 
-    return makeResponse(http::status::ok,
-                        std::move(file->body),
-                        file->contentType,
-                        req.version(),
-                        req.keep_alive());
+    fill(resp, 200, std::move(file->body), std::move(file->contentType));
+    // Content-addressed validator; the Handler turns a matching If-None-Match into a 304.
+    resp.etag = std::move(file->etag);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-bool MgmtdHttpRxRouter::isAuthenticated(const Request& req) const
+bool WebService::isAuthenticated(MgmtdServiceManager& sm, const Request& req) const
 {
-    if (!m_authService) return false;
-    return m_authService->validateSession(extractSession(req));
+    return sm.authService().validateSession(extractSession(req));
 }
 
-bool MgmtdHttpRxRouter::isStaticTarget(const std::string& target) const
+bool WebService::isStaticTarget(const std::string& target)
 {
     return target.rfind("/api", 0) != 0;
 }
 
-std::string MgmtdHttpRxRouter::extractSession(const Request& req) const
+std::string WebService::extractSession(const Request& req)
 {
-    auto it = req.find(http::field::cookie);
-    if (it == req.end()) return {};
+    const std::string& cookies = req.cookie;
+    if (cookies.empty()) return {};
 
-    const std::string cookies(it->value());
     const std::string key = "session=";
     auto pos = cookies.find(key);
     while (pos != std::string::npos)
@@ -764,107 +615,80 @@ std::string MgmtdHttpRxRouter::extractSession(const Request& req) const
     return cookies.substr(pos + key.size(), end - (pos + key.size()));
 }
 
-
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::unauthorized(unsigned version, bool keepAlive)
-{
-    return makeResponse(http::status::unauthorized,
-                        R"({"error":"unauthorized"})",
-                        "application/json; charset=utf-8",
-                        version,
-                        keepAlive);
-}
-
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::makeResponse(http::status status,
-                                              std::string  body,
-                                              std::string  contentType,
-                                              unsigned     version,
-                                              bool         keepAlive)
-{
-    Response res{status, version};
-    res.set(http::field::server,       "pz-mgmtd");
-    res.set(http::field::content_type, std::move(contentType));
-    res.keep_alive(keepAlive);
-    res.body() = std::move(body);
-    res.prepare_payload();
-    return res;
-}
-
 // ── /api/devices ─────────────────────────────────────────────────────────────
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleDevices(const Request& req)
+void WebService::handleDevices(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
+    (void)req;
     json body;
     json devices = json::array();
     int networkCount = 0;
     int serverCount  = 0;
     int unknownCount = 0;
 
-    if (m_serviceManager)
-    {
-        const auto groups = m_serviceManager->deviceService().groups();
+    const auto groups = sm.deviceService().groups();
 
-        // Rack allocation lives in running-config (engined.service.rack.racks); each
-        // allocated device carries a literal {device, ip, status}. Build ip -> rack-name
-        // so the Devices view can show which rack a device is declared in (replacing SNMP
-        // sysLocation). The green/red reconciliation against probe state is done client-side.
-        std::unordered_map<std::string, std::string> rackByIp;
+    // Rack allocation lives in running-config (engined.service.rack.racks); each
+    // allocated device carries a literal {device, ip, status}. Build ip -> rack-name
+    // so the Devices view can show which rack a device is declared in (replacing SNMP
+    // sysLocation). The green/red reconciliation against probe state is done client-side.
+    std::unordered_map<std::string, std::string> rackByIp;
+    {
+        const auto& eng  = pz::config::Config::daemonConfig("engined");
+        const auto  svc  = eng.value("service", json::object());
+        const auto  rack = svc.value("rack", json::object());
+        for (const auto& rk : rack.value("racks", json::array()))
         {
-            const auto& eng  = pz::config::Config::daemonConfig("engined");
-            const auto  svc  = eng.value("service", json::object());
-            const auto  rack = svc.value("rack", json::object());
-            for (const auto& rk : rack.value("racks", json::array()))
-            {
-                const std::string name = rk.value("name", "");
-                for (const auto& d : rk.value("devices", json::array()))
-                    rackByIp[d.value("ip", "")] = name;
-            }
+            const std::string name = rk.value("name", "");
+            for (const auto& d : rk.value("devices", json::array()))
+                rackByIp[d.value("ip", "")] = name;
+        }
+    }
+
+    for (const auto& g : groups)
+    {
+        if (g.type == "network")      ++networkCount;
+        else if (g.type == "server")  ++serverCount;
+        else                          ++unknownCount;
+
+        // location = name of the rack this device's IP is allocated to (if any).
+        std::string location;
+        for (const auto& ip : g.ips)
+        {
+            auto it = rackByIp.find(ip);
+            if (it != rackByIp.end()) { location = it->second; break; }
         }
 
-        for (const auto& g : groups)
+        json ifaces = json::array();
+        for (const auto& itf : g.interfaces)
         {
-            if (g.type == "network")      ++networkCount;
-            else if (g.type == "server")  ++serverCount;
-            else                          ++unknownCount;
-
-            // location = name of the rack this device's IP is allocated to (if any).
-            std::string location;
-            for (const auto& ip : g.ips)
-            {
-                auto it = rackByIp.find(ip);
-                if (it != rackByIp.end()) { location = it->second; break; }
-            }
-
-            json ifaces = json::array();
-            for (const auto& itf : g.interfaces)
-            {
-                ifaces.push_back({
-                    {"ip",       itf.ip},
-                    {"netmask",  itf.netmask},
-                    {"if_index", itf.ifIndex},
-                    {"if_name",  itf.ifName},
-                });
-            }
-
-            devices.push_back({
-                {"primary_ip",        g.primaryIp},
-                {"ips",               g.ips},
-                {"type",              g.type},
-                {"subtype",           g.subtype},
-                {"vendor",            g.vendor},
-                {"hostname",          g.hostname},
-                {"sys_descr",         g.sysDescr},
-                {"sys_object_id",     g.sysObjectId},
-                {"sys_contact",       g.sysContact},
-                {"location",          location},
-                {"sys_up_time_ticks", g.sysUpTimeTicks},
-                {"interface_macs",    g.interfaceMacs},
-                {"interfaces",        std::move(ifaces)},
-                {"if_table",          g.ifTable},
-                {"lldp_neighbors",    g.lldpNeighbors},
-                {"host_mac",          g.hostMac},
-                {"has_snmp",          g.hasSnmp},
+            ifaces.push_back({
+                {"ip",       itf.ip},
+                {"netmask",  itf.netmask},
+                {"if_index", itf.ifIndex},
+                {"if_name",  itf.ifName},
             });
         }
+
+        devices.push_back({
+            {"primary_ip",        g.primaryIp},
+            {"ips",               g.ips},
+            {"type",              g.type},
+            {"subtype",           g.subtype},
+            {"vendor",            g.vendor},
+            {"hostname",          g.hostname},
+            {"sys_descr",         g.sysDescr},
+            {"sys_object_id",     g.sysObjectId},
+            {"sys_contact",       g.sysContact},
+            {"location",          location},
+            {"sys_up_time_ticks", g.sysUpTimeTicks},
+            {"interface_macs",    g.interfaceMacs},
+            {"interfaces",        std::move(ifaces)},
+            {"if_table",          g.ifTable},
+            {"lldp_neighbors",    g.lldpNeighbors},
+            {"host_mac",          g.hostMac},
+            {"has_snmp",          g.hasSnmp},
+        });
     }
 
     body["summary"] = {
@@ -875,9 +699,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleDevices(const Request& req)
     };
     body["devices"] = std::move(devices);
 
-    return makeResponse(http::status::ok, body.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(), req.keep_alive());
+    fill(resp, 200, body.dump());
 }
 
 // ── /api/logs ─────────────────────────────────────────────────────────────────
@@ -931,9 +753,10 @@ const std::vector<std::string> kKnownDaemons = {
 };
 } // namespace
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLogs(const Request& req)
+void WebService::handleLogs(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
-    const std::string target(req.target());
+    (void)sm;
+    const std::string& target = req.target;
     std::string daemon  = queryParam(target, "daemon");
     // lines not present → read entire file (maxLines = 0)
     const int   maxLines = [&]{
@@ -949,12 +772,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLogs(const Request& req)
         const bool known = std::any_of(kKnownDaemons.begin(), kKnownDaemons.end(),
             [&](const std::string& d) { return d == daemon; });
         if (!known)
-        {
-            return makeResponse(http::status::bad_request,
-                                json{{"error", "unknown daemon"}}.dump(),
-                                "application/json; charset=utf-8",
-                                req.version(), req.keep_alive());
-        }
+            return fill(resp, 400, json{{"error", "unknown daemon"}}.dump());
     }
 
     json body;
@@ -983,9 +801,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLogs(const Request& req)
         body["daemons"] = std::move(all);
     }
 
-    return makeResponse(http::status::ok, body.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(), req.keep_alive());
+    fill(resp, 200, body.dump());
 }
 
 // ── /api/node-metrics ─────────────────────────────────────────────────────────
@@ -1046,8 +862,9 @@ CpuSnapshot s_cpuPrev;
 double      s_cpuPct{0.0};
 } // namespace
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleNodeMetrics(const Request& req)
+void WebService::handleNodeMetrics(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
+    (void)sm; (void)req;
     const auto cur = readCpuSnapshot();
     if (s_cpuPrev.total > 0 && cur.total > s_cpuPrev.total)
     {
@@ -1062,9 +879,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleNodeMetrics(const Request& 
     body["mem_pct"]  = std::round(readMemPct()  * 10) / 10.0;
     body["disk_pct"] = std::round(readDiskPct() * 10) / 10.0;
 
-    return makeResponse(http::status::ok, body.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(), req.keep_alive());
+    fill(resp, 200, body.dump());
 }
 
 // ── SSO (Okta via authd) helpers ────────────────────────────────────────────
@@ -1219,8 +1034,9 @@ std::string labBase64Decode(const std::string& in)
 
 } // namespace
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSsoInfo(const Request& req)
+void WebService::handleSsoInfo(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
+    (void)req;
     const auto auth = ssoAuthConfig();
     const std::string method = auth.value("method", std::string("oidc"));
     bool enabled = false;
@@ -1234,31 +1050,28 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSsoInfo(const Request& req)
     // every /api/* call — so an SSO session would authenticate only to hit that wall.
     // Report SSO as disabled until an admin account has been set up; the login page
     // hides the "Sign in with Okta" button on {enabled:false}.
-    const bool adminSetup = !(m_authService && m_authService->mustChangePassword());
+    const bool adminSetup = !sm.authService().mustChangePassword();
     enabled = enabled && adminSetup;
 
     const json out = {{"enabled", enabled},
                       {"method", method},
                       {"label", "Sign in with Okta"},
                       {"admin_setup_required", !adminSetup}};
-    return makeResponse(http::status::ok, out.dump(),
-                        "application/json; charset=utf-8",
-                        req.version(), req.keep_alive());
+    fill(resp, 200, out.dump());
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSsoLogin(const Request& req)
+void WebService::handleSsoLogin(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
+    (void)req;
     auto redirectErr = [&](const std::string& code) {
-        auto r = makeResponse(http::status::found, "", "text/plain",
-                              req.version(), req.keep_alive());
-        r.set(http::field::location, "/index.html?sso_error=" + code);
-        return r;
+        fill(resp, 302, "", "text/plain");
+        resp.location = "/index.html?sso_error=" + code;
     };
 
     // Defense in depth for the SSO gate: even if a stale page still shows the button,
     // refuse to start the IdP round-trip while the local admin is unprovisioned — the
     // resulting session would only 403 on every /api/*. Mirrors handleSsoInfo.
-    if (m_authService && m_authService->mustChangePassword())
+    if (sm.authService().mustChangePassword())
         return redirectErr("setup_required");
 
     const auto auth = ssoAuthConfig();
@@ -1296,22 +1109,18 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSsoLogin(const Request& req
         "<noscript><button type=\"submit\">Continue to Okta</button></noscript>"
         "</form></body></html>";
 
-    return makeResponse(http::status::ok, html, "text/html; charset=utf-8",
-                        req.version(), req.keep_alive());
+    fill(resp, 200, html, "text/html; charset=utf-8");
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSamlAcs(const Request& req)
+void WebService::handleSamlAcs(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
     auto redirectErr = [&](const std::string& code) {
-        auto r = makeResponse(http::status::found, "", "text/plain",
-                              req.version(), req.keep_alive());
-        r.set(http::field::location, "/index.html?sso_error=" + code);
-        return r;
+        fill(resp, 302, "", "text/plain");
+        resp.location = "/index.html?sso_error=" + code;
     };
 
-    const std::string samlResponse = ssoFormField(req.body(), "SAMLResponse");
+    const std::string samlResponse = ssoFormField(req.body, "SAMLResponse");
     if (samlResponse.empty())   return redirectErr("no_saml_response");
-    if (!m_serviceManager)      return redirectErr("unavailable");
 
     // Hand the SAMLResponse to authd for verification (fire-and-forget). The verdict
     // returns asynchronously via MgmtdRxRouter, keyed by this ticket (= IPC seqNo).
@@ -1326,7 +1135,7 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSamlAcs(const Request& req)
     msg->setSeqNo(ticket);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
     msg->setPayload(std::vector<std::uint8_t>(ps.begin(), ps.end()));
-    m_serviceManager->txRouter().handleIpcMessage(std::move(msg));
+    sm.txRouter().handleIpcMessage(std::move(msg));
 
     // "Signing in…" page polls for the verdict; on success the poll response sets the
     // session cookie and redirects to the dashboard.
@@ -1345,27 +1154,24 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSamlAcs(const Request& req)
         "go();})();"
         "</script></body></html>";
 
-    return makeResponse(http::status::ok, html, "text/html; charset=utf-8",
-                        req.version(), req.keep_alive());
+    fill(resp, 200, html, "text/html; charset=utf-8");
 }
 
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSamlResult(const Request& req)
+void WebService::handleSamlResult(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
     auto jsonResp = [&](const json& j) {
-        return makeResponse(http::status::ok, j.dump(),
-                            "application/json; charset=utf-8",
-                            req.version(), req.keep_alive());
+        fill(resp, 200, j.dump());
     };
 
-    const std::string target(req.target());
+    const std::string& target = req.target;
     std::uint32_t ticket = 0;
     if (auto pos = target.find("ticket="); pos != std::string::npos)
         ticket = static_cast<std::uint32_t>(std::strtoul(target.c_str() + pos + 7, nullptr, 10));
 
-    if (!m_serviceManager || ticket == 0)
+    if (ticket == 0)
         return jsonResp({{"status", "error"}, {"error", "bad ticket"}});
 
-    auto result = m_serviceManager->takeSsoResult(ticket);
+    auto result = sm.takeSsoResult(ticket);
     if (!result)
         return jsonResp({{"status", "pending"}});
 
@@ -1375,20 +1181,15 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSamlResult(const Request& r
         if (verdict.value("success", false))
         {
             const std::string user = verdict.value("username", "");
-            const std::string sid  = m_authService
-                                    ? m_authService->createSsoSession(user)
-                                    : std::string();
+            const std::string sid  = sm.authService().createSsoSession(user);
             if (sid.empty())
                 return jsonResp({{"status", "error"}, {"error", "session error"}});
 
-            auto res = makeResponse(http::status::ok,
-                                    json({{"status", "ok"}, {"redirect", "/dashboard.html"}}).dump(),
-                                    "application/json; charset=utf-8",
-                                    req.version(), req.keep_alive());
-            res.set(http::field::set_cookie,
-                    "session=" + sid + "; HttpOnly; Path=/; SameSite=Strict");
+            fill(resp, 200,
+                 json({{"status", "ok"}, {"redirect", "/dashboard.html"}}).dump());
+            resp.setCookie = "session=" + sid + "; HttpOnly; Path=/; SameSite=Strict";
             LOG_INFO("sso login ok (user={})", user);
-            return res;
+            return;
         }
         return jsonResp({{"status", "error"},
                          {"error", verdict.value("error", std::string("verification failed"))}});
@@ -1406,18 +1207,14 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleSamlResult(const Request& r
 // an attachment. Net effect: the download is served from THIS real server route — the
 // event's File download URL is https://<host>/api/lab/cidi-export, not a blob:/data:
 // URL — while the file's content stays canvas pixels (no selectable text).
-MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLabExport(const Request& req)
+void WebService::handleLabExport(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
-    std::string pdf = labBase64Decode(ssoFormField(req.body(), "pdf"));
+    (void)sm;
+    std::string pdf = labBase64Decode(ssoFormField(req.body, "pdf"));
     if (pdf.empty())
-    {
-        return makeResponse(http::status::bad_request,
-                            R"({"error":"empty pdf"})",
-                            "application/json; charset=utf-8",
-                            req.version(), req.keep_alive());
-    }
+        return fill(resp, 400, R"({"error":"empty pdf"})");
 
-    std::string filename = ssoFormField(req.body(), "name");
+    std::string filename = ssoFormField(req.body, "name");
     filename.erase(std::remove_if(filename.begin(), filename.end(),
         [](char c) { return c == '"' || c == '\\' || c == '/' || c == '\r' || c == '\n'; }),
         filename.end());
@@ -1425,16 +1222,12 @@ MgmtdHttpRxRouter::Response MgmtdHttpRxRouter::handleLabExport(const Request& re
 
     const std::size_t bytes = pdf.size();
 
-    Response res{http::status::ok, req.version()};
-    res.set(http::field::server,              "pz-mgmtd");
-    res.set(http::field::content_type,        "application/pdf");
-    res.set(http::field::content_disposition, "attachment; filename=\"" + filename + "\"");
-    res.keep_alive(req.keep_alive());
-    res.body() = std::move(pdf);
-    res.prepare_payload();
+    resp.status             = 200;
+    resp.contentType        = "application/pdf";
+    resp.contentDisposition = "attachment; filename=\"" + filename + "\"";
+    resp.body               = std::move(pdf);
 
     LOG_INFO("lab cidi-export served (name={}, bytes={})", filename, bytes);
-    return res;
 }
 
 } // namespace pz::mgmtd

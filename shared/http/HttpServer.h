@@ -24,6 +24,7 @@ public:
                bool tlsEnabled,
                std::string certFile,
                std::string keyFile,
+               std::string serverName,
                std::shared_ptr<HttpHandler> handler);
 
     bool init();
@@ -43,6 +44,7 @@ private:
     bool m_tlsEnabled {false};
     std::string m_certFile;
     std::string m_keyFile;
+    std::string m_serverName;
 
     std::shared_ptr<HttpHandler> m_handler;
 

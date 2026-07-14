@@ -1,7 +1,11 @@
 #include "router/MgmtdRxRouter.h"
 
+#include "service/web/WebEvent.h"
+
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
+
+#include <memory>
 
 namespace pz::mgmtd
 {
@@ -62,6 +66,16 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     std::unique_ptr<MgmtdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));
+}
+
+void MgmtdRxRouter::dispatchHttp(pz::http::HttpRequest req,
+                                std::shared_ptr<pz::http::HttpResponder> responder)
+{
+    // Post and return. The event is drained by the ServiceManager on this same tick (its
+    // execute() runs right after the HTTP poll that produced this call); the service fills a
+    // response and posts a WebResponseAction that calls responder->send().
+    m_serviceManager->postEvent(
+        std::make_unique<WebEvent>(std::move(req), std::move(responder)));
 }
 
 } // namespace pz::mgmtd

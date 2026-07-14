@@ -15,7 +15,8 @@ enum class MgmtdActionDomain : std::uint32_t
 {
     Unknown   = 0,
     Bootstrap = 1,
-    Heartbeat = 2
+    Heartbeat = 2,
+    Http      = 3
 };
 
 class MgmtdAction : public pz::action::Action

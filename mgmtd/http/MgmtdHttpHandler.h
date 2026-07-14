@@ -5,24 +5,24 @@
 namespace pz::mgmtd
 {
 
-class MgmtdHttpRxRouter;
+class MgmtdRxRouter;
 
-// Handler layer: the transport-facing adapter that plugs mgmtd into the shared pz::http
-// transport (HttpListener/HttpSession) via the HttpHandler contract. It is intentionally
-// thin — it owns no routing or business logic, it just forwards each parsed request to
-// the HTTP router (the dispatch layer) and returns the synchronous response.
+// Handler layer: the daemon's plug into the shared pz::http transport. It is trivial now —
+// the session already delivers a transport-agnostic HttpRequest and a responder, so
+// this just forwards both to the RxRouter (which posts a WebEvent, exactly like IPC
+// ingress). The response is produced asynchronously and delivered via the responder.
 //
-//   HttpSession -> MgmtdHttpHandler -> MgmtdHttpRxRouter::dispatch -> services
-//     transport      handler              router                       service
+//   HttpSession -> MgmtdHttpHandler -> MgmtdRxRouter::dispatchHttp -> WebEvent -> WebService
 class MgmtdHttpHandler : public pz::http::HttpHandler
 {
 public:
-    explicit MgmtdHttpHandler(MgmtdHttpRxRouter* rxRouter);
+    explicit MgmtdHttpHandler(MgmtdRxRouter* rxRouter);
 
-    Response handle(const Request& req) override;
+    void handle(pz::http::HttpRequest request,
+                std::shared_ptr<pz::http::HttpResponder> responder) override;
 
 private:
-    MgmtdHttpRxRouter* m_rxRouter{nullptr};
+    MgmtdRxRouter* m_rxRouter{nullptr};
 };
 
 } // namespace pz::mgmtd

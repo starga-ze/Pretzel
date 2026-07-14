@@ -4,7 +4,6 @@
 
 #include "config/ConfigTypes.h"
 #include "http/HttpServer.h"
-#include "http/MgmtdHttpRxRouter.h"
 #include "ipc/IpcClient.h"
 #include "process/MgmtdProcess.h"
 #include "router/MgmtdRxRouter.h"
@@ -69,7 +68,6 @@ private:
     std::unique_ptr<MgmtdTxRouter>       m_txRouter;
     std::unique_ptr<MgmtdServiceManager> m_serviceManager;
     std::unique_ptr<MgmtdRxRouter>       m_rxRouter;
-    std::unique_ptr<MgmtdHttpRxRouter>   m_httpRxRouter;
     std::unique_ptr<pz::http::HttpServer> m_httpServer;
     std::unique_ptr<MgmtdProcess>        m_process;
 };

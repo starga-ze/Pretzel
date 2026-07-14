@@ -69,6 +69,7 @@ bool ApidCore::onInit()
                                                           m_httpConfig.tlsEnabled,
                                                           m_httpConfig.certFile,
                                                           m_httpConfig.keyFile,
+                                                          "pz-apid",
                                                           std::move(httpHandler));
     if (!m_httpServer || !m_httpServer->init())
     {

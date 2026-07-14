@@ -31,12 +31,14 @@ HttpServer::HttpServer(std::string listenAddress,
                        bool tlsEnabled,
                        std::string certFile,
                        std::string keyFile,
+                       std::string serverName,
                        std::shared_ptr<HttpHandler> handler)
     : m_listenAddress(std::move(listenAddress)),
       m_listenPort(listenPort),
       m_tlsEnabled(tlsEnabled),
       m_certFile(std::move(certFile)),
       m_keyFile(std::move(keyFile)),
+      m_serverName(std::move(serverName)),
       m_handler(std::move(handler))
 {
 }
@@ -131,7 +133,8 @@ bool HttpServer::init()
     m_listener = std::make_shared<HttpListener>(m_ioContext,
                                                 endpoint,
                                                 m_handler,
-                                                m_sslContext);
+                                                m_sslContext,
+                                                m_serverName);
 
     if (!m_listener->open())
     {
