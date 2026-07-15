@@ -5,8 +5,10 @@
 namespace pz::apid
 {
 
-ApidTxRouter::ApidTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler)
-    : m_ipcClientHandler(ipcClientHandler)
+ApidTxRouter::ApidTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler,
+                           pz::http::HttpHandler* httpHandler)
+    : m_ipcClientHandler(ipcClientHandler),
+      m_httpHandler(httpHandler)
 {
 }
 
@@ -25,6 +27,17 @@ void ApidTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     }
 
     m_ipcClientHandler->egress(std::move(msg));
+}
+
+void ApidTxRouter::handleHttpMessage(pz::http::HttpResponse response, pz::http::SessionId id)
+{
+    if (!m_httpHandler)
+    {
+        LOG_ERROR("HTTP handler is not initialized");
+        return;
+    }
+
+    m_httpHandler->egress(std::move(response), id);
 }
 
 } // namespace pz::apid

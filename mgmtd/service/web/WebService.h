@@ -12,6 +12,7 @@ namespace pz::mgmtd
 
 class MgmtdServiceManager;
 class WebEvent;
+class WebAction;
 
 // Web/admin domain logic: the REST API + static frontend that back the mgmtd GUI. It
 // handles inbound HTTP events (dispatched through the ServiceManager queue, same as IPC
@@ -30,15 +31,20 @@ public:
     // share dir). Safe to leave unset — handleStatic 503s when the cache is absent.
     void setCache(std::shared_ptr<pz::http::StaticFileCache> cache);
 
-    // Routes the request, fills a response, and posts a WebResponseAction that delivers it.
+    // Routes the request, fills a response, and posts a WebAction (Event -> Action).
     void handleEvent(MgmtdServiceManager& serviceManager, const WebEvent& event);
+
+    // Drains the WebAction: performs the egress via the TxRouter (Action -> TxRouter ->
+    // HttpHandler::egress -> session write), the exact analogue of BootstrapService::handleAction
+    // doing IPC egress. Non-const action so the response body can be moved out, not copied.
+    void handleAction(MgmtdServiceManager& serviceManager, WebAction& action);
 
 private:
     using Request  = pz::http::HttpRequest;
     using Response = pz::http::HttpResponse;
 
     // Pure routing: fill resp from req (no transport, no queue). Split out so handleEvent
-    // posts the delivery action after it regardless of which branch produced the response.
+    // dispatches the response for egress regardless of which branch produced it.
     void route(MgmtdServiceManager& sm, const Request& req, Response& resp);
 
     void handleMetric         (MgmtdServiceManager& sm, const Request& req, Response& resp);

@@ -1,9 +1,16 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace pz::http
 {
+
+// Opaque handle for the connection a request arrived on — the HTTP analogue of an IPC
+// destination (daemon id). It flows through the event/action machinery beast-free; egress
+// resolves it back to the parked session via the HttpHandler's registry. 0 is never issued
+// (reserved "no session").
+using SessionId = std::uint64_t;
 
 // Pretzel's transport-agnostic HTTP messages: the parsed, beast-free forms of an inbound
 // request and its response — the HTTP analogue of pz::ipc::IpcMessage. The session (the only

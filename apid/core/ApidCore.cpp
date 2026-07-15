@@ -1,6 +1,6 @@
 #include "core/ApidCore.h"
 
-#include "http/ApidHttpHandler.h"
+#include "http/HttpHandler.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
@@ -45,8 +45,15 @@ bool ApidCore::onInit()
     m_eventFactory  = std::make_unique<ApidEventFactory>();
     m_actionFactory = std::make_unique<ApidActionFactory>();
 
+    // The two transport handlers are treated identically: IpcClient owns the IPC handler,
+    // HttpServer (below) will own this HTTP one. Both are created before the TxRouter and
+    // injected into it together (non-owning), then handed their RxRouter once it exists —
+    // the shared bootstrap dance (RxRouter needs ServiceManager needs TxRouter).
+    auto httpHandler = std::make_shared<pz::http::HttpHandler>();
+
     m_txRouter = std::make_unique<ApidTxRouter>(
-        m_ipcClient ? m_ipcClient->handler() : nullptr);
+        m_ipcClient ? m_ipcClient->handler() : nullptr,
+        httpHandler.get());
 
     m_serviceManager = std::make_unique<ApidServiceManager>(
         m_eventFactory.get(),
@@ -59,10 +66,7 @@ bool ApidCore::onInit()
     {
         m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
     }
-
-    // Handler layer: a thin transport adapter (beast <-> DTO) that forwards requests to
-    // the unified RxRouter — the same router that handles IPC ingress.
-    auto httpHandler = std::make_shared<ApidHttpHandler>(m_rxRouter.get());
+    httpHandler->setRxRouter(m_rxRouter.get());
 
     m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress,
                                                           m_httpConfig.listenPort,

@@ -147,6 +147,7 @@ bool HttpServer::init()
 
 bool HttpServer::poll()
 {
+    LOG_INFO("HttpServer poll call");
     m_ioContext.poll();
     return true;
 }

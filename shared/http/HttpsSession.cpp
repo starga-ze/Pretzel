@@ -1,6 +1,7 @@
 #include "http/HttpsSession.h"
 
 #include "http/HttpBeast.h"
+#include "http/HttpHandler.h"
 #include "util/Logger.h"
 
 #include <boost/asio/ssl.hpp>
@@ -9,17 +10,20 @@ namespace pz::http
 {
 
 HttpsSession::HttpsSession(tcp::socket socket,
-                           std::shared_ptr<HttpHandler> handler,
+                           HttpHandler* handler,
                            std::shared_ptr<boost::asio::ssl::context> sslContext,
                            std::string serverName)
     : m_stream(std::move(socket), *sslContext),
-      m_handler(std::move(handler)),
+      m_handler(handler),
       m_serverName(std::move(serverName))
 {
 }
 
 void HttpsSession::run()
 {
+    // Register with the handler: stamps our SessionId and keeps us alive across the handshake
+    // and every subsequent parked request (see HttpSession::run).
+    m_handler->addSession(shared_from_this());
     doHandshake();
 }
 
@@ -35,6 +39,7 @@ void HttpsSession::onHandshake(beast::error_code ec)
     if (ec)
     {
         LOG_TRACE("HTTPS handshake failed (error={})", ec.message());
+        m_handler->removeSession(m_id);
         return;
     }
 
@@ -54,6 +59,8 @@ void HttpsSession::doRead()
 
 void HttpsSession::onRead(beast::error_code ec, std::size_t)
 {
+    LOG_INFO("HttpsSession onRead call");
+
     if (ec == beast::http::error::end_of_stream)
     {
         doClose();
@@ -63,12 +70,13 @@ void HttpsSession::onRead(beast::error_code ec, std::size_t)
     if (ec)
     {
         LOG_TRACE("HTTPS read failed (error={})", ec.message());
+        m_handler->removeSession(m_id);
         return;
     }
 
-    // Ingress: hand a transport-agnostic request + this session (as responder) to the
-    // handler. It posts an HttpEvent and returns; the response arrives later via send().
-    m_handler->handle(detail::toRequest(m_request), shared_from_this());
+    // Ingress: hand a transport-agnostic request tagged with our SessionId to the handler. It
+    // posts an event and returns; the response arrives later via send().
+    m_handler->ingress(detail::toRequest(m_request), m_id);
 }
 
 void HttpsSession::send(HttpResponse response)
@@ -90,6 +98,7 @@ void HttpsSession::onWrite(bool close, beast::error_code ec, std::size_t)
     if (ec)
     {
         LOG_TRACE("HTTPS write failed (error={})", ec.message());
+        m_handler->removeSession(m_id);
         return;
     }
 
@@ -116,6 +125,8 @@ void HttpsSession::onShutdown(beast::error_code ec)
     {
         LOG_TRACE("HTTPS shutdown failed (error={})", ec.message());
     }
+
+    m_handler->removeSession(m_id);
 }
 
 } // namespace pz::http

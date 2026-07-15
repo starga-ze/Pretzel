@@ -1,7 +1,7 @@
 #include "core/MgmtdCore.h"
 
 #include "http/StaticFileCache.h"
-#include "http/MgmtdHttpHandler.h"
+#include "http/HttpHandler.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
@@ -59,8 +59,14 @@ bool MgmtdCore::onInit()
     m_eventFactory  = std::make_unique<MgmtdEventFactory>();
     m_actionFactory = std::make_unique<MgmtdActionFactory>();
 
+    // Both transport handlers are treated identically: IpcClient owns the IPC handler,
+    // HttpServer (below) will own this HTTP one. Both are created before the TxRouter and
+    // injected into it together (non-owning), then handed their RxRouter once it exists.
+    auto httpHandler = std::make_shared<pz::http::HttpHandler>();
+
     m_txRouter = std::make_unique<MgmtdTxRouter>(
-        m_ipcClient ? m_ipcClient->handler() : nullptr);
+        m_ipcClient ? m_ipcClient->handler() : nullptr,
+        httpHandler.get());
 
     m_serviceManager = std::make_unique<MgmtdServiceManager>(
         m_eventFactory.get(),
@@ -84,19 +90,19 @@ bool MgmtdCore::onInit()
     {
         m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
     }
+    httpHandler->setRxRouter(m_rxRouter.get());
 
-    // HTTP ingress mirrors IPC: the transport-facing MgmtdHttpHandler translates beast <->
-    // DTOs and forwards to MgmtdRxRouter::dispatchHttp, which posts a WebEvent to the
-    // WebService through the ServiceManager queue; the response is delivered asynchronously
-    // via a WebResponseAction. The static-asset cache the WebService serves from is built
-    // here from the share dir and injected. PRETZEL_MGMTD_STATIC_RELOAD=1 reads assets from
-    // disk per request (frontend iteration without a restart); default preloads into memory.
+    // HTTP mirrors IPC in both directions via the shared pz::http::HttpHandler (wired above):
+    // on ingress it forwards to the MgmtdRxRouter (posts a WebEvent); on egress the
+    // MgmtdTxRouter calls back into it (WebAction -> txRouter.dispatchHttp -> handler.egress ->
+    // session write). The static-asset cache the WebService serves from is built here from the
+    // share dir and injected. PRETZEL_MGMTD_STATIC_RELOAD=1 reads assets from disk per request
+    // (frontend iteration without a restart); default preloads into memory.
     const char* reloadEnv = std::getenv("PRETZEL_MGMTD_STATIC_RELOAD");
     const bool  staticReload = reloadEnv && *reloadEnv && std::string(reloadEnv) != "0";
     auto httpCache = std::make_shared<pz::http::StaticFileCache>(
         shareDir() + "/mgmtd/www", staticReload);
     m_serviceManager->webService().setCache(httpCache);
-    auto httpHandler = std::make_shared<MgmtdHttpHandler>(m_rxRouter.get());
 
     m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress,
                                                           m_httpConfig.listenPort,

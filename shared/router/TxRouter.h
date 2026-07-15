@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ipc/IpcMessage.h"
+#include "http/HttpMessage.h"
 
 #include <memory>
 
@@ -14,6 +15,8 @@ class TxRouter
         virtual ~TxRouter() = default;
 
         virtual void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage>) = 0;
+
+        virtual void handleHttpMessage(pz::http::HttpResponse, pz::http::SessionId) {};
 };
 
 }

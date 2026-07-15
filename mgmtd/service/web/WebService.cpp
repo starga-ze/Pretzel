@@ -1,8 +1,10 @@
 #include "service/web/WebService.h"
 
 #include "service/web/WebEvent.h"
-#include "service/web/WebResponseAction.h"
+#include "service/web/WebAction.h"
 #include "service/MgmtdServiceManager.h"
+
+#include "router/MgmtdTxRouter.h"
 
 #include "config/Config.h"
 #include "ipc/IpcMessage.h"
@@ -72,8 +74,17 @@ void WebService::handleEvent(MgmtdServiceManager& sm, const WebEvent& event)
     Response resp;  // default 404 for unmatched routes
     route(sm, event.request(), resp);
 
-    // Deliver asynchronously via the parked connection's responder (HTTP egress action).
-    sm.postAction(std::make_unique<WebResponseAction>(event.responder(), std::move(resp)));
+    // Event -> Action: post a WebAction carrying the response + the SessionId. Egress happens
+    // later, in handleAction (the action drain), never inline here — the same shape as IPC.
+    sm.postAction(std::make_unique<WebAction>(std::move(resp), event.sessionId()));
+}
+
+void WebService::handleAction(MgmtdServiceManager& sm, WebAction& action)
+{
+    LOG_DEBUG("WebService handleAction (domain={})", static_cast<std::uint32_t>(action.domain()));
+    // Egress via the TxRouter — the analogue of BootstrapService::handleAction sending an IPC
+    // message. The response body is moved (not copied) since static-asset bodies can be large.
+    sm.txRouter().handleHttpMessage(std::move(action.response()), action.sessionId());
 }
 
 void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& resp)

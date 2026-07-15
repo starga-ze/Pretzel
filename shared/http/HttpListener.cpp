@@ -92,14 +92,14 @@ void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
         if (m_sslContext)
         {
             std::make_shared<HttpsSession>(std::move(socket),
-                                           m_handler,
+                                           m_handler.get(),
                                            m_sslContext,
                                            m_serverName)->run();
         }
         else
         {
             std::make_shared<HttpSession>(std::move(socket),
-                                          m_handler,
+                                          m_handler.get(),
                                           m_serverName)->run();
         }
     }

@@ -9,6 +9,7 @@ namespace pz::apid
 
 class ApidServiceManager;
 class IngestEvent;
+class IngestAction;
 
 // Ingest domain logic. It handles inbound HTTP events (dispatched through the
 // ServiceManager queue, same as IPC events): it routes by method/target, authenticates
@@ -20,8 +21,13 @@ class IngestService
 public:
     IngestService();
 
-    // Routes the request, fills a response, and posts an IngestResponseAction that delivers it.
+    // Routes the request, fills a response, and posts an IngestAction (Event -> Action).
     void handleEvent(ApidServiceManager& serviceManager, const IngestEvent& event);
+
+    // Drains the IngestAction: performs the egress via the TxRouter (Action -> TxRouter ->
+    // HttpHandler::egress -> session write), the analogue of BootstrapService::handleAction
+    // doing IPC egress. Non-const action so the response body can be moved out, not copied.
+    void handleAction(ApidServiceManager& serviceManager, IngestAction& action);
 
 private:
     // Pure routing: fill resp from req (no transport, no queue). Split out so handleEvent

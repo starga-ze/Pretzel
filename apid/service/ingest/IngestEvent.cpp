@@ -5,11 +5,10 @@
 namespace pz::apid
 {
 
-IngestEvent::IngestEvent(pz::http::HttpRequest request,
-                     std::shared_ptr<pz::http::HttpResponder> responder)
-    : ApidEvent(ApidEventDomain::Http),
+IngestEvent::IngestEvent(pz::http::HttpRequest request, pz::http::SessionId id)
+    : ApidEvent(ApidEventDomain::Ingest),
       m_request(std::move(request)),
-      m_responder(std::move(responder))
+      m_sessionId(id)
 {
 }
 
@@ -23,9 +22,9 @@ const pz::http::HttpRequest& IngestEvent::request() const
     return m_request;
 }
 
-const std::shared_ptr<pz::http::HttpResponder>& IngestEvent::responder() const
+pz::http::SessionId IngestEvent::sessionId() const
 {
-    return m_responder;
+    return m_sessionId;
 }
 
 } // namespace pz::apid

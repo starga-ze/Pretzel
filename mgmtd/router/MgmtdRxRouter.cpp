@@ -68,14 +68,13 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     m_serviceManager->postEvent(std::move(event));
 }
 
-void MgmtdRxRouter::dispatchHttp(pz::http::HttpRequest req,
-                                std::shared_ptr<pz::http::HttpResponder> responder)
+void MgmtdRxRouter::handleHttpMessage(pz::http::HttpRequest req, pz::http::SessionId id)
 {
     // Post and return. The event is drained by the ServiceManager on this same tick (its
     // execute() runs right after the HTTP poll that produced this call); the service fills a
-    // response and posts a WebResponseAction that calls responder->send().
-    m_serviceManager->postEvent(
-        std::make_unique<WebEvent>(std::move(req), std::move(responder)));
+    // response and posts a WebAction, whose drain hands it to the TxRouter -> handler
+    // egress, which resolves the SessionId back to the connection.
+    m_serviceManager->postEvent(std::make_unique<WebEvent>(std::move(req), id));
 }
 
 } // namespace pz::mgmtd

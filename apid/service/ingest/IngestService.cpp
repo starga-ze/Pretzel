@@ -1,8 +1,10 @@
 #include "service/ingest/IngestService.h"
 
 #include "service/ingest/IngestEvent.h"
-#include "service/ingest/IngestResponseAction.h"
+#include "service/ingest/IngestAction.h"
 #include "service/ApidServiceManager.h"
+
+#include "router/ApidTxRouter.h"
 
 #include "util/Logger.h"
 
@@ -36,10 +38,17 @@ void IngestService::handleEvent(ApidServiceManager& serviceManager, const Ingest
     pz::http::HttpResponse resp;  // default 404 for unmatched routes
     route(event.request(), resp);
 
-    // Deliver asynchronously via the parked connection's responder — the HTTP analogue of
-    // an IPC egress action.
+    // Event -> Action: post an IngestAction carrying the response + the SessionId. Egress
+    // happens later, in handleAction (the action drain), never inline here.
     serviceManager.postAction(
-        std::make_unique<IngestResponseAction>(event.responder(), std::move(resp)));
+        std::make_unique<IngestAction>(std::move(resp), event.sessionId()));
+}
+
+void IngestService::handleAction(ApidServiceManager& serviceManager, IngestAction& action)
+{
+    // Egress via the TxRouter — the analogue of BootstrapService::handleAction sending an IPC
+    // message. The response body is moved (not copied).
+    serviceManager.txRouter().handleHttpMessage(std::move(action.response()), action.sessionId());
 }
 
 void IngestService::route(const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)

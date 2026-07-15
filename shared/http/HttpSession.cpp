@@ -1,22 +1,26 @@
 #include "http/HttpSession.h"
 
 #include "http/HttpBeast.h"
+#include "http/HttpHandler.h"
 #include "util/Logger.h"
 
 namespace pz::http
 {
 
 HttpSession::HttpSession(tcp::socket socket,
-                         std::shared_ptr<HttpHandler> handler,
+                         HttpHandler* handler,
                          std::string serverName)
     : m_socket(std::move(socket)),
-      m_handler(std::move(handler)),
+      m_handler(handler),
       m_serverName(std::move(serverName))
 {
 }
 
 void HttpSession::run()
 {
+    // Register with the handler: this stamps our SessionId and keeps us alive while a request
+    // is parked (the request/response gap has no async op of its own to hold the session).
+    m_handler->addSession(shared_from_this());
     doRead();
 }
 
@@ -42,12 +46,13 @@ void HttpSession::onRead(beast::error_code ec, std::size_t)
     if (ec)
     {
         LOG_TRACE("HTTP read failed (error={})", ec.message());
+        m_handler->removeSession(m_id);
         return;
     }
 
-    // Ingress: hand a transport-agnostic request + this session (as responder) to the
-    // handler. It posts an HttpEvent and returns; the response arrives later via send().
-    m_handler->handle(detail::toRequest(m_request), shared_from_this());
+    // Ingress: hand a transport-agnostic request tagged with our SessionId to the handler. It
+    // posts an event and returns; the response arrives later via send().
+    m_handler->ingress(detail::toRequest(m_request), m_id);
 }
 
 void HttpSession::send(HttpResponse response)
@@ -69,6 +74,7 @@ void HttpSession::onWrite(bool close, beast::error_code ec, std::size_t)
     if (ec)
     {
         LOG_TRACE("HTTP write failed (error={})", ec.message());
+        m_handler->removeSession(m_id);
         return;
     }
 
@@ -86,6 +92,7 @@ void HttpSession::doClose()
 {
     beast::error_code ec;
     m_socket.shutdown(tcp::socket::shutdown_send, ec);
+    m_handler->removeSession(m_id);
 }
 
 } // namespace pz::http

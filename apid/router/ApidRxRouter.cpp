@@ -40,14 +40,9 @@ void ApidRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     m_serviceManager->postEvent(std::move(event));
 }
 
-void ApidRxRouter::dispatchHttp(pz::http::HttpRequest req,
-                                std::shared_ptr<pz::http::HttpResponder> responder)
+void ApidRxRouter::handleHttpMessage(pz::http::HttpRequest req, pz::http::SessionId id)
 {
-    // Post and return. The event is drained by the ServiceManager on this same tick (its
-    // execute() runs right after the HTTP poll that produced this call); the service fills a
-    // response and posts an IngestResponseAction that calls responder->send().
-    m_serviceManager->postEvent(
-        std::make_unique<IngestEvent>(std::move(req), std::move(responder)));
+    m_serviceManager->postEvent(std::make_unique<IngestEvent>(std::move(req), id));
 }
 
 } // namespace pz::apid

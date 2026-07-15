@@ -1,7 +1,6 @@
 #pragma once
 
-#include "http/HttpHandler.h"
-#include "http/HttpResponder.h"
+#include "http/HttpSessionBase.h"
 
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast.hpp>
@@ -16,24 +15,26 @@ namespace pz::http
 namespace beast = boost::beast;
 using tcp = boost::asio::ip::tcp;
 
+class HttpHandler;
+
 // Plaintext HTTP/1.1 connection. Transport only — knows nothing of the daemon's routes.
 //
-// The cycle is asynchronous: read one request, hand it (as a DTO) plus this session (as the
-// HttpResponder) to the handler, then return. The handler posts an event; the response
-// arrives later via send(), which writes it and reads the next request. The session keeps
-// itself alive across that gap because the posted event/action holds a shared_ptr to it as
-// the responder. One request is in flight at a time, so ordering is preserved.
+// The cycle is asynchronous: read one request, hand it (as a DTO, tagged with this session's
+// SessionId) to the handler, then return. The handler posts an event; the response arrives
+// later via send(), which writes it and reads the next request. The session keeps itself
+// alive across that gap by registering in the handler (which holds a shared_ptr to it until
+// the connection closes). One request is in flight at a time, so ordering is preserved.
 class HttpSession : public std::enable_shared_from_this<HttpSession>,
-                    public HttpResponder
+                    public HttpSessionBase
 {
 public:
     HttpSession(tcp::socket socket,
-                std::shared_ptr<HttpHandler> handler,
+                HttpHandler* handler,
                 std::string serverName);
 
     void run();
 
-    // HttpResponder: deliver the response for the in-flight request (async write).
+    // HttpSessionBase: deliver the response for the in-flight request (async write).
     void send(HttpResponse response) override;
 
 private:
@@ -46,7 +47,7 @@ private:
     tcp::socket m_socket;
     beast::flat_buffer m_buffer;
     beast::http::request<beast::http::string_body> m_request;
-    std::shared_ptr<HttpHandler> m_handler;
+    HttpHandler* m_handler;
     std::string m_serverName;
     std::shared_ptr<void> m_responseHolder;
 };

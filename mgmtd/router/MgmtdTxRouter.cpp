@@ -6,8 +6,10 @@
 namespace pz::mgmtd
 {
 
-MgmtdTxRouter::MgmtdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler)
-    : m_ipcClientHandler(ipcClientHandler)
+MgmtdTxRouter::MgmtdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler,
+                             pz::http::HttpHandler* httpHandler)
+    : m_ipcClientHandler(ipcClientHandler),
+      m_httpHandler(httpHandler)
 {
 }
 
@@ -26,6 +28,17 @@ void MgmtdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     }
 
     m_ipcClientHandler->egress(std::move(msg));
+}
+
+void MgmtdTxRouter::handleHttpMessage(pz::http::HttpResponse response, pz::http::SessionId id)
+{
+    if (!m_httpHandler)
+    {
+        LOG_ERROR("HTTP handler is not initialized");
+        return;
+    }
+
+    m_httpHandler->egress(std::move(response), id);
 }
 
 } // namespace pz::mgmtd
