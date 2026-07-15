@@ -2,11 +2,11 @@
 
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
-#include "service/scan/ScanEvent.h"
 #include "service/reload/ReloadEvent.h"
+#include "service/scan/ScanEvent.h"
 
-#include "snmp/SnmpPacket.h"
 #include "api/ApiPacket.h"
+#include "snmp/SnmpPacket.h"
 
 #include "util/Logger.h"
 
@@ -79,8 +79,7 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<SnmpPacket
         return nullptr;
     }
 
-    return std::make_unique<ScanEvent>(ScanEventType::SnmpScanComplete,
-                                       std::move(packet->devices()));
+    return std::make_unique<ScanEvent>(ScanEventType::SnmpScanComplete, std::move(packet->devices()));
 }
 
 std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<ApiPacket> packet)
@@ -91,8 +90,7 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<ApiPacket>
         return nullptr;
     }
 
-    return std::make_unique<ScanEvent>(ScanEventType::ApiScanComplete,
-                                       std::move(packet->devices()));
+    return std::make_unique<ScanEvent>(ScanEventType::ApiScanComplete, std::move(packet->devices()));
 }
 
-} // namespace pz::scand
+}

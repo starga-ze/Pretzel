@@ -12,4 +12,4 @@ ApidActionDomain ApidAction::domain() const
     return m_domain;
 }
 
-} // namespace pz::apid
+}

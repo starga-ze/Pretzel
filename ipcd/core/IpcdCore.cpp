@@ -26,11 +26,8 @@ bool IpcdCore::onInit()
     m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
-    pz::util::Logger::Init(
-            m_loggerConfig.name,
-            m_loggerConfig.file,
-            m_loggerConfig.maxFileSize,
-            m_loggerConfig.maxFiles);
+    pz::util::Logger::Init(m_loggerConfig.name, m_loggerConfig.file, m_loggerConfig.maxFileSize,
+                           m_loggerConfig.maxFiles);
 
     LOG_INFO("ipcd: starting up");
 
@@ -48,16 +45,13 @@ bool IpcdCore::onInit()
         return false;
     }
 
-    m_eventFactory  = std::make_unique<IpcdEventFactory>();
+    m_eventFactory = std::make_unique<IpcdEventFactory>();
     m_actionFactory = std::make_unique<IpcdActionFactory>();
 
     m_txRouter = std::make_unique<IpcdTxRouter>(m_ipcServer->handler());
 
-    m_serviceManager = std::make_unique<IpcdServiceManager>(
-        m_eventFactory.get(),
-        m_actionFactory.get(),
-        m_ipcServer->handler(),
-        m_txRouter.get());
+    m_serviceManager = std::make_unique<IpcdServiceManager>(m_eventFactory.get(), m_actionFactory.get(),
+                                                            m_ipcServer->handler(), m_txRouter.get());
 
     if (!m_serviceManager)
     {
@@ -65,10 +59,7 @@ bool IpcdCore::onInit()
         return false;
     }
 
-    m_rxRouter = std::make_unique<IpcdRxRouter>(
-        m_eventFactory.get(),
-        m_serviceManager.get(),
-        m_txRouter.get());
+    m_rxRouter = std::make_unique<IpcdRxRouter>(m_eventFactory.get(), m_serviceManager.get(), m_txRouter.get());
 
     if (!m_rxRouter)
     {
@@ -117,4 +108,4 @@ void IpcdCore::onShutdown()
     pz::util::Logger::Shutdown();
 }
 
-} // namespace pz::ipcd
+}

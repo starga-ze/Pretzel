@@ -16,18 +16,11 @@ class IcmpHeader final
 public:
     IcmpHeader() = default;
 
-    IcmpHeader(IcmpType type,
-               IcmpCode code,
-               std::uint16_t identifier,
-               std::uint16_t sequence);
+    IcmpHeader(IcmpType type, IcmpCode code, std::uint16_t identifier, std::uint16_t sequence);
 
-    static IcmpHeader build(IcmpType type,
-                            IcmpCode code,
-                            std::uint16_t identifier,
-                            std::uint16_t sequence);
+    static IcmpHeader build(IcmpType type, IcmpCode code, std::uint16_t identifier, std::uint16_t sequence);
 
-    static IcmpHeader buildEchoRequest(std::uint16_t identifier,
-                                       std::uint16_t sequence);
+    static IcmpHeader buildEchoRequest(std::uint16_t identifier, std::uint16_t sequence);
 
     IcmpType type() const;
     void setType(IcmpType type);
@@ -45,11 +38,11 @@ public:
     void setSequence(std::uint16_t sequence);
 
 private:
-    IcmpType m_type {IcmpType::EchoRequest};
-    IcmpCode m_code {IcmpCode::Echo};
-    std::uint16_t m_checksum {0};
-    std::uint16_t m_identifier {0};
-    std::uint16_t m_sequence {0};
+    IcmpType m_type{IcmpType::EchoRequest};
+    IcmpCode m_code{IcmpCode::Echo};
+    std::uint16_t m_checksum{0};
+    std::uint16_t m_identifier{0};
+    std::uint16_t m_sequence{0};
 };
 
 class IcmpPacket final
@@ -85,4 +78,4 @@ private:
     std::vector<std::uint8_t> m_payload;
 };
 
-} // namespace pz::icmpd
+}

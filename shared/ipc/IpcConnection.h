@@ -24,12 +24,27 @@ public:
     IpcConnection(int fd, std::size_t rxBuf, std::size_t txBuf);
     ~IpcConnection() = default;
 
-    int fd() const noexcept { return m_fd; }
+    int fd() const noexcept
+    {
+        return m_fd;
+    }
 
-    pz::algorithm::ByteRingBuffer& rx() noexcept { return m_rx; }
-    pz::algorithm::ByteRingBuffer& tx() noexcept { return m_tx; }
-    const pz::algorithm::ByteRingBuffer& rx() const noexcept { return m_rx; }
-    const pz::algorithm::ByteRingBuffer& tx() const noexcept { return m_tx; }
+    pz::algorithm::ByteRingBuffer& rx() noexcept
+    {
+        return m_rx;
+    }
+    pz::algorithm::ByteRingBuffer& tx() noexcept
+    {
+        return m_tx;
+    }
+    const pz::algorithm::ByteRingBuffer& rx() const noexcept
+    {
+        return m_rx;
+    }
+    const pz::algorithm::ByteRingBuffer& tx() const noexcept
+    {
+        return m_tx;
+    }
 
     IoResult recv(int& outErrno);
 
@@ -44,4 +59,4 @@ private:
     pz::algorithm::ByteRingBuffer m_tx;
 };
 
-} // namespace pz::ipc
+}

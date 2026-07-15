@@ -17,4 +17,4 @@ public:
     std::unique_ptr<TopologydEvent> create(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
 };
 
-} // namespace pz::topologyd
+}

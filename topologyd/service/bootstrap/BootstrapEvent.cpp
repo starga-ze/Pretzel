@@ -5,17 +5,12 @@
 namespace pz::topologyd
 {
 
-BootstrapEvent::BootstrapEvent(BootstrapEventType type)
-    : TopologydEvent(TopologydEventDomain::Bootstrap),
-      m_type(type)
+BootstrapEvent::BootstrapEvent(BootstrapEventType type) : TopologydEvent(TopologydEventDomain::Bootstrap), m_type(type)
 {
 }
 
-BootstrapEvent::BootstrapEvent(BootstrapEventType type,
-                               std::unique_ptr<pz::ipc::IpcMessage> message)
-    : TopologydEvent(TopologydEventDomain::Bootstrap),
-      m_type(type),
-      m_message(std::move(message))
+BootstrapEvent::BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : TopologydEvent(TopologydEventDomain::Bootstrap), m_type(type), m_message(std::move(message))
 {
 }
 
@@ -34,4 +29,4 @@ const pz::ipc::IpcMessage* BootstrapEvent::message() const
     return m_message.get();
 }
 
-} // namespace pz::topologyd
+}

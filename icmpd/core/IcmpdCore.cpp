@@ -4,14 +4,12 @@
 namespace pz::icmpd
 {
 
-IcmpdCore::IcmpdCore() : 
-    Core("icmpd")
+IcmpdCore::IcmpdCore() : Core("icmpd")
 {
 }
 
 bool IcmpdCore::onInit()
 {
-    /* Config init */
     const auto& cfg = m_config.json();
 
     const auto& log = cfg["system"]["logger"];
@@ -28,16 +26,11 @@ bool IcmpdCore::onInit()
     m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
-    /* Logger init */
-    pz::util::Logger::Init(
-            m_loggerConfig.name,
-            m_loggerConfig.file,
-            m_loggerConfig.maxFileSize,
-            m_loggerConfig.maxFiles);
+    pz::util::Logger::Init(m_loggerConfig.name, m_loggerConfig.file, m_loggerConfig.maxFileSize,
+                           m_loggerConfig.maxFiles);
 
     LOG_INFO("icmpd: starting up");
 
-    /* ThreadManager init */
     m_threadManager = std::make_unique<pz::util::ThreadManager>();
     if (!m_threadManager)
     {
@@ -45,7 +38,6 @@ bool IcmpdCore::onInit()
         return false;
     }
 
-    /* Ipc init */
     m_ipcClient = std::make_unique<pz::ipc::IpcClient>(m_ipcConfig, pz::ipc::IpcDaemon::Icmpd);
 
     if (!m_ipcClient->init())
@@ -54,7 +46,6 @@ bool IcmpdCore::onInit()
         return false;
     }
 
-    /* IcmpEngine init */
     m_icmpEngine = std::make_unique<IcmpEngine>();
 
     if (!m_icmpEngine->init())
@@ -63,11 +54,9 @@ bool IcmpdCore::onInit()
         return false;
     }
 
-    /* Factory init */
     m_eventFactory = std::make_unique<IcmpdEventFactory>();
     m_actionFactory = std::make_unique<IcmpdActionFactory>();
 
-    /* Router init */
     m_rxRouter = std::make_unique<IcmpdRxRouter>(m_eventFactory.get());
     m_txRouter = std::make_unique<IcmpdTxRouter>(m_ipcClient->handler(), m_icmpEngine->handler());
 
@@ -77,15 +66,14 @@ bool IcmpdCore::onInit()
         return false;
     }
 
-    /* Service init */
-    m_serviceManager = std::make_unique<IcmpdServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
+    m_serviceManager =
+        std::make_unique<IcmpdServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
     if (!m_serviceManager)
     {
         LOG_ERROR("failed to initialize service manager");
         return false;
     }
 
-    /* Process init */
     m_process = std::make_unique<IcmpdProcess>(m_ipcClient.get(), m_icmpEngine.get(), m_serviceManager.get());
 
     if (!m_process)
@@ -94,7 +82,6 @@ bool IcmpdCore::onInit()
         return false;
     }
 
-    /* Binding */
     m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
     m_icmpEngine->handler()->setRxRouter(m_rxRouter.get());
 
@@ -132,4 +119,4 @@ void IcmpdCore::onShutdown()
     pz::util::Logger::Shutdown();
 }
 
-} // namespace pz::icmpd
+}

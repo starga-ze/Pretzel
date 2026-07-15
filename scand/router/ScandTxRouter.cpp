@@ -4,12 +4,9 @@
 namespace pz::scand
 {
 
-ScandTxRouter::ScandTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler,
-                               SnmpEngineHandler* snmpEngineHandler,
-                               ApiEngineHandler* apiEngineHandler)
-    : m_ipcClientHandler(ipcClientHandler),
-      m_snmpEngineHandler(snmpEngineHandler),
-      m_apiEngineHandler(apiEngineHandler)
+ScandTxRouter::ScandTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler, SnmpEngineHandler* snmpEngineHandler,
+                             ApiEngineHandler* apiEngineHandler)
+    : m_ipcClientHandler(ipcClientHandler), m_snmpEngineHandler(snmpEngineHandler), m_apiEngineHandler(apiEngineHandler)
 {
 }
 
@@ -52,4 +49,4 @@ void ScandTxRouter::handleApiPacket(std::map<std::string, ApiCredential> devices
     m_apiEngineHandler->egress(std::move(devices));
 }
 
-} // namespace pz::scand
+}

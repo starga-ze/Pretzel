@@ -12,10 +12,10 @@ class TopologydServiceManager;
 
 enum class TopologydEventDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
     Heartbeat = 2,
-    Reload    = 3
+    Reload = 3
 };
 
 class TopologydEvent : public pz::event::Event
@@ -32,4 +32,4 @@ private:
     TopologydEventDomain m_domain{TopologydEventDomain::Unknown};
 };
 
-} // namespace pz::topologyd
+}

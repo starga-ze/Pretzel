@@ -1,7 +1,7 @@
 #pragma once
 
-#include "service/heartbeat/HeartbeatEvent.h"
 #include "service/heartbeat/HeartbeatAction.h"
+#include "service/heartbeat/HeartbeatEvent.h"
 
 #include <atomic>
 #include <cstdint>
@@ -18,11 +18,9 @@ public:
     HeartbeatService() = default;
     ~HeartbeatService() = default;
 
-    void handleEvent(MgmtdServiceManager& serviceManager,
-                     const HeartbeatEvent& event);
+    void handleEvent(MgmtdServiceManager& serviceManager, const HeartbeatEvent& event);
 
-    void handleAction(MgmtdServiceManager& serviceManager,
-                      const HeartbeatAction& action);
+    void handleAction(MgmtdServiceManager& serviceManager, const HeartbeatAction& action);
 
     std::string latestJson() const;
     bool hasData() const;
@@ -32,4 +30,4 @@ private:
     std::string m_latestJson;
 };
 
-} // namespace pz::mgmtd
+}

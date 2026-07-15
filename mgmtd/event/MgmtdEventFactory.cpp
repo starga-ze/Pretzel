@@ -46,12 +46,10 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<pz::ipc::I
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
 
     case pz::ipc::IpcCmd::HeartbeatRequest:
-        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest,
-                                               std::move(msg));
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
     case pz::ipc::IpcCmd::HeartbeatResult:
-        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResult,
-                                               std::move(msg));
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResult, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
@@ -59,4 +57,4 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<pz::ipc::I
     }
 }
 
-} // namespace pz::mgmtd
+}

@@ -4,8 +4,7 @@
 namespace pz::authd
 {
 
-AuthdTxRouter::AuthdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler) :
-    m_ipcClientHandler(ipcClientHandler)
+AuthdTxRouter::AuthdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler) : m_ipcClientHandler(ipcClientHandler)
 {
 }
 
@@ -26,4 +25,4 @@ void AuthdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     m_ipcClientHandler->egress(std::move(msg));
 }
 
-} // namespace pz::authd
+}

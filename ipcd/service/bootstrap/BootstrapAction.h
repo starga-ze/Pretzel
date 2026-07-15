@@ -11,8 +11,8 @@ namespace pz::ipcd
 
 enum class BootstrapActionType : std::uint32_t
 {
-    Unknown          = 0,
-    SendServerHello  = 1,
+    Unknown = 0,
+    SendServerHello = 1,
     SendSyncResponse = 2
 };
 
@@ -21,8 +21,7 @@ class BootstrapAction final : public IpcdAction
 public:
     explicit BootstrapAction(BootstrapActionType type);
 
-    BootstrapAction(BootstrapActionType type,
-                        std::unique_ptr<pz::ipc::IpcMessage> request);
+    BootstrapAction(BootstrapActionType type, std::unique_ptr<pz::ipc::IpcMessage> request);
 
     BootstrapActionType type() const;
     const pz::ipc::IpcMessage* request() const;
@@ -35,4 +34,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_request;
 };
 
-} // namespace pz::ipcd
+}

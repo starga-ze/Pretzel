@@ -10,7 +10,7 @@ namespace pz::scand
 
 enum class HeartbeatActionType : std::uint32_t
 {
-    Unknown               = 0,
+    Unknown = 0,
     SendHeartbeatResponse = 1
 };
 
@@ -29,4 +29,4 @@ private:
     pz::ipc::IpcDaemon m_dst{pz::ipc::IpcDaemon::Unknown};
 };
 
-} // namespace pz::scand
+}

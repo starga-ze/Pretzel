@@ -4,9 +4,7 @@
 namespace pz::engined
 {
 
-BootstrapAction::BootstrapAction(BootstrapActionType type)
-    : EnginedAction(EnginedActionDomain::Bootstrap),
-      m_type(type)
+BootstrapAction::BootstrapAction(BootstrapActionType type) : EnginedAction(EnginedActionDomain::Bootstrap), m_type(type)
 {
 }
 
@@ -20,4 +18,4 @@ void BootstrapAction::dispatch(EnginedServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::engined
+}

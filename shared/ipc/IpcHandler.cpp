@@ -82,12 +82,9 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
 {
     auto& rx = conn.rx();
 
-    LOG_TRACE("rx buffer state (fd={}, used={}/{}, used_pct={:.2f}, free={})", fd,
-              rx.readable(), rx.capacity(),
-              rx.capacity() > 0
-                  ? (static_cast<double>(rx.readable()) * 100.0 /
-                     static_cast<double>(rx.capacity()))
-                  : 0.0,
+    LOG_TRACE("rx buffer state (fd={}, used={}/{}, used_pct={:.2f}, free={})", fd, rx.readable(), rx.capacity(),
+              rx.capacity() > 0 ? (static_cast<double>(rx.readable()) * 100.0 / static_cast<double>(rx.capacity()))
+                                : 0.0,
               rx.writable());
 
     while (true)
@@ -98,92 +95,73 @@ bool IpcHandler::drainRxFrames(int fd, IpcConnection& conn)
         std::uint8_t headerBuf[sizeof(IpcWireHeader)]{};
         if (rx.peek(headerBuf, sizeof(headerBuf)) < sizeof(headerBuf))
         {
-            LOG_TRACE("incomplete header (fd={}, readable={}, header_len={})",
-                      fd, rx.readable(), sizeof(IpcWireHeader));
+            LOG_TRACE("incomplete header (fd={}, readable={}, header_len={})", fd, rx.readable(),
+                      sizeof(IpcWireHeader));
             return true;
         }
 
         std::size_t frameSize = 0;
-        const IpcPeekResult peekRc =
-            m_codec.peekFrameSize(headerBuf, sizeof(headerBuf), frameSize);
+        const IpcPeekResult peekRc = m_codec.peekFrameSize(headerBuf, sizeof(headerBuf), frameSize);
 
         if (peekRc == IpcPeekResult::NeedMoreData)
             return true;
 
         if (peekRc == IpcPeekResult::InvalidFrame)
         {
-            LOG_ERROR("invalid frame header (fd={}, readable={})",
-                      fd, rx.readable());
+            LOG_ERROR("invalid frame header (fd={}, readable={})", fd, rx.readable());
             return false;
         }
 
         if (frameSize == 0 || frameSize > IPC_MAX_FRAME_SIZE)
         {
-            LOG_ERROR("invalid frame size (fd={}, frame_size={}, max_frame_size={})",
-                      fd, frameSize, IPC_MAX_FRAME_SIZE);
+            LOG_ERROR("invalid frame size (fd={}, frame_size={}, max_frame_size={})", fd, frameSize,
+                      IPC_MAX_FRAME_SIZE);
             return false;
         }
 
         if (rx.readable() < frameSize)
         {
-            LOG_TRACE("incomplete frame (fd={}, readable={}, frame_size={})",
-                      fd, rx.readable(), frameSize);
+            LOG_TRACE("incomplete frame (fd={}, readable={}, frame_size={})", fd, rx.readable(), frameSize);
             return true;
         }
 
-        /* Contiguous Frame */
         if (rx.readLen() >= frameSize)
         {
-            IpcFrameView frame {
-                rx.readPtr(),
-                frameSize
-            };
+            IpcFrameView frame{rx.readPtr(), frameSize};
 
-            LOG_TRACE("frame ready (fd={}, frame_size={}, contiguous=true)",
-                      fd, frameSize);
+            LOG_TRACE("frame ready (fd={}, frame_size={}, contiguous=true)", fd, frameSize);
 
             if (!ingress(fd, frame))
             {
-                LOG_ERROR("ingress failed (fd={}, frame_size={})",
-                          fd, frameSize);
+                LOG_ERROR("ingress failed (fd={}, frame_size={})", fd, frameSize);
                 return false;
             }
         }
-        /* Wrapped Frame */
         else
         {
             std::vector<std::uint8_t> frameBuf(frameSize);
 
             if (rx.peek(frameBuf.data(), frameSize) < frameSize)
             {
-                LOG_ERROR("failed to peek wrapped frame (fd={}, readable={}, frame_size={})",
-                          fd, rx.readable(), frameSize);
+                LOG_ERROR("failed to peek wrapped frame (fd={}, readable={}, frame_size={})", fd, rx.readable(),
+                          frameSize);
                 return false;
             }
 
-            IpcFrameView frame {
-                frameBuf.data(),
-                frameBuf.size()
-            };
+            IpcFrameView frame{frameBuf.data(), frameBuf.size()};
 
-            LOG_TRACE("frame ready (fd={}, frame_size={}, contiguous=false, first_chunk={})",
-                      fd, frameSize, rx.readLen());
+            LOG_TRACE("frame ready (fd={}, frame_size={}, contiguous=false, first_chunk={})", fd, frameSize,
+                      rx.readLen());
 
             if (!ingress(fd, frame))
             {
-                LOG_ERROR("ingress failed (fd={}, frame_size={})",
-                          fd, frameSize);
+                LOG_ERROR("ingress failed (fd={}, frame_size={})", fd, frameSize);
                 return false;
             }
         }
 
         rx.consume(frameSize);
-    
-        /*
-        LOG_TRACE("[RX Buffer State] fd={} consumed={} remaining={} free={}",
-                  fd, frameSize, rx.readable(), rx.writable());
-        */
     }
 }
 
-} // namespace pz::ipc
+}

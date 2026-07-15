@@ -37,4 +37,4 @@ private:
     std::mutex m_lock;
 };
 
-} // namespace pz::util
+}

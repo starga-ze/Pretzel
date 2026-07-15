@@ -6,3 +6,4 @@ BreakBeforeBraces: Allman
 AllowShortFunctionsOnASingleLine: None
 ColumnLimit: 120
 PointerAlignment: Left
+FixNamespaceComments: false

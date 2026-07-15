@@ -14,11 +14,11 @@ class IcmpdServiceManager;
 
 enum class ProbeEventType : std::uint32_t
 {
-    Unknown            = 0,
-    StartProbe         = 1,
-    SendProbeBatch     = 2,
-    EchoReply          = 3,
-    ProbeCompleted     = 4,
+    Unknown = 0,
+    StartProbe = 1,
+    SendProbeBatch = 2,
+    EchoReply = 3,
+    ProbeCompleted = 4,
 };
 
 class ProbeEvent final : public IcmpdEvent
@@ -26,9 +26,7 @@ class ProbeEvent final : public IcmpdEvent
 public:
     explicit ProbeEvent(ProbeEventType type);
 
-    ProbeEvent(ProbeEventType type,
-               std::string srcIp,
-               std::unique_ptr<IcmpPacket> packet);
+    ProbeEvent(ProbeEventType type, std::string srcIp, std::unique_ptr<IcmpPacket> packet);
 
     ProbeEventType type() const;
     const std::string& srcIp() const;
@@ -42,4 +40,4 @@ private:
     std::unique_ptr<IcmpPacket> m_packet;
 };
 
-} // namespace pz::icmpd
+}

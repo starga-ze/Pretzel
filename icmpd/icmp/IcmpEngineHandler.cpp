@@ -9,14 +9,11 @@
 namespace pz::icmpd
 {
 
-IcmpEngineHandler::IcmpEngineHandler(IcmpEngine* icmpEngine)
-    : m_icmpEngine(icmpEngine)
+IcmpEngineHandler::IcmpEngineHandler(IcmpEngine* icmpEngine) : m_icmpEngine(icmpEngine)
 {
 }
 
-bool IcmpEngineHandler::handleRecv(int fd,
-                                   IcmpConnection& conn,
-                                   pz::io::Epoll& epoll)
+bool IcmpEngineHandler::handleRecv(int fd, IcmpConnection& conn, pz::io::Epoll& epoll)
 {
     (void)epoll;
 
@@ -30,9 +27,7 @@ bool IcmpEngineHandler::handleRecv(int fd,
         break;
 
     case IcmpIoResult::BufferFull:
-        LOG_WARN("rx queue full (fd={}, queued={})",
-                 fd,
-                 conn.rxQueueSize());
+        LOG_WARN("rx queue full (fd={}, queued={})", fd, conn.rxQueueSize());
         break;
 
     case IcmpIoResult::PeerClosed:
@@ -47,7 +42,7 @@ bool IcmpEngineHandler::handleRecv(int fd,
     IcmpConnection::RxFrame rxFrame;
     while (conn.read(rxFrame))
     {
-        IcmpFrameView frame {
+        IcmpFrameView frame{
             rxFrame.bytes.data(),
             rxFrame.bytes.size(),
         };
@@ -59,9 +54,7 @@ bool IcmpEngineHandler::handleRecv(int fd,
     return true;
 }
 
-bool IcmpEngineHandler::handleSend(int fd,
-                                   IcmpConnection& conn,
-                                   pz::io::Epoll& epoll)
+bool IcmpEngineHandler::handleSend(int fd, IcmpConnection& conn, pz::io::Epoll& epoll)
 {
     int outErrno = 0;
     const auto rc = conn.send(outErrno);
@@ -99,9 +92,7 @@ bool IcmpEngineHandler::handleSend(int fd,
     return true;
 }
 
-bool IcmpEngineHandler::ingress(int fd,
-                                const std::string& srcIp,
-                                IcmpFrameView frame)
+bool IcmpEngineHandler::ingress(int fd, const std::string& srcIp, IcmpFrameView frame)
 {
     if (frame.empty())
     {
@@ -113,11 +104,7 @@ bool IcmpEngineHandler::ingress(int fd,
     const auto rc = m_codec.decode(frame, packet);
     if (rc != IcmpDecodeResult::Ok)
     {
-        LOG_WARN("ingress decode failed (fd={}, src={}, rc={}, size={})",
-                 fd,
-                 srcIp,
-                 static_cast<int>(rc),
-                 frame.size);
+        LOG_WARN("ingress decode failed (fd={}, src={}, rc={}, size={})", fd, srcIp, static_cast<int>(rc), frame.size);
         return true;
     }
 
@@ -139,8 +126,7 @@ bool IcmpEngineHandler::ingress(int fd,
     return true;
 }
 
-void IcmpEngineHandler::egress(std::unique_ptr<IcmpPacket> packet,
-                               std::string dstIp)
+void IcmpEngineHandler::egress(std::unique_ptr<IcmpPacket> packet, std::string dstIp)
 {
     if (!packet)
     {
@@ -178,4 +164,4 @@ void IcmpEngineHandler::setRxRouter(IcmpdRxRouter* rxRouter)
     m_rxRouter = rxRouter;
 }
 
-} // namespace pz::icmpd
+}

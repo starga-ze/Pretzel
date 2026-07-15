@@ -4,10 +4,8 @@
 namespace pz::mgmtd
 {
 
-HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst) :
-    MgmtdAction(MgmtdActionDomain::Heartbeat),
-    m_type(type),
-    m_dst(dst)
+HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst)
+    : MgmtdAction(MgmtdActionDomain::Heartbeat), m_type(type), m_dst(dst)
 {
 }
 
@@ -26,4 +24,4 @@ void HeartbeatAction::dispatch(MgmtdServiceManager& serviceManager)
     serviceManager.heartbeatService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::mgmtd
+}

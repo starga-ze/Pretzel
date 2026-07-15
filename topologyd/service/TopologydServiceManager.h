@@ -2,8 +2,8 @@
 
 #include "service/ServiceManager.h"
 
-#include "event/TopologydEvent.h"
 #include "action/TopologydAction.h"
+#include "event/TopologydEvent.h"
 
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
@@ -23,8 +23,7 @@ class TopologydActionFactory;
 class TopologydServiceManager : public pz::service::ServiceManager<TopologydEvent, TopologydAction>
 {
 public:
-    TopologydServiceManager(TopologydEventFactory* eventFactory,
-                            TopologydActionFactory* actionFactory,
+    TopologydServiceManager(TopologydEventFactory* eventFactory, TopologydActionFactory* actionFactory,
                             TopologydTxRouter* txRouter);
     ~TopologydServiceManager() override = default;
 
@@ -41,16 +40,16 @@ public:
     TopologydTxRouter& txRouter();
 
 private:
-    TopologydEventFactory*  m_eventFactory{nullptr};
+    TopologydEventFactory* m_eventFactory{nullptr};
     TopologydActionFactory* m_actionFactory{nullptr};
-    TopologydTxRouter*      m_txRouter{nullptr};
+    TopologydTxRouter* m_txRouter{nullptr};
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
-    std::unique_ptr<ReloadService>    m_reloadService;
+    std::unique_ptr<ReloadService> m_reloadService;
 
-    std::queue<std::unique_ptr<TopologydEvent>>  m_eventQueue;
+    std::queue<std::unique_ptr<TopologydEvent>> m_eventQueue;
     std::queue<std::unique_ptr<TopologydAction>> m_actionQueue;
 };
 
-} // namespace pz::topologyd
+}

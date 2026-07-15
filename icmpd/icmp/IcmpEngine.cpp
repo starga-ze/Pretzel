@@ -9,9 +9,7 @@
 namespace pz::icmpd
 {
 
-IcmpEngine::IcmpEngine()
-    : m_events(MAX_EVENTS),
-      m_handler(std::make_unique<IcmpEngineHandler>(this))
+IcmpEngine::IcmpEngine() : m_events(MAX_EVENTS), m_handler(std::make_unique<IcmpEngineHandler>(this))
 {
 }
 
@@ -49,9 +47,6 @@ bool IcmpEngine::init()
 
 bool IcmpEngine::poll(int timeoutMs)
 {
-    // Self-heal: if a prior fatal recv/send error tore the connection down
-    // (closeConnection), rebuild the socket here instead of staying dead until a
-    // daemon restart. Rate-limited by REOPEN_BACKOFF.
     if (!isOpened())
     {
         const auto now = std::chrono::steady_clock::now();
@@ -87,8 +82,7 @@ bool IcmpEngine::poll(int timeoutMs)
     return true;
 }
 
-bool IcmpEngine::sendPacket(std::unique_ptr<IcmpPacket> packet,
-                            std::string dstIp)
+bool IcmpEngine::sendPacket(std::unique_ptr<IcmpPacket> packet, std::string dstIp)
 {
     if (!m_handler)
     {
@@ -100,8 +94,7 @@ bool IcmpEngine::sendPacket(std::unique_ptr<IcmpPacket> packet,
     return true;
 }
 
-bool IcmpEngine::enqueueFrame(std::vector<std::uint8_t> frame,
-                              std::string dstIp)
+bool IcmpEngine::enqueueFrame(std::vector<std::uint8_t> frame, std::string dstIp)
 {
     if (frame.empty())
     {
@@ -208,10 +201,6 @@ bool IcmpEngine::initConnection()
 
 bool IcmpEngine::reopen()
 {
-    // Rebuild the socket + connection on the existing epoll instance (m_epoll
-    // survives a connection drop — only the socket fd was removed from it). This
-    // is the recovery counterpart to closeConnection(); epoll is NOT re-init'd
-    // here because Epoll::init() is not idempotent.
     closeConnection();
 
     if (!initSocket())
@@ -242,9 +231,6 @@ void IcmpEngine::closeConnection()
     if (m_socket)
         m_socket->close();
 
-    // Drop the socket object too so initSocket() rebuilds it on the next reopen()
-    // — it short-circuits on a non-null m_socket, so a closed-but-present socket
-    // would otherwise block recovery.
     m_socket.reset();
 
     m_initialized = false;
@@ -253,8 +239,8 @@ void IcmpEngine::closeConnection()
 void IcmpEngine::handleEvent(int fd, std::uint32_t events)
 {
     const bool isClose = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
-    const bool isRecv  = (events & EPOLLIN) != 0;
-    const bool isSend  = (events & EPOLLOUT) != 0;
+    const bool isRecv = (events & EPOLLIN) != 0;
+    const bool isSend = (events & EPOLLOUT) != 0;
 
     if (fd == m_epoll.getEventFd())
     {
@@ -270,9 +256,7 @@ void IcmpEngine::handleEvent(int fd, std::uint32_t events)
 
     if (!m_conn)
     {
-        LOG_WARN("event ignored, connection is nullptr (fd={}, events=0x{:x})",
-                 fd,
-                 events);
+        LOG_WARN("event ignored, connection is nullptr (fd={}, events=0x{:x})", fd, events);
         return;
     }
 
@@ -304,4 +288,4 @@ void IcmpEngine::handleEvent(int fd, std::uint32_t events)
     }
 }
 
-} // namespace pz::icmpd
+}

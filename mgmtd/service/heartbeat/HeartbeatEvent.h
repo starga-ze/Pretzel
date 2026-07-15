@@ -11,8 +11,8 @@ namespace pz::mgmtd
 
 enum class HeartbeatEventType : std::uint32_t
 {
-    Unknown                = 0,
-    ReceiveHeartbeatResult  = 1,
+    Unknown = 0,
+    ReceiveHeartbeatResult = 1,
     ReceiveHeartbeatRequest = 2
 };
 
@@ -21,8 +21,7 @@ class HeartbeatEvent final : public MgmtdEvent
 public:
     explicit HeartbeatEvent(HeartbeatEventType type);
 
-    HeartbeatEvent(HeartbeatEventType type,
-                   std::unique_ptr<pz::ipc::IpcMessage> message);
+    HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(MgmtdServiceManager& serviceManager) override;
 
@@ -34,4 +33,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::mgmtd
+}

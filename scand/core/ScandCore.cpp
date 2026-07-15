@@ -4,8 +4,7 @@
 namespace pz::scand
 {
 
-ScandCore::ScandCore() :
-    Core("scand")
+ScandCore::ScandCore() : Core("scand")
 {
 }
 
@@ -27,11 +26,8 @@ bool ScandCore::onInit()
     m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
-    pz::util::Logger::Init(
-            m_loggerConfig.name,
-            m_loggerConfig.file,
-            m_loggerConfig.maxFileSize,
-            m_loggerConfig.maxFiles);
+    pz::util::Logger::Init(m_loggerConfig.name, m_loggerConfig.file, m_loggerConfig.maxFileSize,
+                           m_loggerConfig.maxFiles);
 
     LOG_INFO("scand: starting up");
 
@@ -68,9 +64,8 @@ bool ScandCore::onInit()
     m_actionFactory = std::make_unique<ScandActionFactory>();
 
     m_rxRouter = std::make_unique<ScandRxRouter>(m_eventFactory.get());
-    m_txRouter = std::make_unique<ScandTxRouter>(m_ipcClient->handler(),
-                                                  m_snmpEngine->handler(),
-                                                  m_apiEngine->handler());
+    m_txRouter =
+        std::make_unique<ScandTxRouter>(m_ipcClient->handler(), m_snmpEngine->handler(), m_apiEngine->handler());
 
     if (!m_txRouter or !m_rxRouter)
     {
@@ -78,10 +73,8 @@ bool ScandCore::onInit()
         return false;
     }
 
-    m_serviceManager = std::make_unique<ScandServiceManager>(
-        m_eventFactory.get(),
-        m_actionFactory.get(),
-        m_txRouter.get());
+    m_serviceManager =
+        std::make_unique<ScandServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
 
     if (!m_serviceManager)
     {
@@ -89,9 +82,7 @@ bool ScandCore::onInit()
         return false;
     }
 
-    m_process = std::make_unique<ScandProcess>(m_ipcClient.get(),
-                                               m_serviceManager.get(),
-                                               m_snmpEngine.get(),
+    m_process = std::make_unique<ScandProcess>(m_ipcClient.get(), m_serviceManager.get(), m_snmpEngine.get(),
                                                m_apiEngine.get());
 
     if (!m_process)
@@ -103,7 +94,6 @@ bool ScandCore::onInit()
     m_ipcClient->handler()->setRxRouter(m_rxRouter.get());
     m_rxRouter->setServiceManager(m_serviceManager.get());
 
-    // Bind the engine handlers so they can deliver results back to the RxRouter.
     m_snmpEngine->handler()->setRxRouter(m_rxRouter.get());
     m_apiEngine->handler()->setRxRouter(m_rxRouter.get());
 
@@ -137,4 +127,4 @@ void ScandCore::onShutdown()
     pz::util::Logger::Shutdown();
 }
 
-} // namespace pz::scand
+}

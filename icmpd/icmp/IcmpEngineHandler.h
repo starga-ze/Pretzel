@@ -24,20 +24,17 @@ public:
     bool handleRecv(int fd, IcmpConnection& conn, pz::io::Epoll& epoll);
     bool handleSend(int fd, IcmpConnection& conn, pz::io::Epoll& epoll);
 
-    bool ingress(int fd,
-                 const std::string& srcIp,
-                 IcmpFrameView frame);
+    bool ingress(int fd, const std::string& srcIp, IcmpFrameView frame);
 
-    void egress(std::unique_ptr<IcmpPacket> packet,
-                std::string dstIp);
+    void egress(std::unique_ptr<IcmpPacket> packet, std::string dstIp);
 
     void setRxRouter(IcmpdRxRouter* rxRouter);
 
 private:
-    IcmpEngine* m_icmpEngine {nullptr};
-    IcmpdRxRouter* m_rxRouter {nullptr};
+    IcmpEngine* m_icmpEngine{nullptr};
+    IcmpdRxRouter* m_rxRouter{nullptr};
 
     IcmpCodec m_codec;
 };
 
-} // namespace pz::icmpd
+}

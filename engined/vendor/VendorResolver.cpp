@@ -20,27 +20,25 @@ const char* const kOuiCandidatePaths[] = {
     "./shared/data/oui.tsv",
 };
 
-// IANA Private Enterprise Number → vendor. Small curated set covering common gear;
-// extend as needed. Keyed by the PEN that follows 1.3.6.1.4.1. in sysObjectID.
 const std::unordered_map<std::string, std::string>& penVendors()
 {
     static const std::unordered_map<std::string, std::string> kMap = {
-        {"9",     "Cisco"},
-        {"11",    "Hewlett Packard"},
-        {"311",   "Microsoft"},
-        {"343",   "Intel"},
-        {"674",   "Dell"},
-        {"1916",  "Extreme Networks"},
-        {"1991",  "Brocade/Foundry"},
-        {"2011",  "Huawei"},
-        {"2435",  "Brother"},
-        {"2636",  "Juniper"},
-        {"3375",  "F5 Networks"},
-        {"4526",  "Netgear"},
-        {"5951",  "Citrix (NetScaler)"},
-        {"6027",  "Dell (Force10)"},
-        {"6876",  "VMware"},
-        {"8072",  "Net-SNMP"},
+        {"9", "Cisco"},
+        {"11", "Hewlett Packard"},
+        {"311", "Microsoft"},
+        {"343", "Intel"},
+        {"674", "Dell"},
+        {"1916", "Extreme Networks"},
+        {"1991", "Brocade/Foundry"},
+        {"2011", "Huawei"},
+        {"2435", "Brother"},
+        {"2636", "Juniper"},
+        {"3375", "F5 Networks"},
+        {"4526", "Netgear"},
+        {"5951", "Citrix (NetScaler)"},
+        {"6027", "Dell (Force10)"},
+        {"6876", "VMware"},
+        {"8072", "Net-SNMP"},
         {"11863", "Ruckus"},
         {"12356", "Fortinet"},
         {"14179", "Cisco (Wireless)"},
@@ -64,7 +62,7 @@ std::string normalizeMac(const std::string& mac)
     return h;
 }
 
-} // namespace
+}
 
 void VendorResolver::loadOui()
 {
@@ -104,7 +102,6 @@ std::string VendorResolver::vendorForMac(const std::string& mac) const
 
 std::string VendorResolver::vendorForSysObjectId(const std::string& sysObjectId) const
 {
-    // Extract the PEN: the number right after the "1.3.6.1.4.1." enterprise root.
     static const std::string kRoot = "1.3.6.1.4.1.";
     if (sysObjectId.rfind(kRoot, 0) != 0)
         return {};
@@ -118,4 +115,4 @@ std::string VendorResolver::vendorForSysObjectId(const std::string& sysObjectId)
     return it != m.end() ? it->second : std::string{};
 }
 
-} // namespace pz::engined
+}

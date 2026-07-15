@@ -2,16 +2,16 @@
 
 #include "core/Core.h"
 
-#include "ipc/IpcClient.h"
 #include "icmp/IcmpEngine.h"
+#include "ipc/IpcClient.h"
 #include "util/ThreadManager.h"
 
+#include "action/IcmpdActionFactory.h"
+#include "event/IcmpdEventFactory.h"
 #include "process/IcmpdProcess.h"
 #include "router/IcmpdRxRouter.h"
 #include "router/IcmpdTxRouter.h"
 #include "service/IcmpdServiceManager.h"
-#include "event/IcmpdEventFactory.h"
-#include "action/IcmpdActionFactory.h"
 
 #include "config/ConfigTypes.h"
 
@@ -47,7 +47,6 @@ private:
     std::unique_ptr<IcmpdTxRouter> m_txRouter;
 
     std::unique_ptr<IcmpdServiceManager> m_serviceManager;
-
 };
 
-} // namespace pz::icmpd
+}

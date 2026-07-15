@@ -14,8 +14,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create()
     return nullptr;
 }
 
-std::unique_ptr<TopologydEvent> TopologydEventFactory::create(TopologydEventDomain domain,
-                                                              std::uint32_t type)
+std::unique_ptr<TopologydEvent> TopologydEventFactory::create(TopologydEventDomain domain, std::uint32_t type)
 {
     switch (domain)
     {
@@ -34,8 +33,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(TopologydEventDoma
     }
 }
 
-std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
-    std::unique_ptr<pz::ipc::IpcMessage> msg)
+std::unique_ptr<TopologydEvent> TopologydEventFactory::create(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!msg)
     {
@@ -46,16 +44,13 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
     switch (msg->getCmd())
     {
     case pz::ipc::IpcCmd::ServerHello:
-        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello,
-                                               std::move(msg));
+        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveServerHello, std::move(msg));
 
     case pz::ipc::IpcCmd::RuntimeStart:
-        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart,
-                                               std::move(msg));
+        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
 
     case pz::ipc::IpcCmd::HeartbeatRequest:
-        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest,
-                                               std::move(msg));
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
     case pz::ipc::IpcCmd::ConfigReload:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
@@ -66,4 +61,4 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(
     }
 }
 
-} // namespace pz::topologyd
+}

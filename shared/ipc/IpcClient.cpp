@@ -17,11 +17,6 @@ namespace pz::ipc
 namespace
 {
 
-// ipcd is launched as a simple systemd service, so it can be reported "active"
-// before its listening socket file actually exists. Retry the connect for a
-// short window so daemons started in parallel don't fail on this race. Defaults
-// match the compiled-in values; overridable via "system"."ipc" in the
-// running-config under each daemon's section (merged with global).
 int connectMaxAttempts(IpcDaemon selfId)
 {
     const auto& ipc = pz::config::Config::systemSection(IpcProtocol::daemonToStr(selfId), "ipc");
@@ -34,13 +29,10 @@ int connectRetryDelayMs(IpcDaemon selfId)
     return ipc.value("ipc_retry_delay_ms", 1000);
 }
 
-} // namespace
+}
 
 IpcClient::IpcClient(const pz::config::IpcConfig& cfg, IpcDaemon selfId)
-    : m_cfg(cfg),
-      m_selfId(selfId),
-      m_events(MAX_EVENTS),
-      m_handler(std::make_unique<IpcClientHandler>(this))
+    : m_cfg(cfg), m_selfId(selfId), m_events(MAX_EVENTS), m_handler(std::make_unique<IpcClientHandler>(this))
 {
 }
 
@@ -69,32 +61,23 @@ bool IpcClient::init()
         {
             m_initialized = true;
 
-            LOG_INFO("IpcClient initialized (path={}, self={}, attempt={})",
-                     m_cfg.socketPath,
-                     IpcProtocol::daemonToStr(m_selfId),
-                     attempt);
+            LOG_INFO("IpcClient initialized (path={}, self={}, attempt={})", m_cfg.socketPath,
+                     IpcProtocol::daemonToStr(m_selfId), attempt);
             return true;
         }
 
-        // Discard the failed socket so the next attempt starts from a clean state.
         m_socket.reset();
 
         if (attempt == maxAttempts)
             break;
 
-        LOG_WARN("connect attempt failed, retrying (attempt={}/{}, path={}, self={}, retry_ms={})",
-                 attempt,
-                 maxAttempts,
-                 m_cfg.socketPath,
-                 IpcProtocol::daemonToStr(m_selfId),
-                 retryDelayMs);
+        LOG_WARN("connect attempt failed, retrying (attempt={}/{}, path={}, self={}, retry_ms={})", attempt,
+                 maxAttempts, m_cfg.socketPath, IpcProtocol::daemonToStr(m_selfId), retryDelayMs);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
     }
 
-    LOG_ERROR("failed to connect (attempts={}, path={}, self={})",
-              maxAttempts,
-              m_cfg.socketPath,
+    LOG_ERROR("failed to connect (attempts={}, path={}, self={})", maxAttempts, m_cfg.socketPath,
               IpcProtocol::daemonToStr(m_selfId));
     return false;
 }
@@ -204,10 +187,8 @@ bool IpcClient::connectServer()
         return false;
     }
 
-    m_conn = std::make_unique<IpcConnection>(
-        m_socket->fd(),
-        static_cast<std::size_t>(m_cfg.rxBufferSize),
-        static_cast<std::size_t>(m_cfg.txBufferSize));
+    m_conn = std::make_unique<IpcConnection>(m_socket->fd(), static_cast<std::size_t>(m_cfg.rxBufferSize),
+                                             static_cast<std::size_t>(m_cfg.txBufferSize));
 
     if (!m_conn)
     {
@@ -260,24 +241,21 @@ void IpcClient::closeConnection()
 void IpcClient::handleEvent(int fd, std::uint32_t events)
 {
     const bool isClose = (events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0;
-    const bool isRecv  = (events & EPOLLIN) != 0;
-    const bool isSend  = (events & EPOLLOUT) != 0;
+    const bool isRecv = (events & EPOLLIN) != 0;
+    const bool isSend = (events & EPOLLOUT) != 0;
 
-    /* Event fd */
     if (fd == m_epoll.getEventFd())
     {
         m_epoll.drainWakeup();
         return;
     }
 
-    /* Socket fd */
     if (!m_socket || fd != m_socket->fd())
     {
         LOG_WARN("unknown fd event (fd={}, events=0x{:x})", fd, events);
         return;
     }
 
-    /* Connecting fd */
     if (m_state == State::Connecting)
     {
         if (isClose || isRecv || isSend)
@@ -294,12 +272,9 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
         return;
     }
 
-    /* Connected fd */
     if (m_state != State::Connected || !m_conn)
     {
-        LOG_WARN("event ignored in invalid state (fd={}, state={}, events=0x{:x})",
-                 fd,
-                 static_cast<int>(m_state),
+        LOG_WARN("event ignored in invalid state (fd={}, state={}, events=0x{:x})", fd, static_cast<int>(m_state),
                  events);
         return;
     }
@@ -332,7 +307,7 @@ void IpcClient::handleEvent(int fd, std::uint32_t events)
 
 IpcClientHandler* IpcClient::handler()
 {
-    if(!m_handler)
+    if (!m_handler)
     {
         LOG_ERROR("IpcClientHandler is not initialized");
         return nullptr;
@@ -340,4 +315,4 @@ IpcClientHandler* IpcClient::handler()
     return m_handler.get();
 }
 
-} // namespace pz::ipc
+}

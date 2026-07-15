@@ -1,7 +1,7 @@
 #pragma once
 
-#include "service/heartbeat/HeartbeatEvent.h"
 #include "service/heartbeat/HeartbeatAction.h"
+#include "service/heartbeat/HeartbeatEvent.h"
 
 namespace pz::authd
 {
@@ -14,11 +14,9 @@ public:
     HeartbeatService() = default;
     ~HeartbeatService() = default;
 
-    void handleEvent(AuthdServiceManager& serviceManager,
-                     const HeartbeatEvent& event);
+    void handleEvent(AuthdServiceManager& serviceManager, const HeartbeatEvent& event);
 
-    void handleAction(AuthdServiceManager& serviceManager,
-                      const HeartbeatAction& action);
+    void handleAction(AuthdServiceManager& serviceManager, const HeartbeatAction& action);
 };
 
-} // namespace pz::authd
+}

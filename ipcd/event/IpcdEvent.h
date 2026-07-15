@@ -12,7 +12,7 @@ class IpcdServiceManager;
 
 enum class IpcdEventDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1
 };
 
@@ -30,4 +30,4 @@ private:
     IpcdEventDomain m_domain{IpcdEventDomain::Unknown};
 };
 
-} // namespace pz::ipcd
+}

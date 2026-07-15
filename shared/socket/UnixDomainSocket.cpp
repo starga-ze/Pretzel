@@ -14,8 +14,7 @@
 namespace pz::socket
 {
 
-UnixDomainSocket::UnixDomainSocket(std::string socketPath)
-    : m_socketPath(std::move(socketPath))
+UnixDomainSocket::UnixDomainSocket(std::string socketPath) : m_socketPath(std::move(socketPath))
 {
 }
 
@@ -77,9 +76,7 @@ int UnixDomainSocket::accept()
         if (!setNonBlocking(fd))
         {
             const int savedErrno = errno;
-            LOG_ERROR("setNonBlocking accepted fd failed (fd={}, errno={})",
-                      fd,
-                      savedErrno);
+            LOG_ERROR("setNonBlocking accepted fd failed (fd={}, errno={})", fd, savedErrno);
             ::close(fd);
             errno = savedErrno;
             return -1;
@@ -101,7 +98,7 @@ UnixDomainSocket::ConnectResult UnixDomainSocket::connect()
     if (!createSocket())
         return ConnectResult::Failed;
 
-    sockaddr_un addr {};
+    sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
 
     if (m_socketPath.size() >= sizeof(addr.sun_path))
@@ -187,7 +184,7 @@ bool UnixDomainSocket::setNonBlocking(int fd)
 
 bool UnixDomainSocket::bindSocket()
 {
-    sockaddr_un addr {};
+    sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
 
     if (m_socketPath.size() >= sizeof(addr.sun_path))
@@ -218,4 +215,4 @@ bool UnixDomainSocket::listenSocket()
     return true;
 }
 
-} // namespace pz::socket
+}

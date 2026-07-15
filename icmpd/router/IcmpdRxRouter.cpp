@@ -6,8 +6,7 @@
 namespace pz::icmpd
 {
 
-IcmpdRxRouter::IcmpdRxRouter(IcmpdEventFactory* eventFactory) :
-    m_eventFactory(eventFactory)
+IcmpdRxRouter::IcmpdRxRouter(IcmpdEventFactory* eventFactory) : m_eventFactory(eventFactory)
 {
 }
 
@@ -25,15 +24,12 @@ void IcmpdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    // ConfigReload is mapped to a ReloadEvent by the factory and handled in
-    // ReloadService — the router stays a pure pass-through.
     std::unique_ptr<IcmpdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));
 }
 
-void IcmpdRxRouter::handleIcmpPacket(const std::string& srcIp,
-                                     std::unique_ptr<IcmpPacket> packet)
+void IcmpdRxRouter::handleIcmpPacket(const std::string& srcIp, std::unique_ptr<IcmpPacket> packet)
 {
     if (!packet)
     {
@@ -50,4 +46,4 @@ void IcmpdRxRouter::setServiceManager(IcmpdServiceManager* serviceManager)
     m_serviceManager = serviceManager;
 }
 
-} // namespace pz::icmpd
+}

@@ -4,16 +4,12 @@
 namespace pz::authd
 {
 
-BootstrapEvent::BootstrapEvent(BootstrapEventType type) :
-    AuthdEvent(AuthdEventDomain::Bootstrap),
-    m_type(type)
+BootstrapEvent::BootstrapEvent(BootstrapEventType type) : AuthdEvent(AuthdEventDomain::Bootstrap), m_type(type)
 {
 }
 
-BootstrapEvent::BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message) :
-    AuthdEvent(AuthdEventDomain::Bootstrap),
-    m_message(std::move(message)),
-    m_type(type)
+BootstrapEvent::BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : AuthdEvent(AuthdEventDomain::Bootstrap), m_message(std::move(message)), m_type(type)
 {
 }
 
@@ -37,4 +33,4 @@ std::unique_ptr<pz::ipc::IpcMessage> BootstrapEvent::takeMessage()
     return std::move(m_message);
 }
 
-} // namespace pz::authd
+}

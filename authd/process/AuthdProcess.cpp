@@ -6,10 +6,8 @@ namespace pz::authd
 
 constexpr int kIpcClientTimeoutMs = 10;
 
-AuthdProcess::AuthdProcess(pz::ipc::IpcClient* ipcClient,
-                           AuthdServiceManager* serviceManager) :
-    m_ipcClient(ipcClient),
-    m_serviceManager(serviceManager)
+AuthdProcess::AuthdProcess(pz::ipc::IpcClient* ipcClient, AuthdServiceManager* serviceManager)
+    : m_ipcClient(ipcClient), m_serviceManager(serviceManager)
 {
 }
 
@@ -41,4 +39,4 @@ void AuthdProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace pz::authd
+}

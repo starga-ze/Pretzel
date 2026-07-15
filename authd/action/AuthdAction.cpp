@@ -12,4 +12,4 @@ AuthdActionDomain AuthdAction::domain() const
     return m_domain;
 }
 
-} // namespace pz::authd
+}

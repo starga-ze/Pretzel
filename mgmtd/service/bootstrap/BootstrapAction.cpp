@@ -4,9 +4,7 @@
 namespace pz::mgmtd
 {
 
-BootstrapAction::BootstrapAction(BootstrapActionType type)
-    : MgmtdAction(MgmtdActionDomain::Bootstrap),
-      m_type(type)
+BootstrapAction::BootstrapAction(BootstrapActionType type) : MgmtdAction(MgmtdActionDomain::Bootstrap), m_type(type)
 {
 }
 
@@ -20,4 +18,4 @@ void BootstrapAction::dispatch(MgmtdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::mgmtd
+}

@@ -12,4 +12,4 @@ AuthdEventDomain AuthdEvent::domain() const
     return m_domain;
 }
 
-} // namespace pz::authd
+}

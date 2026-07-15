@@ -5,17 +5,12 @@
 namespace pz::topologyd
 {
 
-HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type)
-    : TopologydEvent(TopologydEventDomain::Heartbeat),
-      m_type(type)
+HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type) : TopologydEvent(TopologydEventDomain::Heartbeat), m_type(type)
 {
 }
 
-HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type,
-                               std::unique_ptr<pz::ipc::IpcMessage> message)
-    : TopologydEvent(TopologydEventDomain::Heartbeat),
-      m_type(type),
-      m_message(std::move(message))
+HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : TopologydEvent(TopologydEventDomain::Heartbeat), m_type(type), m_message(std::move(message))
 {
 }
 
@@ -39,4 +34,4 @@ std::unique_ptr<pz::ipc::IpcMessage> HeartbeatEvent::takeMessage()
     return std::move(m_message);
 }
 
-} // namespace pz::topologyd
+}

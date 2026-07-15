@@ -6,9 +6,7 @@
 namespace pz::icmpd
 {
 
-ProbeAction::ProbeAction(ProbeActionType type)
-    : IcmpdAction(IcmpdActionDomain::Probe),
-      m_type(type)
+ProbeAction::ProbeAction(ProbeActionType type) : IcmpdAction(IcmpdActionDomain::Probe), m_type(type)
 {
 }
 
@@ -22,4 +20,4 @@ void ProbeAction::dispatch(IcmpdServiceManager& serviceManager)
     serviceManager.probeService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::icmpd
+}

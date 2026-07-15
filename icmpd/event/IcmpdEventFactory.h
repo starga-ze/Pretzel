@@ -22,4 +22,4 @@ public:
     std::unique_ptr<IcmpdEvent> create() override;
 };
 
-} // namespace pz::icmpd
+}

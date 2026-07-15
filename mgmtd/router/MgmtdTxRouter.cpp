@@ -1,4 +1,3 @@
-// router/MgmtdTxRouter.cpp
 #include "router/MgmtdTxRouter.h"
 
 #include "util/Logger.h"
@@ -6,10 +5,8 @@
 namespace pz::mgmtd
 {
 
-MgmtdTxRouter::MgmtdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler,
-                             pz::http::HttpHandler* httpHandler)
-    : m_ipcClientHandler(ipcClientHandler),
-      m_httpHandler(httpHandler)
+MgmtdTxRouter::MgmtdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler, pz::http::HttpHandler* httpHandler)
+    : m_ipcClientHandler(ipcClientHandler), m_httpHandler(httpHandler)
 {
 }
 
@@ -41,4 +38,4 @@ void MgmtdTxRouter::handleHttpMessage(pz::http::HttpResponse response, pz::http:
     m_httpHandler->egress(std::move(response), id);
 }
 
-} // namespace pz::mgmtd
+}

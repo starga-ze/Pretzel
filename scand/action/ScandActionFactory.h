@@ -18,4 +18,4 @@ public:
     std::unique_ptr<ScandAction> create(ScandActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::scand
+}

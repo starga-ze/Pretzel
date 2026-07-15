@@ -6,10 +6,8 @@ namespace pz::topologyd
 
 constexpr int kIpcClientTimeoutMs = 10;
 
-TopologydProcess::TopologydProcess(pz::ipc::IpcClient* ipcClient,
-                                   TopologydServiceManager* serviceManager)
-    : m_ipcClient(ipcClient),
-      m_serviceManager(serviceManager)
+TopologydProcess::TopologydProcess(pz::ipc::IpcClient* ipcClient, TopologydServiceManager* serviceManager)
+    : m_ipcClient(ipcClient), m_serviceManager(serviceManager)
 {
 }
 
@@ -41,4 +39,4 @@ void TopologydProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace pz::topologyd
+}

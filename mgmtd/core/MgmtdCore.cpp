@@ -1,7 +1,7 @@
 #include "core/MgmtdCore.h"
 
-#include "http/StaticFileCache.h"
 #include "http/HttpHandler.h"
+#include "http/StaticFileCache.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
@@ -12,21 +12,18 @@
 namespace
 {
 
-// Install root for read-only static assets (web frontend). Defaults to the FHS-style
-// /opt/pretzel/share; overridable via PRETZEL_SHARE_DIR for alternate deployments.
 std::string shareDir()
 {
     const char* value = std::getenv("PRETZEL_SHARE_DIR");
     return (value && *value) ? std::string(value) : "/opt/pretzel/share";
 }
 
-} // namespace
+}
 
 namespace pz::mgmtd
 {
 
-MgmtdCore::MgmtdCore()
-    : Core("mgmtd")
+MgmtdCore::MgmtdCore() : Core("mgmtd")
 {
 }
 
@@ -37,9 +34,7 @@ bool MgmtdCore::onInit()
         return false;
     }
 
-    pz::util::Logger::Init(m_loggerConfig.name,
-                           m_loggerConfig.file,
-                           m_loggerConfig.maxFileSize,
+    pz::util::Logger::Init(m_loggerConfig.name, m_loggerConfig.file, m_loggerConfig.maxFileSize,
                            m_loggerConfig.maxFiles);
 
     LOG_INFO("mgmtd: starting up");
@@ -56,22 +51,15 @@ bool MgmtdCore::onInit()
         m_ipcClient.reset();
     }
 
-    m_eventFactory  = std::make_unique<MgmtdEventFactory>();
+    m_eventFactory = std::make_unique<MgmtdEventFactory>();
     m_actionFactory = std::make_unique<MgmtdActionFactory>();
 
-    // Both transport handlers are treated identically: IpcClient owns the IPC handler,
-    // HttpServer (below) will own this HTTP one. Both are created before the TxRouter and
-    // injected into it together (non-owning), then handed their RxRouter once it exists.
     auto httpHandler = std::make_shared<pz::http::HttpHandler>();
 
-    m_txRouter = std::make_unique<MgmtdTxRouter>(
-        m_ipcClient ? m_ipcClient->handler() : nullptr,
-        httpHandler.get());
+    m_txRouter = std::make_unique<MgmtdTxRouter>(m_ipcClient ? m_ipcClient->handler() : nullptr, httpHandler.get());
 
-    m_serviceManager = std::make_unique<MgmtdServiceManager>(
-        m_eventFactory.get(),
-        m_actionFactory.get(),
-        m_txRouter.get());
+    m_serviceManager =
+        std::make_unique<MgmtdServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
 
     if (!m_serviceManager)
     {
@@ -92,34 +80,21 @@ bool MgmtdCore::onInit()
     }
     httpHandler->setRxRouter(m_rxRouter.get());
 
-    // HTTP mirrors IPC in both directions via the shared pz::http::HttpHandler (wired above):
-    // on ingress it forwards to the MgmtdRxRouter (posts a WebEvent); on egress the
-    // MgmtdTxRouter calls back into it (WebAction -> txRouter.dispatchHttp -> handler.egress ->
-    // session write). The static-asset cache the WebService serves from is built here from the
-    // share dir and injected. PRETZEL_MGMTD_STATIC_RELOAD=1 reads assets from disk per request
-    // (frontend iteration without a restart); default preloads into memory.
     const char* reloadEnv = std::getenv("PRETZEL_MGMTD_STATIC_RELOAD");
-    const bool  staticReload = reloadEnv && *reloadEnv && std::string(reloadEnv) != "0";
-    auto httpCache = std::make_shared<pz::http::StaticFileCache>(
-        shareDir() + "/mgmtd/www", staticReload);
+    const bool staticReload = reloadEnv && *reloadEnv && std::string(reloadEnv) != "0";
+    auto httpCache = std::make_shared<pz::http::StaticFileCache>(shareDir() + "/mgmtd/www", staticReload);
     m_serviceManager->webService().setCache(httpCache);
 
-    m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress,
-                                                          m_httpConfig.listenPort,
-                                                          m_httpConfig.tlsEnabled,
-                                                          m_httpConfig.certFile,
-                                                          m_httpConfig.keyFile,
-                                                          "pz-mgmtd",
-                                                          std::move(httpHandler));
+    m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress, m_httpConfig.listenPort,
+                                                          m_httpConfig.tlsEnabled, m_httpConfig.certFile,
+                                                          m_httpConfig.keyFile, "pz-mgmtd", std::move(httpHandler));
     if (!m_httpServer || !m_httpServer->init())
     {
         LOG_ERROR("failed to initialize HTTP server");
         return false;
     }
 
-    m_process = std::make_unique<MgmtdProcess>(m_ipcClient.get(),
-                                               m_httpServer.get(),
-                                               m_serviceManager.get());
+    m_process = std::make_unique<MgmtdProcess>(m_ipcClient.get(), m_httpServer.get(), m_serviceManager.get());
     if (!m_process)
     {
         LOG_ERROR("failed to initialize process");
@@ -153,8 +128,6 @@ void MgmtdCore::ensureCredentialLoaded()
         return;
     }
 
-    // Throttle the retry (~1s) so a persistently-empty/unreachable store doesn't spin
-    // the loop or spam the journal; the first attempt (epoch sentinel) runs immediately.
     const auto now = std::chrono::steady_clock::now();
     if (m_lastCredAttempt != std::chrono::steady_clock::time_point{} &&
         now - m_lastCredAttempt < std::chrono::seconds(1))
@@ -235,8 +208,7 @@ bool MgmtdCore::loadHttpConfig()
 
     const auto& http = svc["http"];
     m_httpConfig.listenAddress = http.value("listen_address", "0.0.0.0");
-    m_httpConfig.listenPort =
-        static_cast<std::uint16_t>(http.value("listen_port", 9101));
+    m_httpConfig.listenPort = static_cast<std::uint16_t>(http.value("listen_port", 9101));
 
     m_httpConfig.tlsEnabled = http.value("tls_enabled", false);
     m_httpConfig.certFile = http.value("cert_file", "");
@@ -252,11 +224,8 @@ bool MgmtdCore::loadAuthConfig()
         return true;
     }
 
-    // The admin credential lives hashed in the running-config (mgmtd.service.http.admin),
-    // seeded/written by engined (which boots first). mgmtd only reads it here; the
-    // settings API redacts it from GUI responses.
     m_serviceManager->authService().loadCredential();
     return true;
 }
 
-} // namespace pz::mgmtd
+}

@@ -5,12 +5,12 @@
 #include "ipc/IpcClient.h"
 #include "util/ThreadManager.h"
 
+#include "action/AuthdActionFactory.h"
+#include "event/AuthdEventFactory.h"
 #include "process/AuthdProcess.h"
 #include "router/AuthdRxRouter.h"
 #include "router/AuthdTxRouter.h"
 #include "service/AuthdServiceManager.h"
-#include "event/AuthdEventFactory.h"
-#include "action/AuthdActionFactory.h"
 
 #include "config/ConfigTypes.h"
 
@@ -47,4 +47,4 @@ private:
     std::unique_ptr<AuthdServiceManager> m_serviceManager;
 };
 
-} // namespace pz::authd
+}

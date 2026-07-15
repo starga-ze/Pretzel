@@ -12,4 +12,4 @@ ScandActionDomain ScandAction::domain() const
     return m_domain;
 }
 
-} // namespace pz::scand
+}

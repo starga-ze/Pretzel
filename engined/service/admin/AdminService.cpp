@@ -13,8 +13,7 @@
 namespace pz::engined
 {
 
-void AdminService::handleEvent(EnginedServiceManager& /*serviceManager*/,
-                               const AdminEvent& event)
+void AdminService::handleEvent(EnginedServiceManager&, const AdminEvent& event)
 {
     if (event.type() != AdminEventType::ReceivePasswordUpdate)
     {
@@ -46,8 +45,8 @@ void AdminService::updatePassword(const std::string& payloadJson)
     }
 
     const std::string username = root.value("username", "");
-    const std::string hash     = root.value("password_hash", "");
-    const std::string salt     = root.value("salt", "");
+    const std::string hash = root.value("password_hash", "");
+    const std::string salt = root.value("salt", "");
 
     if (username.empty() || hash.empty() || salt.empty())
     {
@@ -55,14 +54,9 @@ void AdminService::updatePassword(const std::string& payloadJson)
         return;
     }
 
-    // Credentials live in local_users (a non-versioned store), so a password change is
-    // a single-row UPDATE — it does NOT create a running_config version. must_change is
-    // cleared (the operator moved off the factory default). No ConfigReload: the sole
-    // consumer (mgmtd) updates its in-memory credential directly.
-    const bool ok = pz::db::Database::instance().exec(
-        "UPDATE local_users SET password_hash = $1, salt = $2, "
-        "must_change = false, updated_at = now() WHERE username = $3",
-        {hash, salt, username});
+    const bool ok = pz::db::Database::instance().exec("UPDATE local_users SET password_hash = $1, salt = $2, "
+                                                      "must_change = false, updated_at = now() WHERE username = $3",
+                                                      {hash, salt, username});
 
     if (ok)
         LOG_INFO("password updated in local_users (user={})", username);
@@ -70,4 +64,4 @@ void AdminService::updatePassword(const std::string& payloadJson)
         LOG_WARN("local_users update failed (user={})", username);
 }
 
-} // namespace pz::engined
+}

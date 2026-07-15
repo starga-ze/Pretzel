@@ -7,8 +7,7 @@ namespace pz::ipcd
 constexpr int kIpcServerTimeoutMs = 10;
 
 IpcdProcess::IpcdProcess(IpcServer* ipcServer, IpcdServiceManager* serviceManager)
-    : m_ipcServer(ipcServer),
-      m_serviceManager(serviceManager)
+    : m_ipcServer(ipcServer), m_serviceManager(serviceManager)
 {
 }
 
@@ -40,4 +39,4 @@ void IpcdProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace pz::ipcd
+}

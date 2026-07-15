@@ -1,7 +1,7 @@
 #pragma once
 
-#include "service/bootstrap/BootstrapEvent.h"
 #include "service/bootstrap/BootstrapAction.h"
+#include "service/bootstrap/BootstrapEvent.h"
 
 #include <chrono>
 #include <memory>
@@ -13,11 +13,6 @@ class ApidServiceManager;
 class ApidEventFactory;
 class ApidActionFactory;
 
-// apid is infrastructure (external ingest edge), NOT a config-convergence participant —
-// engined never gates on it and it is not restarted on config reload. Its readiness is
-// the completed IPC handshake alone: Init -> WaitServerHello -> Ready -> Running. It does
-// NOT wait for the fleet-wide RuntimeStart (a signal it isn't part of and would race/miss
-// on a late connect); any RuntimeStart it receives is ignored. Mirrors mgmtd.
 class BootstrapService
 {
 public:
@@ -30,8 +25,7 @@ public:
         Failed
     };
 
-    BootstrapService(ApidEventFactory* eventFactory,
-                     ApidActionFactory* actionFactory);
+    BootstrapService(ApidEventFactory* eventFactory, ApidActionFactory* actionFactory);
 
     ~BootstrapService() = default;
 
@@ -41,20 +35,16 @@ public:
 
     bool isReady() const;
 
-    void handleEvent(ApidServiceManager& serviceManager,
-                     const BootstrapEvent& event);
+    void handleEvent(ApidServiceManager& serviceManager, const BootstrapEvent& event);
 
-    void handleAction(ApidServiceManager& serviceManager,
-                      const BootstrapAction& action);
+    void handleAction(ApidServiceManager& serviceManager, const BootstrapAction& action);
 
 private:
-    void onServerHello(ApidServiceManager& serviceManager,
-                       const pz::ipc::IpcMessage& msg);
+    void onServerHello(ApidServiceManager& serviceManager, const pz::ipc::IpcMessage& msg);
 
     void onRuntimeStart(const pz::ipc::IpcMessage& msg);
 
-    void warnIfBootSlow(std::chrono::steady_clock::time_point now,
-                        const char* stateName);
+    void warnIfBootSlow(std::chrono::steady_clock::time_point now, const char* stateName);
 
     std::unique_ptr<pz::ipc::IpcMessage> buildClientHelloMessage() const;
     std::unique_ptr<pz::ipc::IpcMessage> buildRuntimeReadyMessage() const;
@@ -70,4 +60,4 @@ private:
     bool m_bootSlowWarned{false};
 };
 
-} // namespace pz::apid
+}

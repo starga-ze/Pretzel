@@ -11,10 +11,10 @@ class IcmpdServiceManager;
 
 enum class ProbeActionType : std::uint32_t
 {
-    Unknown          = 0,
-    StartProbe       = 1,
-    SendProbeBatch   = 2,
-    SendProbeResult  = 3,  // send probe results to engined after probe completes
+    Unknown = 0,
+    StartProbe = 1,
+    SendProbeBatch = 2,
+    SendProbeResult = 3,
 };
 
 class ProbeAction final : public IcmpdAction
@@ -30,4 +30,4 @@ private:
     ProbeActionType m_type = ProbeActionType::Unknown;
 };
 
-} // namespace pz::icmpd
+}

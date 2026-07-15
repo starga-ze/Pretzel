@@ -11,23 +11,18 @@ namespace pz::authd
 
 enum class AuthActionType : std::uint32_t
 {
-    Unknown                  = 0,
-    SendLoginResponse        = 1,
-    SendOidcStartResponse    = 2,
+    Unknown = 0,
+    SendLoginResponse = 1,
+    SendOidcStartResponse = 2,
     SendOidcCallbackResponse = 3,
-    SendSamlStartResponse    = 4,
-    SendSamlAcsResponse      = 5
+    SendSamlStartResponse = 4,
+    SendSamlAcsResponse = 5
 };
 
-// A response action: it targets the original requester (dst) and echoes the request
-// seqNo so the requester correlates the reply. `payload` is the response JSON body.
 class AuthAction final : public AuthdAction
 {
 public:
-    AuthAction(AuthActionType type,
-               pz::ipc::IpcDaemon dst,
-               std::uint32_t seqNo,
-               std::string payload);
+    AuthAction(AuthActionType type, pz::ipc::IpcDaemon dst, std::uint32_t seqNo, std::string payload);
 
     AuthActionType type() const;
     pz::ipc::IpcDaemon dst() const;
@@ -43,4 +38,4 @@ private:
     std::string m_payload;
 };
 
-} // namespace pz::authd
+}

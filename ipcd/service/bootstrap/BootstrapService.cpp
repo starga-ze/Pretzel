@@ -1,12 +1,12 @@
 #include "service/bootstrap/BootstrapService.h"
 
-#include "service/IpcdServiceManager.h"
-#include "event/IpcdEventFactory.h"
 #include "action/IpcdActionFactory.h"
+#include "event/IpcdEventFactory.h"
 #include "ipc/IpcServerHandler.h"
+#include "service/IpcdServiceManager.h"
 
-#include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 
 #include "util/Logger.h"
 
@@ -15,17 +15,13 @@
 namespace pz::ipcd
 {
 
-BootstrapService::BootstrapService(IpcdEventFactory* eventFactory,
-                                           IpcdActionFactory* actionFactory,
-                                           IpcServerHandler* ipcServerHandler)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory),
-      m_ipcServerHandler(ipcServerHandler)
+BootstrapService::BootstrapService(IpcdEventFactory* eventFactory, IpcdActionFactory* actionFactory,
+                                   IpcServerHandler* ipcServerHandler)
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_ipcServerHandler(ipcServerHandler)
 {
 }
 
-void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
-                                       const BootstrapEvent& event)
+void BootstrapService::handleEvent(IpcdServiceManager& serviceManager, const BootstrapEvent& event)
 {
     if (!m_actionFactory)
     {
@@ -44,12 +40,10 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
             return;
         }
 
-        LOG_DEBUG("ReceiveClientHello (src={})",
-                 pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+        LOG_DEBUG("ReceiveClientHello (src={})", pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
-        auto action = std::make_unique<BootstrapAction>(
-            BootstrapActionType::SendServerHello,
-            std::make_unique<pz::ipc::IpcMessage>(*msg));
+        auto action = std::make_unique<BootstrapAction>(BootstrapActionType::SendServerHello,
+                                                        std::make_unique<pz::ipc::IpcMessage>(*msg));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -64,12 +58,10 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
             return;
         }
 
-        LOG_TRACE("ReceiveSyncRequest (src={})",
-                 pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
+        LOG_TRACE("ReceiveSyncRequest (src={})", pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
-        auto action = std::make_unique<BootstrapAction>(
-            BootstrapActionType::SendSyncResponse,
-            std::make_unique<pz::ipc::IpcMessage>(*msg));
+        auto action = std::make_unique<BootstrapAction>(BootstrapActionType::SendSyncResponse,
+                                                        std::make_unique<pz::ipc::IpcMessage>(*msg));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -84,23 +76,20 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
             return;
         }
 
-        // Payload: JSON {"daemon":...,"applied_version":V}. A legacy bare daemon-name
-        // string is tolerated as applied_version=0 (ipcd keeps the last known version).
         uint64_t appliedVersion = 0;
         const auto& payload = msg->getPayload();
         if (!payload.empty())
         {
             const auto parsed = nlohmann::json::parse(
-                std::string(reinterpret_cast<const char*>(payload.data()), payload.size()),
-                nullptr, false);
+                std::string(reinterpret_cast<const char*>(payload.data()), payload.size()), nullptr, false);
             if (parsed.is_object())
             {
                 appliedVersion = parsed.value("applied_version", 0ull);
             }
         }
 
-        LOG_TRACE("ReceiveRuntimeReady (src={}, applied_version={})",
-                 pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()), appliedVersion);
+        LOG_TRACE("ReceiveRuntimeReady (src={}, applied_version={})", pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()),
+                  appliedVersion);
 
         if (m_ipcServerHandler)
         {
@@ -111,14 +100,12 @@ void BootstrapService::handleEvent(IpcdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event (type={})",
-                 static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
 }
 
-void BootstrapService::handleAction(IpcdServiceManager& serviceManager,
-                                        const BootstrapAction& action)
+void BootstrapService::handleAction(IpcdServiceManager& serviceManager, const BootstrapAction& action)
 {
     switch (action.type())
     {
@@ -151,25 +138,19 @@ void BootstrapService::handleAction(IpcdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled action (type={})",
-                 static_cast<std::uint32_t>(action.type()));
+        LOG_WARN("unhandled action (type={})", static_cast<std::uint32_t>(action.type()));
         break;
     }
 }
 
-std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildServerHello(const pz::ipc::IpcMessage& req) const
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapService::buildServerHello(const pz::ipc::IpcMessage& req) const
 {
     const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Ipcd);
 
     const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Ipcd,
-        req.getSrc(),
-        pz::ipc::IpcCmd::ServerHello,
-        req.getSeqNo(),
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Ipcd, req.getSrc(),
+                                                          pz::ipc::IpcCmd::ServerHello, req.getSeqNo(), flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
@@ -177,17 +158,12 @@ BootstrapService::buildServerHello(const pz::ipc::IpcMessage& req) const
     return msg;
 }
 
-std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
 {
     const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Ipcd,
-        req.getSrc(),
-        pz::ipc::IpcCmd::SyncResponse,
-        req.getSeqNo(),
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Ipcd, req.getSrc(),
+                                                          pz::ipc::IpcCmd::SyncResponse, req.getSeqNo(), flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
@@ -200,12 +176,7 @@ BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
 
         for (const auto& [daemon, state] : runtimeTable)
         {
-            // engined is the requester; mgmtd is infrastructure that engined never gates
-            // on (see engined initProcessMap). Excluding both keeps the snapshot to the
-            // service daemons engined actually reconciles — and avoids a per-second
-            // "ignore unknown daemon: mgmtd" log on the engined side.
-            if (daemon == pz::ipc::IpcDaemon::Engined ||
-                daemon == pz::ipc::IpcDaemon::Mgmtd)
+            if (daemon == pz::ipc::IpcDaemon::Engined || daemon == pz::ipc::IpcDaemon::Mgmtd)
             {
                 continue;
             }
@@ -215,12 +186,10 @@ BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
                 continue;
             }
 
-            payloadJson["daemons"].push_back({
-                {"daemon",          pz::ipc::IpcProtocol::daemonToStr(daemon)},
-                {"ready",           state.ready},
-                {"generation",      state.generation},
-                {"applied_version", state.appliedVersion}
-            });
+            payloadJson["daemons"].push_back({{"daemon", pz::ipc::IpcProtocol::daemonToStr(daemon)},
+                                              {"ready", state.ready},
+                                              {"generation", state.generation},
+                                              {"applied_version", state.appliedVersion}});
         }
     }
 
@@ -230,4 +199,4 @@ BootstrapService::buildSyncResponse(const pz::ipc::IpcMessage& req) const
     return msg;
 }
 
-} // namespace pz::ipcd
+}

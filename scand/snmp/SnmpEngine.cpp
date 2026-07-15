@@ -1,5 +1,3 @@
-// net-snmp must come before our Logger: it pulls in syslog.h which defines
-// LOG_INFO / LOG_DEBUG / etc. as integers — undef them afterwards.
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #undef LOG_EMERG
@@ -11,9 +9,9 @@
 #undef LOG_INFO
 #undef LOG_DEBUG
 
+#include "lldp/LldpProtocol.h"
 #include "snmp/SnmpEngine.h"
 #include "snmp/SnmpProtocol.h"
-#include "lldp/LldpProtocol.h"
 #include "util/Logger.h"
 
 #include <fcntl.h>
@@ -22,11 +20,7 @@
 namespace pz::scand
 {
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-SnmpEngine::SnmpEngine()
-    : m_events(kMaxEvents),
-      m_handler(std::make_unique<SnmpEngineHandler>(this))
+SnmpEngine::SnmpEngine() : m_events(kMaxEvents), m_handler(std::make_unique<SnmpEngineHandler>(this))
 {
 }
 
@@ -67,8 +61,6 @@ SnmpEngineHandler* SnmpEngine::handler()
     return m_handler.get();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 void SnmpEngine::startScan(std::vector<std::string> ips, SnmpScanConfig cfg)
 {
     if (m_scanActive)
@@ -81,18 +73,15 @@ void SnmpEngine::startScan(std::vector<std::string> ips, SnmpScanConfig cfg)
     m_completed.clear();
     m_sessions.clear();
     m_pendingCount = 0;
-    m_v3Pending    = 0;
-    m_scanActive   = true;
+    m_v3Pending = 0;
+    m_scanActive = true;
 
     LOG_DEBUG("starting scan (ips={}, community={}, port={}, "
               "v2c_probe_ms={}, v3_devices={})",
-              ips.size(), m_cfg.community, m_cfg.port,
-              m_cfg.v2cProbeTimeoutMs, m_cfg.v3PerIp.size());
+              ips.size(), m_cfg.community, m_cfg.port, m_cfg.v2cProbeTimeoutMs, m_cfg.v3PerIp.size());
 
     for (const auto& ip : ips)
     {
-        // SNMP is opt-in per device — an IP with no v2c/v3/API config anywhere is
-        // ICMP-only and never probed here, no matter how broad the incoming list is.
         if (!m_cfg.isRegistered(ip))
         {
             LOG_TRACE("no v2c/v3 config — skipping, ICMP only (ip={})", ip);
@@ -103,30 +92,23 @@ void SnmpEngine::startScan(std::vector<std::string> ips, SnmpScanConfig cfg)
             ++m_pendingCount;
     }
 
-    // Nothing started (or no IPs) → complete immediately.
     checkScanComplete();
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  v2c async (epoll) path
-// ─────────────────────────────────────────────────────────────────────────────
 
 bool SnmpEngine::sendV2c(const std::string& ip)
 {
     netsnmp_session sess;
     snmp_sess_init(&sess);
 
-    const std::string peer = (m_cfg.port != 161)
-        ? ip + ":" + std::to_string(m_cfg.port)
-        : ip;
+    const std::string peer = (m_cfg.port != 161) ? ip + ":" + std::to_string(m_cfg.port) : ip;
 
-    auto session       = std::make_unique<SnmpSession>();
+    auto session = std::make_unique<SnmpSession>();
     session->device.ip = ip;
 
     SnmpProtocol::configureV2c(sess, peer, m_cfg.communityFor(ip), m_cfg);
 
-    sess.callback       = &SnmpEngine::snmpCallback;
-    sess.callback_magic = session.get();   // raw ptr; object lives in m_sessions
+    sess.callback = &SnmpEngine::snmpCallback;
+    sess.callback_magic = session.get();
 
     void* handle = snmp_sess_open(&sess);
     if (!handle)
@@ -164,7 +146,7 @@ bool SnmpEngine::sendV2c(const std::string& ip)
     }
 
     session->handle = handle;
-    session->fd     = fd;
+    session->fd = fd;
     m_sessions.emplace(fd, std::move(session));
     return true;
 }
@@ -187,7 +169,7 @@ bool SnmpEngine::poll(int timeoutMs)
 
         auto it = m_sessions.find(fd);
         if (it == m_sessions.end())
-            continue;  // epoll's own wakeup fd — ignore
+            continue;
 
         fd_set readFds;
         FD_ZERO(&readFds);
@@ -202,8 +184,8 @@ bool SnmpEngine::poll(int timeoutMs)
             snmp_sess_timeout(session->handle);
     }
 
-    reapDoneSessions();      // v2c completions → may hand work to v3 pool
-    drainV3Results();        // v3 worker completions → m_completed
+    reapDoneSessions();
+    drainV3Results();
     checkScanComplete();
 
     return true;
@@ -211,7 +193,7 @@ bool SnmpEngine::poll(int timeoutMs)
 
 void SnmpEngine::reapDoneSessions()
 {
-    for (auto it = m_sessions.begin(); it != m_sessions.end(); )
+    for (auto it = m_sessions.begin(); it != m_sessions.end();)
     {
         SnmpSession* s = it->second.get();
         if (!s->done)
@@ -221,13 +203,8 @@ void SnmpEngine::reapDoneSessions()
         }
 
         const SnmpV3Config* v3 = m_cfg.v3For(s->device.ip);
-        const bool v3Fallback  = !s->responded && v3 != nullptr && !v3->user.empty();
+        const bool v3Fallback = !s->responded && v3 != nullptr && !v3->user.empty();
 
-        // Collect the interface MAC set (ifPhysAddress) and IP-bearing interfaces
-        // (ipAddrTable) for responded v2c devices — the MAC set is the grouping
-        // fingerprint; the interfaces surface firewall WAN/LAN IPs and switch SVIs.
-        // The handle is still open here (outside the callback stack), so the
-        // synchronous walks are safe. v3 devices collect these in their own path.
         if (s->responded)
         {
             SnmpProtocol::walkIfPhysAddr(s->handle, s->device);
@@ -238,10 +215,8 @@ void SnmpEngine::reapDoneSessions()
         }
 
         m_epoll.del(s->fd);
-        snmp_sess_close(s->handle);   // safe: fully outside callback stack
+        snmp_sess_close(s->handle);
 
-        // v2c responded → done. Otherwise, if this IP has v3 creds, retry over v3 on
-        // the worker pool (blocking engineID discovery, never on the main loop).
         if (s->responded)
         {
             m_completed.push_back(std::move(s->device));
@@ -256,29 +231,21 @@ void SnmpEngine::reapDoneSessions()
     }
 }
 
-// static
-int SnmpEngine::snmpCallback(int op, snmp_session* /*sp*/, int /*reqId*/,
-                              snmp_pdu* pdu, void* magic)
+int SnmpEngine::snmpCallback(int op, snmp_session*, int, snmp_pdu* pdu, void* magic)
 {
     auto* session = static_cast<SnmpSession*>(magic);
 
-    if (op == NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE && pdu != nullptr &&
-        pdu->errstat == SNMP_ERR_NOERROR)
+    if (op == NETSNMP_CALLBACK_OP_RECEIVED_MESSAGE && pdu != nullptr && pdu->errstat == SNMP_ERR_NOERROR)
     {
         SnmpProtocol::parseSysGroup(pdu, session->device);
         session->responded = true;
 
-        LOG_TRACE("v2c response (ip={}, sys_name={})",
-                  session->device.ip, session->device.sysName);
+        LOG_TRACE("v2c response (ip={}, sys_name={})", session->device.ip, session->device.sysName);
     }
 
-    session->done = true;   // reaped in reapDoneSessions() after read/timeout unwind
+    session->done = true;
     return 1;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  v3 blocking worker-pool path
-// ─────────────────────────────────────────────────────────────────────────────
 
 void SnmpEngine::startV3Workers()
 {
@@ -320,7 +287,6 @@ void SnmpEngine::v3WorkerLoop()
             m_v3Queue.pop();
         }
 
-        // Blocking engineID discovery + fetch. BLOCKS this worker, not the main loop.
         SnmpDevice dev = probeV3Blocking(ip);
         const bool responded = !dev.sysName.empty() || !dev.sysDescr.empty();
 
@@ -331,9 +297,6 @@ void SnmpEngine::v3WorkerLoop()
     }
 }
 
-// Runs in a worker thread. Uses the single-session API (thread-safe per handle)
-// with a SYNCHRONOUS request — net-snmp does the v3 engineID discovery + fetch
-// here, blocking only this worker.
 SnmpDevice SnmpEngine::probeV3Blocking(const std::string& ip)
 {
     SnmpDevice dev;
@@ -342,9 +305,7 @@ SnmpDevice SnmpEngine::probeV3Blocking(const std::string& ip)
     netsnmp_session sess;
     snmp_sess_init(&sess);
 
-    const std::string peer = (m_cfg.port != 161)
-        ? ip + ":" + std::to_string(m_cfg.port)
-        : ip;
+    const std::string peer = (m_cfg.port != 161) ? ip + ":" + std::to_string(m_cfg.port) : ip;
 
     const SnmpV3Config* v3 = m_cfg.v3For(ip);
     if (!v3 || !SnmpProtocol::configureV3(sess, peer, m_cfg, *v3))
@@ -360,32 +321,28 @@ SnmpDevice SnmpEngine::probeV3Blocking(const std::string& ip)
     netsnmp_pdu* pdu = SnmpProtocol::buildSysGroupGet();
     netsnmp_pdu* resp = nullptr;
 
-    // Blocking: discovery + request + response. snmp_sess_synch_response frees pdu.
     const int status = snmp_sess_synch_response(handle, pdu, &resp);
 
-    if (status == STAT_SUCCESS && resp != nullptr &&
-        resp->errstat == SNMP_ERR_NOERROR)
+    if (status == STAT_SUCCESS && resp != nullptr && resp->errstat == SNMP_ERR_NOERROR)
     {
         SnmpProtocol::parseSysGroup(resp, dev);
 
-        // Collect the interface MAC set (ifPhysAddress) as a hardware fingerprint.
-        // Palo Alto and similar gear don't expose the standard ip-MIB address
-        // tables, so the MAC set is the portable key for grouping a device's IPs.
         SnmpProtocol::walkIfPhysAddr(handle, dev);
         SnmpProtocol::walkInterfaceAddrs(handle, dev);
         SnmpProtocol::walkIfTable(handle, dev);
         dev.lldpNeighbors = LldpProtocol::walkNeighbors(handle);
         SnmpProtocol::walkArpTable(handle, dev);
 
-        LOG_TRACE("v3 response (ip={}, sys_name={}, macs={}, ifs={})",
-                  ip, dev.sysName, dev.interfaceMacs.size(), dev.interfaces.size());
+        LOG_TRACE("v3 response (ip={}, sys_name={}, macs={}, ifs={})", ip, dev.sysName, dev.interfaceMacs.size(),
+                  dev.interfaces.size());
 
         if (!dev.interfaceMacs.empty())
         {
             std::string joined;
             for (size_t i = 0; i < dev.interfaceMacs.size(); ++i)
             {
-                if (i) joined += ',';
+                if (i)
+                    joined += ',';
                 joined += dev.interfaceMacs[i];
             }
             LOG_TRACE("mac-fingerprint (ip={}, macs=[{}])", ip, joined);
@@ -450,4 +407,4 @@ void SnmpEngine::checkScanComplete()
         m_handler->onScanComplete(std::move(results));
 }
 
-} // namespace pz::scand
+}

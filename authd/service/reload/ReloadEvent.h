@@ -9,7 +9,7 @@ namespace pz::authd
 
 enum class ReloadEventType : std::uint32_t
 {
-    Unknown             = 0,
+    Unknown = 0,
     ReceiveConfigReload = 1,
 };
 
@@ -26,4 +26,4 @@ private:
     ReloadEventType m_type{ReloadEventType::Unknown};
 };
 
-} // namespace pz::authd
+}

@@ -4,8 +4,7 @@
 namespace pz::authd
 {
 
-AuthdCore::AuthdCore() :
-    Core("authd")
+AuthdCore::AuthdCore() : Core("authd")
 {
 }
 
@@ -27,11 +26,8 @@ bool AuthdCore::onInit()
     m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
-    pz::util::Logger::Init(
-            m_loggerConfig.name,
-            m_loggerConfig.file,
-            m_loggerConfig.maxFileSize,
-            m_loggerConfig.maxFiles);
+    pz::util::Logger::Init(m_loggerConfig.name, m_loggerConfig.file, m_loggerConfig.maxFileSize,
+                           m_loggerConfig.maxFiles);
 
     LOG_INFO("authd: starting up");
 
@@ -62,10 +58,8 @@ bool AuthdCore::onInit()
         return false;
     }
 
-    m_serviceManager = std::make_unique<AuthdServiceManager>(
-        m_eventFactory.get(),
-        m_actionFactory.get(),
-        m_txRouter.get());
+    m_serviceManager =
+        std::make_unique<AuthdServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
 
     if (!m_serviceManager)
     {
@@ -73,7 +67,6 @@ bool AuthdCore::onInit()
         return false;
     }
 
-    // Wire the auth/OIDC settings from the running config into AuthService.
     m_serviceManager->configure(cfg);
 
     m_process = std::make_unique<AuthdProcess>(m_ipcClient.get(), m_serviceManager.get());
@@ -120,4 +113,4 @@ void AuthdCore::onShutdown()
     pz::util::Logger::Shutdown();
 }
 
-} // namespace pz::authd
+}

@@ -12,11 +12,11 @@ class ScandServiceManager;
 
 enum class ScandEventDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
     Heartbeat = 2,
-    Scan      = 3,
-    Reload    = 4,
+    Scan = 3,
+    Reload = 4,
 };
 
 class ScandEvent : public pz::event::Event
@@ -33,4 +33,4 @@ private:
     ScandEventDomain m_domain{ScandEventDomain::Unknown};
 };
 
-} // namespace pz::scand
+}

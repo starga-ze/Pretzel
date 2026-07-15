@@ -13,7 +13,7 @@ class IpcdServiceManager;
 
 enum class IpcdActionDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1
 };
 
@@ -31,4 +31,4 @@ private:
     IpcdActionDomain m_domain{IpcdActionDomain::Unknown};
 };
 
-} // namespace pz::ipcd
+}

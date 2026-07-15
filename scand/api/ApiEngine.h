@@ -19,12 +19,6 @@
 namespace pz::scand
 {
 
-// Runs the vendor-API scan method on its own worker pool, independent of
-// SnmpEngine. A device lands here if and only if its scan method is "api" in the
-// GUI — there is no SNMP fallback/escalation into this engine: each device is on
-// exactly one engine's worklist, decided up front by ScanService, so unlike the
-// old v2c -> v3 -> API chain there is nothing here to gate on "did SNMP already
-// get enough topology data".
 class ApiEngine final
 {
 public:
@@ -34,14 +28,10 @@ public:
     ApiEngine(const ApiEngine&) = delete;
     ApiEngine& operator=(const ApiEngine&) = delete;
 
-    // Call once at startup — spins up the worker pool.
     bool init();
 
-    // Kick off a sweep over `devices` (ip -> vendor credential). No-op if a scan
-    // is already in flight.
     void startScan(std::map<std::string, ApiCredential> devices);
 
-    // Drain completed worker results. Called every tick.
     bool poll(int timeoutMs);
 
     bool isScanning() const;
@@ -52,37 +42,34 @@ private:
     struct WorkResult
     {
         SnmpDevice device;
-        bool       responded{false};
+        bool responded{false};
     };
 
     void startWorkers();
     void stopWorkers();
-    void workerLoop();           // worker thread body
-    void drainResults();         // main thread
-    void checkScanComplete();    // main thread
+    void workerLoop();
+    void drainResults();
+    void checkScanComplete();
 
     static constexpr int kWorkerCount = 16;
 
     bool m_initialized{false};
     bool m_scanActive{false};
-    int  m_pending{0};   // jobs not yet drained back (main thread only)
+    int m_pending{0};
 
     std::vector<SnmpDevice> m_completed;
 
-    // worker pool + thread-safe queues
     std::vector<std::thread> m_workers;
     std::queue<std::pair<std::string, ApiCredential>> m_queue;
-    std::mutex               m_queueMu;
-    std::condition_variable  m_queueCv;
-    std::queue<WorkResult>   m_results;
-    std::mutex               m_resultsMu;
-    std::atomic<bool>        m_stop{false};
+    std::mutex m_queueMu;
+    std::condition_variable m_queueCv;
+    std::queue<WorkResult> m_results;
+    std::mutex m_resultsMu;
+    std::atomic<bool> m_stop{false};
 
-    // Vendor providers (PAN-OS, ...). collect() is called from worker threads;
-    // providers are stateless / thread-safe across concurrent calls.
     VendorApiRegistry m_apiRegistry;
 
     std::unique_ptr<ApiEngineHandler> m_handler;
 };
 
-} // namespace pz::scand
+}

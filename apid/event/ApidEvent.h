@@ -11,9 +11,9 @@ class ApidServiceManager;
 
 enum class ApidEventDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
-    Ingest      = 2
+    Ingest = 2
 };
 
 class ApidEvent : public pz::event::Event
@@ -30,4 +30,4 @@ private:
     ApidEventDomain m_domain{ApidEventDomain::Unknown};
 };
 
-} // namespace pz::apid
+}

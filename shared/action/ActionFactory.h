@@ -17,4 +17,4 @@ public:
     virtual std::unique_ptr<ActionT> create(DomainT domain, std::uint32_t type) = 0;
 };
 
-} // namespace pz::action
+}

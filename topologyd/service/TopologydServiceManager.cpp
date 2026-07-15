@@ -8,14 +8,10 @@ namespace pz::topologyd
 {
 
 TopologydServiceManager::TopologydServiceManager(TopologydEventFactory* eventFactory,
-                                                 TopologydActionFactory* actionFactory,
-                                                 TopologydTxRouter* txRouter)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory),
-      m_txRouter(txRouter),
+                                                 TopologydActionFactory* actionFactory, TopologydTxRouter* txRouter)
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_reloadService(std::make_unique<ReloadService>())
+      m_heartbeatService(std::make_unique<HeartbeatService>()), m_reloadService(std::make_unique<ReloadService>())
 {
 }
 
@@ -94,4 +90,4 @@ TopologydTxRouter& TopologydServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace pz::topologyd
+}

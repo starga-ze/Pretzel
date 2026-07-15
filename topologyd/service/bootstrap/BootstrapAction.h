@@ -9,9 +9,9 @@ namespace pz::topologyd
 
 enum class BootstrapActionType : std::uint32_t
 {
-    Unknown            = 0,
-    SendClientHello    = 1,
-    SendRuntimeReady   = 2
+    Unknown = 0,
+    SendClientHello = 1,
+    SendRuntimeReady = 2
 };
 
 class BootstrapAction final : public TopologydAction
@@ -27,4 +27,4 @@ private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };
 
-} // namespace pz::topologyd
+}

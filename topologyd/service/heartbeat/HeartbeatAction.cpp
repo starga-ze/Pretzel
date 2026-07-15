@@ -6,9 +6,7 @@ namespace pz::topologyd
 {
 
 HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst)
-    : TopologydAction(TopologydActionDomain::Heartbeat),
-      m_type(type),
-      m_dst(dst)
+    : TopologydAction(TopologydActionDomain::Heartbeat), m_type(type), m_dst(dst)
 {
 }
 
@@ -27,4 +25,4 @@ pz::ipc::IpcDaemon HeartbeatAction::dst() const
     return m_dst;
 }
 
-} // namespace pz::topologyd
+}

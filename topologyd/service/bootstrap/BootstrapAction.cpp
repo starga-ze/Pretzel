@@ -6,8 +6,7 @@ namespace pz::topologyd
 {
 
 BootstrapAction::BootstrapAction(BootstrapActionType type)
-    : TopologydAction(TopologydActionDomain::Bootstrap),
-      m_type(type)
+    : TopologydAction(TopologydActionDomain::Bootstrap), m_type(type)
 {
 }
 
@@ -21,4 +20,4 @@ BootstrapActionType BootstrapAction::type() const
     return m_type;
 }
 
-} // namespace pz::topologyd
+}

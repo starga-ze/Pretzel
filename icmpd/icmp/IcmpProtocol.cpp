@@ -24,8 +24,7 @@ const char* IcmpProtocol::typeToStr(IcmpType type)
 
 const char* IcmpProtocol::codeToStr(IcmpType type, IcmpCode code)
 {
-    if ((type == IcmpType::EchoRequest || type == IcmpType::EchoReply) &&
-        code == IcmpCode::Echo)
+    if ((type == IcmpType::EchoRequest || type == IcmpType::EchoReply) && code == IcmpCode::Echo)
     {
         return "Echo";
     }
@@ -33,4 +32,4 @@ const char* IcmpProtocol::codeToStr(IcmpType type, IcmpCode code)
     return "Unknown";
 }
 
-} // namespace pz::icmpd
+}

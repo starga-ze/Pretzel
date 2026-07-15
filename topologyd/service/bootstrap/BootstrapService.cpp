@@ -1,12 +1,12 @@
 #include "service/bootstrap/BootstrapService.h"
 
-#include "service/TopologydServiceManager.h"
-#include "event/TopologydEventFactory.h"
 #include "action/TopologydActionFactory.h"
+#include "event/TopologydEventFactory.h"
 #include "router/TopologydTxRouter.h"
+#include "service/TopologydServiceManager.h"
 
-#include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 
 #include "config/Config.h"
 
@@ -20,8 +20,6 @@ namespace pz::topologyd
 namespace
 {
 
-// Defaults match the compiled-in values; overridable via "service"."bootstrap" in
-// the running-config (global, merged with section "topologyd").
 const nlohmann::json& bootstrapConfig()
 {
     return pz::config::Config::serviceSection("topologyd", "bootstrap");
@@ -42,12 +40,10 @@ std::chrono::milliseconds bootstrapTimeout()
     return std::chrono::seconds(bootstrapConfig().value("bootstrap_timeout_sec", 10));
 }
 
-} // namespace
+}
 
-BootstrapService::BootstrapService(TopologydEventFactory* eventFactory,
-                                   TopologydActionFactory* actionFactory)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory)
+BootstrapService::BootstrapService(TopologydEventFactory* eventFactory, TopologydActionFactory* actionFactory)
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory)
 {
 }
 
@@ -62,8 +58,7 @@ void BootstrapService::start()
     LOG_INFO("bootstrap started");
 }
 
-std::unique_ptr<TopologydEvent>
-BootstrapService::schedule(std::chrono::steady_clock::time_point now)
+std::unique_ptr<TopologydEvent> BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
@@ -83,9 +78,8 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         m_state = State::WaitServerHello;
         m_lastClientHelloSentAt = now;
 
-        return m_eventFactory->create(
-            TopologydEventDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
+        return m_eventFactory->create(TopologydEventDomain::Bootstrap,
+                                      static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
     }
 
     case State::WaitServerHello:
@@ -99,9 +93,8 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastClientHelloSentAt = now;
 
-            return m_eventFactory->create(
-                TopologydEventDomain::Bootstrap,
-                static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
+            return m_eventFactory->create(TopologydEventDomain::Bootstrap,
+                                          static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
         }
 
         return nullptr;
@@ -118,9 +111,8 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
         {
             m_lastRuntimeReadySentAt = now;
 
-            return m_eventFactory->create(
-                TopologydEventDomain::Bootstrap,
-                static_cast<std::uint32_t>(BootstrapEventType::SendRuntimeReady));
+            return m_eventFactory->create(TopologydEventDomain::Bootstrap,
+                                          static_cast<std::uint32_t>(BootstrapEventType::SendRuntimeReady));
         }
 
         return nullptr;
@@ -146,8 +138,7 @@ bool BootstrapService::isReady() const
     return m_state == State::Running;
 }
 
-void BootstrapService::handleEvent(TopologydServiceManager& serviceManager,
-                                   const BootstrapEvent& event)
+void BootstrapService::handleEvent(TopologydServiceManager& serviceManager, const BootstrapEvent& event)
 {
     if (!m_actionFactory)
     {
@@ -159,9 +150,8 @@ void BootstrapService::handleEvent(TopologydServiceManager& serviceManager,
     {
     case BootstrapEventType::SendClientHello:
     {
-        auto action = m_actionFactory->create(
-            TopologydActionDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapActionType::SendClientHello));
+        auto action = m_actionFactory->create(TopologydActionDomain::Bootstrap,
+                                              static_cast<std::uint32_t>(BootstrapActionType::SendClientHello));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -182,9 +172,8 @@ void BootstrapService::handleEvent(TopologydServiceManager& serviceManager,
 
     case BootstrapEventType::SendRuntimeReady:
     {
-        auto action = m_actionFactory->create(
-            TopologydActionDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapActionType::SendRuntimeReady));
+        auto action = m_actionFactory->create(TopologydActionDomain::Bootstrap,
+                                              static_cast<std::uint32_t>(BootstrapActionType::SendRuntimeReady));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -204,14 +193,12 @@ void BootstrapService::handleEvent(TopologydServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event (type={})",
-                 static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
 }
 
-void BootstrapService::handleAction(TopologydServiceManager& serviceManager,
-                                    const BootstrapAction& action)
+void BootstrapService::handleAction(TopologydServiceManager& serviceManager, const BootstrapAction& action)
 {
     std::unique_ptr<pz::ipc::IpcMessage> msg = nullptr;
 
@@ -221,8 +208,7 @@ void BootstrapService::handleAction(TopologydServiceManager& serviceManager,
     {
         if (m_state != State::WaitServerHello)
         {
-            LOG_DEBUG("skip SendClientHello (state={})",
-                      static_cast<int>(m_state));
+            LOG_DEBUG("skip SendClientHello (state={})", static_cast<int>(m_state));
             return;
         }
 
@@ -235,8 +221,7 @@ void BootstrapService::handleAction(TopologydServiceManager& serviceManager,
     {
         if (m_state != State::WaitRuntimeStart)
         {
-            LOG_DEBUG("skip SendRuntimeReady (state={})",
-                      static_cast<int>(m_state));
+            LOG_DEBUG("skip SendRuntimeReady (state={})", static_cast<int>(m_state));
             return;
         }
 
@@ -246,23 +231,20 @@ void BootstrapService::handleAction(TopologydServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled action (type={})",
-                 static_cast<std::uint32_t>(action.type()));
+        LOG_WARN("unhandled action (type={})", static_cast<std::uint32_t>(action.type()));
         return;
     }
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
 
-void BootstrapService::onServerHello(TopologydServiceManager& serviceManager,
-                                     const pz::ipc::IpcMessage& msg)
+void BootstrapService::onServerHello(TopologydServiceManager& serviceManager, const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
     if (m_state != State::WaitServerHello)
     {
-        LOG_WARN("ServerHello received in unexpected bootstrap state (state={})",
-                 static_cast<int>(m_state));
+        LOG_WARN("ServerHello received in unexpected bootstrap state (state={})", static_cast<int>(m_state));
         return;
     }
 
@@ -271,9 +253,8 @@ void BootstrapService::onServerHello(TopologydServiceManager& serviceManager,
 
     LOG_DEBUG("state changed (state=WaitRuntimeStart)");
 
-    auto action = m_actionFactory->create(
-        TopologydActionDomain::Bootstrap,
-        static_cast<std::uint32_t>(BootstrapActionType::SendRuntimeReady));
+    auto action = m_actionFactory->create(TopologydActionDomain::Bootstrap,
+                                          static_cast<std::uint32_t>(BootstrapActionType::SendRuntimeReady));
 
     serviceManager.postAction(std::move(action));
 }
@@ -282,14 +263,9 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
-    // Only the first RuntimeStart (while in WaitRuntimeStart) advances bootstrap. engined
-    // re-broadcasts RuntimeStart to the whole fleet whenever ANY daemon (re)connects (see
-    // engined's blessedGeneration), so an already-running daemon keeps receiving it — this
-    // is expected, benign steady-state traffic, not an error.
     if (m_state != State::WaitRuntimeStart)
     {
-        LOG_TRACE("RuntimeStart ignored (already past handshake, state={})",
-                  static_cast<int>(m_state));
+        LOG_TRACE("RuntimeStart ignored (already past handshake, state={})", static_cast<int>(m_state));
         return;
     }
 
@@ -298,70 +274,48 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
     LOG_DEBUG("state changed (state=Ready)");
 }
 
-bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
-                                    const char* stateName)
+bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now, const char* stateName)
 {
-    // Cold boot never gives up: engined may simply be slow to broadcast RuntimeStart
-    // (e.g. another service daemon is lagging). Warn once on crossing the threshold,
-    // then keep retrying the handshake indefinitely rather than wedging in Failed.
     if (now - m_startedAt >= bootstrapTimeout() && !m_bootSlowWarned)
     {
         m_bootSlowWarned = true;
-        LOG_WARN("still waiting on bootstrap, will keep retrying (state={}, waited_s={})",
-                 stateName,
+        LOG_WARN("still waiting on bootstrap, will keep retrying (state={}, waited_s={})", stateName,
                  std::chrono::duration_cast<std::chrono::seconds>(now - m_startedAt).count());
     }
     return false;
 }
 
-std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildClientHelloMessage() const
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapService::buildClientHelloMessage() const
 {
-    std::string name =
-        pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Topologyd);
+    std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Topologyd);
 
-    auto flag =
-        pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
+    auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Topologyd,
-        pz::ipc::IpcDaemon::Ipcd,
-        pz::ipc::IpcCmd::ClientHello,
-        0,
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Topologyd, pz::ipc::IpcDaemon::Ipcd,
+                                                          pz::ipc::IpcCmd::ClientHello, 0, flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
-    msg->setPayload(
-        reinterpret_cast<const std::uint8_t*>(name.data()),
-        name.size());
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
 
     return msg;
 }
 
-std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildRuntimeReadyMessage() const
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapService::buildRuntimeReadyMessage() const
 {
     nlohmann::json payloadJson;
-    payloadJson["daemon"]          = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Topologyd);
+    payloadJson["daemon"] = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Topologyd);
     payloadJson["applied_version"] = pz::config::Config::runningConfigVersion();
     const std::string payload = payloadJson.dump();
 
-    auto flag =
-        pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
+    auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Topologyd,
-        pz::ipc::IpcDaemon::Ipcd,
-        pz::ipc::IpcCmd::RuntimeReady,
-        0,
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Topologyd, pz::ipc::IpcDaemon::Ipcd,
+                                                          pz::ipc::IpcCmd::RuntimeReady, 0, flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
-    msg->setPayload(
-        reinterpret_cast<const std::uint8_t*>(payload.data()),
-        payload.size());
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
 
     return msg;
 }
 
-} // namespace pz::topologyd
+}

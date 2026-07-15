@@ -1,7 +1,7 @@
 #pragma once
 
-#include "event/EventFactory.h"
 #include "event/EnginedEvent.h"
+#include "event/EventFactory.h"
 
 #include <memory>
 
@@ -19,4 +19,4 @@ public:
     std::unique_ptr<EnginedEvent> create(EnginedEventDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::engined
+}

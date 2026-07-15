@@ -3,8 +3,8 @@
 #include "action/Action.h"
 #include "ipc/IpcMessage.h"
 
-#include <memory>
 #include <cstdint>
+#include <memory>
 
 namespace pz::icmpd
 {
@@ -33,4 +33,4 @@ private:
     IcmpdActionDomain m_domain{IcmpdActionDomain::Unknown};
 };
 
-} // namespace pz::icmpd
+}

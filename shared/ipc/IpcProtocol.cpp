@@ -44,16 +44,26 @@ const char* IpcProtocol::daemonToStr(IpcDaemon daemon) noexcept
 {
     switch (daemon)
     {
-    case IpcDaemon::Ipcd:      return "ipcd";
-    case IpcDaemon::Engined:   return "engined";
-    case IpcDaemon::Authd:     return "authd";
-    case IpcDaemon::Icmpd:     return "icmpd";
-    case IpcDaemon::Scand:     return "scand";
-    case IpcDaemon::Topologyd: return "topologyd";
-    case IpcDaemon::Mgmtd:     return "mgmtd";
-    case IpcDaemon::Apid:      return "apid";
-    case IpcDaemon::Broadcast: return "broadcast";
-    default:                   return "unknown";
+    case IpcDaemon::Ipcd:
+        return "ipcd";
+    case IpcDaemon::Engined:
+        return "engined";
+    case IpcDaemon::Authd:
+        return "authd";
+    case IpcDaemon::Icmpd:
+        return "icmpd";
+    case IpcDaemon::Scand:
+        return "scand";
+    case IpcDaemon::Topologyd:
+        return "topologyd";
+    case IpcDaemon::Mgmtd:
+        return "mgmtd";
+    case IpcDaemon::Apid:
+        return "apid";
+    case IpcDaemon::Broadcast:
+        return "broadcast";
+    default:
+        return "unknown";
     }
 }
 
@@ -61,37 +71,68 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
 {
     switch (cmd)
     {
-    case IpcCmd::ClientHello:  return "ClientHello";
-    case IpcCmd::ServerHello:  return "ServerHello";
-    case IpcCmd::SyncRequest:  return "SyncRequest";
-    case IpcCmd::SyncResponse: return "SyncResponse";
-    case IpcCmd::RuntimeReady: return "RuntimeReady";
-    case IpcCmd::RuntimeStart: return "RuntimeStart";
-    case IpcCmd::Error:             return "Error";
-    case IpcCmd::ProbeResult:       return "ProbeResult";
-    case IpcCmd::HeartbeatRequest:  return "HeartbeatRequest";
-    case IpcCmd::HeartbeatResponse: return "HeartbeatResponse";
-    case IpcCmd::HeartbeatResult:   return "HeartbeatResult";
-    case IpcCmd::ConfigReload:         return "ConfigReload";
-    case IpcCmd::ConfigReloadRequest:   return "ConfigReloadRequest";
-    case IpcCmd::ConfigReloadResponse:  return "ConfigReloadResponse";
-    case IpcCmd::SettingsCommitRequest: return "SettingsCommitRequest";
-    case IpcCmd::CommitQueueStatus:     return "CommitQueueStatus";
-    case IpcCmd::ScanRequest:       return "ScanRequest";
-    case IpcCmd::ScanResult:            return "ScanResult";
-    case IpcCmd::AdminPasswordUpdate:   return "AdminPasswordUpdate";
-    case IpcCmd::ProbeRequest:          return "ProbeRequest";
-    case IpcCmd::AuthLoginRequest:          return "AuthLoginRequest";
-    case IpcCmd::AuthLoginResponse:         return "AuthLoginResponse";
-    case IpcCmd::AuthOidcStartRequest:      return "AuthOidcStartRequest";
-    case IpcCmd::AuthOidcStartResponse:     return "AuthOidcStartResponse";
-    case IpcCmd::AuthOidcCallbackRequest:   return "AuthOidcCallbackRequest";
-    case IpcCmd::AuthOidcCallbackResponse:  return "AuthOidcCallbackResponse";
-    case IpcCmd::AuthSamlStartRequest:      return "AuthSamlStartRequest";
-    case IpcCmd::AuthSamlStartResponse:     return "AuthSamlStartResponse";
-    case IpcCmd::AuthSamlAcsRequest:        return "AuthSamlAcsRequest";
-    case IpcCmd::AuthSamlAcsResponse:       return "AuthSamlAcsResponse";
-    default:                            return "Unknown";
+    case IpcCmd::ClientHello:
+        return "ClientHello";
+    case IpcCmd::ServerHello:
+        return "ServerHello";
+    case IpcCmd::SyncRequest:
+        return "SyncRequest";
+    case IpcCmd::SyncResponse:
+        return "SyncResponse";
+    case IpcCmd::RuntimeReady:
+        return "RuntimeReady";
+    case IpcCmd::RuntimeStart:
+        return "RuntimeStart";
+    case IpcCmd::Error:
+        return "Error";
+    case IpcCmd::ProbeResult:
+        return "ProbeResult";
+    case IpcCmd::HeartbeatRequest:
+        return "HeartbeatRequest";
+    case IpcCmd::HeartbeatResponse:
+        return "HeartbeatResponse";
+    case IpcCmd::HeartbeatResult:
+        return "HeartbeatResult";
+    case IpcCmd::ConfigReload:
+        return "ConfigReload";
+    case IpcCmd::ConfigReloadRequest:
+        return "ConfigReloadRequest";
+    case IpcCmd::ConfigReloadResponse:
+        return "ConfigReloadResponse";
+    case IpcCmd::SettingsCommitRequest:
+        return "SettingsCommitRequest";
+    case IpcCmd::CommitQueueStatus:
+        return "CommitQueueStatus";
+    case IpcCmd::ScanRequest:
+        return "ScanRequest";
+    case IpcCmd::ScanResult:
+        return "ScanResult";
+    case IpcCmd::AdminPasswordUpdate:
+        return "AdminPasswordUpdate";
+    case IpcCmd::ProbeRequest:
+        return "ProbeRequest";
+    case IpcCmd::AuthLoginRequest:
+        return "AuthLoginRequest";
+    case IpcCmd::AuthLoginResponse:
+        return "AuthLoginResponse";
+    case IpcCmd::AuthOidcStartRequest:
+        return "AuthOidcStartRequest";
+    case IpcCmd::AuthOidcStartResponse:
+        return "AuthOidcStartResponse";
+    case IpcCmd::AuthOidcCallbackRequest:
+        return "AuthOidcCallbackRequest";
+    case IpcCmd::AuthOidcCallbackResponse:
+        return "AuthOidcCallbackResponse";
+    case IpcCmd::AuthSamlStartRequest:
+        return "AuthSamlStartRequest";
+    case IpcCmd::AuthSamlStartResponse:
+        return "AuthSamlStartResponse";
+    case IpcCmd::AuthSamlAcsRequest:
+        return "AuthSamlAcsRequest";
+    case IpcCmd::AuthSamlAcsResponse:
+        return "AuthSamlAcsResponse";
+    default:
+        return "Unknown";
     }
 }
 
@@ -179,4 +220,4 @@ pz::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
     return IpcDaemon::Unknown;
 }
 
-} // namespace pz::ipc
+}

@@ -4,10 +4,8 @@
 namespace pz::icmpd
 {
 
-HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst) :
-    IcmpdAction(IcmpdActionDomain::Heartbeat),
-    m_type(type),
-    m_dst(dst)
+HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst)
+    : IcmpdAction(IcmpdActionDomain::Heartbeat), m_type(type), m_dst(dst)
 {
 }
 
@@ -26,4 +24,4 @@ void HeartbeatAction::dispatch(IcmpdServiceManager& serviceManager)
     serviceManager.heartbeatService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::icmpd
+}

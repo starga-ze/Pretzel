@@ -5,17 +5,12 @@
 namespace pz::engined
 {
 
-AdminEvent::AdminEvent(AdminEventType type)
-    : EnginedEvent(EnginedEventDomain::Admin),
-      m_type(type)
+AdminEvent::AdminEvent(AdminEventType type) : EnginedEvent(EnginedEventDomain::Admin), m_type(type)
 {
 }
 
-AdminEvent::AdminEvent(AdminEventType type,
-                       std::unique_ptr<pz::ipc::IpcMessage> message)
-    : EnginedEvent(EnginedEventDomain::Admin),
-      m_type(type),
-      m_message(std::move(message))
+AdminEvent::AdminEvent(AdminEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : EnginedEvent(EnginedEventDomain::Admin), m_type(type), m_message(std::move(message))
 {
 }
 
@@ -34,4 +29,4 @@ const pz::ipc::IpcMessage* AdminEvent::message() const
     return m_message.get();
 }
 
-} // namespace pz::engined
+}

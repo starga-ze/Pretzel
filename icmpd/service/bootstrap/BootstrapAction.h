@@ -27,4 +27,4 @@ private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };
 
-} // namespace pz::icmpd
+}

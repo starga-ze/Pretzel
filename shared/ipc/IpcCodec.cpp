@@ -5,8 +5,7 @@
 namespace pz::ipc
 {
 
-std::vector<std::uint8_t>
-IpcCodec::encode(const std::unique_ptr<IpcMessage>& msg) const
+std::vector<std::uint8_t> IpcCodec::encode(const std::unique_ptr<IpcMessage>& msg) const
 {
     constexpr std::size_t headerLen = sizeof(IpcWireHeader);
 
@@ -30,16 +29,13 @@ IpcCodec::encode(const std::unique_ptr<IpcMessage>& msg) const
 
     if (payloadLen > 0)
     {
-        std::memcpy(frame.data() + headerLen,
-                    msg->getPayload().data(),
-                    payloadLen);
+        std::memcpy(frame.data() + headerLen, msg->getPayload().data(), payloadLen);
     }
 
     return frame;
 }
 
-IpcDecodeResult 
-IpcCodec::decode(IpcFrameView frame, std::unique_ptr<IpcMessage>& out) const
+IpcDecodeResult IpcCodec::decode(IpcFrameView frame, std::unique_ptr<IpcMessage>& out) const
 {
     constexpr std::size_t headerLen = sizeof(IpcWireHeader);
 
@@ -51,7 +47,7 @@ IpcCodec::decode(IpcFrameView frame, std::unique_ptr<IpcMessage>& out) const
     if (frame.size < headerLen)
         return IpcDecodeResult::NeedMoreData;
 
-    IpcWireHeader wireNet {};
+    IpcWireHeader wireNet{};
     std::memcpy(&wireNet, frame.data, headerLen);
 
     const IpcWireHeader wire = IpcProtocol::netToHost(wireNet);
@@ -77,13 +73,7 @@ IpcCodec::decode(IpcFrameView frame, std::unique_ptr<IpcMessage>& out) const
     const auto dst = static_cast<IpcDaemon>(wire.dst);
     const auto cmd = static_cast<IpcCmd>(wire.cmd);
 
-    IpcHeader header = IpcHeader::build(
-        src,
-        dst,
-        cmd,
-        wire.seqNo,
-        wire.flags
-    );
+    IpcHeader header = IpcHeader::build(src, dst, cmd, wire.seqNo, wire.flags);
 
     header.version = wire.version;
 
@@ -96,10 +86,7 @@ IpcCodec::decode(IpcFrameView frame, std::unique_ptr<IpcMessage>& out) const
         payload.assign(payloadBegin, payloadEnd);
     }
 
-    out = std::make_unique<IpcMessage>(
-        std::move(header),
-        std::move(payload)
-    );
+    out = std::make_unique<IpcMessage>(std::move(header), std::move(payload));
 
     return IpcDecodeResult::Ok;
 }
@@ -132,4 +119,4 @@ IpcPeekResult IpcCodec::peekFrameSize(const std::uint8_t* data, std::size_t len,
     return IpcPeekResult::Ok;
 }
 
-} // namespace pz::ipc
+}

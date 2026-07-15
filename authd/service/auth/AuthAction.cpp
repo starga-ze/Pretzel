@@ -4,15 +4,8 @@
 namespace pz::authd
 {
 
-AuthAction::AuthAction(AuthActionType type,
-                       pz::ipc::IpcDaemon dst,
-                       std::uint32_t seqNo,
-                       std::string payload) :
-    AuthdAction(AuthdActionDomain::Auth),
-    m_type(type),
-    m_dst(dst),
-    m_seqNo(seqNo),
-    m_payload(std::move(payload))
+AuthAction::AuthAction(AuthActionType type, pz::ipc::IpcDaemon dst, std::uint32_t seqNo, std::string payload)
+    : AuthdAction(AuthdActionDomain::Auth), m_type(type), m_dst(dst), m_seqNo(seqNo), m_payload(std::move(payload))
 {
 }
 
@@ -41,4 +34,4 @@ void AuthAction::dispatch(AuthdServiceManager& serviceManager)
     serviceManager.authService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::authd
+}

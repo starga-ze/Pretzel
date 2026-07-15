@@ -13,9 +13,6 @@ namespace pz::scand
 class ScandRxRouter;
 class ApiEngine;
 
-// Single ingress/egress hub for the ApiEngine, mirroring SnmpEngineHandler:
-// egress() forwards a scan request down to ApiEngine::startScan(); ingress
-// (onScanComplete) delivers the completed sweep to the RxRouter.
 class ApiEngineHandler final
 {
 public:
@@ -28,8 +25,8 @@ public:
     void setRxRouter(ScandRxRouter* rxRouter);
 
 private:
-    ApiEngine*     m_apiEngine{nullptr};
+    ApiEngine* m_apiEngine{nullptr};
     ScandRxRouter* m_rxRouter{nullptr};
 };
 
-} // namespace pz::scand
+}

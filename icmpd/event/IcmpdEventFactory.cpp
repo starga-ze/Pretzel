@@ -1,8 +1,8 @@
 #include "event/IcmpdEventFactory.h"
 
 #include "service/bootstrap/BootstrapEvent.h"
-#include "service/probe/ProbeEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
+#include "service/probe/ProbeEvent.h"
 #include "service/reload/ReloadEvent.h"
 
 #include "util/Logger.h"
@@ -67,8 +67,7 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(std::unique_ptr<pz::ipc::I
     return nullptr;
 }
 
-std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp, 
-        std::unique_ptr<IcmpPacket> packet)
+std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp, std::unique_ptr<IcmpPacket> packet)
 {
     if (!packet)
     {
@@ -95,4 +94,4 @@ std::unique_ptr<IcmpdEvent> IcmpdEventFactory::create(const std::string& srcIp,
     return nullptr;
 }
 
-} // namespace pz::icmpd
+}

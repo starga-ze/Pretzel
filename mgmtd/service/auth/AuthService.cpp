@@ -13,49 +13,37 @@ namespace pz::mgmtd
 
 bool AuthService::loadCredential()
 {
-    // Login credentials live in the local_users table (seeded/written by engined, the
-    // single DB writer). mgmtd only reads. Single operator account for now: the 'admin'
-    // row. The table is keyed by username so it extends to multiple users later.
-    const auto rows = pz::db::Database::instance().queryRows(
-        "SELECT username, password_hash, salt, must_change FROM local_users "
-        "WHERE username = 'admin' LIMIT 1");
+    const auto rows =
+        pz::db::Database::instance().queryRows("SELECT username, password_hash, salt, must_change FROM local_users "
+                                               "WHERE username = 'admin' LIMIT 1");
     if (!rows.empty() && rows.front().size() >= 4)
     {
-        m_username     = rows.front()[0];
+        m_username = rows.front()[0];
         m_passwordHash = rows.front()[1];
-        m_salt         = rows.front()[2];
-        m_mustChange   = (rows.front()[3] == "t");  // libpq renders bool as 't'/'f'
-        m_loaded       = true;
+        m_salt = rows.front()[2];
+        m_mustChange = (rows.front()[3] == "t");
+        m_loaded = true;
         return true;
     }
 
-    // Fail-closed: no readable credential. queryRows returns empty BOTH when the table
-    // is genuinely empty (factory-fresh, engined hasn't seeded yet) AND when the DB is
-    // unreachable — we cannot tell them apart, so we must NOT fall back to a usable
-    // default (that would accept admin/admin even when a real password exists but is
-    // momentarily unreadable). Empty hash → login() refuses every attempt. The main
-    // loop retries loadCredential() until engined's local_users row becomes readable.
     m_passwordHash.clear();
     m_salt.clear();
     m_mustChange = false;
-    m_loaded     = false;
+    m_loaded = false;
 
     LOG_WARN("no readable local_users credential — refusing logins until "
              "it is available (retrying)");
     return false;
 }
 
-AuthService::LoginResult AuthService::login(const std::string& username,
-                                            const std::string& password)
+AuthService::LoginResult AuthService::login(const std::string& username, const std::string& password)
 {
     if (username != m_username)
     {
         return {};
     }
 
-    // No plaintext fallback: an unprovisioned account (empty hash) refuses all logins.
-    if (m_passwordHash.empty() ||
-        pz::util::hashSha256(password, m_salt) != m_passwordHash)
+    if (m_passwordHash.empty() || pz::util::hashSha256(password, m_salt) != m_passwordHash)
     {
         return {};
     }
@@ -69,9 +57,6 @@ AuthService::LoginResult AuthService::login(const std::string& username,
 
 std::string AuthService::createSsoSession(const std::string& username)
 {
-    // Sessions are opaque tokens keyed by id (validateSession checks existence + expiry,
-    // not identity). The single operator role means no per-user authorization is attached
-    // here — the username is retained only so the UI can show who is signed in.
     const auto sessionId = generateSessionId();
     m_sessions[sessionId] = Session{now() + m_sessionTtlSec, username};
     return sessionId;
@@ -85,8 +70,7 @@ std::string AuthService::sessionUser(const std::string& sessionId) const
     return it->second.username;
 }
 
-bool AuthService::checkPassword(const std::string& username,
-                                const std::string& password) const
+bool AuthService::checkPassword(const std::string& username, const std::string& password) const
 {
     if (username != m_username || m_passwordHash.empty())
     {
@@ -98,17 +82,16 @@ bool AuthService::checkPassword(const std::string& username,
 AuthService::Credential AuthService::makeCredential(const std::string& newPassword) const
 {
     Credential cred;
-    cred.salt         = pz::util::generateSalt();
+    cred.salt = pz::util::generateSalt();
     cred.passwordHash = pz::util::hashSha256(newPassword, cred.salt);
     return cred;
 }
 
-void AuthService::applyCredential(const std::string& passwordHash,
-                                  const std::string& salt)
+void AuthService::applyCredential(const std::string& passwordHash, const std::string& salt)
 {
     m_passwordHash = passwordHash;
-    m_salt         = salt;
-    m_mustChange   = false;  // engined clears must_change in the same write
+    m_salt = salt;
+    m_mustChange = false;
 }
 
 bool AuthService::validateSession(const std::string& sessionId)
@@ -140,8 +123,7 @@ void AuthService::logout(const std::string& sessionId)
 
 std::uint64_t AuthService::now()
 {
-    return std::chrono::duration_cast<std::chrono::seconds>(
-               std::chrono::system_clock::now().time_since_epoch())
+    return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
         .count();
 }
 
@@ -156,4 +138,4 @@ std::string AuthService::generateSessionId()
     return oss.str();
 }
 
-} // namespace pz::mgmtd
+}

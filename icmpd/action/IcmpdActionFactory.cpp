@@ -24,4 +24,4 @@ std::unique_ptr<IcmpdAction> IcmpdActionFactory::create(IcmpdActionDomain domain
     }
 }
 
-} // namespace pz::icmpd
+}

@@ -20,4 +20,4 @@ std::unique_ptr<ApidAction> ApidActionFactory::create(ApidActionDomain domain, s
     }
 }
 
-} // namespace pz::apid
+}

@@ -6,8 +6,7 @@
 namespace pz::authd
 {
 
-void ReloadService::handleEvent(AuthdServiceManager& /*serviceManager*/,
-                                const ReloadEvent& event)
+void ReloadService::handleEvent(AuthdServiceManager&, const ReloadEvent& event)
 {
     if (event.type() != ReloadEventType::ReceiveConfigReload)
     {
@@ -18,4 +17,4 @@ void ReloadService::handleEvent(AuthdServiceManager& /*serviceManager*/,
     pz::core::Core::scheduleReload();
 }
 
-} // namespace pz::authd
+}

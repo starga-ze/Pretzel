@@ -21,4 +21,4 @@ private:
     std::chrono::steady_clock::time_point m_createdAt{std::chrono::steady_clock::now()};
 };
 
-} // namespace pz::action
+}

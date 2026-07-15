@@ -18,4 +18,4 @@ public:
     std::unique_ptr<IpcdAction> create(IpcdActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::ipcd
+}

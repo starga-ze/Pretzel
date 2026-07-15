@@ -1,7 +1,7 @@
 #include "router/ScandRxRouter.h"
 
-#include "snmp/SnmpPacket.h"
 #include "api/ApiPacket.h"
+#include "snmp/SnmpPacket.h"
 
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -9,8 +9,7 @@
 namespace pz::scand
 {
 
-ScandRxRouter::ScandRxRouter(ScandEventFactory* eventFactory) :
-    m_eventFactory(eventFactory)
+ScandRxRouter::ScandRxRouter(ScandEventFactory* eventFactory) : m_eventFactory(eventFactory)
 {
 }
 
@@ -28,8 +27,6 @@ void ScandRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    // ConfigReload is mapped to a ReloadEvent by the factory and handled in
-    // ReloadService — the router stays a pure pass-through.
     std::unique_ptr<ScandEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));
@@ -78,4 +75,4 @@ void ScandRxRouter::setServiceManager(ScandServiceManager* serviceManager)
     m_serviceManager = serviceManager;
 }
 
-} // namespace pz::scand
+}

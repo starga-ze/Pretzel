@@ -9,7 +9,7 @@ namespace pz::apid
 
 enum class BootstrapActionType : std::uint32_t
 {
-    Unknown         = 0,
+    Unknown = 0,
     SendClientHello = 1
 };
 
@@ -26,4 +26,4 @@ private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };
 
-} // namespace pz::apid
+}

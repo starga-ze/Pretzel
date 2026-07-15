@@ -1,7 +1,7 @@
 #pragma once
 
-#include "service/bootstrap/BootstrapEvent.h"
 #include "service/bootstrap/BootstrapAction.h"
+#include "service/bootstrap/BootstrapEvent.h"
 
 #include <chrono>
 #include <memory>
@@ -26,8 +26,7 @@ public:
         Failed,
     };
 
-    BootstrapService(ScandEventFactory* eventFactory,
-                     ScandActionFactory* actionFactory);
+    BootstrapService(ScandEventFactory* eventFactory, ScandActionFactory* actionFactory);
 
     ~BootstrapService() = default;
 
@@ -37,20 +36,16 @@ public:
 
     bool isReady() const;
 
-    void handleEvent(ScandServiceManager& serviceManager,
-                     const BootstrapEvent& event);
+    void handleEvent(ScandServiceManager& serviceManager, const BootstrapEvent& event);
 
-    void handleAction(ScandServiceManager& serviceManager,
-                      const BootstrapAction& action);
+    void handleAction(ScandServiceManager& serviceManager, const BootstrapAction& action);
 
 private:
-    void onServerHello(ScandServiceManager& serviceManager,
-                       const pz::ipc::IpcMessage& msg);
+    void onServerHello(ScandServiceManager& serviceManager, const pz::ipc::IpcMessage& msg);
 
     void onRuntimeStart(const pz::ipc::IpcMessage& msg);
 
-    bool checkTimeout(std::chrono::steady_clock::time_point now,
-                      const char* stateName);
+    bool checkTimeout(std::chrono::steady_clock::time_point now, const char* stateName);
 
     std::unique_ptr<pz::ipc::IpcMessage> buildClientHelloMessage() const;
     std::unique_ptr<pz::ipc::IpcMessage> buildRuntimeReadyMessage() const;
@@ -65,7 +60,7 @@ private:
     std::chrono::steady_clock::time_point m_lastClientHelloSentAt{};
     std::chrono::steady_clock::time_point m_lastRuntimeReadySentAt{};
 
-    bool m_bootSlowWarned{false};  // warn-once latch for the slow-boot message
+    bool m_bootSlowWarned{false};
 };
 
-} // namespace pz::scand
+}

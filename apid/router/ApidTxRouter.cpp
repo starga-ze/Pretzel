@@ -5,10 +5,8 @@
 namespace pz::apid
 {
 
-ApidTxRouter::ApidTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler,
-                           pz::http::HttpHandler* httpHandler)
-    : m_ipcClientHandler(ipcClientHandler),
-      m_httpHandler(httpHandler)
+ApidTxRouter::ApidTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler, pz::http::HttpHandler* httpHandler)
+    : m_ipcClientHandler(ipcClientHandler), m_httpHandler(httpHandler)
 {
 }
 
@@ -40,4 +38,4 @@ void ApidTxRouter::handleHttpMessage(pz::http::HttpResponse response, pz::http::
     m_httpHandler->egress(std::move(response), id);
 }
 
-} // namespace pz::apid
+}

@@ -11,12 +11,8 @@
 namespace pz::icmpd
 {
 
-IcmpConnection::IcmpConnection(int fd,
-                               std::size_t rxQueueLimit,
-                               std::size_t txQueueLimit)
-    : m_fd(fd),
-      m_rxQueueLimit(rxQueueLimit),
-      m_txQueueLimit(txQueueLimit)
+IcmpConnection::IcmpConnection(int fd, std::size_t rxQueueLimit, std::size_t txQueueLimit)
+    : m_fd(fd), m_rxQueueLimit(rxQueueLimit), m_txQueueLimit(txQueueLimit)
 {
 }
 
@@ -42,19 +38,15 @@ IcmpIoResult IcmpConnection::recv(int& outErrno)
         if (m_rxQueue.size() >= m_rxQueueLimit)
             return IcmpIoResult::BufferFull;
 
-        sockaddr_in addr {};
+        sockaddr_in addr{};
         socklen_t addrLen = sizeof(addr);
 
-        const ssize_t n = ::recvfrom(m_fd,
-                                     buffer.data(),
-                                     buffer.size(),
-                                     0,
-                                     reinterpret_cast<sockaddr*>(&addr),
-                                     &addrLen);
+        const ssize_t n =
+            ::recvfrom(m_fd, buffer.data(), buffer.size(), 0, reinterpret_cast<sockaddr*>(&addr), &addrLen);
 
         if (n > 0)
         {
-            char ipBuf[INET_ADDRSTRLEN] {};
+            char ipBuf[INET_ADDRSTRLEN]{};
             if (!::inet_ntop(AF_INET, &addr.sin_addr, ipBuf, sizeof(ipBuf)))
             {
                 outErrno = errno;
@@ -103,7 +95,7 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
             continue;
         }
 
-        sockaddr_in addr {};
+        sockaddr_in addr{};
         addr.sin_family = AF_INET;
 
         if (::inet_pton(AF_INET, frame.dstIp.c_str(), &addr.sin_addr) != 1)
@@ -113,21 +105,14 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
             continue;
         }
 
-        const ssize_t n = ::sendto(m_fd,
-                                   frame.bytes.data(),
-                                   frame.bytes.size(),
-                                   0,
-                                   reinterpret_cast<sockaddr*>(&addr),
-                                   sizeof(addr));
+        const ssize_t n =
+            ::sendto(m_fd, frame.bytes.data(), frame.bytes.size(), 0, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
 
         if (n > 0)
         {
             if (static_cast<std::size_t>(n) != frame.bytes.size())
             {
-                LOG_WARN("Tx drop, partial send (dst={}, sent={}, expected={})",
-                         frame.dstIp,
-                         n,
-                         frame.bytes.size());
+                LOG_WARN("Tx drop, partial send (dst={}, sent={}, expected={})", frame.dstIp, n, frame.bytes.size());
 
                 m_txQueue.pop();
                 continue;
@@ -147,10 +132,6 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
         if (errno == EINTR)
             continue;
 
-        // ENOBUFS is transient backpressure (the local qdisc/socket output queue
-        // is momentarily full) — common when blasting a full subnet sweep. Treat
-        // it like EAGAIN: leave the frame at the queue front and retry on the next
-        // EPOLLOUT, rather than reporting a fatal error that tears down the socket.
         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS)
             return IcmpIoResult::WouldBlock;
 
@@ -163,10 +144,7 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
         case EINVAL:
         case EADDRNOTAVAIL:
         case EMSGSIZE:
-            LOG_WARN("Tx drop (dst={}, size={}, errno={})",
-                     frame.dstIp,
-                     frame.bytes.size(),
-                     err);
+            LOG_WARN("Tx drop (dst={}, size={}, errno={})", frame.dstIp, frame.bytes.size(), err);
 
             m_txQueue.pop();
             continue;
@@ -180,8 +158,7 @@ IcmpIoResult IcmpConnection::send(int& outErrno)
     return IcmpIoResult::Ok;
 }
 
-bool IcmpConnection::write(std::vector<std::uint8_t> bytes,
-                           std::string dstIp)
+bool IcmpConnection::write(std::vector<std::uint8_t> bytes, std::string dstIp)
 {
     if (bytes.empty())
         return true;
@@ -192,7 +169,7 @@ bool IcmpConnection::write(std::vector<std::uint8_t> bytes,
     if (m_txQueue.size() >= m_txQueueLimit)
         return false;
 
-    m_txQueue.push(TxFrame {
+    m_txQueue.push(TxFrame{
         std::move(bytes),
         std::move(dstIp),
     });
@@ -230,4 +207,4 @@ std::size_t IcmpConnection::txQueueSize() const noexcept
     return m_txQueue.size();
 }
 
-} // namespace pz::icmpd
+}

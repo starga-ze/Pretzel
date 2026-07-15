@@ -12,9 +12,9 @@ class ApidServiceManager;
 
 enum class ApidActionDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
-    Ingest    = 2
+    Ingest = 2
 };
 
 class ApidAction : public pz::action::Action
@@ -31,4 +31,4 @@ private:
     ApidActionDomain m_domain{ApidActionDomain::Unknown};
 };
 
-} // namespace pz::apid
+}

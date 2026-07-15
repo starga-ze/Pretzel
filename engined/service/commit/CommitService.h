@@ -17,13 +17,19 @@ class EnginedServiceManager;
 class CommitService
 {
 public:
-    enum class TaskStatus { Pending, Running, Done, Failed };
+    enum class TaskStatus
+    {
+        Pending,
+        Running,
+        Done,
+        Failed
+    };
 
     struct Task
     {
-        int                      id{0};
-        std::vector<uint8_t>     payload;
-        TaskStatus               status{TaskStatus::Pending};
+        int id{0};
+        std::vector<uint8_t> payload;
+        TaskStatus status{TaskStatus::Pending};
     };
 
     CommitService() = default;
@@ -34,7 +40,7 @@ public:
 
 private:
     std::deque<Task> m_queue;
-    int              m_nextId{1};
+    int m_nextId{1};
 
     void startNext(EnginedServiceManager& serviceManager);
     void sendQueueStatus(EnginedServiceManager& serviceManager) const;
@@ -42,4 +48,4 @@ private:
     static const char* statusStr(TaskStatus s);
 };
 
-} // namespace pz::engined
+}

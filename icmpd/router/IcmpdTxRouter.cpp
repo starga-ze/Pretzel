@@ -4,10 +4,8 @@
 namespace pz::icmpd
 {
 
-IcmpdTxRouter::IcmpdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler, 
-        IcmpEngineHandler* icmpEngineHandler) : 
-    m_ipcClientHandler(ipcClientHandler),
-    m_icmpEngineHandler(icmpEngineHandler)
+IcmpdTxRouter::IcmpdTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler, IcmpEngineHandler* icmpEngineHandler)
+    : m_ipcClientHandler(ipcClientHandler), m_icmpEngineHandler(icmpEngineHandler)
 {
 }
 
@@ -33,4 +31,4 @@ void IcmpdTxRouter::handleIcmpPacket(std::unique_ptr<IcmpPacket> packet, std::st
     m_icmpEngineHandler->egress(std::move(packet), std::move(dstIp));
 }
 
-} // namespace pz::icmpd
+}

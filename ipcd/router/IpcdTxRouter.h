@@ -19,4 +19,4 @@ private:
     IpcServerHandler* m_ipcServerHandler{nullptr};
 };
 
-} // namespace pz::ipcd
+}

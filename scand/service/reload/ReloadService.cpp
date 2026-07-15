@@ -6,8 +6,7 @@
 namespace pz::scand
 {
 
-void ReloadService::handleEvent(ScandServiceManager& /*serviceManager*/,
-                                const ReloadEvent& event)
+void ReloadService::handleEvent(ScandServiceManager&, const ReloadEvent& event)
 {
     if (event.type() != ReloadEventType::ReceiveConfigReload)
     {
@@ -18,4 +17,4 @@ void ReloadService::handleEvent(ScandServiceManager& /*serviceManager*/,
     pz::core::Core::scheduleReload();
 }
 
-} // namespace pz::scand
+}

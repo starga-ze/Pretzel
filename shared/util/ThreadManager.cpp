@@ -12,7 +12,7 @@ ThreadManager::~ThreadManager()
     stopAll();
 }
 
-bool ThreadManager::setName(const std::string &name)
+bool ThreadManager::setName(const std::string& name)
 {
     char thread_name[16];
     std::strncpy(thread_name, name.c_str(), sizeof(thread_name) - 1);
@@ -21,14 +21,13 @@ bool ThreadManager::setName(const std::string &name)
     return prctl(PR_SET_NAME, thread_name, 0, 0, 0) == 0;
 }
 
-void ThreadManager::threadWrapper(const std::string &name, std::function<void()> func)
+void ThreadManager::threadWrapper(const std::string& name, std::function<void()> func)
 {
     setName(name);
     func();
 }
 
-void ThreadManager::addThread(const std::string &name, std::function<void()> runFunc, 
-                              std::function<void()> stopFunc)
+void ThreadManager::addThread(const std::string& name, std::function<void()> runFunc, std::function<void()> stopFunc)
 {
     ThreadInfo info;
     info.name = name;
@@ -40,7 +39,7 @@ void ThreadManager::addThread(const std::string &name, std::function<void()> run
     m_threads.emplace_back(std::move(info));
 }
 
-void ThreadManager::start(size_t n, const std::string &baseName, std::function<void()> runFunc,
+void ThreadManager::start(size_t n, const std::string& baseName, std::function<void()> runFunc,
                           std::function<void()> stopFunc)
 {
     for (size_t i = 0; i < n; ++i)
@@ -59,7 +58,7 @@ void ThreadManager::stopAll()
         m_threads.clear();
     }
 
-    for (auto &t : snapshot)
+    for (auto& t : snapshot)
     {
         if (t.stopFunc)
             t.stopFunc();
@@ -67,7 +66,7 @@ void ThreadManager::stopAll()
 
     auto self = std::this_thread::get_id();
 
-    for (auto &t : snapshot)
+    for (auto& t : snapshot)
     {
         if (t.thread.joinable())
         {
@@ -78,4 +77,4 @@ void ThreadManager::stopAll()
         }
     }
 }
-} // namespace pz::util
+}

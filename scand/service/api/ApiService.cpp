@@ -12,9 +12,6 @@ std::map<std::string, ApiCredential> ApiService::loadCredentials() const
 {
     std::map<std::string, ApiCredential> out;
 
-    // Per-IP API creds live alongside the SNMPv3 ones in the scan domain
-    // (scand.service.scan.api_devices[]) — parallel to v3_devices, set in the same
-    // GUI panel and stored in running_config.
     const auto& scan = pz::config::Config::serviceSection("scand", "scan");
     if (!scan.contains("api_devices") || !scan["api_devices"].is_array())
         return out;
@@ -28,17 +25,16 @@ std::map<std::string, ApiCredential> ApiService::loadCredentials() const
         if (ip.empty())
             continue;
 
-        // Disabled rows (enabled:false) are skipped; default true for back-compat.
         if (!d.value("enabled", true))
             continue;
 
         ApiCredential c;
-        c.vendor    = apiVendorFromString(d.value("vendor", std::string()));
-        c.host      = d.value("host",       std::string());
-        c.port      = static_cast<uint16_t>(d.value("port", 443));
-        c.username  = d.value("username",   std::string());
-        c.password  = d.value("password",   std::string());
-        c.apiKey    = d.value("api_key",    std::string());
+        c.vendor = apiVendorFromString(d.value("vendor", std::string()));
+        c.host = d.value("host", std::string());
+        c.port = static_cast<uint16_t>(d.value("port", 443));
+        c.username = d.value("username", std::string());
+        c.password = d.value("password", std::string());
+        c.apiKey = d.value("api_key", std::string());
         c.verifyTls = d.value("verify_tls", false);
         c.timeoutMs = d.value("timeout_ms", 5000);
 
@@ -54,4 +50,4 @@ std::map<std::string, ApiCredential> ApiService::loadCredentials() const
     return out;
 }
 
-} // namespace pz::scand
+}

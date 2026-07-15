@@ -13,7 +13,7 @@ class TopologydServiceManager;
 
 enum class TopologydActionDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
     Heartbeat = 2
 };
@@ -32,4 +32,4 @@ private:
     TopologydActionDomain m_domain{TopologydActionDomain::Unknown};
 };
 
-} // namespace pz::topologyd
+}

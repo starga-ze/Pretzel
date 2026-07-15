@@ -6,9 +6,7 @@ namespace pz::apid
 {
 
 IngestEvent::IngestEvent(pz::http::HttpRequest request, pz::http::SessionId id)
-    : ApidEvent(ApidEventDomain::Ingest),
-      m_request(std::move(request)),
-      m_sessionId(id)
+    : ApidEvent(ApidEventDomain::Ingest), m_request(std::move(request)), m_sessionId(id)
 {
 }
 
@@ -27,4 +25,4 @@ pz::http::SessionId IngestEvent::sessionId() const
     return m_sessionId;
 }
 
-} // namespace pz::apid
+}

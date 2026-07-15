@@ -20,4 +20,4 @@ std::unique_ptr<AuthdAction> AuthdActionFactory::create(AuthdActionDomain domain
     }
 }
 
-} // namespace pz::authd
+}

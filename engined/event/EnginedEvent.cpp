@@ -12,4 +12,4 @@ EnginedEventDomain EnginedEvent::domain() const
     return m_domain;
 }
 
-} // namespace pz::engined
+}

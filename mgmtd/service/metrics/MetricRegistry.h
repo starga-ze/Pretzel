@@ -20,4 +20,4 @@ private:
     std::map<std::string, std::uint64_t> m_counters;
 };
 
-} // namespace pz::mgmtd
+}

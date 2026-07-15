@@ -1,18 +1,17 @@
 #include "service/heartbeat/HeartbeatService.h"
 
-#include "service/AuthdServiceManager.h"
 #include "router/AuthdTxRouter.h"
+#include "service/AuthdServiceManager.h"
 
-#include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 
 #include "util/Logger.h"
 
 namespace pz::authd
 {
 
-void HeartbeatService::handleEvent(AuthdServiceManager& serviceManager,
-                                   const HeartbeatEvent& event)
+void HeartbeatService::handleEvent(AuthdServiceManager& serviceManager, const HeartbeatEvent& event)
 {
     switch (event.type())
     {
@@ -27,23 +26,19 @@ void HeartbeatService::handleEvent(AuthdServiceManager& serviceManager,
 
         pz::ipc::IpcDaemon src = msg->getSrc();
 
-        auto action = std::make_unique<HeartbeatAction>(
-            HeartbeatActionType::SendHeartbeatResponse,
-            src);
+        auto action = std::make_unique<HeartbeatAction>(HeartbeatActionType::SendHeartbeatResponse, src);
 
         serviceManager.postAction(std::move(action));
         break;
     }
 
     default:
-        LOG_WARN("unhandled event (type={})",
-                 static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
 }
 
-void HeartbeatService::handleAction(AuthdServiceManager& serviceManager,
-                                    const HeartbeatAction& action)
+void HeartbeatService::handleAction(AuthdServiceManager& serviceManager, const HeartbeatAction& action)
 {
     switch (action.type())
     {
@@ -51,27 +46,21 @@ void HeartbeatService::handleAction(AuthdServiceManager& serviceManager,
     {
         auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
 
-        pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-            pz::ipc::IpcDaemon::Authd,
-            action.dst(),
-            pz::ipc::IpcCmd::HeartbeatResponse,
-            0,
-            flag);
+        pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Authd, action.dst(),
+                                                              pz::ipc::IpcCmd::HeartbeatResponse, 0, flag);
 
         auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-        LOG_TRACE("Tx HeartbeatResponse (dst={})",
-                  pz::ipc::IpcProtocol::daemonToStr(action.dst()));
+        LOG_TRACE("Tx HeartbeatResponse (dst={})", pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
         break;
     }
 
     default:
-        LOG_WARN("unhandled action (type={})",
-                 static_cast<std::uint32_t>(action.type()));
+        LOG_WARN("unhandled action (type={})", static_cast<std::uint32_t>(action.type()));
         break;
     }
 }
 
-} // namespace pz::authd
+}

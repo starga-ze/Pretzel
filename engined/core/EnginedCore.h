@@ -5,12 +5,12 @@
 #include "ipc/IpcClient.h"
 #include "util/ThreadManager.h"
 
+#include "action/EnginedActionFactory.h"
+#include "event/EnginedEventFactory.h"
 #include "process/EnginedProcess.h"
 #include "router/EnginedRxRouter.h"
 #include "router/EnginedTxRouter.h"
 #include "service/EnginedServiceManager.h"
-#include "event/EnginedEventFactory.h"
-#include "action/EnginedActionFactory.h"
 
 #include "config/ConfigTypes.h"
 
@@ -26,8 +26,6 @@ public:
     EnginedCore();
 
 protected:
-    // engined is the single DB writer and boots first, so it owns the pre-flight:
-    // connect + ensure schema + seed the config store, before any daemon reads.
     void onPreConfigLoad() override;
 
     bool onInit() override;
@@ -35,8 +33,6 @@ protected:
     void onShutdown() override;
 
 private:
-    // Retries Config::preflight() from the main loop when the boot-time attempt failed
-    // (typically the DB was not yet accepting connections). No-op once preflighted.
     void ensureStorePreflighted();
 
     bool m_preflighted{false};
@@ -45,17 +41,17 @@ private:
     pz::config::LoggerConfig m_loggerConfig;
     pz::config::IpcConfig m_ipcConfig;
 
-    std::unique_ptr<pz::util::ThreadManager>  m_threadManager;
-    std::unique_ptr<pz::ipc::IpcClient>        m_ipcClient;
+    std::unique_ptr<pz::util::ThreadManager> m_threadManager;
+    std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
 
-    std::unique_ptr<EnginedEventFactory>       m_eventFactory;
-    std::unique_ptr<EnginedActionFactory>      m_actionFactory;
+    std::unique_ptr<EnginedEventFactory> m_eventFactory;
+    std::unique_ptr<EnginedActionFactory> m_actionFactory;
 
-    std::unique_ptr<EnginedTxRouter>           m_txRouter;
-    std::unique_ptr<EnginedServiceManager>     m_serviceManager;
-    std::unique_ptr<EnginedRxRouter>           m_rxRouter;
+    std::unique_ptr<EnginedTxRouter> m_txRouter;
+    std::unique_ptr<EnginedServiceManager> m_serviceManager;
+    std::unique_ptr<EnginedRxRouter> m_rxRouter;
 
-    std::unique_ptr<EnginedProcess>            m_process;
+    std::unique_ptr<EnginedProcess> m_process;
 };
 
-} // namespace pz::engined
+}

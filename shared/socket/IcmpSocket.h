@@ -25,7 +25,7 @@ private:
     bool setNonBlocking(int fd);
 
 private:
-    int m_fd {-1};
+    int m_fd{-1};
 };
 
-} // namespace pz::socket
+}

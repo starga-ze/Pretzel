@@ -11,13 +11,10 @@ namespace pz::engined
 
 enum class AdminEventType : std::uint32_t
 {
-    Unknown            = 0,
-    ReceivePasswordUpdate = 1,  // mgmtd → engined: persist admin credential
+    Unknown = 0,
+    ReceivePasswordUpdate = 1,
 };
 
-// Carries a login credential update (mgmtd-originated) that engined — the single DB
-// writer — persists into the local_users table. mgmtd computes the hash+salt and
-// applies it in-memory optimistically (there is no response cmd).
 class AdminEvent final : public EnginedEvent
 {
 public:
@@ -34,4 +31,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::engined
+}

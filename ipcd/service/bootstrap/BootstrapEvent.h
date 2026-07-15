@@ -11,10 +11,10 @@ namespace pz::ipcd
 
 enum class BootstrapEventType : std::uint32_t
 {
-    Unknown              = 0,
-    ReceiveClientHello   = 1,
-    ReceiveSyncRequest   = 2,
-    ReceiveRuntimeReady  = 3
+    Unknown = 0,
+    ReceiveClientHello = 1,
+    ReceiveSyncRequest = 2,
+    ReceiveRuntimeReady = 3
 };
 
 class BootstrapEvent final : public IpcdEvent
@@ -22,8 +22,7 @@ class BootstrapEvent final : public IpcdEvent
 public:
     explicit BootstrapEvent(BootstrapEventType type);
 
-    BootstrapEvent(BootstrapEventType type,
-                       std::unique_ptr<pz::ipc::IpcMessage> message);
+    BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(IpcdServiceManager& serviceManager) override;
 
@@ -36,4 +35,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::ipcd
+}

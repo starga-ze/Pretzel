@@ -1,9 +1,9 @@
 #pragma once
 
-#include "router/TxRouter.h"
-#include "ipc/IpcClientHandler.h"
 #include "icmp/IcmpEngineHandler.h"
 #include "icmp/IcmpPacket.h"
+#include "ipc/IpcClientHandler.h"
+#include "router/TxRouter.h"
 
 namespace pz::icmpd
 {
@@ -22,4 +22,4 @@ private:
     IcmpEngineHandler* m_icmpEngineHandler;
 };
 
-} // namespace pz::icmpd
+}

@@ -1,11 +1,11 @@
 #include "event/EnginedEventFactory.h"
 
+#include "service/admin/AdminEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/commit/CommitEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
-#include "service/scan/ScanEvent.h"
 #include "service/probe/ProbeEvent.h"
-#include "service/admin/AdminEvent.h"
+#include "service/scan/ScanEvent.h"
 
 #include "util/Logger.h"
 
@@ -65,8 +65,7 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
 
     case pz::ipc::IpcCmd::HeartbeatResponse:
-        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResponse,
-                                               std::move(msg));
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResponse, std::move(msg));
 
     case pz::ipc::IpcCmd::SettingsCommitRequest:
         return std::make_unique<CommitEvent>(CommitEventType::ReceiveSettingsCommit, std::move(msg));
@@ -86,4 +85,4 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
     }
 }
 
-} // namespace pz::engined
+}

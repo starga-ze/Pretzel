@@ -116,4 +116,4 @@ void ByteRingBuffer::clear()
     m_size = 0;
 }
 
-} // namespace pz::algorithm
+}

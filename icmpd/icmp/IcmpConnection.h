@@ -34,8 +34,7 @@ public:
     };
 
 public:
-    explicit IcmpConnection(int fd,
-                            std::size_t rxQueueLimit = DEFAULT_RX_QUEUE_LIMIT,
+    explicit IcmpConnection(int fd, std::size_t rxQueueLimit = DEFAULT_RX_QUEUE_LIMIT,
                             std::size_t txQueueLimit = DEFAULT_TX_QUEUE_LIMIT);
 
     IcmpConnection(const IcmpConnection&) = delete;
@@ -49,8 +48,7 @@ public:
     IcmpIoResult recv(int& outErrno);
     IcmpIoResult send(int& outErrno);
 
-    bool write(std::vector<std::uint8_t> bytes,
-               std::string dstIp);
+    bool write(std::vector<std::uint8_t> bytes, std::string dstIp);
 
     bool read(RxFrame& outFrame);
 
@@ -66,13 +64,13 @@ private:
     static constexpr std::size_t RECV_BUFFER_SIZE = 65536;
 
 private:
-    int m_fd {-1};
+    int m_fd{-1};
 
-    std::size_t m_rxQueueLimit {DEFAULT_RX_QUEUE_LIMIT};
-    std::size_t m_txQueueLimit {DEFAULT_TX_QUEUE_LIMIT};
+    std::size_t m_rxQueueLimit{DEFAULT_RX_QUEUE_LIMIT};
+    std::size_t m_txQueueLimit{DEFAULT_TX_QUEUE_LIMIT};
 
     std::queue<RxFrame> m_rxQueue;
     std::queue<TxFrame> m_txQueue;
 };
 
-} // namespace pz::icmpd
+}

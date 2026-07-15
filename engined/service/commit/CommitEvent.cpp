@@ -4,17 +4,12 @@
 namespace pz::engined
 {
 
-CommitEvent::CommitEvent(CommitEventType type)
-    : EnginedEvent(EnginedEventDomain::Commit),
-      m_type(type)
+CommitEvent::CommitEvent(CommitEventType type) : EnginedEvent(EnginedEventDomain::Commit), m_type(type)
 {
 }
 
-CommitEvent::CommitEvent(CommitEventType type,
-                         std::unique_ptr<pz::ipc::IpcMessage> message)
-    : EnginedEvent(EnginedEventDomain::Commit),
-      m_type(type),
-      m_message(std::move(message))
+CommitEvent::CommitEvent(CommitEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : EnginedEvent(EnginedEventDomain::Commit), m_type(type), m_message(std::move(message))
 {
 }
 
@@ -38,4 +33,4 @@ std::unique_ptr<pz::ipc::IpcMessage> CommitEvent::takeMessage()
     return std::move(m_message);
 }
 
-} // namespace pz::engined
+}

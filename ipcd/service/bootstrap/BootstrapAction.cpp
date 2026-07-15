@@ -4,17 +4,12 @@
 namespace pz::ipcd
 {
 
-BootstrapAction::BootstrapAction(BootstrapActionType type)
-    : IpcdAction(IpcdActionDomain::Bootstrap),
-      m_type(type)
+BootstrapAction::BootstrapAction(BootstrapActionType type) : IpcdAction(IpcdActionDomain::Bootstrap), m_type(type)
 {
 }
 
-BootstrapAction::BootstrapAction(BootstrapActionType type,
-                                         std::unique_ptr<pz::ipc::IpcMessage> request)
-    : IpcdAction(IpcdActionDomain::Bootstrap),
-      m_type(type),
-      m_request(std::move(request))
+BootstrapAction::BootstrapAction(BootstrapActionType type, std::unique_ptr<pz::ipc::IpcMessage> request)
+    : IpcdAction(IpcdActionDomain::Bootstrap), m_type(type), m_request(std::move(request))
 {
 }
 
@@ -38,4 +33,4 @@ void BootstrapAction::dispatch(IpcdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::ipcd
+}

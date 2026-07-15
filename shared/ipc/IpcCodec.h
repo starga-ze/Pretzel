@@ -13,8 +13,8 @@ namespace pz::ipc
 
 struct IpcFrameView
 {
-    const std::uint8_t* data {nullptr};
-    std::size_t size {0};
+    const std::uint8_t* data{nullptr};
+    std::size_t size{0};
 
     bool empty() const
     {
@@ -46,4 +46,4 @@ public:
     IpcPeekResult peekFrameSize(const std::uint8_t* data, std::size_t len, std::size_t& outFrameSize) const;
 };
 
-} // namespace pz::ipc
+}

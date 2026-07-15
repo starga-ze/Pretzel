@@ -12,10 +12,10 @@ namespace pz::engined
 
 enum class HeartbeatEventType : std::uint32_t
 {
-    Unknown                  = 0,
-    SendHeartbeatRequests    = 1,
+    Unknown = 0,
+    SendHeartbeatRequests = 1,
     ReceiveHeartbeatResponse = 2,
-    SendHeartbeatResult      = 3
+    SendHeartbeatResult = 3
 };
 
 class HeartbeatEvent final : public EnginedEvent
@@ -23,8 +23,7 @@ class HeartbeatEvent final : public EnginedEvent
 public:
     explicit HeartbeatEvent(HeartbeatEventType type);
 
-    HeartbeatEvent(HeartbeatEventType type,
-                   std::unique_ptr<pz::ipc::IpcMessage> message);
+    HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(EnginedServiceManager& serviceManager) override;
 
@@ -37,4 +36,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::engined
+}

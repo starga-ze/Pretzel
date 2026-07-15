@@ -13,10 +13,10 @@ class AuthdServiceManager;
 
 enum class AuthdActionDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
     Heartbeat = 2,
-    Auth      = 3
+    Auth = 3
 };
 
 class AuthdAction : public pz::action::Action
@@ -33,4 +33,4 @@ private:
     AuthdActionDomain m_domain{AuthdActionDomain::Unknown};
 };
 
-} // namespace pz::authd
+}

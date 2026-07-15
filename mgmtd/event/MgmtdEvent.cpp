@@ -12,4 +12,4 @@ MgmtdEventDomain MgmtdEvent::domain() const
     return m_domain;
 }
 
-} // namespace pz::mgmtd
+}

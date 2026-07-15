@@ -20,4 +20,4 @@ std::unique_ptr<IpcdAction> IpcdActionFactory::create(IpcdActionDomain domain, s
     }
 }
 
-} // namespace pz::ipcd
+}

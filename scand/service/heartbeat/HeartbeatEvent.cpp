@@ -4,16 +4,12 @@
 namespace pz::scand
 {
 
-HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type) :
-    ScandEvent(ScandEventDomain::Heartbeat),
-    m_type(type)
+HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type) : ScandEvent(ScandEventDomain::Heartbeat), m_type(type)
 {
 }
 
-HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<pz::ipc::IpcMessage> message) :
-    ScandEvent(ScandEventDomain::Heartbeat),
-    m_message(std::move(message)),
-    m_type(type)
+HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : ScandEvent(ScandEventDomain::Heartbeat), m_message(std::move(message)), m_type(type)
 {
 }
 
@@ -37,4 +33,4 @@ std::unique_ptr<pz::ipc::IpcMessage> HeartbeatEvent::takeMessage()
     return std::move(m_message);
 }
 
-} // namespace pz::scand
+}

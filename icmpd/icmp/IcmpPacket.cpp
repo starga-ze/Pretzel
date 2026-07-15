@@ -165,8 +165,8 @@ std::string IcmpPacket::dump() const
 {
     std::ostringstream oss;
 
-    oss << "Type      : " << IcmpProtocol::typeToStr(m_header.type()) << " (" 
-        << static_cast<int>(m_header.type()) << ")\n";
+    oss << "Type      : " << IcmpProtocol::typeToStr(m_header.type()) << " (" << static_cast<int>(m_header.type())
+        << ")\n";
 
     oss << "Code      : " << IcmpProtocol::codeToStr(m_header.type(), m_header.code()) << " ("
         << static_cast<int>(m_header.code()) << ")\n";
@@ -195,4 +195,4 @@ std::string IcmpPacket::dump() const
     return oss.str();
 }
 
-} // namespace pz::icmpd
+}

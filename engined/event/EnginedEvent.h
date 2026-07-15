@@ -12,13 +12,13 @@ class EnginedServiceManager;
 
 enum class EnginedEventDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
     Heartbeat = 2,
-    Commit    = 3,
-    Scan      = 4,
-    Admin     = 5,
-    Probe     = 6,
+    Commit = 3,
+    Scan = 4,
+    Admin = 5,
+    Probe = 6,
 };
 
 class EnginedEvent : public pz::event::Event
@@ -35,4 +35,4 @@ private:
     EnginedEventDomain m_domain{EnginedEventDomain::Unknown};
 };
 
-} // namespace pz::engined
+}

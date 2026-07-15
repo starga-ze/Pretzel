@@ -7,17 +7,12 @@
 namespace pz::scand
 {
 
-ScandServiceManager::ScandServiceManager(ScandEventFactory* eventFactory,
-                                         ScandActionFactory* actionFactory,
+ScandServiceManager::ScandServiceManager(ScandEventFactory* eventFactory, ScandActionFactory* actionFactory,
                                          ScandTxRouter* txRouter)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory),
-      m_txRouter(txRouter),
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_scanService(std::make_unique<ScanService>()),
-      m_reloadService(std::make_unique<ReloadService>()),
-      m_apiService(std::make_unique<ApiService>())
+      m_heartbeatService(std::make_unique<HeartbeatService>()), m_scanService(std::make_unique<ScanService>()),
+      m_reloadService(std::make_unique<ReloadService>()), m_apiService(std::make_unique<ApiService>())
 {
 }
 
@@ -35,7 +30,6 @@ void ScandServiceManager::schedule()
         postEvent(m_bootstrapService->schedule(now));
         return;
     }
-
 }
 
 void ScandServiceManager::postEvent(std::unique_ptr<ScandEvent> event)
@@ -107,4 +101,4 @@ ScandTxRouter& ScandServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace pz::scand
+}

@@ -11,8 +11,7 @@
 namespace pz::apid
 {
 
-ApidCore::ApidCore()
-    : Core("apid")
+ApidCore::ApidCore() : Core("apid")
 {
 }
 
@@ -23,9 +22,7 @@ bool ApidCore::onInit()
         return false;
     }
 
-    pz::util::Logger::Init(m_loggerConfig.name,
-                           m_loggerConfig.file,
-                           m_loggerConfig.maxFileSize,
+    pz::util::Logger::Init(m_loggerConfig.name, m_loggerConfig.file, m_loggerConfig.maxFileSize,
                            m_loggerConfig.maxFiles);
 
     LOG_INFO("apid: starting up");
@@ -42,23 +39,15 @@ bool ApidCore::onInit()
         m_ipcClient.reset();
     }
 
-    m_eventFactory  = std::make_unique<ApidEventFactory>();
+    m_eventFactory = std::make_unique<ApidEventFactory>();
     m_actionFactory = std::make_unique<ApidActionFactory>();
 
-    // The two transport handlers are treated identically: IpcClient owns the IPC handler,
-    // HttpServer (below) will own this HTTP one. Both are created before the TxRouter and
-    // injected into it together (non-owning), then handed their RxRouter once it exists —
-    // the shared bootstrap dance (RxRouter needs ServiceManager needs TxRouter).
     auto httpHandler = std::make_shared<pz::http::HttpHandler>();
 
-    m_txRouter = std::make_unique<ApidTxRouter>(
-        m_ipcClient ? m_ipcClient->handler() : nullptr,
-        httpHandler.get());
+    m_txRouter = std::make_unique<ApidTxRouter>(m_ipcClient ? m_ipcClient->handler() : nullptr, httpHandler.get());
 
-    m_serviceManager = std::make_unique<ApidServiceManager>(
-        m_eventFactory.get(),
-        m_actionFactory.get(),
-        m_txRouter.get());
+    m_serviceManager =
+        std::make_unique<ApidServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
 
     m_rxRouter = std::make_unique<ApidRxRouter>(m_eventFactory.get(), m_serviceManager.get());
 
@@ -68,22 +57,16 @@ bool ApidCore::onInit()
     }
     httpHandler->setRxRouter(m_rxRouter.get());
 
-    m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress,
-                                                          m_httpConfig.listenPort,
-                                                          m_httpConfig.tlsEnabled,
-                                                          m_httpConfig.certFile,
-                                                          m_httpConfig.keyFile,
-                                                          "pz-apid",
-                                                          std::move(httpHandler));
+    m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress, m_httpConfig.listenPort,
+                                                          m_httpConfig.tlsEnabled, m_httpConfig.certFile,
+                                                          m_httpConfig.keyFile, "pz-apid", std::move(httpHandler));
     if (!m_httpServer || !m_httpServer->init())
     {
         LOG_ERROR("failed to initialize HTTP server");
         return false;
     }
 
-    m_process = std::make_unique<ApidProcess>(m_ipcClient.get(),
-                                              m_httpServer.get(),
-                                              m_serviceManager.get());
+    m_process = std::make_unique<ApidProcess>(m_ipcClient.get(), m_httpServer.get(), m_serviceManager.get());
     return true;
 }
 
@@ -148,8 +131,7 @@ bool ApidCore::loadHttpConfig()
 
     const auto http = svc.value("http", nlohmann::json::object());
     m_httpConfig.listenAddress = http.value("listen_address", "0.0.0.0");
-    m_httpConfig.listenPort =
-        static_cast<std::uint16_t>(http.value("listen_port", 8443));
+    m_httpConfig.listenPort = static_cast<std::uint16_t>(http.value("listen_port", 8443));
     m_httpConfig.tlsEnabled = http.value("tls_enabled", false);
     m_httpConfig.certFile = http.value("cert_file", "");
     m_httpConfig.keyFile = http.value("key_file", "");
@@ -157,4 +139,4 @@ bool ApidCore::loadHttpConfig()
     return true;
 }
 
-} // namespace pz::apid
+}

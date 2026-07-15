@@ -4,8 +4,7 @@
 namespace pz::scand
 {
 
-ApiEngine::ApiEngine()
-    : m_handler(std::make_unique<ApiEngineHandler>(this))
+ApiEngine::ApiEngine() : m_handler(std::make_unique<ApiEngineHandler>(this))
 {
 }
 
@@ -45,7 +44,7 @@ void ApiEngine::startScan(std::map<std::string, ApiCredential> devices)
     }
 
     m_completed.clear();
-    m_pending    = 0;
+    m_pending = 0;
     m_scanActive = true;
 
     LOG_DEBUG("starting scan (devices={})", devices.size());
@@ -58,11 +57,10 @@ void ApiEngine::startScan(std::map<std::string, ApiCredential> devices)
     m_pending = static_cast<int>(devices.size());
     m_queueCv.notify_all();
 
-    // Nothing started (or no devices) → complete immediately.
     checkScanComplete();
 }
 
-bool ApiEngine::poll(int /*timeoutMs*/)
+bool ApiEngine::poll(int)
 {
     drainResults();
     checkScanComplete();
@@ -155,4 +153,4 @@ void ApiEngine::checkScanComplete()
         m_handler->onScanComplete(std::move(results));
 }
 
-} // namespace pz::scand
+}

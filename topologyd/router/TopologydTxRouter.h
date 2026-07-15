@@ -1,8 +1,8 @@
 #pragma once
 
-#include "router/TxRouter.h"
 #include "ipc/IpcClientHandler.h"
 #include "ipc/IpcMessage.h"
+#include "router/TxRouter.h"
 
 #include <memory>
 
@@ -20,4 +20,4 @@ private:
     pz::ipc::IpcClientHandler* m_ipcClientHandler{nullptr};
 };
 
-} // namespace pz::topologyd
+}

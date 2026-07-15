@@ -13,12 +13,9 @@ namespace
 constexpr int kIpcClientTimeoutMs = 10;
 }
 
-MgmtdProcess::MgmtdProcess(pz::ipc::IpcClient* ipcClient,
-                           pz::http::HttpServer* httpServer,
+MgmtdProcess::MgmtdProcess(pz::ipc::IpcClient* ipcClient, pz::http::HttpServer* httpServer,
                            MgmtdServiceManager* serviceManager)
-    : m_ipcClient(ipcClient),
-      m_httpServer(httpServer),
-      m_serviceManager(serviceManager)
+    : m_ipcClient(ipcClient), m_httpServer(httpServer), m_serviceManager(serviceManager)
 {
 }
 
@@ -59,4 +56,4 @@ void MgmtdProcess::tick()
     }
 }
 
-} // namespace pz::mgmtd
+}

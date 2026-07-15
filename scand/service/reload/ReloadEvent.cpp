@@ -6,9 +6,7 @@
 namespace pz::scand
 {
 
-ReloadEvent::ReloadEvent(ReloadEventType type)
-    : ScandEvent(ScandEventDomain::Reload),
-      m_type(type)
+ReloadEvent::ReloadEvent(ReloadEventType type) : ScandEvent(ScandEventDomain::Reload), m_type(type)
 {
 }
 
@@ -22,4 +20,4 @@ ReloadEventType ReloadEvent::type() const
     return m_type;
 }
 
-} // namespace pz::scand
+}

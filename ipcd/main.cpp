@@ -4,7 +4,7 @@
 
 using namespace pz::ipcd;
 
-int main() 
+int main()
 {
     auto core = std::make_unique<IpcdCore>();
 

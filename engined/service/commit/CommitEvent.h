@@ -11,10 +11,10 @@ namespace pz::engined
 
 enum class CommitEventType : std::uint32_t
 {
-    Unknown               = 0,
+    Unknown = 0,
     ReceiveSettingsCommit = 1,
-    ReloadComplete        = 2,  // fired by BootstrapService after a reload converges
-    ReloadFailed          = 3,  // fired by BootstrapService when a reload times out
+    ReloadComplete = 2,
+    ReloadFailed = 3,
 };
 
 class CommitEvent final : public EnginedEvent
@@ -34,4 +34,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::engined
+}

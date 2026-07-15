@@ -1,7 +1,7 @@
 #pragma once
 
-#include "event/EventFactory.h"
 #include "event/AuthdEvent.h"
+#include "event/EventFactory.h"
 
 #include <memory>
 
@@ -19,4 +19,4 @@ public:
     std::unique_ptr<AuthdEvent> create(AuthdEventDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::authd
+}

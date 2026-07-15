@@ -24,4 +24,4 @@ std::unique_ptr<ScandAction> ScandActionFactory::create(ScandActionDomain domain
     }
 }
 
-} // namespace pz::scand
+}

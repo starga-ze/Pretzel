@@ -4,9 +4,7 @@
 namespace pz::apid
 {
 
-BootstrapAction::BootstrapAction(BootstrapActionType type)
-    : ApidAction(ApidActionDomain::Bootstrap),
-      m_type(type)
+BootstrapAction::BootstrapAction(BootstrapActionType type) : ApidAction(ApidActionDomain::Bootstrap), m_type(type)
 {
 }
 
@@ -20,4 +18,4 @@ void BootstrapAction::dispatch(ApidServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::apid
+}

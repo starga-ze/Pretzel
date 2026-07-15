@@ -4,10 +4,8 @@
 namespace pz::scand
 {
 
-HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst) :
-    ScandAction(ScandActionDomain::Heartbeat),
-    m_type(type),
-    m_dst(dst)
+HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst)
+    : ScandAction(ScandActionDomain::Heartbeat), m_type(type), m_dst(dst)
 {
 }
 
@@ -26,4 +24,4 @@ void HeartbeatAction::dispatch(ScandServiceManager& serviceManager)
     serviceManager.heartbeatService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::scand
+}

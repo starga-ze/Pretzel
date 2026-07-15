@@ -9,15 +9,11 @@
 namespace pz::authd
 {
 
-AuthdServiceManager::AuthdServiceManager(AuthdEventFactory* eventFactory,
-                                         AuthdActionFactory* actionFactory,
+AuthdServiceManager::AuthdServiceManager(AuthdEventFactory* eventFactory, AuthdActionFactory* actionFactory,
                                          AuthdTxRouter* txRouter)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory),
-      m_txRouter(txRouter),
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_reloadService(std::make_unique<ReloadService>()),
+      m_heartbeatService(std::make_unique<HeartbeatService>()), m_reloadService(std::make_unique<ReloadService>()),
       m_authService(std::make_unique<AuthService>())
 {
 }
@@ -29,8 +25,6 @@ void AuthdServiceManager::start()
 
 void AuthdServiceManager::configure(const nlohmann::json& config)
 {
-    // The auth section is optional; AuthService::configure tolerates it being absent
-    // (OIDC simply stays disabled and only local login works).
     if (config.contains("service") && config["service"].contains("auth"))
     {
         m_authService->configure(config["service"]["auth"]);
@@ -116,4 +110,4 @@ AuthdTxRouter& AuthdServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace pz::authd
+}

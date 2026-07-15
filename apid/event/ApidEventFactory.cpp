@@ -47,4 +47,4 @@ std::unique_ptr<ApidEvent> ApidEventFactory::create(std::unique_ptr<pz::ipc::Ipc
     }
 }
 
-} // namespace pz::apid
+}

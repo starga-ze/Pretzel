@@ -19,20 +19,14 @@ using tcp = boost::asio::ip::tcp;
 
 class HttpHandler;
 
-// TLS variant of HttpSession: perform the handshake, then the same asynchronous
-// read -> ingress -> (later) send loop over the encrypted stream. Transport only.
-class HttpsSession : public std::enable_shared_from_this<HttpsSession>,
-                     public HttpSessionBase
+class HttpsSession : public std::enable_shared_from_this<HttpsSession>, public HttpSessionBase
 {
 public:
-    HttpsSession(tcp::socket socket,
-                 HttpHandler* handler,
-                 std::shared_ptr<boost::asio::ssl::context> sslContext,
+    HttpsSession(tcp::socket socket, HttpHandler* handler, std::shared_ptr<boost::asio::ssl::context> sslContext,
                  std::string serverName);
 
     void run();
 
-    // HttpSessionBase: deliver the response for the in-flight request (async write).
     void send(HttpResponse response) override;
 
 private:
@@ -56,4 +50,4 @@ private:
     std::shared_ptr<void> m_responseHolder;
 };
 
-} // namespace pz::http
+}

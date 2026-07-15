@@ -1,7 +1,7 @@
 #pragma once
 
-#include "service/bootstrap/BootstrapEvent.h"
 #include "service/bootstrap/BootstrapAction.h"
+#include "service/bootstrap/BootstrapEvent.h"
 
 #include <chrono>
 #include <memory>
@@ -16,12 +16,6 @@ class MgmtdActionFactory;
 class BootstrapService
 {
 public:
-    // mgmtd is infrastructure (web/admin plane), NOT a config-convergence participant —
-    // engined never gates on it (see engined BootstrapService::initProcessMap) and it is
-    // not restarted on config reload. Its readiness is therefore the completed IPC
-    // handshake alone: Init -> WaitServerHello -> Ready -> Running. It does NOT wait for
-    // the fleet-wide RuntimeStart (a signal it isn't part of and would race/miss on a
-    // late connect); any RuntimeStart it receives is ignored.
     enum class State
     {
         Init,
@@ -31,8 +25,7 @@ public:
         Failed
     };
 
-    BootstrapService(MgmtdEventFactory* eventFactory,
-                          MgmtdActionFactory* actionFactory);
+    BootstrapService(MgmtdEventFactory* eventFactory, MgmtdActionFactory* actionFactory);
 
     ~BootstrapService() = default;
 
@@ -42,20 +35,16 @@ public:
 
     bool isReady() const;
 
-    void handleEvent(MgmtdServiceManager& serviceManager,
-                     const BootstrapEvent& event);
+    void handleEvent(MgmtdServiceManager& serviceManager, const BootstrapEvent& event);
 
-    void handleAction(MgmtdServiceManager& serviceManager,
-                      const BootstrapAction& action);
+    void handleAction(MgmtdServiceManager& serviceManager, const BootstrapAction& action);
 
 private:
-    void onServerHello(MgmtdServiceManager& serviceManager,
-                       const pz::ipc::IpcMessage& msg);
+    void onServerHello(MgmtdServiceManager& serviceManager, const pz::ipc::IpcMessage& msg);
 
     void onRuntimeStart(const pz::ipc::IpcMessage& msg);
 
-    bool checkTimeout(std::chrono::steady_clock::time_point now,
-                      const char* stateName);
+    bool checkTimeout(std::chrono::steady_clock::time_point now, const char* stateName);
 
     std::unique_ptr<pz::ipc::IpcMessage> buildClientHelloMessage() const;
     std::unique_ptr<pz::ipc::IpcMessage> buildRuntimeReadyMessage() const;
@@ -70,4 +59,4 @@ private:
     std::chrono::steady_clock::time_point m_lastClientHelloSentAt{};
 };
 
-} // namespace pz::mgmtd
+}

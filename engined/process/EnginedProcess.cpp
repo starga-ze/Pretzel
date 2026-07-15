@@ -7,8 +7,7 @@ namespace pz::engined
 constexpr int kIpcClientTimeoutMs = 10;
 
 EnginedProcess::EnginedProcess(pz::ipc::IpcClient* ipcClient, EnginedServiceManager* serviceManager)
-    : m_ipcClient(ipcClient),
-      m_serviceManager(serviceManager)
+    : m_ipcClient(ipcClient), m_serviceManager(serviceManager)
 {
 }
 
@@ -40,4 +39,4 @@ void EnginedProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace pz::engined
+}

@@ -23,8 +23,7 @@ class BootstrapEvent final : public IcmpdEvent
 public:
     explicit BootstrapEvent(BootstrapEventType type);
 
-    BootstrapEvent(BootstrapEventType type, 
-            std::unique_ptr<pz::ipc::IpcMessage> message);
+    BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(IcmpdServiceManager& serviceManager) override;
 
@@ -35,7 +34,6 @@ public:
 private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
     BootstrapEventType m_type{BootstrapEventType::Unknown};
-
 };
 
-} // namespace pz::icmpd
+}

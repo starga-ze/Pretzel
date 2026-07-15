@@ -9,11 +9,11 @@ namespace pz::engined
 
 enum class BootstrapActionType : std::uint32_t
 {
-    Unknown          = 0,
-    SendClientHello  = 1,
-    SendSyncRequest  = 2,
+    Unknown = 0,
+    SendClientHello = 1,
+    SendSyncRequest = 2,
     SendRuntimeStart = 3,
-    SendReloadFailed = 4   // notify mgmtd + commit queue that the reload did not converge
+    SendReloadFailed = 4
 };
 
 class BootstrapAction final : public EnginedAction
@@ -29,4 +29,4 @@ private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };
 
-} // namespace pz::engined
+}

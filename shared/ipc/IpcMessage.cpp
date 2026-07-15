@@ -9,23 +9,17 @@
 namespace pz::ipc
 {
 
-IpcMessage::IpcMessage()
-    : m_header(),
-      m_payload()
+IpcMessage::IpcMessage() : m_header(), m_payload()
 {
 }
 
-IpcMessage::IpcMessage(const IpcHeader& header,
-                       std::vector<std::uint8_t> payload)
-    : m_header(header),
-      m_payload(std::move(payload))
+IpcMessage::IpcMessage(const IpcHeader& header, std::vector<std::uint8_t> payload)
+    : m_header(header), m_payload(std::move(payload))
 {
 }
 
-IpcMessage::IpcMessage(IpcHeader&& header,
-                       std::vector<std::uint8_t> payload)
-    : m_header(std::move(header)),
-      m_payload(std::move(payload))
+IpcMessage::IpcMessage(IpcHeader&& header, std::vector<std::uint8_t> payload)
+    : m_header(std::move(header)), m_payload(std::move(payload))
 {
 }
 
@@ -160,7 +154,7 @@ bool IpcMessage::isBroadcast() const
 
 IpcWireHeader IpcMessage::toWireHeader() const
 {
-    IpcWireHeader wire {};
+    IpcWireHeader wire{};
     wire.version = m_header.version;
     wire.src = static_cast<std::uint8_t>(m_header.src);
     wire.dst = static_cast<std::uint8_t>(m_header.dst);
@@ -177,17 +171,11 @@ std::string IpcMessage::dump() const
     std::ostringstream oss;
 
     oss << "Version   : " << static_cast<int>(m_header.version) << "\n";
-    oss << "Src       : " << IpcProtocol::daemonToStr(m_header.src)
-        << " (" << static_cast<int>(m_header.src) << ")\n";
-    oss << "Dst       : " << IpcProtocol::daemonToStr(m_header.dst)
-        << " (" << static_cast<int>(m_header.dst) << ")\n";
-    oss << "Cmd       : " << IpcProtocol::cmdToStr(m_header.cmd)
-        << " (" << static_cast<int>(m_header.cmd) << ")\n";
-    oss << "Flags     : " << IpcProtocol::flagsToStr(m_header.flags)
-        << " (0x"
-        << std::hex << std::setw(2) << std::setfill('0')
-        << static_cast<int>(m_header.flags)
-        << std::dec << ")\n";
+    oss << "Src       : " << IpcProtocol::daemonToStr(m_header.src) << " (" << static_cast<int>(m_header.src) << ")\n";
+    oss << "Dst       : " << IpcProtocol::daemonToStr(m_header.dst) << " (" << static_cast<int>(m_header.dst) << ")\n";
+    oss << "Cmd       : " << IpcProtocol::cmdToStr(m_header.cmd) << " (" << static_cast<int>(m_header.cmd) << ")\n";
+    oss << "Flags     : " << IpcProtocol::flagsToStr(m_header.flags) << " (0x" << std::hex << std::setw(2)
+        << std::setfill('0') << static_cast<int>(m_header.flags) << std::dec << ")\n";
     oss << "SeqNo     : " << m_header.seqNo << "\n";
     oss << "Payload   : " << m_payload.size() << " bytes";
 
@@ -196,10 +184,7 @@ std::string IpcMessage::dump() const
         oss << "\n  ";
         for (std::size_t i = 0; i < m_payload.size(); ++i)
         {
-            oss << std::hex
-                << std::setw(2)
-                << std::setfill('0')
-                << static_cast<int>(m_payload[i]);
+            oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(m_payload[i]);
 
             if (i + 1 != m_payload.size())
                 oss << ' ';
@@ -210,4 +195,4 @@ std::string IpcMessage::dump() const
     return oss.str();
 }
 
-} // namespace pz::ipc
+}

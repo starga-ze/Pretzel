@@ -16,7 +16,7 @@ void HttpHandler::setRxRouter(pz::router::RxRouter* rxRouter)
 
 SessionId HttpHandler::addSession(std::shared_ptr<HttpSessionBase> session)
 {
-    const SessionId id = ++m_nextId;  // 0 stays reserved
+    const SessionId id = ++m_nextId;
     session->setId(id);
     m_sessions.emplace(id, std::move(session));
     return id;
@@ -32,9 +32,7 @@ void HttpHandler::ingress(HttpRequest request, SessionId id)
     if (!m_rxRouter)
     {
         LOG_ERROR("rx router is not initialized");
-        egress(HttpResponse{503, "application/json; charset=utf-8",
-                            R"({"error":"unavailable"})"},
-               id);
+        egress(HttpResponse{503, "application/json; charset=utf-8", R"({"error":"unavailable"})"}, id);
         return;
     }
 
@@ -50,10 +48,8 @@ void HttpHandler::egress(HttpResponse response, SessionId id)
         return;
     }
 
-    // Copy the shared_ptr so the session outlives the send() call even if send() (via a write
-    // error -> removeSession) drops the registry's reference synchronously.
     std::shared_ptr<HttpSessionBase> session = it->second;
     session->send(std::move(response));
 }
 
-} // namespace pz::http
+}

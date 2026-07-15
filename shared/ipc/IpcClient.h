@@ -76,9 +76,9 @@ private:
     IpcCodec m_codec;
     std::unique_ptr<IpcClientHandler> m_handler;
 
-    std::atomic<bool> m_running {false};
-    bool m_initialized {false};
-    State m_state {State::Disconnected};
+    std::atomic<bool> m_running{false};
+    bool m_initialized{false};
+    State m_state{State::Disconnected};
 };
 
-} // namespace pz::ipc
+}

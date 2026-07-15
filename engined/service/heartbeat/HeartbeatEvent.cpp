@@ -5,17 +5,12 @@
 namespace pz::engined
 {
 
-HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type)
-    : EnginedEvent(EnginedEventDomain::Heartbeat),
-      m_type(type)
+HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type) : EnginedEvent(EnginedEventDomain::Heartbeat), m_type(type)
 {
 }
 
-HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type,
-                               std::unique_ptr<pz::ipc::IpcMessage> message)
-    : EnginedEvent(EnginedEventDomain::Heartbeat),
-      m_type(type),
-      m_message(std::move(message))
+HeartbeatEvent::HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : EnginedEvent(EnginedEventDomain::Heartbeat), m_type(type), m_message(std::move(message))
 {
 }
 
@@ -39,4 +34,4 @@ std::unique_ptr<pz::ipc::IpcMessage> HeartbeatEvent::takeMessage()
     return std::move(m_message);
 }
 
-} // namespace pz::engined
+}

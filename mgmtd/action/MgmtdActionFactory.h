@@ -18,4 +18,4 @@ public:
     std::unique_ptr<MgmtdAction> create(MgmtdActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::mgmtd
+}

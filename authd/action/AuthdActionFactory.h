@@ -18,4 +18,4 @@ public:
     std::unique_ptr<AuthdAction> create(AuthdActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::authd
+}

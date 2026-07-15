@@ -11,9 +11,9 @@ namespace pz::mgmtd
 
 enum class BootstrapEventType : std::uint32_t
 {
-    Unknown             = 0,
-    SendClientHello     = 1,
-    ReceiveServerHello  = 2,
+    Unknown = 0,
+    SendClientHello = 1,
+    ReceiveServerHello = 2,
     ReceiveRuntimeStart = 3
 };
 
@@ -22,8 +22,7 @@ class BootstrapEvent final : public MgmtdEvent
 public:
     explicit BootstrapEvent(BootstrapEventType type);
 
-    BootstrapEvent(BootstrapEventType type,
-                        std::unique_ptr<pz::ipc::IpcMessage> message);
+    BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(MgmtdServiceManager& serviceManager) override;
 
@@ -36,4 +35,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::mgmtd
+}

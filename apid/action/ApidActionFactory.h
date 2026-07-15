@@ -18,4 +18,4 @@ public:
     std::unique_ptr<ApidAction> create(ApidActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::apid
+}

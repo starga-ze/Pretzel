@@ -10,7 +10,7 @@ namespace pz::topologyd
 
 enum class HeartbeatActionType : std::uint32_t
 {
-    Unknown               = 0,
+    Unknown = 0,
     SendHeartbeatResponse = 1
 };
 
@@ -26,7 +26,7 @@ public:
 
 private:
     HeartbeatActionType m_type{HeartbeatActionType::Unknown};
-    pz::ipc::IpcDaemon  m_dst{pz::ipc::IpcDaemon::Unknown};
+    pz::ipc::IpcDaemon m_dst{pz::ipc::IpcDaemon::Unknown};
 };
 
-} // namespace pz::topologyd
+}

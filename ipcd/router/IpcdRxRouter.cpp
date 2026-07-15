@@ -6,12 +6,8 @@
 namespace pz::ipcd
 {
 
-IpcdRxRouter::IpcdRxRouter(IpcdEventFactory* eventFactory,
-                            IpcdServiceManager* serviceManager,
-                            IpcdTxRouter* txRouter)
-    : m_eventFactory(eventFactory),
-      m_serviceManager(serviceManager),
-      m_txRouter(txRouter)
+IpcdRxRouter::IpcdRxRouter(IpcdEventFactory* eventFactory, IpcdServiceManager* serviceManager, IpcdTxRouter* txRouter)
+    : m_eventFactory(eventFactory), m_serviceManager(serviceManager), m_txRouter(txRouter)
 {
 }
 
@@ -19,8 +15,7 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 {
     if (!m_serviceManager || !m_txRouter)
     {
-        LOG_ERROR("dependencies not ready (serviceManager={}, txRouter={})",
-                  static_cast<bool>(m_serviceManager),
+        LOG_ERROR("dependencies not ready (serviceManager={}, txRouter={})", static_cast<bool>(m_serviceManager),
                   static_cast<bool>(m_txRouter));
         return;
     }
@@ -31,8 +26,7 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    LOG_TRACE("recv (cmd={}, src={})",
-              pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+    LOG_TRACE("recv (cmd={}, src={})", pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
     const pz::ipc::IpcCmd cmd = msg->getCmd();
@@ -55,4 +49,4 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     }
 }
 
-} // namespace pz::ipcd
+}

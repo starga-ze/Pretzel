@@ -11,16 +11,15 @@ namespace pz::topologyd
 class TopologydProcess : public pz::process::Process
 {
 public:
-    TopologydProcess(pz::ipc::IpcClient* ipcClient,
-                     TopologydServiceManager* serviceManager);
+    TopologydProcess(pz::ipc::IpcClient* ipcClient, TopologydServiceManager* serviceManager);
     ~TopologydProcess() override = default;
 
     bool start() override;
     void tick() override;
 
 private:
-    pz::ipc::IpcClient*      m_ipcClient{nullptr};
+    pz::ipc::IpcClient* m_ipcClient{nullptr};
     TopologydServiceManager* m_serviceManager{nullptr};
 };
 
-} // namespace pz::topologyd
+}

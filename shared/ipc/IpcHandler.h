@@ -29,4 +29,4 @@ protected:
     IpcCodec m_codec;
 };
 
-} // namespace pz::ipc
+}

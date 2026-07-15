@@ -57,8 +57,8 @@ IcmpDecodeResult IcmpCodec::decode(IcmpFrameView frame, std::unique_ptr<IcmpPack
 
     const std::uint8_t* icmp = frame.data + offset;
 
-    IcmpHeader header(static_cast<IcmpType>(icmp[0]), static_cast<IcmpCode>(icmp[1]), 
-            readU16Be(icmp + 4), readU16Be(icmp + 6));
+    IcmpHeader header(static_cast<IcmpType>(icmp[0]), static_cast<IcmpCode>(icmp[1]), readU16Be(icmp + 4),
+                      readU16Be(icmp + 6));
 
     header.setChecksum(readU16Be(icmp + 2));
 
@@ -147,4 +147,4 @@ std::size_t IcmpCodec::icmpOffset(IcmpFrameView frame)
     return 0;
 }
 
-} // namespace pz::icmpd
+}

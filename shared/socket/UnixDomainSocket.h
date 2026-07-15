@@ -25,9 +25,9 @@ public:
     UnixDomainSocket(UnixDomainSocket&&) = delete;
     UnixDomainSocket& operator=(UnixDomainSocket&&) = delete;
 
-    bool open();                  // server: socket + bind + listen
-    int accept();                 // server: accept client
-    ConnectResult connect();      // client: nonblocking connect
+    bool open();
+    int accept();
+    ConnectResult connect();
 
     void close();
 
@@ -45,8 +45,8 @@ private:
 
 private:
     std::string m_socketPath;
-    int m_fd {-1};
-    bool m_shouldUnlinkOnClose {false};
+    int m_fd{-1};
+    bool m_shouldUnlinkOnClose{false};
 };
 
-} // namespace pz::socket
+}

@@ -2,11 +2,11 @@
 
 #include "service/ServiceManager.h"
 
+#include "service/api/ApiService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
-#include "service/scan/ScanService.h"
 #include "service/reload/ReloadService.h"
-#include "service/api/ApiService.h"
+#include "service/scan/ScanService.h"
 
 #include "router/ScandTxRouter.h"
 
@@ -21,9 +21,7 @@ class ScandActionFactory;
 class ScandServiceManager : public pz::service::ServiceManager<ScandEvent, ScandAction>
 {
 public:
-    ScandServiceManager(ScandEventFactory* eventFactory,
-                        ScandActionFactory* actionFactory,
-                        ScandTxRouter* txRouter);
+    ScandServiceManager(ScandEventFactory* eventFactory, ScandActionFactory* actionFactory, ScandTxRouter* txRouter);
     ~ScandServiceManager() override = default;
 
     void start() override;
@@ -48,12 +46,12 @@ private:
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
-    std::unique_ptr<ScanService>      m_scanService;
-    std::unique_ptr<ReloadService>    m_reloadService;
-    std::unique_ptr<ApiService>       m_apiService;
+    std::unique_ptr<ScanService> m_scanService;
+    std::unique_ptr<ReloadService> m_reloadService;
+    std::unique_ptr<ApiService> m_apiService;
 
     std::queue<std::unique_ptr<ScandEvent>> m_eventQueue;
     std::queue<std::unique_ptr<ScandAction>> m_actionQueue;
 };
 
-} // namespace pz::scand
+}

@@ -5,12 +5,12 @@
 #include "ipc/IpcClient.h"
 #include "util/ThreadManager.h"
 
+#include "action/TopologydActionFactory.h"
+#include "event/TopologydEventFactory.h"
 #include "process/TopologydProcess.h"
 #include "router/TopologydRxRouter.h"
 #include "router/TopologydTxRouter.h"
 #include "service/TopologydServiceManager.h"
-#include "event/TopologydEventFactory.h"
-#include "action/TopologydActionFactory.h"
 
 #include "config/ConfigTypes.h"
 
@@ -31,19 +31,19 @@ protected:
 
 private:
     pz::config::LoggerConfig m_loggerConfig;
-    pz::config::IpcConfig    m_ipcConfig;
+    pz::config::IpcConfig m_ipcConfig;
 
-    std::unique_ptr<pz::util::ThreadManager>   m_threadManager;
-    std::unique_ptr<pz::ipc::IpcClient>         m_ipcClient;
+    std::unique_ptr<pz::util::ThreadManager> m_threadManager;
+    std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
 
-    std::unique_ptr<TopologydEventFactory>      m_eventFactory;
-    std::unique_ptr<TopologydActionFactory>     m_actionFactory;
+    std::unique_ptr<TopologydEventFactory> m_eventFactory;
+    std::unique_ptr<TopologydActionFactory> m_actionFactory;
 
-    std::unique_ptr<TopologydTxRouter>          m_txRouter;
-    std::unique_ptr<TopologydServiceManager>    m_serviceManager;
-    std::unique_ptr<TopologydRxRouter>          m_rxRouter;
+    std::unique_ptr<TopologydTxRouter> m_txRouter;
+    std::unique_ptr<TopologydServiceManager> m_serviceManager;
+    std::unique_ptr<TopologydRxRouter> m_rxRouter;
 
-    std::unique_ptr<TopologydProcess>           m_process;
+    std::unique_ptr<TopologydProcess> m_process;
 };
 
-} // namespace pz::topologyd
+}

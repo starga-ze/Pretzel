@@ -1,13 +1,13 @@
 #include "service/probe/ProbeService.h"
 
-#include "service/EnginedServiceManager.h"
 #include "router/EnginedTxRouter.h"
+#include "service/EnginedServiceManager.h"
 
-#include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 
-#include "db/Database.h"
 #include "config/Config.h"
+#include "db/Database.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
@@ -22,7 +22,6 @@ namespace pz::engined
 namespace
 {
 
-// Overridable via "service"."probe" in the running-config (section "engined").
 std::chrono::milliseconds pollInterval()
 {
     const auto& p = pz::config::Config::serviceSection("engined", "probe");
@@ -35,17 +34,16 @@ std::chrono::milliseconds responseTimeout()
     return std::chrono::seconds(p.value("response_timeout_sec", 20));
 }
 
-} // namespace
+}
 
 void ProbeService::start()
 {
-    m_pending    = false;
+    m_pending = false;
     m_lastPollAt = {};
     LOG_INFO("ProbeService (engined) start");
 }
 
-std::unique_ptr<EnginedEvent>
-ProbeService::schedule(std::chrono::steady_clock::time_point now)
+std::unique_ptr<EnginedEvent> ProbeService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (m_pending)
     {
@@ -57,8 +55,7 @@ ProbeService::schedule(std::chrono::steady_clock::time_point now)
         return nullptr;
     }
 
-    if (m_lastPollAt.time_since_epoch().count() == 0 ||
-        now - m_lastPollAt >= pollInterval())
+    if (m_lastPollAt.time_since_epoch().count() == 0 || now - m_lastPollAt >= pollInterval())
     {
         m_lastPollAt = now;
         return std::make_unique<ProbeEvent>(ProbeEventType::TriggerProbe);
@@ -67,8 +64,7 @@ ProbeService::schedule(std::chrono::steady_clock::time_point now)
     return nullptr;
 }
 
-void ProbeService::handleEvent(EnginedServiceManager& serviceManager,
-                               const ProbeEvent& event)
+void ProbeService::handleEvent(EnginedServiceManager& serviceManager, const ProbeEvent& event)
 {
     switch (event.type())
     {
@@ -81,8 +77,7 @@ void ProbeService::handleEvent(EnginedServiceManager& serviceManager,
         break;
 
     default:
-        LOG_WARN("unhandled event (type={})",
-                 static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
 }
@@ -91,16 +86,12 @@ void ProbeService::sendProbeRequest(EnginedServiceManager& serviceManager)
 {
     const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Engined,
-        pz::ipc::IpcDaemon::Icmpd,
-        pz::ipc::IpcCmd::ProbeRequest,
-        0,
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Engined, pz::ipc::IpcDaemon::Icmpd,
+                                                          pz::ipc::IpcCmd::ProbeRequest, 0, flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-    m_pending     = true;
+    m_pending = true;
     m_requestedAt = std::chrono::steady_clock::now();
 
     LOG_DEBUG("sending ProbeRequest to icmpd");
@@ -108,8 +99,7 @@ void ProbeService::sendProbeRequest(EnginedServiceManager& serviceManager)
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
 
-void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
-                                 const ProbeEvent& event)
+void ProbeService::onProbeResult(EnginedServiceManager& serviceManager, const ProbeEvent& event)
 {
     m_pending = false;
 
@@ -138,14 +128,8 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
         return;
     }
 
-    // "received_ips" is the number of alive IPs carried in this ProbeResult — not the
-    // icmpd sweep size (that is icmpd's own "total="). It equals aliveCount; both are
-    // logged as a consistency check between the "alive" field and the "ips" array.
     LOG_INFO("probe complete (alive={}, received_ips={})", aliveCount, ips.size());
 
-    // Build an IP→MAC map from every device's learned ARP table (probe_devices.
-    // arp_entries) so SNMP-less hosts can be tagged with a MAC + OUI vendor (laptop/
-    // AP/phone). Empty until the first SNMP scan has run.
     auto& db = pz::db::Database::instance();
     std::unordered_map<std::string, std::string> ipToMac;
     for (const auto& row : db.queryRows("SELECT arp_entries FROM probe_devices "
@@ -158,18 +142,13 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
             continue;
         for (const auto& e : arr)
         {
-            const std::string ip  = e.value("ip", "");
+            const std::string ip = e.value("ip", "");
             const std::string mac = e.value("mac", "");
             if (!ip.empty() && !mac.empty())
                 ipToMac.emplace(ip, mac);
         }
     }
 
-    // Persist the alive set into probe_devices (engined is the single DB writer).
-    // ProbeService owns the ICMP-stage columns (status/mac/host_vendor) AND the row
-    // lifecycle: each alive IP is upserted, then IPs that dropped out of the sweep are
-    // pruned (taking their SNMP/API columns with them). The SNMP/API columns are left
-    // untouched here — ScanService owns them. exec() fails soft when the DB is down.
     auto& vendorResolver = serviceManager.vendorResolver();
     for (const auto& ip : ips)
     {
@@ -178,7 +157,7 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
         const auto it = ipToMac.find(ip);
         if (it != ipToMac.end())
         {
-            mac    = it->second;
+            mac = it->second;
             vendor = vendorResolver.vendorForMac(mac);
         }
 
@@ -189,15 +168,13 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
                 {ip, mac, vendor});
     }
 
-    // Prune rows whose IP is no longer reachable. Guarded against an empty sweep so a
-    // transient zero-alive cycle can't wipe the whole inventory. IPs are validated
-    // IPv4 from the ICMP path, safe to inline as a text[] literal.
     if (!ips.empty())
     {
         std::string arr = "{";
         for (size_t i = 0; i < ips.size(); ++i)
         {
-            if (i) arr += ',';
+            if (i)
+                arr += ',';
             arr += ips[i];
         }
         arr += "}";
@@ -207,4 +184,4 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager,
     serviceManager.setAliveIps(std::move(ips));
 }
 
-} // namespace pz::engined
+}

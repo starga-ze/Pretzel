@@ -33,4 +33,4 @@ private:
     IcmpdEventDomain m_domain{IcmpdEventDomain::Unknown};
 };
 
-} // namespace pz::icmpd
+}

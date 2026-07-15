@@ -7,19 +7,13 @@
 namespace pz::engined
 {
 
-EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory,
-                                             EnginedActionFactory* actionFactory,
+EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, EnginedActionFactory* actionFactory,
                                              EnginedTxRouter* txRouter)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory),
-      m_txRouter(txRouter),
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_commitService(std::make_unique<CommitService>()),
-      m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_scanService(std::make_unique<ScanService>()),
-      m_probeService(std::make_unique<ProbeService>()),
-      m_adminService(std::make_unique<AdminService>()),
-      m_vendorResolver(std::make_unique<VendorResolver>())
+      m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>()),
+      m_scanService(std::make_unique<ScanService>()), m_probeService(std::make_unique<ProbeService>()),
+      m_adminService(std::make_unique<AdminService>()), m_vendorResolver(std::make_unique<VendorResolver>())
 {
 }
 
@@ -36,10 +30,6 @@ void EnginedServiceManager::schedule()
 {
     const auto now = std::chrono::steady_clock::now();
 
-    // BootstrapService reconciles continuously: it keeps the fleet converged to the
-    // target config version and re-issues RuntimeStart to any daemon that reconnects.
-    // So tick it every loop, not just before readiness. engined's own services only
-    // start once the initial convergence has completed (isReady() latches true).
     postEvent(m_bootstrapService->schedule(now));
 
     if (!m_bootstrapService->isReady())
@@ -151,4 +141,4 @@ EnginedActionFactory* EnginedServiceManager::actionFactory()
     return m_actionFactory;
 }
 
-} // namespace pz::engined
+}

@@ -11,7 +11,7 @@ namespace pz::authd
 
 enum class HeartbeatEventType : std::uint32_t
 {
-    Unknown                = 0,
+    Unknown = 0,
     ReceiveHeartbeatRequest = 1
 };
 
@@ -20,8 +20,7 @@ class HeartbeatEvent final : public AuthdEvent
 public:
     explicit HeartbeatEvent(HeartbeatEventType type);
 
-    HeartbeatEvent(HeartbeatEventType type,
-                   std::unique_ptr<pz::ipc::IpcMessage> message);
+    HeartbeatEvent(HeartbeatEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(AuthdServiceManager& serviceManager) override;
 
@@ -34,4 +33,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::authd
+}

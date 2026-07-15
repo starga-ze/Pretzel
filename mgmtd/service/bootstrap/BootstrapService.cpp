@@ -1,12 +1,12 @@
 #include "service/bootstrap/BootstrapService.h"
 
-#include "service/MgmtdServiceManager.h"
-#include "event/MgmtdEventFactory.h"
 #include "action/MgmtdActionFactory.h"
+#include "event/MgmtdEventFactory.h"
 #include "router/MgmtdTxRouter.h"
+#include "service/MgmtdServiceManager.h"
 
-#include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 
 #include "config/Config.h"
 
@@ -20,8 +20,6 @@ namespace pz::mgmtd
 namespace
 {
 
-// Defaults match the compiled-in values; overridable via "service"."bootstrap" in
-// the running-config (global, merged with section "mgmtd").
 const nlohmann::json& bootstrapConfig()
 {
     return pz::config::Config::serviceSection("mgmtd", "bootstrap");
@@ -37,12 +35,10 @@ std::chrono::milliseconds bootstrapTimeout()
     return std::chrono::seconds(bootstrapConfig().value("bootstrap_timeout_sec", 10));
 }
 
-} // namespace
+}
 
-BootstrapService::BootstrapService(MgmtdEventFactory* eventFactory,
-                                             MgmtdActionFactory* actionFactory)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory)
+BootstrapService::BootstrapService(MgmtdEventFactory* eventFactory, MgmtdActionFactory* actionFactory)
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory)
 {
 }
 
@@ -55,8 +51,7 @@ void BootstrapService::start()
     LOG_INFO("bootstrap started");
 }
 
-std::unique_ptr<MgmtdEvent>
-BootstrapService::schedule(std::chrono::steady_clock::time_point now)
+std::unique_ptr<MgmtdEvent> BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
@@ -78,9 +73,8 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 
         LOG_DEBUG("scheduling ClientHello");
 
-        return m_eventFactory->create(
-            MgmtdEventDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
+        return m_eventFactory->create(MgmtdEventDomain::Bootstrap,
+                                      static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
     }
 
     case State::WaitServerHello:
@@ -96,9 +90,8 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 
             LOG_DEBUG("retrying ClientHello");
 
-            return m_eventFactory->create(
-                MgmtdEventDomain::Bootstrap,
-                static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
+            return m_eventFactory->create(MgmtdEventDomain::Bootstrap,
+                                          static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
         }
 
         return nullptr;
@@ -124,8 +117,7 @@ bool BootstrapService::isReady() const
     return m_state == State::Running;
 }
 
-void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
-                                        const BootstrapEvent& event)
+void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager, const BootstrapEvent& event)
 {
     if (!m_actionFactory)
     {
@@ -137,9 +129,8 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
     {
     case BootstrapEventType::SendClientHello:
     {
-        auto action = m_actionFactory->create(
-            MgmtdActionDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapActionType::SendClientHello));
+        auto action = m_actionFactory->create(MgmtdActionDomain::Bootstrap,
+                                              static_cast<std::uint32_t>(BootstrapActionType::SendClientHello));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -172,14 +163,12 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event (type={})",
-                 static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
 }
 
-void BootstrapService::handleAction(MgmtdServiceManager& serviceManager,
-                                         const BootstrapAction& action)
+void BootstrapService::handleAction(MgmtdServiceManager& serviceManager, const BootstrapAction& action)
 {
     std::unique_ptr<pz::ipc::IpcMessage> msg = nullptr;
 
@@ -189,8 +178,7 @@ void BootstrapService::handleAction(MgmtdServiceManager& serviceManager,
     {
         if (m_state != State::WaitServerHello)
         {
-            LOG_DEBUG("skip SendClientHello (state={})",
-                      static_cast<int>(m_state));
+            LOG_DEBUG("skip SendClientHello (state={})", static_cast<int>(m_state));
             return;
         }
 
@@ -200,30 +188,23 @@ void BootstrapService::handleAction(MgmtdServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled action (type={})",
-                 static_cast<std::uint32_t>(action.type()));
+        LOG_WARN("unhandled action (type={})", static_cast<std::uint32_t>(action.type()));
         return;
     }
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
 
-void BootstrapService::onServerHello(MgmtdServiceManager& serviceManager,
-                                          const pz::ipc::IpcMessage& msg)
+void BootstrapService::onServerHello(MgmtdServiceManager& serviceManager, const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
     if (m_state != State::WaitServerHello)
     {
-        LOG_WARN("ServerHello in unexpected state (state={})",
-                 static_cast<int>(m_state));
+        LOG_WARN("ServerHello in unexpected state (state={})", static_cast<int>(m_state));
         return;
     }
 
-    // Handshake complete. Report RuntimeReady once — purely informational (lets ipcd /
-    // engined observe mgmtd's applied config version); nothing gates on it. mgmtd is
-    // infrastructure, so it becomes Ready here rather than waiting for the fleet-wide
-    // RuntimeStart it isn't a participant in.
     serviceManager.txRouter().handleIpcMessage(buildRuntimeReadyMessage());
 
     m_state = State::Ready;
@@ -235,15 +216,10 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
-    // mgmtd is infrastructure and is not a config-convergence participant, so the
-    // fleet-wide RuntimeStart broadcast carries nothing it needs. It still receives the
-    // broadcast (engined re-emits it after every config reload); mgmtd simply ignores
-    // it — commit completion is signalled separately via ConfigReloadResponse.
     LOG_TRACE("RuntimeStart ignored (mgmtd is not gated on fleet convergence)");
 }
 
-bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
-                                         const char* stateName)
+bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now, const char* stateName)
 {
     if (m_state == State::Failed)
     {
@@ -261,19 +237,14 @@ bool BootstrapService::checkTimeout(std::chrono::steady_clock::time_point now,
     return true;
 }
 
-std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildClientHelloMessage() const
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapService::buildClientHelloMessage() const
 {
     const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Mgmtd);
 
     const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Mgmtd,
-        pz::ipc::IpcDaemon::Ipcd,
-        pz::ipc::IpcCmd::ClientHello,
-        0,
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Mgmtd, pz::ipc::IpcDaemon::Ipcd,
+                                                          pz::ipc::IpcCmd::ClientHello, 0, flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
@@ -281,19 +252,14 @@ BootstrapService::buildClientHelloMessage() const
     return msg;
 }
 
-std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildRuntimeReadyMessage() const
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapService::buildRuntimeReadyMessage() const
 {
     const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Mgmtd);
 
     const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Mgmtd,
-        pz::ipc::IpcDaemon::Ipcd,
-        pz::ipc::IpcCmd::RuntimeReady,
-        0,
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Mgmtd, pz::ipc::IpcDaemon::Ipcd,
+                                                          pz::ipc::IpcCmd::RuntimeReady, 0, flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
@@ -301,4 +267,4 @@ BootstrapService::buildRuntimeReadyMessage() const
     return msg;
 }
 
-} // namespace pz::mgmtd
+}

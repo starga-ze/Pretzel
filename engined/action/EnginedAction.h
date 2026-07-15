@@ -13,10 +13,10 @@ class EnginedServiceManager;
 
 enum class EnginedActionDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
     Heartbeat = 2,
-    Commit    = 3,
+    Commit = 3,
 };
 
 class EnginedAction : public pz::action::Action
@@ -33,4 +33,4 @@ private:
     EnginedActionDomain m_domain{EnginedActionDomain::Unknown};
 };
 
-} // namespace pz::engined
+}

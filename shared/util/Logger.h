@@ -26,7 +26,7 @@ private:
     static void setThreadName();
 };
 
-} // namespace pz::util
+}
 
 #ifdef _WIN32
 #define __FILENAME__ (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
@@ -34,9 +34,9 @@ private:
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #endif
 
-#define LOG_INTERNAL(level, format, ...)                                                             \
-    pz::util::Logger::GetLogger()->log(spdlog::source_loc{__FILENAME__, __LINE__, SPDLOG_FUNCTION},  \
-            level, format, ##__VA_ARGS__)
+#define LOG_INTERNAL(level, format, ...)                                                                               \
+    pz::util::Logger::GetLogger()->log(spdlog::source_loc{__FILENAME__, __LINE__, SPDLOG_FUNCTION}, level, format,     \
+                                       ##__VA_ARGS__)
 
 #define LOG_DEBUG(...) LOG_INTERNAL(spdlog::level::debug, __VA_ARGS__)
 #define LOG_TRACE(...) LOG_INTERNAL(spdlog::level::trace, __VA_ARGS__)

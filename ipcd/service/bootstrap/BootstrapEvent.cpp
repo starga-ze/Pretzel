@@ -4,17 +4,12 @@
 namespace pz::ipcd
 {
 
-BootstrapEvent::BootstrapEvent(BootstrapEventType type)
-    : IpcdEvent(IpcdEventDomain::Bootstrap),
-      m_type(type)
+BootstrapEvent::BootstrapEvent(BootstrapEventType type) : IpcdEvent(IpcdEventDomain::Bootstrap), m_type(type)
 {
 }
 
-BootstrapEvent::BootstrapEvent(BootstrapEventType type,
-                                       std::unique_ptr<pz::ipc::IpcMessage> message)
-    : IpcdEvent(IpcdEventDomain::Bootstrap),
-      m_type(type),
-      m_message(std::move(message))
+BootstrapEvent::BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : IpcdEvent(IpcdEventDomain::Bootstrap), m_type(type), m_message(std::move(message))
 {
 }
 
@@ -38,4 +33,4 @@ std::unique_ptr<pz::ipc::IpcMessage> BootstrapEvent::takeMessage()
     return std::move(m_message);
 }
 
-} // namespace pz::ipcd
+}

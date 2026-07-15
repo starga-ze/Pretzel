@@ -22,4 +22,4 @@ private:
     IpcdServiceManager* m_serviceManager{nullptr};
 };
 
-} // namespace pz::ipcd
+}

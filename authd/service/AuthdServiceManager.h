@@ -2,10 +2,10 @@
 
 #include "service/ServiceManager.h"
 
+#include "service/auth/AuthService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
 #include "service/reload/ReloadService.h"
-#include "service/auth/AuthService.h"
 
 #include "router/AuthdTxRouter.h"
 
@@ -22,15 +22,11 @@ class AuthdActionFactory;
 class AuthdServiceManager : public pz::service::ServiceManager<AuthdEvent, AuthdAction>
 {
 public:
-    AuthdServiceManager(AuthdEventFactory* eventFactory,
-                        AuthdActionFactory* actionFactory,
-                        AuthdTxRouter* txRouter);
+    AuthdServiceManager(AuthdEventFactory* eventFactory, AuthdActionFactory* actionFactory, AuthdTxRouter* txRouter);
     ~AuthdServiceManager() override = default;
 
     void start() override;
 
-    // Forwards the "auth" section of the authd config JSON to AuthService (Okta setup).
-    // Called once from AuthdCore after construction; safe if the section is absent.
     void configure(const nlohmann::json& config);
 
     void schedule() override;
@@ -59,4 +55,4 @@ private:
     std::queue<std::unique_ptr<AuthdAction>> m_actionQueue;
 };
 
-} // namespace pz::authd
+}

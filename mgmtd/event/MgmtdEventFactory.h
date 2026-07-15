@@ -19,4 +19,4 @@ public:
     std::unique_ptr<MgmtdEvent> create(MgmtdEventDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::mgmtd
+}

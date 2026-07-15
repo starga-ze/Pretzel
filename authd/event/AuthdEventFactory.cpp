@@ -1,9 +1,9 @@
 #include "event/AuthdEventFactory.h"
 
+#include "service/auth/AuthEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/reload/ReloadEvent.h"
-#include "service/auth/AuthEvent.h"
 
 #include "util/Logger.h"
 
@@ -77,4 +77,4 @@ std::unique_ptr<AuthdEvent> AuthdEventFactory::create(std::unique_ptr<pz::ipc::I
     }
 }
 
-} // namespace pz::authd
+}

@@ -5,8 +5,7 @@
 namespace pz::ipcd
 {
 
-IpcdTxRouter::IpcdTxRouter(IpcServerHandler* ipcServerHandler)
-    : m_ipcServerHandler(ipcServerHandler)
+IpcdTxRouter::IpcdTxRouter(IpcServerHandler* ipcServerHandler) : m_ipcServerHandler(ipcServerHandler)
 {
 }
 
@@ -27,4 +26,4 @@ void IpcdTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     m_ipcServerHandler->egress(std::move(msg));
 }
 
-} // namespace pz::ipcd
+}

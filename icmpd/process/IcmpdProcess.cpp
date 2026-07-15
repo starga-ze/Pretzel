@@ -7,12 +7,9 @@ namespace pz::icmpd
 constexpr int kIpcClientEngineTimeoutMs = 10;
 constexpr int kIcmpEngineTimeoutMs = 10;
 
-IcmpdProcess::IcmpdProcess(pz::ipc::IpcClient* ipcClientEngine, 
-        IcmpEngine* icmpEngine,
-        IcmpdServiceManager* serviceManager) : 
-    m_ipcClientEngine(ipcClientEngine), 
-    m_icmpEngine(icmpEngine),
-    m_serviceManager(serviceManager)
+IcmpdProcess::IcmpdProcess(pz::ipc::IpcClient* ipcClientEngine, IcmpEngine* icmpEngine,
+                           IcmpdServiceManager* serviceManager)
+    : m_ipcClientEngine(ipcClientEngine), m_icmpEngine(icmpEngine), m_serviceManager(serviceManager)
 {
 }
 
@@ -31,7 +28,7 @@ bool IcmpdProcess::start()
     }
 
     m_serviceManager->start();
-    
+
     return true;
 }
 
@@ -41,9 +38,9 @@ void IcmpdProcess::tick()
 
     m_icmpEngine->poll(kIcmpEngineTimeoutMs);
 
-    m_serviceManager->schedule(); 
+    m_serviceManager->schedule();
 
     m_serviceManager->execute();
 }
 
-} // namespace pz::icmpd
+}

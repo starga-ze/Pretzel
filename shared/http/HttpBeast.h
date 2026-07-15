@@ -7,16 +7,12 @@
 #include <memory>
 #include <string>
 
-// Beast <-> transport-agnostic DTO translation, shared by HttpSession and HttpsSession so
-// the mapping (and the conditional-GET / ETag rules) live in exactly one place. Everything
-// above the session (handler, router, event, service) works on the DTOs and never sees
-// beast.
 namespace pz::http::detail
 {
 
 namespace beast = boost::beast;
 
-using BeastRequest  = beast::http::request<beast::http::string_body>;
+using BeastRequest = beast::http::request<beast::http::string_body>;
 using BeastResponse = beast::http::response<beast::http::string_body>;
 
 inline HttpRequest toRequest(const BeastRequest& req)
@@ -32,18 +28,11 @@ inline HttpRequest toRequest(const BeastRequest& req)
     return out;
 }
 
-// Build the beast response from the DTO + the originating request. Returned via shared_ptr
-// so it outlives the async write. `close` receives need_eof() for the write completion.
-inline std::shared_ptr<BeastResponse> toBeastResponse(const BeastRequest& req,
-                                                      HttpResponse       out,
-                                                      const std::string& serverName,
-                                                      bool&              close)
+inline std::shared_ptr<BeastResponse> toBeastResponse(const BeastRequest& req, HttpResponse out,
+                                                      const std::string& serverName, bool& close)
 {
     namespace http = beast::http;
 
-    // Conditional GET: an ETag'd response (static assets) whose validator the client
-    // already holds collapses to a bodyless 304. ETag'd responses are always-revalidate
-    // (Cache-Control: no-cache) — cheap recheck, fresh content.
     bool notModified = false;
     if (!out.etag.empty())
     {
@@ -51,9 +40,7 @@ inline std::shared_ptr<BeastResponse> toBeastResponse(const BeastRequest& req,
             notModified = (std::string(it->value()) == out.etag);
     }
 
-    const http::status status = notModified
-        ? http::status::not_modified
-        : static_cast<http::status>(out.status);
+    const http::status status = notModified ? http::status::not_modified : static_cast<http::status>(out.status);
 
     auto res = std::make_shared<BeastResponse>(status, req.version());
     res->set(http::field::server, serverName);
@@ -80,4 +67,4 @@ inline std::shared_ptr<BeastResponse> toBeastResponse(const BeastRequest& req,
     return res;
 }
 
-} // namespace pz::http::detail
+}

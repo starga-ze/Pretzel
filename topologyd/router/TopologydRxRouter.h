@@ -1,8 +1,8 @@
 #pragma once
 
-#include "router/RxRouter.h"
 #include "event/TopologydEventFactory.h"
 #include "ipc/IpcMessage.h"
+#include "router/RxRouter.h"
 
 #include <memory>
 
@@ -21,8 +21,8 @@ public:
     void setServiceManager(TopologydServiceManager* serviceManager);
 
 private:
-    TopologydEventFactory*    m_eventFactory{nullptr};
-    TopologydServiceManager*  m_serviceManager{nullptr};
+    TopologydEventFactory* m_eventFactory{nullptr};
+    TopologydServiceManager* m_serviceManager{nullptr};
 };
 
-} // namespace pz::topologyd
+}

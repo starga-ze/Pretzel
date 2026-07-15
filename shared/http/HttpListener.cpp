@@ -10,17 +10,11 @@
 namespace pz::http
 {
 
-HttpListener::HttpListener(boost::asio::io_context& ioContext,
-                           tcp::endpoint endpoint,
-                           std::shared_ptr<HttpHandler> handler,
-                           std::shared_ptr<boost::asio::ssl::context> sslContext,
+HttpListener::HttpListener(boost::asio::io_context& ioContext, tcp::endpoint endpoint,
+                           std::shared_ptr<HttpHandler> handler, std::shared_ptr<boost::asio::ssl::context> sslContext,
                            std::string serverName)
-    : m_ioContext(ioContext),
-      m_endpoint(endpoint),
-      m_acceptor(ioContext),
-      m_handler(std::move(handler)),
-      m_sslContext(std::move(sslContext)),
-      m_serverName(std::move(serverName))
+    : m_ioContext(ioContext), m_endpoint(endpoint), m_acceptor(ioContext), m_handler(std::move(handler)),
+      m_sslContext(std::move(sslContext)), m_serverName(std::move(serverName))
 {
 }
 
@@ -58,15 +52,11 @@ bool HttpListener::open()
 
     if (m_sslContext)
     {
-        LOG_INFO("HTTPS listener opened (address={}, port={})",
-                 m_endpoint.address().to_string(),
-                 m_endpoint.port());
+        LOG_INFO("HTTPS listener opened (address={}, port={})", m_endpoint.address().to_string(), m_endpoint.port());
     }
     else
     {
-        LOG_INFO("HTTP listener opened (address={}, port={})",
-                 m_endpoint.address().to_string(),
-                 m_endpoint.port());
+        LOG_INFO("HTTP listener opened (address={}, port={})", m_endpoint.address().to_string(), m_endpoint.port());
     }
 
     return true;
@@ -79,10 +69,8 @@ void HttpListener::run()
 
 void HttpListener::doAccept()
 {
-    m_acceptor.async_accept(std::bind(&HttpListener::onAccept,
-                                      shared_from_this(),
-                                      std::placeholders::_1,
-                                      std::placeholders::_2));
+    m_acceptor.async_accept(
+        std::bind(&HttpListener::onAccept, shared_from_this(), std::placeholders::_1, std::placeholders::_2));
 }
 
 void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
@@ -91,16 +79,11 @@ void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
     {
         if (m_sslContext)
         {
-            std::make_shared<HttpsSession>(std::move(socket),
-                                           m_handler.get(),
-                                           m_sslContext,
-                                           m_serverName)->run();
+            std::make_shared<HttpsSession>(std::move(socket), m_handler.get(), m_sslContext, m_serverName)->run();
         }
         else
         {
-            std::make_shared<HttpSession>(std::move(socket),
-                                          m_handler.get(),
-                                          m_serverName)->run();
+            std::make_shared<HttpSession>(std::move(socket), m_handler.get(), m_serverName)->run();
         }
     }
     else
@@ -111,4 +94,4 @@ void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
     doAccept();
 }
 
-} // namespace pz::http
+}

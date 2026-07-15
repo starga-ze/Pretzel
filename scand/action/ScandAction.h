@@ -13,10 +13,10 @@ class ScandServiceManager;
 
 enum class ScandActionDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
     Heartbeat = 2,
-    Scan      = 3,
+    Scan = 3,
 };
 
 class ScandAction : public pz::action::Action
@@ -33,4 +33,4 @@ private:
     ScandActionDomain m_domain{ScandActionDomain::Unknown};
 };
 
-} // namespace pz::scand
+}

@@ -4,9 +4,7 @@
 namespace pz::scand
 {
 
-BootstrapAction::BootstrapAction(BootstrapActionType type) :
-    ScandAction(ScandActionDomain::Bootstrap),
-    m_type(type)
+BootstrapAction::BootstrapAction(BootstrapActionType type) : ScandAction(ScandActionDomain::Bootstrap), m_type(type)
 {
 }
 
@@ -20,4 +18,4 @@ void BootstrapAction::dispatch(ScandServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::scand
+}

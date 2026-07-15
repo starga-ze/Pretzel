@@ -13,8 +13,7 @@ namespace pz::authd
 class AuthdProcess : public pz::process::Process
 {
 public:
-    AuthdProcess(pz::ipc::IpcClient* ipcClient,
-                 AuthdServiceManager* serviceManager);
+    AuthdProcess(pz::ipc::IpcClient* ipcClient, AuthdServiceManager* serviceManager);
     ~AuthdProcess() override = default;
 
     bool start() override;
@@ -25,4 +24,4 @@ private:
     AuthdServiceManager* m_serviceManager;
 };
 
-} // namespace pz::authd
+}

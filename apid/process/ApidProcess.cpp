@@ -13,12 +13,9 @@ namespace
 constexpr int kIpcClientTimeoutMs = 10;
 }
 
-ApidProcess::ApidProcess(pz::ipc::IpcClient* ipcClient,
-                         pz::http::HttpServer* httpServer,
+ApidProcess::ApidProcess(pz::ipc::IpcClient* ipcClient, pz::http::HttpServer* httpServer,
                          ApidServiceManager* serviceManager)
-    : m_ipcClient(ipcClient),
-      m_httpServer(httpServer),
-      m_serviceManager(serviceManager)
+    : m_ipcClient(ipcClient), m_httpServer(httpServer), m_serviceManager(serviceManager)
 {
 }
 
@@ -59,4 +56,4 @@ void ApidProcess::tick()
     }
 }
 
-} // namespace pz::apid
+}

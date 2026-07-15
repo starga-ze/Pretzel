@@ -4,9 +4,7 @@
 namespace pz::icmpd
 {
 
-BootstrapAction::BootstrapAction(BootstrapActionType type)
-    : IcmpdAction(IcmpdActionDomain::Bootstrap),
-      m_type(type)
+BootstrapAction::BootstrapAction(BootstrapActionType type) : IcmpdAction(IcmpdActionDomain::Bootstrap), m_type(type)
 {
 }
 
@@ -20,4 +18,4 @@ void BootstrapAction::dispatch(IcmpdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::icmpd
+}

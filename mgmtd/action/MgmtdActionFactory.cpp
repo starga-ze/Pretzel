@@ -20,4 +20,4 @@ std::unique_ptr<MgmtdAction> MgmtdActionFactory::create(MgmtdActionDomain domain
     }
 }
 
-} // namespace pz::mgmtd
+}

@@ -7,12 +7,9 @@
 namespace pz::apid
 {
 
-ApidServiceManager::ApidServiceManager(ApidEventFactory* eventFactory,
-                                       ApidActionFactory* actionFactory,
+ApidServiceManager::ApidServiceManager(ApidEventFactory* eventFactory, ApidActionFactory* actionFactory,
                                        ApidTxRouter* txRouter)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory),
-      m_txRouter(txRouter),
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory))
 {
 }
@@ -31,9 +28,6 @@ void ApidServiceManager::schedule()
         postEvent(m_bootstrapService->schedule(now));
         return;
     }
-
-    // Ready: ingest handling is driven by the HTTP layer (ApidHttpRouter). No periodic
-    // work here yet.
 }
 
 void ApidServiceManager::postEvent(std::unique_ptr<ApidEvent> event)
@@ -90,4 +84,4 @@ ApidTxRouter& ApidServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace pz::apid
+}

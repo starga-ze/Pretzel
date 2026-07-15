@@ -9,11 +9,8 @@
 namespace pz::ipcd
 {
 
-IpcServer::IpcServer(const pz::config::IpcConfig& cfg, pz::ipc::IpcDaemon selfId) : 
-    m_cfg(cfg), 
-    m_selfId(selfId), 
-    m_events(MAX_EVENTS), 
-    m_handler(std::make_unique<IpcServerHandler>(this, cfg))
+IpcServer::IpcServer(const pz::config::IpcConfig& cfg, pz::ipc::IpcDaemon selfId)
+    : m_cfg(cfg), m_selfId(selfId), m_events(MAX_EVENTS), m_handler(std::make_unique<IpcServerHandler>(this, cfg))
 {
 }
 
@@ -42,7 +39,7 @@ bool IpcServer::init()
     m_initialized = true;
 
     LOG_INFO("IPC server initialized (path={}, self={})", m_cfg.socketPath,
-            pz::ipc::IpcProtocol::daemonToStr(m_selfId));
+             pz::ipc::IpcProtocol::daemonToStr(m_selfId));
     return true;
 }
 
@@ -67,7 +64,7 @@ bool IpcServer::poll(int timeoutMs)
 
         handleEvent(fd, events);
     }
-    
+
     return true;
 }
 
@@ -90,8 +87,7 @@ bool IpcServer::enqueueFrame(int fd, std::vector<std::uint8_t> frame)
 
     if (!conn.write(frame))
     {
-        LOG_WARN("tx buffer full (fd={}, frame_bytes={})",
-                 fd, frame.size());
+        LOG_WARN("tx buffer full (fd={}, frame_bytes={})", fd, frame.size());
         return false;
     }
 
@@ -147,14 +143,12 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
     const bool isRecv = (events & EPOLLIN) != 0;
     const bool isSend = (events & EPOLLOUT) != 0;
 
-    /* Event fd */
     if (fd == m_epoll.getEventFd())
     {
         m_epoll.drainWakeup();
         return;
     }
 
-    /* Listen fd */
     if (m_listener && fd == m_listener->fd())
     {
         if (isClose)
@@ -169,7 +163,6 @@ void IpcServer::handleEvent(int fd, std::uint32_t events)
         return;
     }
 
-    /* Connection fd */
     auto it = m_connections.find(fd);
     if (it == m_connections.end())
     {
@@ -201,4 +194,4 @@ IpcServerHandler* IpcServer::handler()
     return m_handler.get();
 }
 
-} // namespace pz::ipcd
+}

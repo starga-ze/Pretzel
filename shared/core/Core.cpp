@@ -26,8 +26,6 @@ void Core::run()
 {
     handleSignal();
 
-    // mgmtd seeds the config store here (sync startup-config + seed running_config
-    // v1 if empty) before anyone reads it; other daemons no-op.
     onPreConfigLoad();
 
     if (!m_config.load(m_name))
@@ -94,7 +92,6 @@ void Core::onReload()
 {
     LOG_INFO("config reload, restarting process (daemon={})", m_name);
 
-    // Reconstruct original argv from /proc/self/cmdline (null-separated tokens).
     std::vector<std::string> argStrings;
     {
         std::ifstream f("/proc/self/cmdline");
@@ -120,16 +117,14 @@ void Core::onReload()
 
     removePidFile();
 
-    // Close all fds above stderr before exec. execv inherits open fds by
-    // default; if the IPC socket stays open, ipcd never sees the disconnect
-    // and blocks the reconnect attempt as a "route hijack".
     if (DIR* dir = ::opendir("/proc/self/fd"))
     {
         const int dfd = ::dirfd(dir);
         struct dirent* ent;
         while ((ent = ::readdir(dir)) != nullptr)
         {
-            if (ent->d_name[0] == '.') continue;
+            if (ent->d_name[0] == '.')
+                continue;
             const int fd = std::atoi(ent->d_name);
             if (fd > 2 && fd != dfd)
                 ::close(fd);
@@ -144,7 +139,6 @@ void Core::onReload()
 
     ::execv("/proc/self/exe", argv.data());
 
-    // execv only returns on failure.
     LOG_ERROR("execv failed (daemon={}, error={})", m_name, std::strerror(errno));
 }
 
@@ -155,10 +149,8 @@ void Core::writePidFile()
     FILE* f = std::fopen(m_pidFilePath.c_str(), "w");
     if (!f)
     {
-        // Runs before Logger::Init() (in onInit), so spdlog isn't ready yet —
-        // use stderr, consistent with onPreConfigLoad.
-        std::cerr << m_name << ": failed to write pid file " << m_pidFilePath
-                  << ": " << std::strerror(errno) << std::endl;
+        std::cerr << m_name << ": failed to write pid file " << m_pidFilePath << ": " << std::strerror(errno)
+                  << std::endl;
         m_pidFilePath.clear();
         return;
     }
@@ -176,4 +168,4 @@ void Core::removePidFile()
     m_pidFilePath.clear();
 }
 
-} // namespace pz::core
+}

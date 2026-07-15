@@ -7,16 +7,12 @@
 namespace pz::icmpd
 {
 
-IcmpdServiceManager::IcmpdServiceManager(IcmpdEventFactory* eventFactory, 
-        IcmpdActionFactory* actionFactory, 
-        IcmpdTxRouter* txRouter) : 
-    m_eventFactory(eventFactory),
-    m_actionFactory(actionFactory),
-    m_txRouter(txRouter),
-    m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-    m_probeService(std::make_unique<ProbeService>(m_eventFactory, m_actionFactory)),
-    m_heartbeatService(std::make_unique<HeartbeatService>()),
-    m_reloadService(std::make_unique<ReloadService>())
+IcmpdServiceManager::IcmpdServiceManager(IcmpdEventFactory* eventFactory, IcmpdActionFactory* actionFactory,
+                                         IcmpdTxRouter* txRouter)
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
+      m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
+      m_probeService(std::make_unique<ProbeService>(m_eventFactory, m_actionFactory)),
+      m_heartbeatService(std::make_unique<HeartbeatService>()), m_reloadService(std::make_unique<ReloadService>())
 {
 }
 
@@ -106,4 +102,4 @@ IcmpdTxRouter& IcmpdServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace pz::icmpd
+}

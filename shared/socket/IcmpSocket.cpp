@@ -4,9 +4,9 @@
 
 #include <cerrno>
 #include <fcntl.h>
-#include <unistd.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <unistd.h>
 
 namespace pz::socket
 {
@@ -78,4 +78,4 @@ bool IcmpSocket::setNonBlocking(int fd)
     return ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
 }
 
-} // namespace pz::socket
+}

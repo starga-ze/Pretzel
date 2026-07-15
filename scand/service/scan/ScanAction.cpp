@@ -5,9 +5,7 @@ namespace pz::scand
 {
 
 ScanAction::ScanAction(ScanActionType type, std::string resultJson)
-    : ScandAction(ScandActionDomain::Scan),
-      m_type(type),
-      m_resultJson(std::move(resultJson))
+    : ScandAction(ScandActionDomain::Scan), m_type(type), m_resultJson(std::move(resultJson))
 {
 }
 
@@ -26,4 +24,4 @@ const std::string& ScanAction::resultJson() const
     return m_resultJson;
 }
 
-} // namespace pz::scand
+}

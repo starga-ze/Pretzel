@@ -1,15 +1,14 @@
 #pragma once
 
-#include "event/Event.h"
 #include "action/Action.h"
+#include "event/Event.h"
 
 #include <memory>
 
 namespace pz::service
 {
 
-template <typename EventT, typename ActionT>
-class ServiceManager
+template <typename EventT, typename ActionT> class ServiceManager
 {
 public:
     ServiceManager() = default;

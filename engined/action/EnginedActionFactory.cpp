@@ -17,9 +17,7 @@ std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain 
         return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
 
     case EnginedActionDomain::Heartbeat:
-        return std::make_unique<HeartbeatAction>(
-            static_cast<HeartbeatActionType>(type),
-            pz::ipc::IpcDaemon::Unknown);
+        return std::make_unique<HeartbeatAction>(static_cast<HeartbeatActionType>(type), pz::ipc::IpcDaemon::Unknown);
 
     case EnginedActionDomain::Commit:
         return std::make_unique<CommitAction>(static_cast<CommitActionType>(type));
@@ -30,4 +28,4 @@ std::unique_ptr<EnginedAction> EnginedActionFactory::create(EnginedActionDomain 
     }
 }
 
-} // namespace pz::engined
+}

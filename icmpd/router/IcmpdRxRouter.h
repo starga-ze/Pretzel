@@ -1,8 +1,8 @@
 #pragma once
 
-#include "router/RxRouter.h"
 #include "event/IcmpdEvent.h"
 #include "event/IcmpdEventFactory.h"
+#include "router/RxRouter.h"
 #include "service/IcmpdServiceManager.h"
 
 namespace pz::icmpd
@@ -25,4 +25,4 @@ private:
     IcmpdEventFactory* m_eventFactory = nullptr;
 };
 
-} // namespace pz::icmpd
+}

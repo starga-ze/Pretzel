@@ -4,10 +4,8 @@
 namespace pz::authd
 {
 
-HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst) :
-    AuthdAction(AuthdActionDomain::Heartbeat),
-    m_type(type),
-    m_dst(dst)
+HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst)
+    : AuthdAction(AuthdActionDomain::Heartbeat), m_type(type), m_dst(dst)
 {
 }
 
@@ -26,4 +24,4 @@ void HeartbeatAction::dispatch(AuthdServiceManager& serviceManager)
     serviceManager.heartbeatService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::authd
+}

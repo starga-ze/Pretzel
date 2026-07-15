@@ -3,9 +3,7 @@
 namespace pz::mgmtd
 {
 
-MetricService::MetricService()
-    : m_startedAt(std::chrono::steady_clock::now()),
-      m_lastTickAt(m_startedAt)
+MetricService::MetricService() : m_startedAt(std::chrono::steady_clock::now()), m_lastTickAt(m_startedAt)
 {
 }
 
@@ -34,4 +32,4 @@ std::string MetricService::renderPrometheus() const
     return m_registry.renderPrometheus();
 }
 
-} // namespace pz::mgmtd
+}

@@ -8,18 +8,12 @@
 namespace pz::mgmtd
 {
 
-MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory,
-                                         MgmtdActionFactory* actionFactory,
+MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory, MgmtdActionFactory* actionFactory,
                                          MgmtdTxRouter* txRouter)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory),
-      m_txRouter(txRouter),
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_deviceService(std::make_unique<DeviceService>())
+      m_heartbeatService(std::make_unique<HeartbeatService>()), m_deviceService(std::make_unique<DeviceService>())
 {
-    // DeviceService is a read-only view of probe_devices (written by engined);
-    // nothing to restore here — groups() reads the table live.
 }
 
 void MgmtdServiceManager::start()
@@ -124,8 +118,6 @@ void MgmtdServiceManager::startReload()
 
 void MgmtdServiceManager::completeReload()
 {
-    // Invalidate mgmtd's own config cache so the next /api/settings read
-    // picks up the values that engined just persisted to the DB.
     pz::config::Config::invalidateConfigCache();
     m_reloadStatus.store(static_cast<int>(ReloadStatus::Complete), std::memory_order_release);
     LOG_INFO("reload complete (elapsed_ms={})", reloadElapsedMs());
@@ -156,8 +148,6 @@ std::string MgmtdServiceManager::commitQueueSnapshot() const
 
 void MgmtdServiceManager::setSsoResult(std::uint32_t ticket, std::string resultJson)
 {
-    // Bound the map so abandoned tickets (browser closed before the poll consumed the
-    // result) cannot grow it without limit.
     if (m_ssoResults.size() > 256)
     {
         m_ssoResults.clear();
@@ -170,11 +160,11 @@ std::optional<std::string> MgmtdServiceManager::takeSsoResult(std::uint32_t tick
     auto it = m_ssoResults.find(ticket);
     if (it == m_ssoResults.end())
     {
-        return std::nullopt;   // still pending (or unknown ticket)
+        return std::nullopt;
     }
     std::string out = std::move(it->second);
     m_ssoResults.erase(it);
     return out;
 }
 
-} // namespace pz::mgmtd
+}

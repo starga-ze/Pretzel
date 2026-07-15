@@ -1,7 +1,5 @@
 #include "service/metrics/MetricRegistry.h"
 
-// BUG FIX: was '#include "util/Logger.cpp"' — including a .cpp causes
-//          duplicate-symbol linker errors. Use the header instead.
 #include "util/Logger.h"
 
 #include <sstream>
@@ -38,4 +36,4 @@ std::string MetricRegistry::renderPrometheus() const
     return out.str();
 }
 
-} // namespace pz::mgmtd
+}

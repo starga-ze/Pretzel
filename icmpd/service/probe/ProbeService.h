@@ -1,4 +1,3 @@
-// service/probe/ProbeService.h
 #pragma once
 
 #include "event/IcmpdEvent.h"
@@ -24,8 +23,7 @@ class IcmpdServiceManager;
 class ProbeService final
 {
 public:
-    ProbeService(IcmpdEventFactory* eventFactory,
-                 IcmpdActionFactory* actionFactory);
+    ProbeService(IcmpdEventFactory* eventFactory, IcmpdActionFactory* actionFactory);
 
     void start();
 
@@ -79,14 +77,14 @@ private:
 
     std::size_t m_nextSendIndex = 0;
 
-    std::chrono::steady_clock::time_point m_probeStartedAt {};
-    std::chrono::steady_clock::time_point m_lastBatchSentAt {};
-    std::chrono::steady_clock::time_point m_waitingStartedAt {};
-    std::chrono::steady_clock::time_point m_lastProbeCompletedAt {};
-    std::chrono::steady_clock::time_point m_lastReplyAt {};
+    std::chrono::steady_clock::time_point m_probeStartedAt{};
+    std::chrono::steady_clock::time_point m_lastBatchSentAt{};
+    std::chrono::steady_clock::time_point m_waitingStartedAt{};
+    std::chrono::steady_clock::time_point m_lastProbeCompletedAt{};
+    std::chrono::steady_clock::time_point m_lastReplyAt{};
 
     std::uint16_t m_identifier = 0;
-    std::uint32_t m_lastAliveCount = 0;  // number of alive devices from the last probe cycle
+    std::uint32_t m_lastAliveCount = 0;
 };
 
-} // namespace pz::icmpd
+}

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "router/RxRouter.h"
 #include "event/AuthdEvent.h"
 #include "event/AuthdEventFactory.h"
+#include "router/RxRouter.h"
 #include "service/AuthdServiceManager.h"
 
 namespace pz::authd
@@ -23,4 +23,4 @@ private:
     AuthdEventFactory* m_eventFactory = nullptr;
 };
 
-} // namespace pz::authd
+}

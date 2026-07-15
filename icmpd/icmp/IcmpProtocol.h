@@ -7,11 +7,11 @@ namespace pz::icmpd
 
 enum class IcmpType : std::uint8_t
 {
-    EchoReply              = 0,
+    EchoReply = 0,
     DestinationUnreachable = 3,
-    Redirect               = 5,
-    EchoRequest            = 8,
-    TimeExceeded           = 11,
+    Redirect = 5,
+    EchoRequest = 8,
+    TimeExceeded = 11,
 };
 
 enum class IcmpCode : std::uint8_t
@@ -26,4 +26,4 @@ public:
     static const char* codeToStr(IcmpType type, IcmpCode code);
 };
 
-} // namespace pz::icmpd
+}

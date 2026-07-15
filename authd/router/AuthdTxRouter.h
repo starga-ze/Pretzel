@@ -1,7 +1,7 @@
 #pragma once
 
-#include "router/TxRouter.h"
 #include "ipc/IpcClientHandler.h"
+#include "router/TxRouter.h"
 
 namespace pz::authd
 {
@@ -18,4 +18,4 @@ private:
     pz::ipc::IpcClientHandler* m_ipcClientHandler;
 };
 
-} // namespace pz::authd
+}

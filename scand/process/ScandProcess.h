@@ -2,10 +2,10 @@
 
 #include "process/Process.h"
 
+#include "api/ApiEngine.h"
 #include "ipc/IpcClient.h"
 #include "service/ScandServiceManager.h"
 #include "snmp/SnmpEngine.h"
-#include "api/ApiEngine.h"
 
 #include <chrono>
 
@@ -15,9 +15,7 @@ namespace pz::scand
 class ScandProcess : public pz::process::Process
 {
 public:
-    ScandProcess(pz::ipc::IpcClient* ipcClient,
-                 ScandServiceManager* serviceManager,
-                 SnmpEngine* snmpEngine,
+    ScandProcess(pz::ipc::IpcClient* ipcClient, ScandServiceManager* serviceManager, SnmpEngine* snmpEngine,
                  ApiEngine* apiEngine);
     ~ScandProcess() override = default;
 
@@ -31,4 +29,4 @@ private:
     ApiEngine* m_apiEngine;
 };
 
-} // namespace pz::scand
+}

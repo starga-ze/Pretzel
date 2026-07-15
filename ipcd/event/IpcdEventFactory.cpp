@@ -49,4 +49,4 @@ std::unique_ptr<IpcdEvent> IpcdEventFactory::create(std::unique_ptr<pz::ipc::Ipc
     }
 }
 
-} // namespace pz::ipcd
+}

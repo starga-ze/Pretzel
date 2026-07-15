@@ -49,4 +49,4 @@ private:
     static std::size_t icmpOffset(IcmpFrameView frame);
 };
 
-} // namespace pz::icmpd
+}

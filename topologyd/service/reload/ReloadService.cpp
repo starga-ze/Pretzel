@@ -6,8 +6,7 @@
 namespace pz::topologyd
 {
 
-void ReloadService::handleEvent(TopologydServiceManager& /*serviceManager*/,
-                                const ReloadEvent& event)
+void ReloadService::handleEvent(TopologydServiceManager&, const ReloadEvent& event)
 {
     if (event.type() != ReloadEventType::ReceiveConfigReload)
     {
@@ -18,4 +17,4 @@ void ReloadService::handleEvent(TopologydServiceManager& /*serviceManager*/,
     pz::core::Core::scheduleReload();
 }
 
-} // namespace pz::topologyd
+}

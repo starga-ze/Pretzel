@@ -8,8 +8,7 @@
 namespace pz::topologyd
 {
 
-std::unique_ptr<TopologydAction> TopologydActionFactory::create(TopologydActionDomain domain,
-                                                                std::uint32_t type)
+std::unique_ptr<TopologydAction> TopologydActionFactory::create(TopologydActionDomain domain, std::uint32_t type)
 {
     switch (domain)
     {
@@ -17,15 +16,12 @@ std::unique_ptr<TopologydAction> TopologydActionFactory::create(TopologydActionD
         return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
 
     case TopologydActionDomain::Heartbeat:
-        return std::make_unique<HeartbeatAction>(
-            static_cast<HeartbeatActionType>(type),
-            pz::ipc::IpcDaemon::Unknown);
+        return std::make_unique<HeartbeatAction>(static_cast<HeartbeatActionType>(type), pz::ipc::IpcDaemon::Unknown);
 
     default:
-        LOG_WARN("unhandled domain (domain={})",
-                 static_cast<std::uint32_t>(domain));
+        LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
         return nullptr;
     }
 }
 
-} // namespace pz::topologyd
+}

@@ -6,22 +6,15 @@
 namespace pz::engined
 {
 
-EnginedCore::EnginedCore()
-    : Core("engined")
+EnginedCore::EnginedCore() : Core("engined")
 {
 }
 
 void EnginedCore::onPreConfigLoad()
 {
-    // engined owns the config store: connect, create the schema (single-writer DDL),
-    // and seed running_config v1 on a factory-fresh device. Runs before any daemon —
-    // including engined itself — reads its config. Logger is not up yet, so use stderr.
     m_preflighted = pz::config::Config::preflight();
     if (!m_preflighted)
     {
-        // Typically the boot-time DB race: PostgreSQL is up as a systemd unit but not
-        // yet accepting connections. We continue on the startup-config fallback and
-        // ensureStorePreflighted() retries from onLoop() once the DB is reachable.
         std::cerr << "engined: config store preflight failed — continuing on "
                      "startup-config fallback; will retry once the DB is reachable"
                   << std::endl;
@@ -46,11 +39,8 @@ bool EnginedCore::onInit()
     m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
     m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
-    pz::util::Logger::Init(
-            m_loggerConfig.name,
-            m_loggerConfig.file,
-            m_loggerConfig.maxFileSize,
-            m_loggerConfig.maxFiles);
+    pz::util::Logger::Init(m_loggerConfig.name, m_loggerConfig.file, m_loggerConfig.maxFileSize,
+                           m_loggerConfig.maxFiles);
 
     LOG_INFO("engined: starting up");
 
@@ -69,15 +59,13 @@ bool EnginedCore::onInit()
         return false;
     }
 
-    m_eventFactory  = std::make_unique<EnginedEventFactory>();
+    m_eventFactory = std::make_unique<EnginedEventFactory>();
     m_actionFactory = std::make_unique<EnginedActionFactory>();
 
     m_txRouter = std::make_unique<EnginedTxRouter>(m_ipcClient->handler());
 
-    m_serviceManager = std::make_unique<EnginedServiceManager>(
-        m_eventFactory.get(),
-        m_actionFactory.get(),
-        m_txRouter.get());
+    m_serviceManager =
+        std::make_unique<EnginedServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
 
     if (!m_serviceManager)
     {
@@ -129,8 +117,6 @@ void EnginedCore::ensureStorePreflighted()
         return;
     }
 
-    // Throttle retries so a persistently-down DB does not spin the loop or spam the
-    // journal; the first attempt (epoch sentinel) runs immediately.
     const auto now = std::chrono::steady_clock::now();
     if (m_lastPreflightAttempt != std::chrono::steady_clock::time_point{} &&
         now - m_lastPreflightAttempt < std::chrono::seconds(3))
@@ -147,7 +133,6 @@ void EnginedCore::ensureStorePreflighted()
 
     m_preflighted = true;
 
-    // Adopt the freshly seeded running-config on the next read.
     pz::config::Config::invalidateConfigCache();
 
     LOG_INFO("config store preflighted after DB became reachable");
@@ -167,4 +152,4 @@ void EnginedCore::onShutdown()
     pz::util::Logger::Shutdown();
 }
 
-} // namespace pz::engined
+}

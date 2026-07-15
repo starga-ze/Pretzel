@@ -5,15 +5,10 @@
 namespace pz::ipcd
 {
 
-IpcdServiceManager::IpcdServiceManager(IpcdEventFactory* eventFactory,
-                                       IpcdActionFactory* actionFactory,
-                                       IpcServerHandler* ipcServerHandler,
-                                       IpcdTxRouter* txRouter)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory),
-      m_txRouter(txRouter),
-      m_bootstrapService(std::make_unique<BootstrapService>(
-          m_eventFactory, m_actionFactory, ipcServerHandler))
+IpcdServiceManager::IpcdServiceManager(IpcdEventFactory* eventFactory, IpcdActionFactory* actionFactory,
+                                       IpcServerHandler* ipcServerHandler, IpcdTxRouter* txRouter)
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
+      m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory, ipcServerHandler))
 {
 }
 
@@ -74,4 +69,4 @@ IpcdTxRouter& IpcdServiceManager::txRouter()
     return *m_txRouter;
 }
 
-} // namespace pz::ipcd
+}

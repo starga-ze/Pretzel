@@ -9,8 +9,8 @@ namespace pz::scand
 
 enum class BootstrapActionType : std::uint32_t
 {
-    Unknown          = 0,
-    SendClientHello  = 1,
+    Unknown = 0,
+    SendClientHello = 1,
     SendRuntimeReady = 2
 };
 
@@ -27,4 +27,4 @@ private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};
 };
 
-} // namespace pz::scand
+}

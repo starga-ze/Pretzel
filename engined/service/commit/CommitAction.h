@@ -9,8 +9,8 @@ namespace pz::engined
 
 enum class CommitActionType : std::uint32_t
 {
-    Unknown      = 0,
-    ApplyCommit  = 1,
+    Unknown = 0,
+    ApplyCommit = 1,
 };
 
 class CommitAction final : public EnginedAction
@@ -26,4 +26,4 @@ private:
     CommitActionType m_type{CommitActionType::Unknown};
 };
 
-} // namespace pz::engined
+}

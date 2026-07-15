@@ -4,18 +4,13 @@
 namespace pz::scand
 {
 
-constexpr int kIpcClientTimeoutMs  = 10;
+constexpr int kIpcClientTimeoutMs = 10;
 constexpr int kSnmpEngineTimeoutMs = 5;
-constexpr int kApiEngineTimeoutMs  = 0;  // no fd-based wait — just drains worker results
+constexpr int kApiEngineTimeoutMs = 0;
 
-ScandProcess::ScandProcess(pz::ipc::IpcClient* ipcClient,
-                           ScandServiceManager* serviceManager,
-                           SnmpEngine* snmpEngine,
-                           ApiEngine* apiEngine) :
-    m_ipcClient(ipcClient),
-    m_serviceManager(serviceManager),
-    m_snmpEngine(snmpEngine),
-    m_apiEngine(apiEngine)
+ScandProcess::ScandProcess(pz::ipc::IpcClient* ipcClient, ScandServiceManager* serviceManager, SnmpEngine* snmpEngine,
+                           ApiEngine* apiEngine)
+    : m_ipcClient(ipcClient), m_serviceManager(serviceManager), m_snmpEngine(snmpEngine), m_apiEngine(apiEngine)
 {
 }
 
@@ -62,4 +57,4 @@ void ScandProcess::tick()
     m_serviceManager->execute();
 }
 
-} // namespace pz::scand
+}

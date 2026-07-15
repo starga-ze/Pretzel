@@ -4,9 +4,7 @@
 namespace pz::authd
 {
 
-BootstrapAction::BootstrapAction(BootstrapActionType type) :
-    AuthdAction(AuthdActionDomain::Bootstrap),
-    m_type(type)
+BootstrapAction::BootstrapAction(BootstrapActionType type) : AuthdAction(AuthdActionDomain::Bootstrap), m_type(type)
 {
 }
 
@@ -20,4 +18,4 @@ void BootstrapAction::dispatch(AuthdServiceManager& serviceManager)
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::authd
+}

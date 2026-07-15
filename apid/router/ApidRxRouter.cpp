@@ -10,10 +10,8 @@
 namespace pz::apid
 {
 
-ApidRxRouter::ApidRxRouter(ApidEventFactory* eventFactory,
-                           ApidServiceManager* serviceManager)
-    : m_eventFactory(eventFactory),
-      m_serviceManager(serviceManager)
+ApidRxRouter::ApidRxRouter(ApidEventFactory* eventFactory, ApidServiceManager* serviceManager)
+    : m_eventFactory(eventFactory), m_serviceManager(serviceManager)
 {
 }
 
@@ -31,8 +29,7 @@ void ApidRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    LOG_TRACE("recv (cmd={}, src={})",
-              pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+    LOG_TRACE("recv (cmd={}, src={})", pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
     std::unique_ptr<ApidEvent> event = m_eventFactory->create(std::move(msg));
@@ -45,4 +42,4 @@ void ApidRxRouter::handleHttpMessage(pz::http::HttpRequest req, pz::http::Sessio
     m_serviceManager->postEvent(std::make_unique<IngestEvent>(std::move(req), id));
 }
 
-} // namespace pz::apid
+}

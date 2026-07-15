@@ -19,4 +19,4 @@ public:
     virtual std::unique_ptr<EventT> create(DomainT domain, std::uint32_t type) = 0;
 };
 
-} // namespace pz::event
+}

@@ -11,14 +11,14 @@ namespace pz::engined
 
 enum class BootstrapEventType : std::uint32_t
 {
-    Unknown              = 0,
-    SendClientHello      = 1,
-    ReceiveServerHello   = 2,
-    SendSyncRequest      = 3,
-    ReceiveSyncResponse  = 4,
-    SendRuntimeStart     = 5,
-    ReceiveRuntimeStart  = 6,
-    ReloadFailed         = 7   // a commit-triggered reload failed to converge in time
+    Unknown = 0,
+    SendClientHello = 1,
+    ReceiveServerHello = 2,
+    SendSyncRequest = 3,
+    ReceiveSyncResponse = 4,
+    SendRuntimeStart = 5,
+    ReceiveRuntimeStart = 6,
+    ReloadFailed = 7
 };
 
 class BootstrapEvent final : public EnginedEvent
@@ -26,8 +26,7 @@ class BootstrapEvent final : public EnginedEvent
 public:
     explicit BootstrapEvent(BootstrapEventType type);
 
-    BootstrapEvent(BootstrapEventType type,
-                          std::unique_ptr<pz::ipc::IpcMessage> message);
+    BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(EnginedServiceManager& serviceManager) override;
 
@@ -40,4 +39,4 @@ private:
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 
-} // namespace pz::engined
+}

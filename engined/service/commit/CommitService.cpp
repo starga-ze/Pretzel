@@ -1,8 +1,8 @@
 #include "service/commit/CommitService.h"
 
-#include "service/commit/CommitEvent.h"
-#include "service/commit/CommitAction.h"
 #include "service/EnginedServiceManager.h"
+#include "service/commit/CommitAction.h"
+#include "service/commit/CommitEvent.h"
 
 #include "action/EnginedActionFactory.h"
 #include "config/Config.h"
@@ -17,16 +17,18 @@ namespace pz::engined
 
 using json = nlohmann::json;
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
 const char* CommitService::statusStr(TaskStatus s)
 {
     switch (s)
     {
-    case TaskStatus::Pending: return "pending";
-    case TaskStatus::Running: return "running";
-    case TaskStatus::Done:    return "done";
-    case TaskStatus::Failed:  return "failed";
+    case TaskStatus::Pending:
+        return "pending";
+    case TaskStatus::Running:
+        return "running";
+    case TaskStatus::Done:
+        return "done";
+    case TaskStatus::Failed:
+        return "failed";
     }
     return "unknown";
 }
@@ -54,7 +56,6 @@ void CommitService::sendQueueStatus(EnginedServiceManager& serviceManager) const
 
 void CommitService::startNext(EnginedServiceManager& serviceManager)
 {
-    // Find the first pending task and promote it to Running.
     for (auto& t : m_queue)
     {
         if (t.status != TaskStatus::Pending)
@@ -63,18 +64,14 @@ void CommitService::startNext(EnginedServiceManager& serviceManager)
         t.status = TaskStatus::Running;
         sendQueueStatus(serviceManager);
 
-        auto action = serviceManager.actionFactory()->create(
-            EnginedActionDomain::Commit,
-            static_cast<std::uint32_t>(CommitActionType::ApplyCommit));
+        auto action = serviceManager.actionFactory()->create(EnginedActionDomain::Commit,
+                                                             static_cast<std::uint32_t>(CommitActionType::ApplyCommit));
         serviceManager.postAction(std::move(action));
         return;
     }
 }
 
-// ── event handler ─────────────────────────────────────────────────────────────
-
-void CommitService::handleEvent(EnginedServiceManager& serviceManager,
-                                const CommitEvent& event)
+void CommitService::handleEvent(EnginedServiceManager& serviceManager, const CommitEvent& event)
 {
     switch (event.type())
     {
@@ -88,17 +85,16 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
         }
 
         Task task;
-        task.id      = m_nextId++;
+        task.id = m_nextId++;
         task.payload = msg->getPayload();
-        task.status  = TaskStatus::Pending;
+        task.status = TaskStatus::Pending;
         m_queue.push_back(std::move(task));
 
         LOG_INFO("task enqueued (id={}, queue_size={})", m_queue.back().id, m_queue.size());
         sendQueueStatus(serviceManager);
 
-        // Start immediately if this is the only task (no Running task exists).
-        const bool anyRunning = std::any_of(m_queue.begin(), m_queue.end(),
-            [](const Task& t) { return t.status == TaskStatus::Running; });
+        const bool anyRunning =
+            std::any_of(m_queue.begin(), m_queue.end(), [](const Task& t) { return t.status == TaskStatus::Running; });
 
         if (!anyRunning)
             startNext(serviceManager);
@@ -108,7 +104,6 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
 
     case CommitEventType::ReloadComplete:
     {
-        // Mark the Running task as Done and evict completed/failed tasks from front.
         for (auto& t : m_queue)
         {
             if (t.status == TaskStatus::Running)
@@ -119,11 +114,8 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
             }
         }
 
-        // Trim leading done/failed tasks (keep at most last 5 for history).
-        while (m_queue.size() > 5 ||
-               (!m_queue.empty() &&
-                (m_queue.front().status == TaskStatus::Done ||
-                 m_queue.front().status == TaskStatus::Failed)))
+        while (m_queue.size() > 5 || (!m_queue.empty() && (m_queue.front().status == TaskStatus::Done ||
+                                                           m_queue.front().status == TaskStatus::Failed)))
         {
             m_queue.pop_front();
         }
@@ -135,9 +127,6 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
 
     case CommitEventType::ReloadFailed:
     {
-        // Reload did not converge in time. Mark the Running task Failed (the new config
-        // version stays the active committed intent; daemons adopt it as they restart),
-        // then advance the queue exactly as the success path does.
         for (auto& t : m_queue)
         {
             if (t.status == TaskStatus::Running)
@@ -148,10 +137,8 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
             }
         }
 
-        while (m_queue.size() > 5 ||
-               (!m_queue.empty() &&
-                (m_queue.front().status == TaskStatus::Done ||
-                 m_queue.front().status == TaskStatus::Failed)))
+        while (m_queue.size() > 5 || (!m_queue.empty() && (m_queue.front().status == TaskStatus::Done ||
+                                                           m_queue.front().status == TaskStatus::Failed)))
         {
             m_queue.pop_front();
         }
@@ -162,26 +149,25 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event (type={})",
-                 static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
 }
 
-// ── action handler ────────────────────────────────────────────────────────────
-
-void CommitService::handleAction(EnginedServiceManager& serviceManager,
-                                 const CommitAction& action)
+void CommitService::handleAction(EnginedServiceManager& serviceManager, const CommitAction& action)
 {
     switch (action.type())
     {
     case CommitActionType::ApplyCommit:
     {
-        // Find the Running task.
         Task* running = nullptr;
         for (auto& t : m_queue)
         {
-            if (t.status == TaskStatus::Running) { running = &t; break; }
+            if (t.status == TaskStatus::Running)
+            {
+                running = &t;
+                break;
+            }
         }
 
         if (!running)
@@ -214,10 +200,8 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
         }
 
         int applied = 0;
-        int failed  = 0;
+        int failed = 0;
 
-        // Build the next config version: start from the current running-config root
-        // and overlay each change at <daemon>.<service|system>.<domain>.
         json root = pz::config::Config::runningConfigRoot();
 
         for (const auto& change : changes)
@@ -240,18 +224,14 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
                 continue;
             }
 
-            // "system" sections (ipc/logger) vs "service" sections (everything else).
-            // Place the change where the domain already lives; default to "service".
             const char* parent = "service";
-            if (root.contains(daemon) && root[daemon].contains("system") &&
-                root[daemon]["system"].contains(domain))
+            if (root.contains(daemon) && root[daemon].contains("system") && root[daemon]["system"].contains(domain))
             {
                 parent = "system";
             }
 
             root[daemon][parent][domain].merge_patch(values);
-            LOG_DEBUG("staged (daemon={}, domain={}.{}, keys={})",
-                     daemon, parent, domain, values.size());
+            LOG_DEBUG("staged (daemon={}, domain={}.{}, keys={})", daemon, parent, domain, values.size());
             applied++;
         }
 
@@ -264,7 +244,6 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
             return;
         }
 
-        // Persist as a brand-new running_config version (history append).
         if (!pz::config::Config::commitConfig(root))
         {
             LOG_ERROR("commitConfig failed, task failed (id={})", running->id);
@@ -298,15 +277,13 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager,
 
         pz::config::Config::invalidateConfigCache();
         serviceManager.bootstrapService().scheduleServiceReload();
-        // ReloadComplete event will arrive from BootstrapService when all daemons are back up.
         break;
     }
 
     default:
-        LOG_WARN("unhandled action (type={})",
-                 static_cast<std::uint32_t>(action.type()));
+        LOG_WARN("unhandled action (type={})", static_cast<std::uint32_t>(action.type()));
         break;
     }
 }
 
-} // namespace pz::engined
+}

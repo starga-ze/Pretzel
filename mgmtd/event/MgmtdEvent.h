@@ -12,9 +12,9 @@ class MgmtdServiceManager;
 
 enum class MgmtdEventDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
-    Web      = 2,
+    Web = 2,
     Heartbeat = 3
 };
 
@@ -32,4 +32,4 @@ private:
     MgmtdEventDomain m_domain{MgmtdEventDomain::Unknown};
 };
 
-} // namespace pz::mgmtd
+}

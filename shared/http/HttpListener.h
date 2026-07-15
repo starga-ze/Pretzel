@@ -14,16 +14,11 @@ class HttpHandler;
 
 using tcp = boost::asio::ip::tcp;
 
-// Accept loop: spawns an HttpsSession (when an SSL context is present) or a plaintext
-// HttpSession per connection, each wired to the shared HttpHandler. Transport only.
 class HttpListener : public std::enable_shared_from_this<HttpListener>
 {
 public:
-    HttpListener(boost::asio::io_context& ioContext,
-                 tcp::endpoint endpoint,
-                 std::shared_ptr<HttpHandler> handler,
-                 std::shared_ptr<boost::asio::ssl::context> sslContext,
-                 std::string serverName);
+    HttpListener(boost::asio::io_context& ioContext, tcp::endpoint endpoint, std::shared_ptr<HttpHandler> handler,
+                 std::shared_ptr<boost::asio::ssl::context> sslContext, std::string serverName);
 
     bool open();
     void run();
@@ -41,4 +36,4 @@ private:
     std::string m_serverName;
 };
 
-} // namespace pz::http
+}

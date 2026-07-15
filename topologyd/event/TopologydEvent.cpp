@@ -3,8 +3,7 @@
 namespace pz::topologyd
 {
 
-TopologydEvent::TopologydEvent(TopologydEventDomain domain)
-    : m_domain(domain)
+TopologydEvent::TopologydEvent(TopologydEventDomain domain) : m_domain(domain)
 {
 }
 
@@ -13,4 +12,4 @@ TopologydEventDomain TopologydEvent::domain() const
     return m_domain;
 }
 
-} // namespace pz::topologyd
+}

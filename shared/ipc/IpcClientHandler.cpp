@@ -12,8 +12,7 @@
 namespace pz::ipc
 {
 
-IpcClientHandler::IpcClientHandler(IpcClient* ipcClient) : 
-    m_ipcClient(ipcClient)
+IpcClientHandler::IpcClientHandler(IpcClient* ipcClient) : m_ipcClient(ipcClient)
 {
 }
 
@@ -24,15 +23,13 @@ bool IpcClientHandler::handleConnect(int fd, pz::io::Epoll& epoll)
 
     if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) != 0)
     {
-        LOG_ERROR("getsockopt(SO_ERROR) failed (fd={}, errno={}, error={})",
-                fd, errno, std::strerror(errno));
+        LOG_ERROR("getsockopt(SO_ERROR) failed (fd={}, errno={}, error={})", fd, errno, std::strerror(errno));
         return false;
     }
 
     if (soError != 0)
     {
-        LOG_ERROR("connect failed (fd={}, so_error={}, error={})", fd, soError,
-                std::strerror(soError));
+        LOG_ERROR("connect failed (fd={}, so_error={}, error={})", fd, soError, std::strerror(soError));
         return false;
     }
 
@@ -79,8 +76,7 @@ bool IpcClientHandler::ingress(int fd, pz::ipc::IpcFrameView frame)
     const auto rc = m_codec.decode(frame, msg);
     if (rc != IpcDecodeResult::Ok)
     {
-        LOG_ERROR("ingress decode failed (fd={}, rc={}, frame_size={})", fd, static_cast<int>(rc),
-                  frame.size);
+        LOG_ERROR("ingress decode failed (fd={}, rc={}, frame_size={})", fd, static_cast<int>(rc), frame.size);
         return false;
     }
 
@@ -117,9 +113,8 @@ void IpcClientHandler::egress(std::unique_ptr<IpcMessage> msg)
     if (frame.empty())
     {
         LOG_WARN("egress encode failed (dst={}, cmd={}, payload_bytes={})",
-                pz::ipc::IpcProtocol::daemonToStr(msg->getDst()),
-                pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
-                msg->getPayloadLen());
+                 pz::ipc::IpcProtocol::daemonToStr(msg->getDst()), pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+                 msg->getPayloadLen());
         return;
     }
 
@@ -127,14 +122,13 @@ void IpcClientHandler::egress(std::unique_ptr<IpcMessage> msg)
 
     if (!m_ipcClient->enqueueFrame(std::move(frame)))
     {
-        LOG_WARN("egress enqueue failed (frame_bytes={})",
-                frameSize);
+        LOG_WARN("egress enqueue failed (frame_bytes={})", frameSize);
     }
 }
 
 void IpcClientHandler::setRxRouter(pz::router::RxRouter* rxRouter)
 {
     m_rxRouter = rxRouter;
-} 
+}
 
-}// namespace pz::ipc
+}

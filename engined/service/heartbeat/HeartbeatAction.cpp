@@ -5,25 +5,17 @@
 namespace pz::engined
 {
 
-HeartbeatAction::HeartbeatAction(HeartbeatActionType type)
-    : EnginedAction(EnginedActionDomain::Heartbeat),
-      m_type(type)
+HeartbeatAction::HeartbeatAction(HeartbeatActionType type) : EnginedAction(EnginedActionDomain::Heartbeat), m_type(type)
 {
 }
 
-HeartbeatAction::HeartbeatAction(HeartbeatActionType type,
-                                 pz::ipc::IpcDaemon dst)
-    : EnginedAction(EnginedActionDomain::Heartbeat),
-      m_type(type),
-      m_dst(dst)
+HeartbeatAction::HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst)
+    : EnginedAction(EnginedActionDomain::Heartbeat), m_type(type), m_dst(dst)
 {
 }
 
-HeartbeatAction::HeartbeatAction(HeartbeatActionType type,
-                                 std::string resultJson)
-    : EnginedAction(EnginedActionDomain::Heartbeat),
-      m_type(type),
-      m_resultJson(std::move(resultJson))
+HeartbeatAction::HeartbeatAction(HeartbeatActionType type, std::string resultJson)
+    : EnginedAction(EnginedActionDomain::Heartbeat), m_type(type), m_resultJson(std::move(resultJson))
 {
 }
 
@@ -47,4 +39,4 @@ const std::string& HeartbeatAction::resultJson() const
     return m_resultJson;
 }
 
-} // namespace pz::engined
+}

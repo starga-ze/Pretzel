@@ -7,10 +7,8 @@
 namespace pz::engined
 {
 
-EnginedRxRouter::EnginedRxRouter(EnginedEventFactory* eventFactory,
-                                  EnginedServiceManager* serviceManager)
-    : m_eventFactory(eventFactory),
-      m_serviceManager(serviceManager)
+EnginedRxRouter::EnginedRxRouter(EnginedEventFactory* eventFactory, EnginedServiceManager* serviceManager)
+    : m_eventFactory(eventFactory), m_serviceManager(serviceManager)
 {
 }
 
@@ -28,8 +26,7 @@ void EnginedRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    LOG_TRACE("recv (cmd={}, src={})",
-              pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+    LOG_TRACE("recv (cmd={}, src={})", pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
 
     std::unique_ptr<EnginedEvent> event = m_eventFactory->create(std::move(msg));
@@ -37,4 +34,4 @@ void EnginedRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     m_serviceManager->postEvent(std::move(event));
 }
 
-} // namespace pz::engined
+}

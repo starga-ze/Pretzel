@@ -1,12 +1,12 @@
 #include "service/bootstrap/BootstrapService.h"
 
-#include "service/ApidServiceManager.h"
-#include "event/ApidEventFactory.h"
 #include "action/ApidActionFactory.h"
+#include "event/ApidEventFactory.h"
 #include "router/ApidTxRouter.h"
+#include "service/ApidServiceManager.h"
 
-#include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 
 #include "config/Config.h"
 
@@ -20,8 +20,6 @@ namespace pz::apid
 namespace
 {
 
-// Defaults match the compiled-in values; overridable via "service"."bootstrap" in the
-// running-config (global, merged with section "apid").
 const nlohmann::json& bootstrapConfig()
 {
     return pz::config::Config::serviceSection("apid", "bootstrap");
@@ -37,12 +35,10 @@ std::chrono::milliseconds bootWarnInterval()
     return std::chrono::seconds(bootstrapConfig().value("bootstrap_timeout_sec", 10));
 }
 
-} // namespace
+}
 
-BootstrapService::BootstrapService(ApidEventFactory* eventFactory,
-                                   ApidActionFactory* actionFactory)
-    : m_eventFactory(eventFactory),
-      m_actionFactory(actionFactory)
+BootstrapService::BootstrapService(ApidEventFactory* eventFactory, ApidActionFactory* actionFactory)
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory)
 {
 }
 
@@ -56,8 +52,7 @@ void BootstrapService::start()
     LOG_INFO("bootstrap started");
 }
 
-std::unique_ptr<ApidEvent>
-BootstrapService::schedule(std::chrono::steady_clock::time_point now)
+std::unique_ptr<ApidEvent> BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 {
     if (!m_eventFactory)
     {
@@ -74,9 +69,8 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 
         LOG_DEBUG("scheduling ClientHello");
 
-        return m_eventFactory->create(
-            ApidEventDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
+        return m_eventFactory->create(ApidEventDomain::Bootstrap,
+                                      static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
     }
 
     case State::WaitServerHello:
@@ -89,9 +83,8 @@ BootstrapService::schedule(std::chrono::steady_clock::time_point now)
 
             LOG_DEBUG("retrying ClientHello");
 
-            return m_eventFactory->create(
-                ApidEventDomain::Bootstrap,
-                static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
+            return m_eventFactory->create(ApidEventDomain::Bootstrap,
+                                          static_cast<std::uint32_t>(BootstrapEventType::SendClientHello));
         }
 
         return nullptr;
@@ -117,8 +110,7 @@ bool BootstrapService::isReady() const
     return m_state == State::Running;
 }
 
-void BootstrapService::handleEvent(ApidServiceManager& serviceManager,
-                                   const BootstrapEvent& event)
+void BootstrapService::handleEvent(ApidServiceManager& serviceManager, const BootstrapEvent& event)
 {
     if (!m_actionFactory)
     {
@@ -130,9 +122,8 @@ void BootstrapService::handleEvent(ApidServiceManager& serviceManager,
     {
     case BootstrapEventType::SendClientHello:
     {
-        auto action = m_actionFactory->create(
-            ApidActionDomain::Bootstrap,
-            static_cast<std::uint32_t>(BootstrapActionType::SendClientHello));
+        auto action = m_actionFactory->create(ApidActionDomain::Bootstrap,
+                                              static_cast<std::uint32_t>(BootstrapActionType::SendClientHello));
 
         serviceManager.postAction(std::move(action));
         break;
@@ -165,14 +156,12 @@ void BootstrapService::handleEvent(ApidServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled event (type={})",
-                 static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
 }
 
-void BootstrapService::handleAction(ApidServiceManager& serviceManager,
-                                    const BootstrapAction& action)
+void BootstrapService::handleAction(ApidServiceManager& serviceManager, const BootstrapAction& action)
 {
     std::unique_ptr<pz::ipc::IpcMessage> msg = nullptr;
 
@@ -182,8 +171,7 @@ void BootstrapService::handleAction(ApidServiceManager& serviceManager,
     {
         if (m_state != State::WaitServerHello)
         {
-            LOG_DEBUG("skip SendClientHello (state={})",
-                      static_cast<int>(m_state));
+            LOG_DEBUG("skip SendClientHello (state={})", static_cast<int>(m_state));
             return;
         }
 
@@ -193,30 +181,23 @@ void BootstrapService::handleAction(ApidServiceManager& serviceManager,
     }
 
     default:
-        LOG_WARN("unhandled action (type={})",
-                 static_cast<std::uint32_t>(action.type()));
+        LOG_WARN("unhandled action (type={})", static_cast<std::uint32_t>(action.type()));
         return;
     }
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
 
-void BootstrapService::onServerHello(ApidServiceManager& serviceManager,
-                                     const pz::ipc::IpcMessage& msg)
+void BootstrapService::onServerHello(ApidServiceManager& serviceManager, const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
     if (m_state != State::WaitServerHello)
     {
-        LOG_WARN("ServerHello in unexpected state (state={})",
-                 static_cast<int>(m_state));
+        LOG_WARN("ServerHello in unexpected state (state={})", static_cast<int>(m_state));
         return;
     }
 
-    // Handshake complete. Report RuntimeReady once — purely informational (lets ipcd /
-    // engined observe apid's applied config version); nothing gates on it. apid is
-    // infrastructure, so it becomes Ready here rather than waiting for the fleet-wide
-    // RuntimeStart it isn't a participant in.
     serviceManager.txRouter().handleIpcMessage(buildRuntimeReadyMessage());
 
     m_state = State::Ready;
@@ -228,38 +209,26 @@ void BootstrapService::onRuntimeStart(const pz::ipc::IpcMessage& msg)
 {
     (void)msg;
 
-    // apid is infrastructure and is not a config-convergence participant, so the
-    // fleet-wide RuntimeStart broadcast carries nothing it needs. It still receives the
-    // broadcast (engined re-emits it after every config reload); apid simply ignores it.
     LOG_TRACE("RuntimeStart ignored (apid is not gated on fleet convergence)");
 }
 
-void BootstrapService::warnIfBootSlow(std::chrono::steady_clock::time_point now,
-                                      const char* stateName)
+void BootstrapService::warnIfBootSlow(std::chrono::steady_clock::time_point now, const char* stateName)
 {
-    // Never give up: ipcd/engined may simply be slow to come up. Warn once on crossing
-    // the threshold, then keep retrying the handshake indefinitely rather than failing.
     if (now - m_startedAt >= bootWarnInterval() && !m_bootSlowWarned)
     {
         m_bootSlowWarned = true;
-        LOG_WARN("still waiting on bootstrap, will keep retrying (state={}, waited_s={})",
-                 stateName,
+        LOG_WARN("still waiting on bootstrap, will keep retrying (state={}, waited_s={})", stateName,
                  std::chrono::duration_cast<std::chrono::seconds>(now - m_startedAt).count());
     }
 }
 
-std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildClientHelloMessage() const
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapService::buildClientHelloMessage() const
 {
     const std::string name = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Apid);
     const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Apid,
-        pz::ipc::IpcDaemon::Ipcd,
-        pz::ipc::IpcCmd::ClientHello,
-        0,
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Apid, pz::ipc::IpcDaemon::Ipcd,
+                                                          pz::ipc::IpcCmd::ClientHello, 0, flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(name.data()), name.size());
@@ -267,22 +236,17 @@ BootstrapService::buildClientHelloMessage() const
     return msg;
 }
 
-std::unique_ptr<pz::ipc::IpcMessage>
-BootstrapService::buildRuntimeReadyMessage() const
+std::unique_ptr<pz::ipc::IpcMessage> BootstrapService::buildRuntimeReadyMessage() const
 {
     nlohmann::json payloadJson;
-    payloadJson["daemon"]          = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Apid);
+    payloadJson["daemon"] = pz::ipc::IpcProtocol::daemonToStr(pz::ipc::IpcDaemon::Apid);
     payloadJson["applied_version"] = pz::config::Config::runningConfigVersion();
     const std::string payload = payloadJson.dump();
 
     const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-        pz::ipc::IpcDaemon::Apid,
-        pz::ipc::IpcDaemon::Ipcd,
-        pz::ipc::IpcCmd::RuntimeReady,
-        0,
-        flag);
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Apid, pz::ipc::IpcDaemon::Ipcd,
+                                                          pz::ipc::IpcCmd::RuntimeReady, 0, flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
     msg->setPayload(reinterpret_cast<const std::uint8_t*>(payload.data()), payload.size());
@@ -290,4 +254,4 @@ BootstrapService::buildRuntimeReadyMessage() const
     return msg;
 }
 
-} // namespace pz::apid
+}

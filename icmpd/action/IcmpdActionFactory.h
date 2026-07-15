@@ -18,4 +18,4 @@ public:
     std::unique_ptr<IcmpdAction> create(IcmpdActionDomain domain, std::uint32_t type) override;
 };
 
-} // namespace pz::icmpd
+}

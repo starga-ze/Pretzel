@@ -13,10 +13,10 @@ class MgmtdServiceManager;
 
 enum class MgmtdActionDomain : std::uint32_t
 {
-    Unknown   = 0,
+    Unknown = 0,
     Bootstrap = 1,
     Heartbeat = 2,
-    Web      = 3
+    Web = 3
 };
 
 class MgmtdAction : public pz::action::Action
@@ -33,4 +33,4 @@ private:
     MgmtdActionDomain m_domain{MgmtdActionDomain::Unknown};
 };
 
-} // namespace pz::mgmtd
+}

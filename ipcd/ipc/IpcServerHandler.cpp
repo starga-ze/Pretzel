@@ -1,7 +1,7 @@
 #include "ipc/IpcServerHandler.h"
 
-#include "ipc/IpcServer.h"
 #include "ipc/IpcProtocol.h"
+#include "ipc/IpcServer.h"
 #include "util/Logger.h"
 
 #include <cerrno>
@@ -13,17 +13,14 @@ using namespace pz::ipc;
 namespace pz::ipcd
 {
 
-IpcServerHandler::IpcServerHandler(IpcServer* ipcServer,
-                                   const pz::config::IpcConfig& cfg)
-    : m_ipcServer(ipcServer),
-      m_cfg(cfg)
+IpcServerHandler::IpcServerHandler(IpcServer* ipcServer, const pz::config::IpcConfig& cfg)
+    : m_ipcServer(ipcServer), m_cfg(cfg)
 {
 }
 
-void IpcServerHandler::handleAccept(
-    pz::socket::UnixDomainSocket& listener,
-    std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
-    pz::io::Epoll& epoll)
+void IpcServerHandler::handleAccept(pz::socket::UnixDomainSocket& listener,
+                                    std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
+                                    pz::io::Epoll& epoll)
 {
     while (true)
     {
@@ -46,17 +43,13 @@ void IpcServerHandler::handleAccept(
 
         if (connections.size() >= static_cast<std::size_t>(m_cfg.maxConnections))
         {
-            LOG_WARN("max connections reached (max={}, fd={})",
-                     m_cfg.maxConnections,
-                     fd);
+            LOG_WARN("max connections reached (max={}, fd={})", m_cfg.maxConnections, fd);
             ::close(fd);
             continue;
         }
 
-        auto conn = std::make_unique<IpcConnection>(
-            fd,
-            static_cast<std::size_t>(m_cfg.rxBufferSize),
-            static_cast<std::size_t>(m_cfg.txBufferSize));
+        auto conn = std::make_unique<IpcConnection>(fd, static_cast<std::size_t>(m_cfg.rxBufferSize),
+                                                    static_cast<std::size_t>(m_cfg.txBufferSize));
 
         if (!conn)
         {
@@ -74,16 +67,12 @@ void IpcServerHandler::handleAccept(
 
         connections.emplace(fd, std::move(conn));
 
-        LOG_INFO("accepted connection (fd={}, total={})",
-                 fd,
-                 connections.size());
+        LOG_INFO("accepted connection (fd={}, total={})", fd, connections.size());
     }
 }
 
-bool IpcServerHandler::handleRecv(
-    int fd,
-    std::unordered_map<int, std::unique_ptr<IpcConnection>>& connections,
-    pz::io::Epoll& epoll)
+bool IpcServerHandler::handleRecv(int fd, std::unordered_map<int, std::unique_ptr<IpcConnection>>& connections,
+                                  pz::io::Epoll& epoll)
 {
     auto it = connections.find(fd);
     if (it == connections.end())
@@ -100,10 +89,8 @@ bool IpcServerHandler::handleRecv(
     return true;
 }
 
-bool IpcServerHandler::handleSend(
-    int fd,
-    std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
-    pz::io::Epoll& epoll)
+bool IpcServerHandler::handleSend(int fd, std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
+                                  pz::io::Epoll& epoll)
 {
     auto it = connections.find(fd);
     if (it == connections.end())
@@ -120,10 +107,9 @@ bool IpcServerHandler::handleSend(
     return true;
 }
 
-void IpcServerHandler::closeConnection(
-    int fd,
-    std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
-    pz::io::Epoll& epoll)
+void IpcServerHandler::closeConnection(int fd,
+                                       std::unordered_map<int, std::unique_ptr<pz::ipc::IpcConnection>>& connections,
+                                       pz::io::Epoll& epoll)
 {
     removeRoute(fd);
 
@@ -158,26 +144,20 @@ bool IpcServerHandler::ingress(int fd, pz::ipc::IpcFrameView frame)
     const auto rc = m_codec.decode(frame, msg);
     if (rc != pz::ipc::IpcDecodeResult::Ok)
     {
-        LOG_ERROR("ingress decode failed (fd={}, rc={}, frame_size={})",
-                  fd,
-                  static_cast<int>(rc),
-                  frame.size);
+        LOG_ERROR("ingress decode failed (fd={}, rc={}, frame_size={})", fd, static_cast<int>(rc), frame.size);
         return false;
     }
 
     if (!msg)
     {
-        LOG_ERROR("ingress decode returned null message (fd={}, frame_size={})",
-                  fd,
-                  frame.size);
+        LOG_ERROR("ingress decode returned null message (fd={}, frame_size={})", fd, frame.size);
         return false;
     }
 
     if (!bindRoute(msg->getSrc(), fd))
     {
         LOG_ERROR("ingress rejected, route validation failed (src={}, fd={})",
-                pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()),
-                fd);
+                  pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()), fd);
         return false;
     }
 
@@ -222,8 +202,7 @@ void IpcServerHandler::unicast(std::unique_ptr<pz::ipc::IpcMessage> msg)
     const int fd = findRoute(msg->getDst());
     if (fd < 0)
     {
-        LOG_WARN("no route for unicast (dst={})",
-                 pz::ipc::IpcProtocol::daemonToStr(msg->getDst()));
+        LOG_WARN("no route for unicast (dst={})", pz::ipc::IpcProtocol::daemonToStr(msg->getDst()));
         return;
     }
 
@@ -242,8 +221,7 @@ void IpcServerHandler::broadcast(std::unique_ptr<pz::ipc::IpcMessage> msg)
     std::vector<std::uint8_t> frame = m_codec.encode(msg);
     if (frame.empty())
     {
-        LOG_WARN("broadcast encode failed (cmd={}, payload_bytes={})",
-                 pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+        LOG_WARN("broadcast encode failed (cmd={}, payload_bytes={})", pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
                  msg->getPayloadLen());
         return;
     }
@@ -255,9 +233,7 @@ void IpcServerHandler::broadcast(std::unique_ptr<pz::ipc::IpcMessage> msg)
             continue;
         }
 
-        if (daemon == msg->getSrc() ||
-            daemon == pz::ipc::IpcDaemon::Ipcd ||
-            daemon == pz::ipc::IpcDaemon::Broadcast)
+        if (daemon == msg->getSrc() || daemon == pz::ipc::IpcDaemon::Ipcd || daemon == pz::ipc::IpcDaemon::Broadcast)
         {
             continue;
         }
@@ -267,16 +243,12 @@ void IpcServerHandler::broadcast(std::unique_ptr<pz::ipc::IpcMessage> msg)
         if (!m_ipcServer->enqueueFrame(state.fd, std::move(copiedFrame)))
         {
             LOG_WARN("broadcast enqueue failed (daemon={}, fd={}, frame_bytes={})",
-                     pz::ipc::IpcProtocol::daemonToStr(daemon),
-                     state.fd,
-                     frame.size());
+                     pz::ipc::IpcProtocol::daemonToStr(daemon), state.fd, frame.size());
         }
     }
 }
 
-bool IpcServerHandler::sendFrame(
-    int fd,
-    const std::unique_ptr<pz::ipc::IpcMessage>& msg)
+bool IpcServerHandler::sendFrame(int fd, const std::unique_ptr<pz::ipc::IpcMessage>& msg)
 {
     if (!msg)
     {
@@ -289,10 +261,8 @@ bool IpcServerHandler::sendFrame(
     std::vector<std::uint8_t> frame = m_codec.encode(msg);
     if (frame.empty())
     {
-        LOG_WARN("egress encode failed (fd={}, dst={}, cmd={}, payload_bytes={})",
-                 fd,
-                 pz::ipc::IpcProtocol::daemonToStr(msg->getDst()),
-                 pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
+        LOG_WARN("egress encode failed (fd={}, dst={}, cmd={}, payload_bytes={})", fd,
+                 pz::ipc::IpcProtocol::daemonToStr(msg->getDst()), pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
                  msg->getPayloadLen());
         return false;
     }
@@ -314,15 +284,14 @@ bool IpcServerHandler::bindRoute(pz::ipc::IpcDaemon daemon, int fd)
     if (it == m_runtimeTable.end())
     {
         RuntimeState state;
-        state.fd         = fd;
-        state.ready      = false;
+        state.fd = fd;
+        state.ready = false;
         state.generation = 1;
 
         m_runtimeTable.emplace(daemon, state);
 
-        LOG_DEBUG("runtime route added (daemon={}, fd={}, gen=1, total={})",
-                  pz::ipc::IpcProtocol::daemonToStr(daemon), fd,
-                  m_runtimeTable.size());
+        LOG_DEBUG("runtime route added (daemon={}, fd={}, gen=1, total={})", pz::ipc::IpcProtocol::daemonToStr(daemon),
+                  fd, m_runtimeTable.size());
         return true;
     }
 
@@ -331,8 +300,7 @@ bool IpcServerHandler::bindRoute(pz::ipc::IpcDaemon daemon, int fd)
     if (state.fd == fd)
     {
         LOG_TRACE("runtime route unchanged (daemon={}, fd={}, ready={}, gen={})",
-                  pz::ipc::IpcProtocol::daemonToStr(daemon),
-                  fd, state.ready, state.generation);
+                  pz::ipc::IpcProtocol::daemonToStr(daemon), fd, state.ready, state.generation);
         return true;
     }
 
@@ -343,10 +311,9 @@ bool IpcServerHandler::bindRoute(pz::ipc::IpcDaemon daemon, int fd)
         return false;
     }
 
-    // Rebind after disconnect: new connection, new generation.
-    state.fd    = fd;
+    state.fd = fd;
     state.ready = false;
-    state.appliedVersion = 0;  // must re-report applied config version after reconnect
+    state.appliedVersion = 0;
     state.generation++;
 
     LOG_DEBUG("runtime route rebound (daemon={}, fd={}, ready=false, gen={})",
@@ -386,42 +353,33 @@ void IpcServerHandler::removeRoute(int fd)
         state.ready = false;
         state.appliedVersion = 0;
 
-        LOG_DEBUG("runtime route removed (daemon={}, fd={})",
-                  pz::ipc::IpcProtocol::daemonToStr(daemon),
-                  fd);
+        LOG_DEBUG("runtime route removed (daemon={}, fd={})", pz::ipc::IpcProtocol::daemonToStr(daemon), fd);
     }
 }
 
-void IpcServerHandler::markRuntimeReady(pz::ipc::IpcDaemon daemon, bool ready,
-                                        uint64_t appliedVersion)
+void IpcServerHandler::markRuntimeReady(pz::ipc::IpcDaemon daemon, bool ready, uint64_t appliedVersion)
 {
     auto it = m_runtimeTable.find(daemon);
     if (it == m_runtimeTable.end())
     {
-        LOG_WARN("markRuntimeReady failed, daemon not found (daemon={})",
-                 pz::ipc::IpcProtocol::daemonToStr(daemon));
+        LOG_WARN("markRuntimeReady failed, daemon not found (daemon={})", pz::ipc::IpcProtocol::daemonToStr(daemon));
         return;
     }
 
-    const bool     prevReady   = it->second.ready;
+    const bool prevReady = it->second.ready;
     const uint64_t prevVersion = it->second.appliedVersion;
 
     it->second.ready = ready;
 
-    // appliedVersion==0 means the daemon did not report a version (legacy bare-name
-    // RuntimeReady payload); keep whatever was last recorded in that case.
     if (appliedVersion > 0)
     {
         it->second.appliedVersion = appliedVersion;
     }
 
-    // RuntimeReady arrives every second while a daemon waits; only log the actual
-    // transition (first ready, or a version change), not each repeat.
     if (it->second.ready != prevReady || it->second.appliedVersion != prevVersion)
     {
         LOG_INFO("runtime ready changed (daemon={}, fd={}, ready={}, applied_version={})",
-                 pz::ipc::IpcProtocol::daemonToStr(daemon),
-                 it->second.fd, it->second.ready, it->second.appliedVersion);
+                 pz::ipc::IpcProtocol::daemonToStr(daemon), it->second.fd, it->second.ready, it->second.appliedVersion);
     }
 }
 
@@ -435,4 +393,4 @@ void IpcServerHandler::setRxRouter(pz::router::RxRouter* rxRouter)
     m_rxRouter = rxRouter;
 }
 
-} // namespace pz::ipcd
+}

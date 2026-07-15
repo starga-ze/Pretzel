@@ -4,9 +4,7 @@
 namespace pz::engined
 {
 
-CommitAction::CommitAction(CommitActionType type)
-    : EnginedAction(EnginedActionDomain::Commit),
-      m_type(type)
+CommitAction::CommitAction(CommitActionType type) : EnginedAction(EnginedActionDomain::Commit), m_type(type)
 {
 }
 
@@ -20,4 +18,4 @@ void CommitAction::dispatch(EnginedServiceManager& serviceManager)
     serviceManager.commitService().handleAction(serviceManager, *this);
 }
 
-} // namespace pz::engined
+}

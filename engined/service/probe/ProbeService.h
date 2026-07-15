@@ -10,10 +10,6 @@ namespace pz::engined
 
 class EnginedServiceManager;
 
-// engined-owned ICMP probe orchestrator. On its own timer it asks icmpd to run one
-// probe cycle (ProbeRequest), then stores the returned alive-IP snapshot in the
-// service manager so the SNMP scan orchestrator can consume it. Mirrors the
-// HeartbeatService timer/round pattern.
 class ProbeService
 {
 public:
@@ -35,4 +31,4 @@ private:
     std::chrono::steady_clock::time_point m_requestedAt{};
 };
 
-} // namespace pz::engined
+}

@@ -9,11 +9,6 @@ namespace pz::db
 namespace
 {
 
-// DDL for the full pretzel schema. MUST stay in sync with shared/db/schema.sql
-// (the standalone script). Two-table config model: startup_config (baseline boot
-// config, singleton) and running_config (live, versioned history). state_snapshot
-// and devices hold runtime DATA. Idempotent (IF NOT EXISTS) so every daemon can
-// safely run it on every boot.
 constexpr const char* kSchemaDDL = R"SQL(
 CREATE TABLE IF NOT EXISTS startup_config (
     id          INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -139,8 +134,6 @@ BEGIN
 END $migrate$;
 )SQL";
 
-// Builds the const char* array PQexecParams expects from a string vector. The
-// backing strings must outlive the returned pointers (callers keep `params` alive).
 std::vector<const char*> toParamPtrs(const std::vector<std::string>& params)
 {
     std::vector<const char*> ptrs;
@@ -150,7 +143,7 @@ std::vector<const char*> toParamPtrs(const std::vector<std::string>& params)
     return ptrs;
 }
 
-} // namespace
+}
 
 Database& Database::instance()
 {
@@ -169,7 +162,7 @@ Database::~Database()
 
 bool Database::connect(const ConnParams& params)
 {
-    m_params     = params;
+    m_params = params;
     m_haveParams = true;
 
     return ensureLive();
@@ -190,7 +183,6 @@ bool Database::ensureLive()
         if (PQstatus(m_conn) == CONNECTION_OK)
             return true;
 
-        // Try a cheap recovery before tearing the socket down.
         PQreset(m_conn);
         if (PQstatus(m_conn) == CONNECTION_OK)
             return true;
@@ -200,14 +192,10 @@ bool Database::ensureLive()
     }
 
     const char* keywords[] = {"host", "port", "dbname", "user", "password", nullptr};
-    const char* values[]   = {m_params.host.c_str(),
-                              m_params.port.c_str(),
-                              m_params.name.c_str(),
-                              m_params.user.c_str(),
-                              m_params.password.c_str(),
-                              nullptr};
+    const char* values[] = {m_params.host.c_str(), m_params.port.c_str(),     m_params.name.c_str(),
+                            m_params.user.c_str(), m_params.password.c_str(), nullptr};
 
-    m_conn = PQconnectdbParams(keywords, values, /*expand_dbname=*/0);
+    m_conn = PQconnectdbParams(keywords, values, 0);
 
     if (PQstatus(m_conn) != CONNECTION_OK)
     {
@@ -217,9 +205,8 @@ bool Database::ensureLive()
         return false;
     }
 
-    // Swallow libpq NOTICE messages (e.g. "relation already exists, skipping" from
-    // the idempotent ensureSchema DDL) so they do not spam each daemon's journal.
-    PQsetNoticeProcessor(m_conn, [](void*, const char*) {}, nullptr);
+    PQsetNoticeProcessor(
+        m_conn, [](void*, const char*) {}, nullptr);
 
     return true;
 }
@@ -244,14 +231,8 @@ bool Database::exec(const std::string& sql, const std::vector<std::string>& para
 
     const auto ptrs = toParamPtrs(params);
 
-    PGresult* res = PQexecParams(m_conn,
-                                 sql.c_str(),
-                                 static_cast<int>(params.size()),
-                                 nullptr,
-                                 ptrs.empty() ? nullptr : ptrs.data(),
-                                 nullptr,
-                                 nullptr,
-                                 0);
+    PGresult* res = PQexecParams(m_conn, sql.c_str(), static_cast<int>(params.size()), nullptr,
+                                 ptrs.empty() ? nullptr : ptrs.data(), nullptr, nullptr, 0);
 
     const ExecStatusType st = res ? PQresultStatus(res) : PGRES_FATAL_ERROR;
     const bool ok = (st == PGRES_COMMAND_OK || st == PGRES_TUPLES_OK);
@@ -261,26 +242,19 @@ bool Database::exec(const std::string& sql, const std::vector<std::string>& para
     return ok;
 }
 
-std::optional<std::string> Database::queryScalar(const std::string&              sql,
-                                                 const std::vector<std::string>& params)
+std::optional<std::string> Database::queryScalar(const std::string& sql, const std::vector<std::string>& params)
 {
     if (!ensureLive())
         return std::nullopt;
 
     const auto ptrs = toParamPtrs(params);
 
-    PGresult* res = PQexecParams(m_conn,
-                                 sql.c_str(),
-                                 static_cast<int>(params.size()),
-                                 nullptr,
-                                 ptrs.empty() ? nullptr : ptrs.data(),
-                                 nullptr,
-                                 nullptr,
-                                 0);
+    PGresult* res = PQexecParams(m_conn, sql.c_str(), static_cast<int>(params.size()), nullptr,
+                                 ptrs.empty() ? nullptr : ptrs.data(), nullptr, nullptr, 0);
 
     std::optional<std::string> out;
-    if (res && PQresultStatus(res) == PGRES_TUPLES_OK &&
-        PQntuples(res) > 0 && PQnfields(res) > 0 && !PQgetisnull(res, 0, 0))
+    if (res && PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0 && PQnfields(res) > 0 &&
+        !PQgetisnull(res, 0, 0))
     {
         out = std::string(PQgetvalue(res, 0, 0));
     }
@@ -292,7 +266,7 @@ std::optional<std::string> Database::queryScalar(const std::string&             
     return out;
 }
 
-std::vector<std::vector<std::string>> Database::queryRows(const std::string&              sql,
+std::vector<std::vector<std::string>> Database::queryRows(const std::string& sql,
                                                           const std::vector<std::string>& params)
 {
     std::vector<std::vector<std::string>> rows;
@@ -302,14 +276,8 @@ std::vector<std::vector<std::string>> Database::queryRows(const std::string&    
 
     const auto ptrs = toParamPtrs(params);
 
-    PGresult* res = PQexecParams(m_conn,
-                                 sql.c_str(),
-                                 static_cast<int>(params.size()),
-                                 nullptr,
-                                 ptrs.empty() ? nullptr : ptrs.data(),
-                                 nullptr,
-                                 nullptr,
-                                 0);
+    PGresult* res = PQexecParams(m_conn, sql.c_str(), static_cast<int>(params.size()), nullptr,
+                                 ptrs.empty() ? nullptr : ptrs.data(), nullptr, nullptr, 0);
 
     if (res && PQresultStatus(res) == PGRES_TUPLES_OK)
     {
@@ -333,4 +301,4 @@ std::vector<std::vector<std::string>> Database::queryRows(const std::string&    
     return rows;
 }
 
-} // namespace pz::db
+}

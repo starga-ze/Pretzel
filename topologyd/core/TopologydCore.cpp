@@ -4,8 +4,7 @@
 namespace pz::topologyd
 {
 
-TopologydCore::TopologydCore()
-    : Core("topologyd")
+TopologydCore::TopologydCore() : Core("topologyd")
 {
 }
 
@@ -14,23 +13,20 @@ bool TopologydCore::onInit()
     const auto& cfg = m_config.json();
 
     const auto& log = cfg["system"]["logger"];
-    m_loggerConfig.name        = log["name"];
-    m_loggerConfig.file        = log["file"];
+    m_loggerConfig.name = log["name"];
+    m_loggerConfig.file = log["file"];
     m_loggerConfig.maxFileSize = log["max_file_size"];
-    m_loggerConfig.maxFiles    = log["max_files"];
+    m_loggerConfig.maxFiles = log["max_files"];
 
     const auto& ipc = cfg["system"]["ipc"];
-    m_ipcConfig.socketPath    = ipc["socket_path"];
+    m_ipcConfig.socketPath = ipc["socket_path"];
     m_ipcConfig.maxConnections = ipc["max_connections"];
-    m_ipcConfig.maxFrameSize  = ipc["max_frame_size"];
-    m_ipcConfig.rxBufferSize  = ipc["rx_buffer_size"];
-    m_ipcConfig.txBufferSize  = ipc["tx_buffer_size"];
+    m_ipcConfig.maxFrameSize = ipc["max_frame_size"];
+    m_ipcConfig.rxBufferSize = ipc["rx_buffer_size"];
+    m_ipcConfig.txBufferSize = ipc["tx_buffer_size"];
 
-    pz::util::Logger::Init(
-        m_loggerConfig.name,
-        m_loggerConfig.file,
-        m_loggerConfig.maxFileSize,
-        m_loggerConfig.maxFiles);
+    pz::util::Logger::Init(m_loggerConfig.name, m_loggerConfig.file, m_loggerConfig.maxFileSize,
+                           m_loggerConfig.maxFiles);
 
     LOG_INFO("topologyd: starting up");
 
@@ -41,8 +37,7 @@ bool TopologydCore::onInit()
         return false;
     }
 
-    m_ipcClient = std::make_unique<pz::ipc::IpcClient>(m_ipcConfig,
-                                                        pz::ipc::IpcDaemon::Topologyd);
+    m_ipcClient = std::make_unique<pz::ipc::IpcClient>(m_ipcConfig, pz::ipc::IpcDaemon::Topologyd);
 
     if (!m_ipcClient->init())
     {
@@ -50,7 +45,7 @@ bool TopologydCore::onInit()
         return false;
     }
 
-    m_eventFactory  = std::make_unique<TopologydEventFactory>();
+    m_eventFactory = std::make_unique<TopologydEventFactory>();
     m_actionFactory = std::make_unique<TopologydActionFactory>();
 
     m_rxRouter = std::make_unique<TopologydRxRouter>(m_eventFactory.get());
@@ -62,10 +57,8 @@ bool TopologydCore::onInit()
         return false;
     }
 
-    m_serviceManager = std::make_unique<TopologydServiceManager>(
-        m_eventFactory.get(),
-        m_actionFactory.get(),
-        m_txRouter.get());
+    m_serviceManager =
+        std::make_unique<TopologydServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
 
     if (!m_serviceManager)
     {
@@ -116,4 +109,4 @@ void TopologydCore::onShutdown()
     pz::util::Logger::Shutdown();
 }
 
-} // namespace pz::topologyd
+}

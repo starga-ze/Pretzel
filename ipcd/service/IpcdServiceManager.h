@@ -2,8 +2,8 @@
 
 #include "service/ServiceManager.h"
 
-#include "event/IpcdEvent.h"
 #include "action/IpcdAction.h"
+#include "event/IpcdEvent.h"
 
 #include "service/bootstrap/BootstrapService.h"
 
@@ -21,10 +21,8 @@ class IpcdActionFactory;
 class IpcdServiceManager : public pz::service::ServiceManager<IpcdEvent, IpcdAction>
 {
 public:
-    IpcdServiceManager(IpcdEventFactory* eventFactory,
-                       IpcdActionFactory* actionFactory,
-                       IpcServerHandler* ipcServerHandler,
-                       IpcdTxRouter* txRouter);
+    IpcdServiceManager(IpcdEventFactory* eventFactory, IpcdActionFactory* actionFactory,
+                       IpcServerHandler* ipcServerHandler, IpcdTxRouter* txRouter);
     ~IpcdServiceManager() override = default;
 
     void start() override;
@@ -48,4 +46,4 @@ private:
     std::queue<std::unique_ptr<IpcdAction>> m_actionQueue;
 };
 
-} // namespace pz::ipcd
+}

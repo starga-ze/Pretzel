@@ -2,8 +2,8 @@
 
 #include "service/ServiceManager.h"
 
-#include "event/ApidEvent.h"
 #include "action/ApidAction.h"
+#include "event/ApidEvent.h"
 
 #include "service/bootstrap/BootstrapService.h"
 #include "service/ingest/IngestService.h"
@@ -22,9 +22,7 @@ class ApidActionFactory;
 class ApidServiceManager : public pz::service::ServiceManager<ApidEvent, ApidAction>
 {
 public:
-    ApidServiceManager(ApidEventFactory* eventFactory,
-                       ApidActionFactory* actionFactory,
-                       ApidTxRouter* txRouter);
+    ApidServiceManager(ApidEventFactory* eventFactory, ApidActionFactory* actionFactory, ApidTxRouter* txRouter);
     ~ApidServiceManager() override = default;
 
     void start() override;
@@ -49,4 +47,4 @@ private:
     std::queue<std::unique_ptr<ApidAction>> m_actionQueue;
 };
 
-} // namespace pz::apid
+}

@@ -16,29 +16,18 @@ namespace pz::http
 namespace
 {
 
-// Config root for relative cert/key paths. Kept in sync with pz::config::Config's
-// resolution (PRETZEL_CONFIG_DIR, default /etc/pretzel).
 std::string configDir()
 {
     const char* value = std::getenv("PRETZEL_CONFIG_DIR");
     return (value && *value) ? std::string(value) : "/etc/pretzel";
 }
 
-} // namespace
+}
 
-HttpServer::HttpServer(std::string listenAddress,
-                       std::uint16_t listenPort,
-                       bool tlsEnabled,
-                       std::string certFile,
-                       std::string keyFile,
-                       std::string serverName,
-                       std::shared_ptr<HttpHandler> handler)
-    : m_listenAddress(std::move(listenAddress)),
-      m_listenPort(listenPort),
-      m_tlsEnabled(tlsEnabled),
-      m_certFile(std::move(certFile)),
-      m_keyFile(std::move(keyFile)),
-      m_serverName(std::move(serverName)),
+HttpServer::HttpServer(std::string listenAddress, std::uint16_t listenPort, bool tlsEnabled, std::string certFile,
+                       std::string keyFile, std::string serverName, std::shared_ptr<HttpHandler> handler)
+    : m_listenAddress(std::move(listenAddress)), m_listenPort(listenPort), m_tlsEnabled(tlsEnabled),
+      m_certFile(std::move(certFile)), m_keyFile(std::move(keyFile)), m_serverName(std::move(serverName)),
       m_handler(std::move(handler))
 {
 }
@@ -71,17 +60,13 @@ bool HttpServer::initTlsContext()
         return false;
     }
 
-    m_sslContext = std::make_shared<boost::asio::ssl::context>(
-        boost::asio::ssl::context::tls_server);
+    m_sslContext = std::make_shared<boost::asio::ssl::context>(boost::asio::ssl::context::tls_server);
 
     boost::system::error_code ec;
 
-    m_sslContext->set_options(
-        boost::asio::ssl::context::default_workarounds |
-        boost::asio::ssl::context::no_sslv2 |
-        boost::asio::ssl::context::no_sslv3 |
-        boost::asio::ssl::context::single_dh_use,
-        ec);
+    m_sslContext->set_options(boost::asio::ssl::context::default_workarounds | boost::asio::ssl::context::no_sslv2 |
+                                  boost::asio::ssl::context::no_sslv3 | boost::asio::ssl::context::single_dh_use,
+                              ec);
 
     if (ec)
     {
@@ -99,10 +84,7 @@ bool HttpServer::initTlsContext()
         return false;
     }
 
-    m_sslContext->use_private_key_file(
-        keyPath,
-        boost::asio::ssl::context::pem,
-        ec);
+    m_sslContext->use_private_key_file(keyPath, boost::asio::ssl::context::pem, ec);
 
     if (ec)
     {
@@ -130,11 +112,7 @@ bool HttpServer::init()
     }
 
     const auto endpoint = boost::asio::ip::tcp::endpoint(address, m_listenPort);
-    m_listener = std::make_shared<HttpListener>(m_ioContext,
-                                                endpoint,
-                                                m_handler,
-                                                m_sslContext,
-                                                m_serverName);
+    m_listener = std::make_shared<HttpListener>(m_ioContext, endpoint, m_handler, m_sslContext, m_serverName);
 
     if (!m_listener->open())
     {
@@ -147,7 +125,6 @@ bool HttpServer::init()
 
 bool HttpServer::poll()
 {
-    LOG_INFO("HttpServer poll call");
     m_ioContext.poll();
     return true;
 }
@@ -157,4 +134,4 @@ void HttpServer::stop()
     m_ioContext.stop();
 }
 
-} // namespace pz::http
+}

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "service/heartbeat/HeartbeatEvent.h"
 #include "service/heartbeat/HeartbeatAction.h"
+#include "service/heartbeat/HeartbeatEvent.h"
 
 #include "ipc/IpcProtocol.h"
 
@@ -25,23 +25,20 @@ public:
 
     std::unique_ptr<EnginedEvent> schedule(std::chrono::steady_clock::time_point now);
 
-    void handleEvent(EnginedServiceManager& serviceManager,
-                     const HeartbeatEvent& event);
+    void handleEvent(EnginedServiceManager& serviceManager, const HeartbeatEvent& event);
 
-    void handleAction(EnginedServiceManager& serviceManager,
-                      const HeartbeatAction& action);
+    void handleAction(EnginedServiceManager& serviceManager, const HeartbeatAction& action);
 
 private:
     struct DaemonEntry
     {
-        bool     pending{false};
-        bool     alive{false};
+        bool pending{false};
+        bool alive{false};
         std::int64_t latencyMs{-1};
         std::chrono::steady_clock::time_point sentAt{};
     };
 
-    void onHeartbeatResponse(EnginedServiceManager& serviceManager,
-                             const pz::ipc::IpcMessage& msg);
+    void onHeartbeatResponse(EnginedServiceManager& serviceManager, const pz::ipc::IpcMessage& msg);
 
     void markTimeoutsAsDead();
 
@@ -56,7 +53,7 @@ private:
     std::chrono::steady_clock::time_point m_roundStartedAt{};
 
     bool m_roundActive{false};
-    int  m_pendingCount{0};
+    int m_pendingCount{0};
 };
 
-} // namespace pz::engined
+}

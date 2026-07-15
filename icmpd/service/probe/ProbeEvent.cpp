@@ -8,19 +8,12 @@
 namespace pz::icmpd
 {
 
-ProbeEvent::ProbeEvent(ProbeEventType type)
-    : IcmpdEvent(IcmpdEventDomain::Probe),
-      m_type(type)
+ProbeEvent::ProbeEvent(ProbeEventType type) : IcmpdEvent(IcmpdEventDomain::Probe), m_type(type)
 {
 }
 
-ProbeEvent::ProbeEvent(ProbeEventType type,
-                       std::string srcIp,
-                       std::unique_ptr<IcmpPacket> packet)
-    : IcmpdEvent(IcmpdEventDomain::Probe),
-      m_type(type),
-      m_srcIp(std::move(srcIp)),
-      m_packet(std::move(packet))
+ProbeEvent::ProbeEvent(ProbeEventType type, std::string srcIp, std::unique_ptr<IcmpPacket> packet)
+    : IcmpdEvent(IcmpdEventDomain::Probe), m_type(type), m_srcIp(std::move(srcIp)), m_packet(std::move(packet))
 {
 }
 
@@ -44,4 +37,4 @@ void ProbeEvent::dispatch(IcmpdServiceManager& serviceManager)
     serviceManager.probeService().handleEvent(serviceManager, *this);
 }
 
-} // namespace pz::icmpd
+}

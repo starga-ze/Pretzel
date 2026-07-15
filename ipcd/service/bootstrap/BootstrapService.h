@@ -1,7 +1,7 @@
 #pragma once
 
-#include "service/bootstrap/BootstrapEvent.h"
 #include "service/bootstrap/BootstrapAction.h"
+#include "service/bootstrap/BootstrapEvent.h"
 
 #include <memory>
 
@@ -16,17 +16,14 @@ class IpcServerHandler;
 class BootstrapService
 {
 public:
-    BootstrapService(IpcdEventFactory* eventFactory,
-                         IpcdActionFactory* actionFactory,
-                         IpcServerHandler* ipcServerHandler);
+    BootstrapService(IpcdEventFactory* eventFactory, IpcdActionFactory* actionFactory,
+                     IpcServerHandler* ipcServerHandler);
 
     ~BootstrapService() = default;
 
-    void handleEvent(IpcdServiceManager& serviceManager,
-                     const BootstrapEvent& event);
+    void handleEvent(IpcdServiceManager& serviceManager, const BootstrapEvent& event);
 
-    void handleAction(IpcdServiceManager& serviceManager,
-                      const BootstrapAction& action);
+    void handleAction(IpcdServiceManager& serviceManager, const BootstrapAction& action);
 
 private:
     std::unique_ptr<pz::ipc::IpcMessage> buildServerHello(const pz::ipc::IpcMessage& req) const;
@@ -37,4 +34,4 @@ private:
     IpcServerHandler* m_ipcServerHandler{nullptr};
 };
 
-} // namespace pz::ipcd
+}

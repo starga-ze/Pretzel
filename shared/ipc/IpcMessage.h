@@ -10,21 +10,16 @@
 namespace pz::ipc
 {
 
-
 struct IpcHeader
 {
-    std::uint8_t version {IPC_PROTOCOL_VERSION};
-    IpcDaemon src {IpcDaemon::Unknown};
-    IpcDaemon dst {IpcDaemon::Unknown};
-    std::uint8_t flags {0};
-    IpcCmd cmd {IpcCmd::Unknown};
-    std::uint32_t seqNo {0};
+    std::uint8_t version{IPC_PROTOCOL_VERSION};
+    IpcDaemon src{IpcDaemon::Unknown};
+    IpcDaemon dst{IpcDaemon::Unknown};
+    std::uint8_t flags{0};
+    IpcCmd cmd{IpcCmd::Unknown};
+    std::uint32_t seqNo{0};
 
-    static IpcHeader build(IpcDaemon src,
-                           IpcDaemon dst,
-                           IpcCmd cmd,
-                           std::uint32_t seqNo,
-                           std::uint8_t flags)
+    static IpcHeader build(IpcDaemon src, IpcDaemon dst, IpcCmd cmd, std::uint32_t seqNo, std::uint8_t flags)
     {
         IpcHeader header;
         header.version = IPC_PROTOCOL_VERSION;
@@ -62,11 +57,9 @@ class IpcMessage
 public:
     IpcMessage();
 
-    IpcMessage(const IpcHeader& header,
-               std::vector<std::uint8_t> payload = {});
+    IpcMessage(const IpcHeader& header, std::vector<std::uint8_t> payload = {});
 
-    IpcMessage(IpcHeader&& header,
-               std::vector<std::uint8_t> payload = {});
+    IpcMessage(IpcHeader&& header, std::vector<std::uint8_t> payload = {});
 
 public:
     std::uint8_t getVersion() const;
@@ -114,4 +107,4 @@ private:
     std::vector<std::uint8_t> m_payload;
 };
 
-} // namespace pz::ipc
+}

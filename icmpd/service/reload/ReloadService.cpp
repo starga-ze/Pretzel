@@ -6,8 +6,7 @@
 namespace pz::icmpd
 {
 
-void ReloadService::handleEvent(IcmpdServiceManager& /*serviceManager*/,
-                                const ReloadEvent& event)
+void ReloadService::handleEvent(IcmpdServiceManager&, const ReloadEvent& event)
 {
     if (event.type() != ReloadEventType::ReceiveConfigReload)
     {
@@ -18,4 +17,4 @@ void ReloadService::handleEvent(IcmpdServiceManager& /*serviceManager*/,
     pz::core::Core::scheduleReload();
 }
 
-} // namespace pz::icmpd
+}

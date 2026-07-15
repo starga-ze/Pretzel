@@ -1,12 +1,11 @@
-#include "ipc/IpcClientHandler.h"
 #include "router/TopologydTxRouter.h"
+#include "ipc/IpcClientHandler.h"
 #include "util/Logger.h"
 
 namespace pz::topologyd
 {
 
-TopologydTxRouter::TopologydTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler)
-    : m_ipcClientHandler(ipcClientHandler)
+TopologydTxRouter::TopologydTxRouter(pz::ipc::IpcClientHandler* ipcClientHandler) : m_ipcClientHandler(ipcClientHandler)
 {
 }
 
@@ -27,4 +26,4 @@ void TopologydTxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> ms
     m_ipcClientHandler->egress(std::move(msg));
 }
 
-} // namespace pz::topologyd
+}

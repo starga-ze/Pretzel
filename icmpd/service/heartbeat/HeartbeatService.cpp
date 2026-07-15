@@ -1,18 +1,17 @@
 #include "service/heartbeat/HeartbeatService.h"
 
-#include "service/IcmpdServiceManager.h"
 #include "router/IcmpdTxRouter.h"
+#include "service/IcmpdServiceManager.h"
 
-#include "ipc/IpcProtocol.h"
 #include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 
 #include "util/Logger.h"
 
 namespace pz::icmpd
 {
 
-void HeartbeatService::handleEvent(IcmpdServiceManager& serviceManager,
-                                   const HeartbeatEvent& event)
+void HeartbeatService::handleEvent(IcmpdServiceManager& serviceManager, const HeartbeatEvent& event)
 {
     switch (event.type())
     {
@@ -27,23 +26,19 @@ void HeartbeatService::handleEvent(IcmpdServiceManager& serviceManager,
 
         pz::ipc::IpcDaemon src = msg->getSrc();
 
-        auto action = std::make_unique<HeartbeatAction>(
-            HeartbeatActionType::SendHeartbeatResponse,
-            src);
+        auto action = std::make_unique<HeartbeatAction>(HeartbeatActionType::SendHeartbeatResponse, src);
 
         serviceManager.postAction(std::move(action));
         break;
     }
 
     default:
-        LOG_WARN("unhandled event (type={})",
-                 static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
 }
 
-void HeartbeatService::handleAction(IcmpdServiceManager& serviceManager,
-                                    const HeartbeatAction& action)
+void HeartbeatService::handleAction(IcmpdServiceManager& serviceManager, const HeartbeatAction& action)
 {
     switch (action.type())
     {
@@ -51,27 +46,21 @@ void HeartbeatService::handleAction(IcmpdServiceManager& serviceManager,
     {
         auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response);
 
-        pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(
-            pz::ipc::IpcDaemon::Icmpd,
-            action.dst(),
-            pz::ipc::IpcCmd::HeartbeatResponse,
-            0,
-            flag);
+        pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Icmpd, action.dst(),
+                                                              pz::ipc::IpcCmd::HeartbeatResponse, 0, flag);
 
         auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
 
-        LOG_TRACE("Tx HeartbeatResponse (dst={})",
-                  pz::ipc::IpcProtocol::daemonToStr(action.dst()));
+        LOG_TRACE("Tx HeartbeatResponse (dst={})", pz::ipc::IpcProtocol::daemonToStr(action.dst()));
 
         serviceManager.txRouter().handleIpcMessage(std::move(msg));
         break;
     }
 
     default:
-        LOG_WARN("unhandled action (type={})",
-                 static_cast<std::uint32_t>(action.type()));
+        LOG_WARN("unhandled action (type={})", static_cast<std::uint32_t>(action.type()));
         break;
     }
 }
 
-} // namespace pz::icmpd
+}

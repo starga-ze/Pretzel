@@ -6,8 +6,7 @@
 namespace pz::authd
 {
 
-AuthdRxRouter::AuthdRxRouter(AuthdEventFactory* eventFactory) :
-    m_eventFactory(eventFactory)
+AuthdRxRouter::AuthdRxRouter(AuthdEventFactory* eventFactory) : m_eventFactory(eventFactory)
 {
 }
 
@@ -25,8 +24,6 @@ void AuthdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    // ConfigReload is mapped to a ReloadEvent by the factory and handled in
-    // ReloadService — the router stays a pure pass-through.
     std::unique_ptr<AuthdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));
@@ -37,4 +34,4 @@ void AuthdRxRouter::setServiceManager(AuthdServiceManager* serviceManager)
     m_serviceManager = serviceManager;
 }
 
-} // namespace pz::authd
+}

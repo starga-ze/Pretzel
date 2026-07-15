@@ -6,9 +6,7 @@
 namespace pz::icmpd
 {
 
-ReloadEvent::ReloadEvent(ReloadEventType type)
-    : IcmpdEvent(IcmpdEventDomain::Reload),
-      m_type(type)
+ReloadEvent::ReloadEvent(ReloadEventType type) : IcmpdEvent(IcmpdEventDomain::Reload), m_type(type)
 {
 }
 
@@ -22,4 +20,4 @@ ReloadEventType ReloadEvent::type() const
     return m_type;
 }
 
-} // namespace pz::icmpd
+}

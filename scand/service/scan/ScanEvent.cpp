@@ -4,25 +4,17 @@
 namespace pz::scand
 {
 
-ScanEvent::ScanEvent(ScanEventType type)
-    : ScandEvent(ScandEventDomain::Scan),
-      m_type(type)
+ScanEvent::ScanEvent(ScanEventType type) : ScandEvent(ScandEventDomain::Scan), m_type(type)
 {
 }
 
-ScanEvent::ScanEvent(ScanEventType type,
-                     std::unique_ptr<pz::ipc::IpcMessage> message)
-    : ScandEvent(ScandEventDomain::Scan),
-      m_type(type),
-      m_message(std::move(message))
+ScanEvent::ScanEvent(ScanEventType type, std::unique_ptr<pz::ipc::IpcMessage> message)
+    : ScandEvent(ScandEventDomain::Scan), m_type(type), m_message(std::move(message))
 {
 }
 
-ScanEvent::ScanEvent(ScanEventType type,
-                     std::vector<SnmpDevice> devices)
-    : ScandEvent(ScandEventDomain::Scan),
-      m_type(type),
-      m_devices(std::move(devices))
+ScanEvent::ScanEvent(ScanEventType type, std::vector<SnmpDevice> devices)
+    : ScandEvent(ScandEventDomain::Scan), m_type(type), m_devices(std::move(devices))
 {
 }
 
@@ -46,4 +38,4 @@ const std::vector<SnmpDevice>& ScanEvent::devices() const
     return m_devices;
 }
 
-} // namespace pz::scand
+}

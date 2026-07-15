@@ -3,8 +3,8 @@
 #include "service/ServiceManager.h"
 
 #include "service/bootstrap/BootstrapService.h"
-#include "service/probe/ProbeService.h"
 #include "service/heartbeat/HeartbeatService.h"
+#include "service/probe/ProbeService.h"
 #include "service/reload/ReloadService.h"
 
 #include "router/IcmpdTxRouter.h"
@@ -17,9 +17,7 @@ namespace pz::icmpd
 class IcmpdServiceManager : public pz::service::ServiceManager<IcmpdEvent, IcmpdAction>
 {
 public:
-    IcmpdServiceManager(IcmpdEventFactory* eventFactory, 
-            IcmpdActionFactory* actionFactory, 
-            IcmpdTxRouter* txRouter);
+    IcmpdServiceManager(IcmpdEventFactory* eventFactory, IcmpdActionFactory* actionFactory, IcmpdTxRouter* txRouter);
     ~IcmpdServiceManager() override = default;
 
     void start() override;
@@ -38,7 +36,7 @@ public:
 
 private:
     IcmpdEventFactory* m_eventFactory;
-    IcmpdActionFactory* m_actionFactory;   
+    IcmpdActionFactory* m_actionFactory;
     IcmpdTxRouter* m_txRouter;
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
@@ -50,4 +48,4 @@ private:
     std::queue<std::unique_ptr<IcmpdAction>> m_actionQueue;
 };
 
-} // namespace pz::icmpd
+}

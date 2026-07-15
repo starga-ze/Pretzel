@@ -2,14 +2,14 @@
 
 #include "service/ServiceManager.h"
 
-#include "event/MgmtdEvent.h"
 #include "action/MgmtdAction.h"
+#include "event/MgmtdEvent.h"
 
 #include "service/auth/AuthService.h"
 #include "service/bootstrap/BootstrapService.h"
-#include "service/metrics/MetricService.h"
-#include "service/heartbeat/HeartbeatService.h"
 #include "service/device/DeviceService.h"
+#include "service/heartbeat/HeartbeatService.h"
+#include "service/metrics/MetricService.h"
 #include "service/web/WebService.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -33,9 +33,7 @@ class MgmtdActionFactory;
 class MgmtdServiceManager : public pz::service::ServiceManager<MgmtdEvent, MgmtdAction>
 {
 public:
-    MgmtdServiceManager(MgmtdEventFactory* eventFactory,
-                        MgmtdActionFactory* actionFactory,
-                        MgmtdTxRouter* txRouter);
+    MgmtdServiceManager(MgmtdEventFactory* eventFactory, MgmtdActionFactory* actionFactory, MgmtdTxRouter* txRouter);
     ~MgmtdServiceManager() override = default;
 
     void start() override;
@@ -53,19 +51,21 @@ public:
 
     MgmtdTxRouter& txRouter();
 
-    enum class ReloadStatus { Idle, Reloading, Complete };
+    enum class ReloadStatus
+    {
+        Idle,
+        Reloading,
+        Complete
+    };
     void startReload();
     void completeReload();
     ReloadStatus reloadStatus() const;
     std::int64_t reloadElapsedMs() const;
 
-    void        setCommitQueue(std::string snapshotJson);
+    void setCommitQueue(std::string snapshotJson);
     std::string commitQueueSnapshot() const;
 
-    // SSO (authd) verification results, keyed by the request ticket (IPC seqNo). The
-    // ACS handler sends the request; MgmtdRxRouter stores the AuthSamlAcsResponse here;
-    // the browser poll consumes it. Same single main-loop thread, so no locking.
-    void                       setSsoResult(std::uint32_t ticket, std::string resultJson);
+    void setSsoResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeSsoResult(std::uint32_t ticket);
 
 private:
@@ -83,12 +83,12 @@ private:
     std::queue<std::unique_ptr<MgmtdEvent>> m_eventQueue;
     std::queue<std::unique_ptr<MgmtdAction>> m_actionQueue;
 
-    std::atomic<int>           m_reloadStatus{static_cast<int>(ReloadStatus::Idle)};
+    std::atomic<int> m_reloadStatus{static_cast<int>(ReloadStatus::Idle)};
     std::chrono::steady_clock::time_point m_reloadStartedAt{};
 
-    std::string        m_commitQueueSnapshot{"[]"};
+    std::string m_commitQueueSnapshot{"[]"};
 
     std::unordered_map<std::uint32_t, std::string> m_ssoResults;
 };
 
-} // namespace pz::mgmtd
+}

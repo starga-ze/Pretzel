@@ -10,7 +10,7 @@ namespace pz::scand
 
 enum class ScanActionType : std::uint32_t
 {
-    Unknown        = 0,
+    Unknown = 0,
     SendScanResult = 1,
 };
 
@@ -26,7 +26,7 @@ public:
 
 private:
     ScanActionType m_type{ScanActionType::Unknown};
-    std::string    m_resultJson;
+    std::string m_resultJson;
 };
 
-} // namespace pz::scand
+}
