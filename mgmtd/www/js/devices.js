@@ -68,7 +68,7 @@
       <td class="col-type">${typeBadge(d)}</td>
       <td class="col-location">${muted(d.location)}</td>
       <td class="col-actions">
-        <a class="btn-sm details-btn" href="device-detail.html?ip=${encodeURIComponent(d.primary_ip)}">Details</a>
+        <a class="btn-sm details-btn" href="device-detail?ip=${encodeURIComponent(d.primary_ip)}">Details</a>
       </td>`;
 
     tr.addEventListener('mouseenter', e => showCard(d, e));

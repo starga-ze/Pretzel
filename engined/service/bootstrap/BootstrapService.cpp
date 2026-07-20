@@ -376,6 +376,12 @@ void BootstrapService::onSyncResponse(EnginedServiceManager& serviceManager, con
         return;
     }
 
+    // Symmetric with the "fleet not yet converged" path above: dump the now all-ready readiness
+    // so the log shows exactly which daemons converged at the moment RuntimeStart is sent, rather
+    // than leaving the last not-ready snapshot as the most recent dump.
+    LOG_DEBUG("fleet converged, sending RuntimeStart (target_version={})", m_targetVersion);
+    dumpProcessMap();
+
     auto action = m_actionFactory->create(EnginedActionDomain::Bootstrap,
                                           static_cast<std::uint32_t>(BootstrapActionType::SendRuntimeStart));
     serviceManager.postAction(std::move(action));

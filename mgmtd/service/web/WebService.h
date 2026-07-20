@@ -43,6 +43,7 @@ private:
     void handleReloadStatus(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleCommitQueue(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleDevices(MgmtdServiceManager& sm, const Request& req, Response& resp);
+    void handleInventoryStatus(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleLogs(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleNodeMetrics(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleLabExport(MgmtdServiceManager& sm, const Request& req, Response& resp);

@@ -7,6 +7,7 @@
 #include "router/MgmtdTxRouter.h"
 
 #include "config/Config.h"
+#include "db/Database.h"
 #include "ipc/IpcMessage.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -70,7 +71,6 @@ void WebService::handleEvent(MgmtdServiceManager& sm, const WebEvent& event)
 
 void WebService::handleAction(MgmtdServiceManager& sm, WebAction& action)
 {
-    LOG_DEBUG("WebService handleAction (domain={})", static_cast<std::uint32_t>(action.domain()));
     sm.txRouter().handleHttpMessage(std::move(action.response()), action.sessionId());
 }
 
@@ -162,6 +162,13 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
         if (!isAuthenticated(sm, req))
             return unauthorized(resp);
         return handleDevices(sm, req, resp);
+    }
+
+    if (target == "/api/inventory/status" && req.method == "GET")
+    {
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleInventoryStatus(sm, req, resp);
     }
 
     if (target.rfind("/api/logs", 0) == 0 && req.method == "GET")
@@ -647,6 +654,31 @@ void WebService::handleDevices(MgmtdServiceManager& sm, const Request& req, Resp
     fill(resp, 200, body.dump());
 }
 
+void WebService::handleInventoryStatus(MgmtdServiceManager& sm, const Request& req, Response& resp)
+{
+    (void)sm;
+    (void)req;
+
+    // engined's ProbeService keeps probe_devices as the set of currently-alive IPs (it deletes
+    // IPs that stop responding), so presence with status='alive' == ICMP-reachable right now.
+    json alive = json::array();
+    try
+    {
+        auto& db = pz::db::Database::instance();
+        for (const auto& row : db.queryRows("SELECT ip FROM probe_devices WHERE status = 'alive'"))
+        {
+            if (!row.empty() && !row[0].empty())
+                alive.push_back(row[0]);
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("inventory status query failed: {}", e.what());
+    }
+
+    fill(resp, 200, json{{"alive", std::move(alive)}}.dump());
+}
+
 namespace
 {
 std::string queryParam(const std::string& target, const std::string& key)
@@ -1128,7 +1160,7 @@ void WebService::handleSamlAcs(MgmtdServiceManager& sm, const Request& req, Resp
         "function go(){n++;if(n>40){location.href='/index.html?sso_error=timeout';return;}"
         "fetch('/api/auth/saml/result?ticket='+t).then(function(r){return r.json();})"
         ".then(function(d){"
-        "if(d.status==='ok'){location.href=d.redirect||'/dashboard.html';}"
+        "if(d.status==='ok'){location.href=d.redirect||'/home.html';}"
         "else if(d.status==='error'){location.href='/index.html?sso_error='+encodeURIComponent(d.error||'failed');}"
         "else{setTimeout(go,600);}"
         "}).catch(function(){setTimeout(go,900);});}"
@@ -1164,7 +1196,7 @@ void WebService::handleSamlResult(MgmtdServiceManager& sm, const Request& req, R
             if (sid.empty())
                 return jsonResp({{"status", "error"}, {"error", "session error"}});
 
-            fill(resp, 200, json({{"status", "ok"}, {"redirect", "/dashboard.html"}}).dump());
+            fill(resp, 200, json({{"status", "ok"}, {"redirect", "/home"}}).dump());
             resp.setCookie = "session=" + sid + "; HttpOnly; Path=/; SameSite=Strict";
             LOG_INFO("sso login ok (user={})", user);
             return;

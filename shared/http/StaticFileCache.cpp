@@ -165,7 +165,15 @@ bool StaticFileCache::safeTarget(const std::string& target)
 
 std::string StaticFileCache::normalize(const std::string& target)
 {
-    return target == "/" ? "/index.html" : target;
+    if (target == "/")
+        return "/index.html";
+
+    const auto slash = target.rfind('/');
+    const auto seg = target.substr(slash == std::string::npos ? 0 : slash + 1);
+    if (seg.find('.') == std::string::npos)
+        return target + ".html";
+
+    return target;
 }
 
 }

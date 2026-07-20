@@ -89,7 +89,7 @@
           pendingOldPassword = password;
           showChangeView();
         } else {
-          window.location.href = 'dashboard.html';
+          window.location.href = 'home';
         }
       } else if (res.status === 401) {
         showError('Invalid username or password.');
@@ -137,7 +137,7 @@
 
       if (res.ok) {
         pendingOldPassword = '';
-        window.location.href = 'dashboard.html';
+        window.location.href = 'home';
       } else if (res.status === 401) {
         showChangeError('Current password is incorrect. Please sign in again.');
       } else {

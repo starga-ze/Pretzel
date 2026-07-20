@@ -10,11 +10,16 @@
 namespace pz::http
 {
 
-HttpListener::HttpListener(boost::asio::io_context& ioContext, tcp::endpoint endpoint,
-                           std::shared_ptr<HttpHandler> handler, std::shared_ptr<boost::asio::ssl::context> sslContext,
-                           std::string serverName)
-    : m_ioContext(ioContext), m_endpoint(endpoint), m_acceptor(ioContext), m_handler(std::move(handler)),
-      m_sslContext(std::move(sslContext)), m_serverName(std::move(serverName))
+HttpListener::HttpListener(boost::asio::io_context& ioContext, 
+                            tcp::endpoint endpoint,
+                            std::shared_ptr<HttpHandler> handler, 
+                            std::shared_ptr<boost::asio::ssl::context> sslContext,
+                            std::string serverName) 
+    : m_ioContext(ioContext), 
+    m_endpoint(endpoint), 
+    m_acceptor(ioContext), 
+    m_handler(std::move(handler)),
+    m_sslContext(std::move(sslContext)), m_serverName(std::move(serverName))
 {
 }
 

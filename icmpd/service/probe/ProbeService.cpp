@@ -82,6 +82,27 @@ std::vector<std::string> probeExcludedIps()
     return result;
 }
 
+// Explicit per-object targets (Inventory ▸ Objects). Each entry is probed by ICMP directly,
+// independent of scan_cidr; disabled objects are skipped.
+std::vector<std::string> probeExplicitTargets()
+{
+    std::vector<std::string> result;
+    const auto& cfg = probeConfig();
+    const auto it = cfg.find("probe_targets");
+    if (it == cfg.end() || !it->is_array())
+        return result;
+
+    for (const auto& t : *it)
+    {
+        if (!t.is_object() || !t.value("enabled", true))
+            continue;
+        const std::string ip = t.value("ip", std::string());
+        if (!ip.empty())
+            result.push_back(ip);
+    }
+    return result;
+}
+
 }
 
 ProbeService::ProbeService(IcmpdEventFactory* eventFactory, IcmpdActionFactory* actionFactory)
@@ -258,16 +279,17 @@ void ProbeService::beginProbeSession()
     m_identifier = static_cast<std::uint16_t>(::getpid() & 0xffff);
 
     const auto cidrs = probeScanCidrs();
+    const auto explicitIps = probeExplicitTargets();
 
     m_targets.clear();
     m_targetIndexByIp.clear();
     m_nextSendIndex = 0;
 
-    if (cidrs.empty())
+    if (cidrs.empty() && explicitIps.empty())
     {
         m_lastAliveCount = 0;
         m_state = State::Idle;
-        LOG_INFO("no scan_cidr configured — skipping probe sweep (reporting 0 alive)");
+        LOG_INFO("no scan_cidr or probe_targets configured — skipping probe sweep (reporting 0 alive)");
         return;
     }
 
@@ -280,6 +302,16 @@ void ProbeService::beginProbeSession()
         {
             if (seen.emplace(t.ip, true).second)
                 m_targets.push_back(std::move(t));
+        }
+    }
+
+    for (const auto& ip : explicitIps)
+    {
+        if (seen.emplace(ip, true).second)
+        {
+            ProbeTarget t;
+            t.ip = ip;
+            m_targets.push_back(std::move(t));
         }
     }
 
@@ -316,8 +348,8 @@ void ProbeService::beginProbeSession()
         cidrList += cidrs[i];
     }
 
-    LOG_INFO("starting probe cycle (cidr={}, generated={}, targets={}, excluded_local={})", cidrList, generatedCount,
-             m_targets.size(), generatedCount - m_targets.size());
+    LOG_INFO("starting probe cycle (cidr={}, explicit={}, generated={}, targets={}, excluded_local={})", cidrList,
+             explicitIps.size(), generatedCount, m_targets.size(), generatedCount - m_targets.size());
 }
 
 void ProbeService::sendProbeBatch(IcmpdServiceManager& serviceManager)
