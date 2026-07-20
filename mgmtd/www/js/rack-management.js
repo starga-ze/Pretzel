@@ -21,14 +21,13 @@
 
   async function load() {
     try {
-      const [settings, devs] = await Promise.all([
+      const [settings, status] = await Promise.all([
         u.fetchJSON('/api/settings'),
-        u.fetchJSON('/api/devices'),
+        u.fetchJSON('/api/inventory/status'),
       ]);
-      if (!settings || !devs) return;
+      if (!settings) return;
       racks = (((settings.daemons || {}).engined || {}).rack || {}).racks || [];
-      liveIps = new Set();
-      (devs.devices || []).forEach(d => (d.ips || [d.primary_ip]).forEach(ip => liveIps.add(ip)));
+      liveIps = new Set((status && status.alive) || []);
     } catch (e) {
       document.getElementById('rackMgmt').innerHTML =
         `<div class="section-card"><div class="loading-row">Failed to load (${escHtml(e.message)})</div></div>`;

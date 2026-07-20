@@ -26,6 +26,10 @@ private:
     void sendProbeRequest(EnginedServiceManager& serviceManager);
     void onProbeResult(EnginedServiceManager& serviceManager, const ProbeEvent& event);
 
+    // Project the operator-declared objects (icmpd.probe.probe_targets) into the inventory
+    // table (config is the source of truth); called each probe cycle before status is applied.
+    void projectInventory();
+
     bool m_pending{false};
     std::chrono::steady_clock::time_point m_lastPollAt{};
     std::chrono::steady_clock::time_point m_requestedAt{};

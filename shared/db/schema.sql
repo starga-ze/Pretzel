@@ -42,13 +42,6 @@ BEGIN
     END IF;
 END $rc_state$;
 
--- Runtime monitoring DATA (e.g. aggregated heartbeat results), keyed by daemon.
-CREATE TABLE IF NOT EXISTS state_snapshot (
-    daemon      TEXT PRIMARY KEY,
-    snapshot    JSONB NOT NULL,
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 -- Local login accounts (operator credentials), stored hashed (SHA-256 of
 -- password+salt). A dedicated, NON-versioned store — kept out of running_config so
 -- password changes never create config-history versions, and out of cleartext on
@@ -64,84 +57,51 @@ CREATE TABLE IF NOT EXISTS local_users (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Unified per-IP device inventory for the probe pipeline (ICMP reachability -> SNMP
--- -> vendor API). One row per IP; each column is owned by the stage that writes it.
--- Replaces the former split icmp_devices / snmp_devices tables. Written exclusively by
--- engined (the single DB writer): ProbeService owns the ICMP columns + row lifecycle,
--- ScanService owns the SNMP/API columns. mgmtd reads it for /api/devices.
---   interfaces     : IP-bearing interfaces (ipAddrTable / vendor API) — {ip, netmask, if_index, if_name}
---   if_table       : IF-MIB ifTable/ifXTable rows (ports/NICs)
---   lldp_neighbors : LLDP neighbors (topology edges)
---   arp_entries    : ipNetToMedia IP↔MAC the device has learned
---   host_vendor    : OUI vendor for the ARP-learned MAC (ICMP-only hosts)
---   snmp_vendor    : resolved from sysObjectID enterprise number (by engined)
-CREATE TABLE IF NOT EXISTS probe_devices (
-    ip               TEXT PRIMARY KEY,
-    -- ICMP stage: reachability + ARP-learned MAC and its OUI vendor.
-    status           TEXT,
-    hostname         TEXT,
-    mac              TEXT,
-    host_vendor      TEXT,
-    -- SNMP / vendor-API stage: identity + topology.
-    sys_name         TEXT,
-    sys_descr        TEXT,
-    sys_object_id    TEXT,
-    sys_contact      TEXT,
-    sys_location     TEXT,
-    sys_uptime_ticks BIGINT,
-    interface_macs   JSONB,
-    interfaces       JSONB,
-    if_table         JSONB,
-    lldp_neighbors   JSONB,
-    arp_entries      JSONB,
-    snmp_vendor      TEXT,
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+-- Legacy tables removed: probe_devices (mixed ICMP status + discovered SNMP/interface/
+-- LLDP data) and state_snapshot (heartbeat snapshot written but never read).
+DROP TABLE IF EXISTS probe_devices;
+DROP TABLE IF EXISTS state_snapshot;
+
+-- Managed inventory: the operator-declared objects. Source of truth is running-config;
+-- engined (the single DB writer) projects the configured objects here on reload and updates
+-- `status` from probe results. Holds only config attributes + live status. It is a pure
+-- projection (rebuilt from config), so the DDL drops+recreates it to evolve the shape.
+--   id       : object UUID (immutable)
+--   platform : direct (IP-based, mgmt IP/FQDN) | tenant (cloud platform, tenant-scoped)
+--   target   : endpoint identifier — direct: mgmt IP/FQDN · tenant: tenant/TSG id
+DROP TABLE IF EXISTS inventory;
+CREATE TABLE IF NOT EXISTS inventory (
+    id          TEXT PRIMARY KEY,
+    type        TEXT NOT NULL,
+    platform    TEXT NOT NULL DEFAULT 'direct',
+    target      TEXT,
+    name        TEXT,
+    description TEXT,
+    enabled     BOOLEAN NOT NULL DEFAULT true,
+    status      TEXT,
+    last_seen   TIMESTAMPTZ,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- One-time migration from the legacy split tables. Runs only while they still exist;
--- folds each into probe_devices (column ownership preserved), then drops them, so
--- later boots skip it entirely. This DDL is run only by engined (Config::preflight,
--- the single-writer path); the advisory lock is a cheap defensive guard. Legacy
--- `devices` (pre-rename) is handled too.
+-- One object per connection identity, per platform (dup-prevention).
+CREATE UNIQUE INDEX IF NOT EXISTS inventory_target_uniq ON inventory (platform, target)
+    WHERE target IS NOT NULL AND target <> '';
+
+-- One-time config-json normalizations (idempotent; run by engined via Config::preflight).
 DO $migrate$
 BEGIN
-    PERFORM pg_advisory_xact_lock(906151321);
-    IF to_regclass('public.devices') IS NOT NULL THEN
-        ALTER TABLE devices RENAME TO icmp_devices;
-    END IF;
-    IF to_regclass('public.icmp_devices') IS NOT NULL THEN
-        INSERT INTO probe_devices (ip, status, hostname, mac, host_vendor)
-            SELECT ip, status, hostname, mac, vendor FROM icmp_devices
-            ON CONFLICT (ip) DO UPDATE SET
-                status = EXCLUDED.status, hostname = EXCLUDED.hostname,
-                mac = EXCLUDED.mac, host_vendor = EXCLUDED.host_vendor;
-        DROP TABLE icmp_devices;
-    END IF;
-    IF to_regclass('public.snmp_devices') IS NOT NULL THEN
-        INSERT INTO probe_devices (ip, sys_name, sys_descr, sys_object_id, sys_contact,
-                                   sys_location, sys_uptime_ticks, interface_macs,
-                                   interfaces, if_table, lldp_neighbors, arp_entries,
-                                   snmp_vendor)
-            SELECT ip, sys_name, sys_descr, sys_object_id, sys_contact, sys_location,
-                   sys_uptime_ticks, interface_macs, interfaces, if_table,
-                   lldp_neighbors, arp_entries, vendor FROM snmp_devices
-            ON CONFLICT (ip) DO UPDATE SET
-                sys_name = EXCLUDED.sys_name, sys_descr = EXCLUDED.sys_descr,
-                sys_object_id = EXCLUDED.sys_object_id, sys_contact = EXCLUDED.sys_contact,
-                sys_location = EXCLUDED.sys_location,
-                sys_uptime_ticks = EXCLUDED.sys_uptime_ticks,
-                interface_macs = EXCLUDED.interface_macs, interfaces = EXCLUDED.interfaces,
-                if_table = EXCLUDED.if_table, lldp_neighbors = EXCLUDED.lldp_neighbors,
-                arp_entries = EXCLUDED.arp_entries, snmp_vendor = EXCLUDED.snmp_vendor;
-        DROP TABLE snmp_devices;
-    END IF;
     -- Daemon rename (snmpd -> scand): move the top-level config section so the renamed
-    -- daemon finds its settings (incl. v3 / vendor-API credentials) across every
-    -- running_config version and the startup_config baseline. Idempotent — once moved,
-    -- the `? 'snmpd'` guard is false. daemon_map's stale nested key is unused by code.
+    -- daemon finds its settings across every running_config version and the startup_config
+    -- baseline. Idempotent — once moved, the `? 'snmpd'` guard is false.
     UPDATE running_config SET config_json =
         (config_json - 'snmpd') || jsonb_build_object('scand', config_json->'snmpd')
         WHERE config_json ? 'snmpd';
     UPDATE startup_config SET config_json =
         (config_json - 'snmpd') || jsonb_build_object('scand', config_json->'snmpd')
         WHERE config_json ? 'snmpd';
+    -- Drop the dead ipcd.service.daemon_map: routing uses the compiled IpcDaemon enum,
+    -- never this config key. Strip the stale nested key from every persisted version.
+    UPDATE running_config SET config_json = config_json #- '{ipcd,service,daemon_map}'
+        WHERE config_json #> '{ipcd,service}' ? 'daemon_map';
+    UPDATE startup_config SET config_json = config_json #- '{ipcd,service,daemon_map}'
+        WHERE config_json #> '{ipcd,service}' ? 'daemon_map';
 END $migrate$;

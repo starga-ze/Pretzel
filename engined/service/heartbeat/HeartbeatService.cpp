@@ -159,12 +159,6 @@ void HeartbeatService::handleAction(EnginedServiceManager& serviceManager, const
     {
         const auto& jsonStr = action.resultJson();
 
-        auto parsed = nlohmann::json::parse(jsonStr, nullptr, false);
-        if (!parsed.is_discarded())
-        {
-            pz::config::Config::saveStateSnapshot("heartbeat", parsed);
-        }
-
         const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
         pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Engined, pz::ipc::IpcDaemon::Mgmtd,

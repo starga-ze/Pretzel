@@ -34,6 +34,22 @@ add_compile_options(
     -fdiagnostics-color=always
 )
 
+# Keep symbols that come from static archives — notably our bundled OpenSSL — out of each
+# executable's dynamic symbol table.
+#
+# We link OpenSSL 3.2.0 statically, while the apt libpq is a shared library bound to the
+# system OpenSSL (3.0.x). Both end up in the same process. Exported, our static symbols would
+# interpose on libpq's copy, because the executable leads the global symbol lookup scope: at
+# connect time libssl.so.3 would resolve its internal crypto calls into our 3.2.0 instead of
+# its own 3.0.x and segfault inside OPENSSL_init_ssl().
+#
+# This only bites a daemon that links PART of OpenSSL — libcrypto.a without libssl.a — since
+# one linking all of it stays self-consistent by accident. Today no daemon does, so nothing is
+# visibly broken; the flag is here so that the next one to call an EVP_*/RAND_* function does
+# not resurrect the crash. Marking the archive symbols local keeps our calls on our static copy
+# and leaves libpq with the system one.
+add_link_options(-Wl,--exclude-libs,ALL)
+
 add_subdirectory(shared)
 
 add_subdirectory(ipcd)

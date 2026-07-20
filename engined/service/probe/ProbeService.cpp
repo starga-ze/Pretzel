@@ -130,58 +130,66 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager, const Pr
 
     LOG_INFO("probe complete (alive={}, received_ips={})", aliveCount, ips.size());
 
+    // Keep inventory in sync with config, then reflect ICMP reachability into status.
+    projectInventory();
+
     auto& db = pz::db::Database::instance();
-    std::unordered_map<std::string, std::string> ipToMac;
-    for (const auto& row : db.queryRows("SELECT arp_entries FROM probe_devices "
-                                        "WHERE arp_entries IS NOT NULL"))
-    {
-        if (row.empty())
-            continue;
-        auto arr = nlohmann::json::parse(row[0], nullptr, false);
-        if (!arr.is_array())
-            continue;
-        for (const auto& e : arr)
-        {
-            const std::string ip = e.value("ip", "");
-            const std::string mac = e.value("mac", "");
-            if (!ip.empty() && !mac.empty())
-                ipToMac.emplace(ip, mac);
-        }
-    }
+    const std::string alive = nlohmann::json(ips).dump();   // JSON array of alive IPs
 
-    auto& vendorResolver = serviceManager.vendorResolver();
-    for (const auto& ip : ips)
-    {
-        std::string mac;
-        std::string vendor;
-        const auto it = ipToMac.find(ip);
-        if (it != ipToMac.end())
-        {
-            mac = it->second;
-            vendor = vendorResolver.vendorForMac(mac);
-        }
-
-        db.exec("INSERT INTO probe_devices (ip, status, mac, host_vendor) "
-                "VALUES ($1, 'alive', $2, $3) "
-                "ON CONFLICT (ip) DO UPDATE SET status = 'alive', "
-                "  mac = EXCLUDED.mac, host_vendor = EXCLUDED.host_vendor, updated_at = now()",
-                {ip, mac, vendor});
-    }
-
-    if (!ips.empty())
-    {
-        std::string arr = "{";
-        for (size_t i = 0; i < ips.size(); ++i)
-        {
-            if (i)
-                arr += ',';
-            arr += ips[i];
-        }
-        arr += "}";
-        db.exec("DELETE FROM probe_devices WHERE ip <> ALL($1::text[])", {arr});
-    }
+    // Enabled direct (IP-based) objects that did not answer → down; answered → active.
+    db.exec("UPDATE inventory SET status='down' "
+            "WHERE platform='direct' AND enabled=true "
+            "AND target <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+            {alive});
+    db.exec("UPDATE inventory SET status='active', last_seen=now() "
+            "WHERE platform='direct' "
+            "AND target = ANY(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+            {alive});
 
     serviceManager.setAliveIps(std::move(ips));
+}
+
+void ProbeService::projectInventory()
+{
+    const auto& probe = pz::config::Config::serviceSection("icmpd", "probe");
+    const auto targets = probe.value("probe_targets", nlohmann::json::array());
+
+    auto& db = pz::db::Database::instance();
+    nlohmann::json ids = nlohmann::json::array();
+
+    for (const auto& t : targets)
+    {
+        if (!t.is_object())
+            continue;
+
+        const std::string target = t.value("target", std::string());
+        // Object UUID; fall back to target for pre-UUID configs so projection still works.
+        std::string id = t.value("id", std::string());
+        if (id.empty())
+            id = target;
+        if (id.empty())
+            continue;
+
+        // `platform` is the current key; tolerate the legacy `access` key. Default direct.
+        std::string platform = t.value("platform", t.value("access", std::string("direct")));
+        if (platform != "tenant")
+            platform = "direct";
+
+        db.exec("INSERT INTO inventory (id, type, platform, target, name, description, enabled) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7) "
+                "ON CONFLICT (id) DO UPDATE SET type=EXCLUDED.type, platform=EXCLUDED.platform, "
+                "target=EXCLUDED.target, name=EXCLUDED.name, description=EXCLUDED.description, "
+                "enabled=EXCLUDED.enabled, updated_at=now()",
+                {id, t.value("type", std::string("firewall")), platform, target,
+                 t.value("name", std::string()), t.value("description", std::string()),
+                 t.value("enabled", true) ? "true" : "false"});
+
+        ids.push_back(id);
+    }
+
+    // Prune rows whose object is no longer in config (empty ids → clears the table).
+    db.exec("DELETE FROM inventory WHERE id <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+            {ids.dump()});
 }
 
 }

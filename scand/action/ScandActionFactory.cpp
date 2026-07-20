@@ -1,7 +1,6 @@
 #include "action/ScandActionFactory.h"
 
 #include "service/bootstrap/BootstrapAction.h"
-#include "service/scan/ScanAction.h"
 
 #include "util/Logger.h"
 
@@ -14,9 +13,6 @@ std::unique_ptr<ScandAction> ScandActionFactory::create(ScandActionDomain domain
     {
     case ScandActionDomain::Bootstrap:
         return std::make_unique<BootstrapAction>(static_cast<BootstrapActionType>(type));
-
-    case ScandActionDomain::Scan:
-        return std::make_unique<ScanAction>(static_cast<ScanActionType>(type), "");
 
     default:
         LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));

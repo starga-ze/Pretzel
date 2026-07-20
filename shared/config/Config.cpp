@@ -404,38 +404,6 @@ bool Config::commitConfig(const nlohmann::json& fullRoot)
     return true;
 }
 
-bool Config::saveStateSnapshot(const std::string& daemonName, const nlohmann::json& json)
-{
-    if (!bootstrapDatabase())
-    {
-        std::cerr << "saveStateSnapshot: database unavailable for daemon '" << daemonName << "'" << std::endl;
-        return false;
-    }
-
-    return pz::db::Database::instance().exec(
-        "INSERT INTO state_snapshot (daemon, snapshot) VALUES ($1, $2::jsonb) "
-        "ON CONFLICT (daemon) DO UPDATE SET snapshot = EXCLUDED.snapshot, updated_at = now()",
-        {daemonName, json.dump()});
-}
-
-bool Config::loadStateSnapshot(const std::string& daemonName, nlohmann::json& outJson)
-{
-    if (!bootstrapDatabase())
-        return false;
-
-    const auto snapshot =
-        pz::db::Database::instance().queryScalar("SELECT snapshot FROM state_snapshot WHERE daemon = $1", {daemonName});
-    if (!snapshot)
-        return false;
-
-    auto parsed = nlohmann::json::parse(*snapshot, nullptr, false);
-    if (parsed.is_discarded())
-        return false;
-
-    outJson = std::move(parsed);
-    return true;
-}
-
 void Config::invalidateConfigCache()
 {
     runningConfigLoaded() = false;

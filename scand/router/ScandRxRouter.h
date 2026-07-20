@@ -10,9 +10,6 @@
 namespace pz::scand
 {
 
-class SnmpPacket;
-class ApiPacket;
-
 class ScandRxRouter : public pz::router::RxRouter
 {
 public:
@@ -20,10 +17,6 @@ public:
     ~ScandRxRouter() override = default;
 
     void handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
-
-    void handleSnmpPacket(std::unique_ptr<SnmpPacket> packet);
-
-    void handleApiPacket(std::unique_ptr<ApiPacket> packet);
 
     void setServiceManager(ScandServiceManager* serviceManager);
 

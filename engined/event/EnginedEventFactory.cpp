@@ -5,7 +5,6 @@
 #include "service/commit/CommitEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/probe/ProbeEvent.h"
-#include "service/scan/ScanEvent.h"
 
 #include "util/Logger.h"
 
@@ -29,9 +28,6 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(EnginedEventDomain dom
 
     case EnginedEventDomain::Commit:
         return std::make_unique<CommitEvent>(static_cast<CommitEventType>(type));
-
-    case EnginedEventDomain::Scan:
-        return std::make_unique<ScanEvent>(static_cast<ScanEventType>(type));
 
     case EnginedEventDomain::Probe:
         return std::make_unique<ProbeEvent>(static_cast<ProbeEventType>(type));
@@ -69,9 +65,6 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
 
     case pz::ipc::IpcCmd::SettingsCommitRequest:
         return std::make_unique<CommitEvent>(CommitEventType::ReceiveSettingsCommit, std::move(msg));
-
-    case pz::ipc::IpcCmd::ScanResult:
-        return std::make_unique<ScanEvent>(ScanEventType::ReceiveScanResult, std::move(msg));
 
     case pz::ipc::IpcCmd::ProbeResult:
         return std::make_unique<ProbeEvent>(ProbeEventType::ReceiveProbeResult, std::move(msg));

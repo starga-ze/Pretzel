@@ -50,22 +50,6 @@ std::chrono::milliseconds replyMaxWaitTimeout()
     return std::chrono::seconds(probeConfig().value("reply_max_wait_timeout_sec", 15));
 }
 
-std::vector<std::string> probeScanCidrs()
-{
-    const std::string raw = probeConfig().value("scan_cidr", std::string());
-    std::vector<std::string> result;
-    std::stringstream ss(raw);
-    std::string token;
-    while (std::getline(ss, token, ','))
-    {
-        const auto b = token.find_first_not_of(" \t");
-        const auto e = token.find_last_not_of(" \t");
-        if (b != std::string::npos)
-            result.push_back(token.substr(b, e - b + 1));
-    }
-    return result;
-}
-
 std::vector<std::string> probeExcludedIps()
 {
     const std::string raw = probeConfig().value("excluded_ips", std::string(""));
@@ -82,8 +66,8 @@ std::vector<std::string> probeExcludedIps()
     return result;
 }
 
-// Explicit per-object targets (Inventory ▸ Objects). Each entry is probed by ICMP directly,
-// independent of scan_cidr; disabled objects are skipped.
+// Explicit per-object targets (Inventory). Only `direct` (IP-based) objects are ICMP-probed —
+// `tenant` objects have no IP and are health-checked elsewhere. Disabled objects are skipped.
 std::vector<std::string> probeExplicitTargets()
 {
     std::vector<std::string> result;
@@ -96,9 +80,13 @@ std::vector<std::string> probeExplicitTargets()
     {
         if (!t.is_object() || !t.value("enabled", true))
             continue;
-        const std::string ip = t.value("ip", std::string());
-        if (!ip.empty())
-            result.push_back(ip);
+        // `platform` is the current key; tolerate the legacy `access`. Skip tenant objects.
+        const std::string platform = t.value("platform", t.value("access", std::string("direct")));
+        if (platform == "tenant")
+            continue;
+        const std::string target = t.value("target", std::string());
+        if (!target.empty())
+            result.push_back(target);
     }
     return result;
 }
@@ -278,35 +266,26 @@ void ProbeService::beginProbeSession()
 {
     m_identifier = static_cast<std::uint16_t>(::getpid() & 0xffff);
 
-    const auto cidrs = probeScanCidrs();
     const auto explicitIps = probeExplicitTargets();
 
     m_targets.clear();
     m_targetIndexByIp.clear();
     m_nextSendIndex = 0;
 
-    if (cidrs.empty() && explicitIps.empty())
+    if (explicitIps.empty())
     {
         m_lastAliveCount = 0;
         m_state = State::Idle;
-        LOG_INFO("no scan_cidr or probe_targets configured — skipping probe sweep (reporting 0 alive)");
+        LOG_INFO("no probe_targets configured — skipping probe sweep (reporting 0 alive)");
         return;
     }
 
+    // Explicit per-object targets only (scan_cidr sweep removed). Skip excluded/local IPs.
     std::unordered_map<std::string, bool> seen;
-
-    for (const auto& cidr : cidrs)
-    {
-        auto cidrTargets = buildIpv4Targets(cidr);
-        for (auto& t : cidrTargets)
-        {
-            if (seen.emplace(t.ip, true).second)
-                m_targets.push_back(std::move(t));
-        }
-    }
-
     for (const auto& ip : explicitIps)
     {
+        if (m_localIps.find(ip) != m_localIps.end())
+            continue;
         if (seen.emplace(ip, true).second)
         {
             ProbeTarget t;
@@ -314,15 +293,6 @@ void ProbeService::beginProbeSession()
             m_targets.push_back(std::move(t));
         }
     }
-
-    m_targetIndexByIp.clear();
-
-    const std::size_t generatedCount = m_targets.size();
-
-    m_targets.erase(std::remove_if(m_targets.begin(), m_targets.end(),
-                                   [this](const ProbeTarget& target)
-                                   { return m_localIps.find(target.ip) != m_localIps.end(); }),
-                    m_targets.end());
 
     for (std::size_t i = 0; i < m_targets.size(); ++i)
     {
@@ -340,16 +310,7 @@ void ProbeService::beginProbeSession()
     m_lastReplyAt = {};
     m_state = State::Sending;
 
-    std::string cidrList;
-    for (std::size_t i = 0; i < cidrs.size(); ++i)
-    {
-        if (i)
-            cidrList += ',';
-        cidrList += cidrs[i];
-    }
-
-    LOG_INFO("starting probe cycle (cidr={}, explicit={}, generated={}, targets={}, excluded_local={})", cidrList,
-             explicitIps.size(), generatedCount, m_targets.size(), generatedCount - m_targets.size());
+    LOG_INFO("starting probe cycle (targets={})", m_targets.size());
 }
 
 void ProbeService::sendProbeBatch(IcmpdServiceManager& serviceManager)
@@ -509,40 +470,6 @@ std::unique_ptr<IcmpPacket> ProbeService::buildEchoRequestPacket(std::uint16_t s
     return packet;
 }
 
-std::vector<ProbeService::ProbeTarget> ProbeService::buildIpv4Targets(const std::string& cidr)
-{
-    const auto slashPos = cidr.find('/');
-    if (slashPos == std::string::npos)
-        throw std::invalid_argument("invalid cidr: " + cidr);
-
-    const std::string baseIp = cidr.substr(0, slashPos);
-    const int prefix = std::stoi(cidr.substr(slashPos + 1));
-
-    if (prefix < 0 || prefix > 32)
-        throw std::invalid_argument("invalid cidr prefix: " + cidr);
-
-    const std::uint32_t base = ipv4ToHostU32(baseIp);
-
-    const std::uint32_t mask = prefix == 0 ? 0u : (0xffffffffu << (32 - prefix));
-
-    const std::uint32_t network = base & mask;
-    const std::uint32_t broadcast = network | ~mask;
-
-    std::vector<ProbeTarget> targets;
-
-    if (broadcast <= network + 1)
-        return targets;
-
-    for (std::uint32_t ip = network + 1; ip < broadcast; ++ip)
-    {
-        ProbeTarget target;
-        target.ip = hostU32ToIpv4(ip);
-        targets.push_back(std::move(target));
-    }
-
-    return targets;
-}
-
 void ProbeService::sendProbeResult(IcmpdServiceManager& serviceManager)
 {
     nlohmann::json payload;
@@ -576,18 +503,6 @@ std::uint32_t ProbeService::ipv4ToHostU32(const std::string& ip)
         throw std::invalid_argument("invalid ipv4: " + ip);
 
     return ntohl(addr.s_addr);
-}
-
-std::string ProbeService::hostU32ToIpv4(std::uint32_t value)
-{
-    in_addr addr{};
-    addr.s_addr = htonl(value);
-
-    char buf[INET_ADDRSTRLEN]{};
-    if (!::inet_ntop(AF_INET, &addr, buf, sizeof(buf)))
-        throw std::runtime_error("inet_ntop failed");
-
-    return std::string(buf);
 }
 
 }

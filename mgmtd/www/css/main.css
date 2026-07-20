@@ -3590,16 +3590,6 @@ a.details-btn { display: inline-block; text-decoration: none; }
 }
 .field-row input:focus, .field-row select:focus { outline: none; border-color: var(--accent); }
 
-/* method block: checkbox header reveals detail when checked */
-.method-block { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px; }
-.method-block.on { border-color: rgba(249,115,22,.45); box-shadow: 0 0 0 1px rgba(249,115,22,.12); }
-.method-head { display: flex; align-items: center; gap: 11px; padding: 12px 14px; cursor: pointer; user-select: none; }
-.method-head input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; }
-.method-name { font-weight: 600; font-size: 13.5px; }
-.method-sub { font-size: 11.5px; color: var(--text-muted); margin-left: auto; }
-.method-detail { display: none; padding: 2px 16px 14px 42px; }
-.method-block.on .method-detail { display: block; }
-
 /* ── Network config: compact probe-target table (no cards) ── */
 .cfg-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px;
@@ -3613,24 +3603,40 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .cfg-table-inv th { font-size: 9.5px; padding: 8px 12px; }
 .cfg-table-inv td { font-size: 11px; padding: 7px 12px; }
 .cfg-table-inv td { vertical-align: middle; }
-.cfg-table-inv .col-st     { width: 13%; }
-.cfg-table-inv .col-type   { width: 10%; }
-.cfg-table-inv .col-addr   { width: 16%; font-family: var(--font-mono); font-weight: 600; }
-.cfg-table-inv .col-desc   { width: 22%; color: var(--text); }
-.cfg-table-inv .col-method { width: 13%; white-space: nowrap; }
-.cfg-table-inv .col-en     { width: 8%;  text-align: center; }
-.cfg-table-inv .col-act    { width: 14%; text-align: right; white-space: nowrap; }
-/* disabled rows read muted, but status/toggle/actions stay fully legible + operable */
+.cfg-table-inv .col-name     { width: 20%; }
+.cfg-table-inv .col-uuid     { width: 24%; }
+.cfg-table-inv .col-type     { width: 10%; }
+.cfg-table-inv .col-access   { width: 12%; white-space: nowrap; }
+.cfg-table-inv .col-endpoint { width: 18%; font-family: var(--font-mono); font-weight: 600; }
+.cfg-table-inv .col-en       { width: 6%;  text-align: center; }
+.cfg-table-inv .col-act      { width: 10%; text-align: right; white-space: nowrap; }
+.name-line { display: flex; align-items: center; gap: 8px; }
+.cell-name { color: var(--text); }
+.cell-sub { font-size: 10px; color: var(--text-muted); margin-top: 2px; margin-left: 17px; }
+/* full 36-char uuid — mono, nowrap, sized so the column never wraps it */
+.uuid-chip { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-muted); white-space: nowrap;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px;
+  letter-spacing: -.01em; user-select: all; }
+/* disabled rows read muted, but the status dot / toggle / actions stay legible + operable */
+.cfg-table-inv tr.row-off td.col-uuid,
 .cfg-table-inv tr.row-off td.col-type,
-.cfg-table-inv tr.row-off td.col-addr,
-.cfg-table-inv tr.row-off td.col-desc,
-.cfg-table-inv tr.row-off td.col-method { opacity: .5; }
+.cfg-table-inv tr.row-off td.col-access,
+.cfg-table-inv tr.row-off td.col-endpoint,
+.cfg-table-inv tr.row-off .cell-name { opacity: .5; }
 .cfg-table-inv .muted { color: var(--text-muted); opacity: .6; }
 
 /* type badge: on-prem (neutral) vs cloud (blue) */
-.type-badge { display: inline-block; font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px; letter-spacing: .02em; }
-.type-badge.onprem { background: rgba(107,114,128,.14); color: #4b5563; }
-.type-badge.cloud  { background: rgba(37,99,235,.12);  color: var(--blue); }
+/* type badge (function): neutral chip */
+.type-badge { display: inline-block; font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+  letter-spacing: .02em; background: rgba(107,114,128,.14); color: #4b5563; }
+/* access-type badge: direct/IP-based (hollow) vs tenant/cloud-based (blue) */
+.access-badge { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 20px; letter-spacing: .03em; }
+.access-badge.direct { background: transparent; color: var(--text-muted); border: 1px solid var(--border); padding: 0 6px; }
+.access-badge.tenant { background: rgba(37,99,235,.12); color: var(--blue); }
+/* endpoint-identifier kind tag (IP / TSG) before the value */
+.id-tag { display: inline-block; font-family: var(--font-ui); font-size: 8.5px; font-weight: 700; letter-spacing: .04em;
+  color: var(--text-muted); background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 0 4px; margin-right: 6px; vertical-align: middle; }
 
 /* status: dot + label, so state reads without the legend */
 .st-badge { display: inline-flex; align-items: center; gap: 7px; }
@@ -3640,7 +3646,6 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .st-dot.down    { background: var(--red);   box-shadow: 0 0 0 3px rgba(220,38,38,.12); }
 .st-dot.pending { background: #eab308; box-shadow: 0 0 0 3px rgba(234,179,8,.16); animation: st-pulse 1.1s ease-in-out infinite; }
 .st-dot.off     { background: #94a3b8; box-shadow: 0 0 0 3px rgba(148,163,184,.16); }   /* visible slate, not white */
-.st-dot.cloud   { background: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.14); } /* cloud: API-monitored */
 @keyframes st-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 .st-legend { display: flex; gap: 16px; margin-top: 12px; font-size: 10.5px; color: var(--text-muted); }
 .st-legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -3650,14 +3655,6 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .cfg-table-inv td.col-act .icon-btn { width: 26px; height: 26px; margin-left: 6px; }
 .cfg-table-inv td.col-act .icon-btn svg { width: 13px; height: 13px; }
 .editor-note { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--border); }
-
-/* method pills — filled when on, hollow when off */
-.m-pill {
-  display: inline-block; padding: 1px 6px; border-radius: 20px;
-  font-size: 9px; font-weight: 700; letter-spacing: .03em; margin-right: 4px; vertical-align: middle;
-}
-.m-pill.on  { background: rgba(22,163,74,.14); color: var(--green); }
-.m-pill.off { background: transparent; color: var(--text-muted); opacity: .45; border: 1px solid var(--border); padding: 0 5px; }
 
 /* enable/disable toggle switch */
 .tgl { position: relative; display: inline-block; width: 32px; height: 17px; cursor: pointer; }

@@ -278,6 +278,31 @@ def install_libsnmp_dev():
     run_cmd(["sudo", "apt", "install", "-y", "libsnmp-dev"])
 
 
+def is_xmlsec_dev_installed():
+    """Checks whether the xmlsec1 dev package (its pkg-config file) is present."""
+    return bool(glob.glob("/usr/lib/*/pkgconfig/xmlsec1-openssl.pc") or
+                glob.glob("/usr/lib/pkgconfig/xmlsec1-openssl.pc"))
+
+
+def install_xmlsec_dev():
+    """
+    Installs the SAML XML-DSig build dependencies for pz-authd: libxmlsec1-dev (XML signature
+    verification), zlib1g-dev (HTTP-Redirect AuthnRequest DEFLATE) and pkg-config, which
+    authd/CMakeLists.txt needs to locate xmlsec via pkg_check_modules().
+
+    Same build-time-only pattern as install_libpq_dev(): distro dev packages rather than a
+    from-source 3rd_party build. pkg-config is NOT part of build-essential, so it has to be
+    named explicitly or a bare machine fails at authd's find_package(PkgConfig REQUIRED).
+    """
+    if is_xmlsec_dev_installed() and shutil.which("pkg-config") is not None:
+        print("[*] xmlsec/zlib dev packages already present, skipping...")
+        return
+
+    print("[*] Installing libxmlsec1-dev, zlib1g-dev, pkg-config (SAML build deps)...")
+    run_cmd(["sudo", "apt", "update"])
+    run_cmd(["sudo", "apt", "install", "-y", "libxmlsec1-dev", "zlib1g-dev", "pkg-config"])
+
+
 def install_postgresql():
     """
     Installs PostgreSQL server + client dev library (libpq-dev for the C++ layer)
@@ -400,6 +425,7 @@ def install_build_deps():
     install_system_packages()
     install_libpq_dev()
     install_libsnmp_dev()
+    install_xmlsec_dev()
     install_openssl()
     install_spdlog()
     install_boost()

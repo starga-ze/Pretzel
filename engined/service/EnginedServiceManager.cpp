@@ -12,8 +12,8 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, 
     : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_scanService(std::make_unique<ScanService>()), m_probeService(std::make_unique<ProbeService>()),
-      m_adminService(std::make_unique<AdminService>()), m_vendorResolver(std::make_unique<VendorResolver>())
+      m_probeService(std::make_unique<ProbeService>()), m_adminService(std::make_unique<AdminService>()),
+      m_vendorResolver(std::make_unique<VendorResolver>())
 {
 }
 
@@ -23,7 +23,6 @@ void EnginedServiceManager::start()
     m_bootstrapService->start();
     m_heartbeatService->start();
     m_probeService->start();
-    m_scanService->start();
 }
 
 void EnginedServiceManager::schedule()
@@ -39,7 +38,6 @@ void EnginedServiceManager::schedule()
 
     postEvent(m_heartbeatService->schedule(now));
     postEvent(m_probeService->schedule(now));
-    postEvent(m_scanService->schedule(now));
 }
 
 void EnginedServiceManager::postEvent(std::unique_ptr<EnginedEvent> event)
@@ -94,11 +92,6 @@ CommitService& EnginedServiceManager::commitService()
 HeartbeatService& EnginedServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
-}
-
-ScanService& EnginedServiceManager::scanService()
-{
-    return *m_scanService;
 }
 
 ProbeService& EnginedServiceManager::probeService()

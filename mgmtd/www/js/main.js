@@ -19,11 +19,6 @@
       icon: `<polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21 1 6"/>
              <line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/>`,
     },
-    {
-      type: 'link', id: 'devices', label: 'Devices', href: 'devices',
-      icon: `<rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
-             <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>`,
-    },
 
     { type: 'section', label: 'Control' },
     {
@@ -87,7 +82,6 @@
   const PAGES = {
     'home':            { title: 'Home' },
     'rack-management': { title: 'Floor Map' },
-    'devices':         { title: 'Devices' },
     'log-viewer':      { title: 'Logs' },
     'events':          { title: 'Events' },
     'settings':        { title: 'Configuration', tabs: [

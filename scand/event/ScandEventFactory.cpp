@@ -3,10 +3,6 @@
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/reload/ReloadEvent.h"
-#include "service/scan/ScanEvent.h"
-
-#include "api/ApiPacket.h"
-#include "snmp/SnmpPacket.h"
 
 #include "util/Logger.h"
 
@@ -27,9 +23,6 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(ScandEventDomain domain, s
 
     case ScandEventDomain::Heartbeat:
         return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
-
-    case ScandEventDomain::Scan:
-        return std::make_unique<ScanEvent>(static_cast<ScanEventType>(type));
 
     case ScandEventDomain::Reload:
         return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
@@ -59,9 +52,6 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<pz::ipc::I
     case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
-    case pz::ipc::IpcCmd::ScanRequest:
-        return std::make_unique<ScanEvent>(ScanEventType::ReceiveScanRequest, std::move(msg));
-
     case pz::ipc::IpcCmd::ConfigReload:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 
@@ -69,28 +59,6 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<pz::ipc::I
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
-}
-
-std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<SnmpPacket> packet)
-{
-    if (!packet)
-    {
-        LOG_WARN("null SNMP scan packet — skipping");
-        return nullptr;
-    }
-
-    return std::make_unique<ScanEvent>(ScanEventType::SnmpScanComplete, std::move(packet->devices()));
-}
-
-std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<ApiPacket> packet)
-{
-    if (!packet)
-    {
-        LOG_WARN("null API scan packet — skipping");
-        return nullptr;
-    }
-
-    return std::make_unique<ScanEvent>(ScanEventType::ApiScanComplete, std::move(packet->devices()));
 }
 
 }

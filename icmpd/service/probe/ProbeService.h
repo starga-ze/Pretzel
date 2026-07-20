@@ -61,9 +61,7 @@ private:
 
     std::unique_ptr<IcmpPacket> buildEchoRequestPacket(std::uint16_t sequence) const;
 
-    static std::vector<ProbeTarget> buildIpv4Targets(const std::string& cidr);
     static std::uint32_t ipv4ToHostU32(const std::string& ip);
-    static std::string hostU32ToIpv4(std::uint32_t value);
 
 private:
     IcmpdEventFactory* m_eventFactory = nullptr;

@@ -157,13 +157,6 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
         return handleCommitQueue(sm, req, resp);
     }
 
-    if (target == "/api/devices" && req.method == "GET")
-    {
-        if (!isAuthenticated(sm, req))
-            return unauthorized(resp);
-        return handleDevices(sm, req, resp);
-    }
-
     if (target == "/api/inventory/status" && req.method == "GET")
     {
         if (!isAuthenticated(sm, req))
@@ -567,105 +560,19 @@ std::string WebService::extractSession(const Request& req)
     return cookies.substr(pos + key.size(), end - (pos + key.size()));
 }
 
-void WebService::handleDevices(MgmtdServiceManager& sm, const Request& req, Response& resp)
-{
-    (void)req;
-    json body;
-    json devices = json::array();
-    int networkCount = 0;
-    int serverCount = 0;
-    int unknownCount = 0;
-
-    const auto groups = sm.deviceService().groups();
-
-    std::unordered_map<std::string, std::string> rackByIp;
-    {
-        const auto& eng = pz::config::Config::daemonConfig("engined");
-        const auto svc = eng.value("service", json::object());
-        const auto rack = svc.value("rack", json::object());
-        for (const auto& rk : rack.value("racks", json::array()))
-        {
-            const std::string name = rk.value("name", "");
-            for (const auto& d : rk.value("devices", json::array()))
-                rackByIp[d.value("ip", "")] = name;
-        }
-    }
-
-    for (const auto& g : groups)
-    {
-        if (g.type == "network")
-            ++networkCount;
-        else if (g.type == "server")
-            ++serverCount;
-        else
-            ++unknownCount;
-
-        std::string location;
-        for (const auto& ip : g.ips)
-        {
-            auto it = rackByIp.find(ip);
-            if (it != rackByIp.end())
-            {
-                location = it->second;
-                break;
-            }
-        }
-
-        json ifaces = json::array();
-        for (const auto& itf : g.interfaces)
-        {
-            ifaces.push_back({
-                {"ip", itf.ip},
-                {"netmask", itf.netmask},
-                {"if_index", itf.ifIndex},
-                {"if_name", itf.ifName},
-            });
-        }
-
-        devices.push_back({
-            {"primary_ip", g.primaryIp},
-            {"ips", g.ips},
-            {"type", g.type},
-            {"subtype", g.subtype},
-            {"vendor", g.vendor},
-            {"hostname", g.hostname},
-            {"sys_descr", g.sysDescr},
-            {"sys_object_id", g.sysObjectId},
-            {"sys_contact", g.sysContact},
-            {"location", location},
-            {"sys_up_time_ticks", g.sysUpTimeTicks},
-            {"interface_macs", g.interfaceMacs},
-            {"interfaces", std::move(ifaces)},
-            {"if_table", g.ifTable},
-            {"lldp_neighbors", g.lldpNeighbors},
-            {"host_mac", g.hostMac},
-            {"has_snmp", g.hasSnmp},
-        });
-    }
-
-    body["summary"] = {
-        {"total", networkCount + serverCount + unknownCount},
-        {"network", networkCount},
-        {"server", serverCount},
-        {"unknown", unknownCount},
-    };
-    body["devices"] = std::move(devices);
-
-    fill(resp, 200, body.dump());
-}
 
 void WebService::handleInventoryStatus(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
     (void)sm;
     (void)req;
 
-    // engined's ProbeService keeps probe_devices as the set of currently-alive IPs (it deletes
-    // IPs that stop responding), so presence with status='alive' == ICMP-reachable right now.
+    // engined projects the configured objects into `inventory` and marks each direct (IP-based)
+    // row 'active' when ICMP answers; return the set of currently-active targets (IPs).
     json alive = json::array();
     try
     {
         auto& db = pz::db::Database::instance();
-        for (const auto& row : db.queryRows("SELECT ip FROM probe_devices WHERE status = 'alive'"))
+        for (const auto& row : db.queryRows("SELECT target FROM inventory WHERE status = 'active' AND target IS NOT NULL"))
         {
             if (!row.empty() && !row[0].empty())
                 alive.push_back(row[0]);

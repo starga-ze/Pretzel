@@ -6,13 +6,11 @@
 #include "util/ThreadManager.h"
 
 #include "action/ScandActionFactory.h"
-#include "api/ApiEngine.h"
 #include "event/ScandEventFactory.h"
 #include "process/ScandProcess.h"
 #include "router/ScandRxRouter.h"
 #include "router/ScandTxRouter.h"
 #include "service/ScandServiceManager.h"
-#include "snmp/SnmpEngine.h"
 
 #include "config/ConfigTypes.h"
 
@@ -37,9 +35,6 @@ private:
 
     std::unique_ptr<pz::util::ThreadManager> m_threadManager;
     std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
-
-    std::unique_ptr<SnmpEngine> m_snmpEngine;
-    std::unique_ptr<ApiEngine> m_apiEngine;
 
     std::unique_ptr<ScandProcess> m_process;
 

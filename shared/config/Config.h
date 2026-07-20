@@ -13,9 +13,6 @@ public:
     bool load(const std::string& daemonName);
     const nlohmann::json& json() const;
 
-    static bool saveStateSnapshot(const std::string& daemonName, const nlohmann::json& json);
-    static bool loadStateSnapshot(const std::string& daemonName, nlohmann::json& outJson);
-
     static const nlohmann::json& serviceSection(const std::string& daemonName, const std::string& domain);
     static const nlohmann::json& systemSection(const std::string& daemonName, const std::string& domain);
 

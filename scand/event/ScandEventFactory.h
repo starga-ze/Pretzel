@@ -8,9 +8,6 @@
 namespace pz::scand
 {
 
-class SnmpPacket;
-class ApiPacket;
-
 class ScandEventFactory final : public pz::event::EventFactory<ScandEvent, ScandEventDomain>
 {
 public:
@@ -20,9 +17,6 @@ public:
     std::unique_ptr<ScandEvent> create() override;
     std::unique_ptr<ScandEvent> create(std::unique_ptr<pz::ipc::IpcMessage> msg) override;
     std::unique_ptr<ScandEvent> create(ScandEventDomain domain, std::uint32_t type) override;
-
-    std::unique_ptr<ScandEvent> create(std::unique_ptr<SnmpPacket> packet);
-    std::unique_ptr<ScandEvent> create(std::unique_ptr<ApiPacket> packet);
 };
 
 }

@@ -1,12 +1,15 @@
 /* config.js — Configuration ▸ Inventory. Renders the managed-object table into #contentBody.
  *
- * An object is either:
- *   • on-prem — identified by IP, reachability probed by ICMP, collected via SNMP/API
- *   • cloud   — a SASE firewall or SaaS service, identified by provider + account (NOT IP),
- *               monitored via its API (no ICMP)
+ * Every object is modeled on two orthogonal axes:
+ *   • type     — what it is:  firewall | switch | router | ddos | npb | lb | waf | sase | saas
+ *   • platform — the access type, i.e. how the API is reached:
+ *        direct — IP-based API platform, reached at its own address (mgmt IP/FQDN)  [on-prem/VM]
+ *        tenant — cloud-based API platform, reached via a tenant-scoped API         [SASE/SaaS/SCM]
+ * `target` is the access identifier (direct → IP/FQDN, tenant → tenant/TSG id).
+ * Each object carries an immutable UUID (id). Collection/credentials are onboarded separately.
  *
- * Excluded IPs are predefined (localhost). Publish opens a review modal with a side-by-side
- * (before | after) JSON diff, then a progress bar while the reload converges.
+ * Publish opens a review modal with a side-by-side JSON diff, then a progress bar while the
+ * reload converges. Status: direct = ICMP reachability, tenant = API health (wired later).
  */
 (function () {
   'use strict';
@@ -15,9 +18,17 @@
   const EXCLUDED_IPS = ['127.0.0.1'];
   const STATUS_POLL_MS = 5000;
 
-  const state = { objects: [] };   // [{ type, ip, provider, account, description, enabled, snmp, api }]
+  const TYPES = [
+    ['firewall', 'Firewall'], ['switch', 'Switch'], ['router', 'Router'],
+    ['ddos', 'DDoS'], ['npb', 'NPB'], ['lb', 'Load Balancer'], ['waf', 'WAF'],
+    ['sase', 'SASE'], ['saas', 'SaaS'],
+  ];
+  const TYPE_LABEL = Object.fromEntries(TYPES);
+
+  const state = { objects: [] };   // [{ id, type, platform, name, description, target, enabled }]
   let deployed = { excluded: '', objects: [] };
   let editIdx = null;
+  let draftId = null;              // uuid of the object being edited (survives access/type rebuilds)
   let liveAlive = new Set();
   let statusReady = false;
   let pending = new Set();
@@ -25,6 +36,13 @@
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function uuid() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
 
   function refreshPending() {
     window.NMS.setPendingChanges(JSON.stringify(state.objects) !== JSON.stringify(deployed.objects) ? 1 : 0);
@@ -44,22 +62,23 @@
   }
 
   function normalize(t) {
+    const platform = (t.platform || t.access) === 'tenant' ? 'tenant' : 'direct';   // `access` = legacy key
     return {
-      type: t.type === 'cloud' ? 'cloud' : 'on-prem',
-      ip: t.ip || '',
-      provider: t.provider || '',
-      account: t.account || '',
+      id: t.id || uuid(),
+      type: TYPE_LABEL[t.type] ? t.type : 'firewall',
+      platform,
+      name: t.name || '',
       description: t.description || '',
+      target: t.target || '',
       enabled: t.enabled !== false,
-      snmp: Object.assign({ on: false, version: 'v2c', community: 'public', port: 161,
-                            user: '', auth_pass: '', priv_pass: '' }, t.snmp),
-      api:  Object.assign({ on: false, endpoint: '', token: '' }, t.api),
     };
   }
 
   function blankObject() {
-    return normalize({ type: 'on-prem', enabled: true });
+    return normalize({ platform: 'direct', type: 'firewall', enabled: true });
   }
+
+  const accessLabel = (o) => (o.platform === 'tenant' ? 'Tenant ID' : 'IP/FQDN');
 
   function commitPayload() {
     return [{
@@ -88,40 +107,27 @@
     statusTimer = setInterval(pollStatus, STATUS_POLL_MS);
   }
 
-  // on-prem: active/down/pending via ICMP · cloud: 'cloud' (API-monitored) · off: disabled
+  // active · down(no response) · pending · off(disabled). direct=ICMP, tenant=API health.
   function statusOf(o) {
     if (!o.enabled) return 'off';
-    if (o.type === 'cloud') return 'cloud';
-    if (pending.has(o.ip) || !statusReady) return 'pending';
-    return liveAlive.has(o.ip) ? 'active' : 'down';
+    if (o.platform === 'tenant') return 'pending';   // TODO: from tenant API health once wired
+    if (pending.has(o.target) || !statusReady) return 'pending';
+    return liveAlive.has(o.target) ? 'active' : 'down';
   }
+
+  const STATUS_LABEL = { active: 'Active', down: 'No response', pending: 'Pending', off: 'Disabled' };
+  const STATUS_TIP   = { active: 'Reachable', down: 'No response', pending: 'Awaiting first check', off: 'Disabled — not monitored' };
 
   function paintStatus() {
-    document.querySelectorAll('[data-st-ip]').forEach(dot => {
-      const o = state.objects.find(x => (x.ip || x.provider) === dot.dataset.stIp);
+    document.querySelectorAll('[data-st-id]').forEach(dot => {
+      const o = state.objects.find(x => x.id === dot.dataset.stId);
       const s = o ? statusOf(o) : 'off';
       dot.className = 'st-dot ' + s;
-      const badge = dot.closest('.st-badge');
-      if (badge) { badge.title = STATUS_TIP[s]; const t = badge.querySelector('.st-txt'); if (t) t.textContent = STATUS_LABEL[s]; }
+      dot.title = STATUS_LABEL[s] + ' — ' + STATUS_TIP[s];
     });
   }
-  const STATUS_LABEL = { active: 'Active', down: 'Down', pending: 'Pending', off: 'Disabled', cloud: 'API' };
-  const STATUS_TIP   = { active: 'ICMP responding', down: 'No ICMP response', pending: 'Awaiting first probe result',
-                         off: 'Object disabled — not monitored', cloud: 'Cloud object — monitored via API' };
 
   // ── Render ─────────────────────────────────────────────────────────────────────
-  function methodPills(o) {
-    const p = (on, name) => `<span class="m-pill ${on ? 'on' : 'off'}">${name}</span>`;
-    if (o.type === 'cloud') return p(o.api && o.api.on, 'API');
-    return p(o.snmp && o.snmp.on, 'SNMP') + p(o.api && o.api.on, 'API');
-  }
-
-  function addressOf(o) {
-    if (o.type === 'cloud')
-      return o.provider ? `${esc(o.provider)}${o.account ? ' · ' + esc(o.account) : ''}` : '<span class="muted">—</span>';
-    return esc(o.ip) || '<span class="muted">—</span>';
-  }
-
   function render() {
     const el = document.getElementById('contentBody');
     if (!el) return;
@@ -131,16 +137,17 @@
     const rows = state.objects.length
       ? state.objects.map((o, i) => `
         <tr class="${o.enabled ? '' : 'row-off'}">
-          <td class="col-st">
-            <span class="st-badge" title="${STATUS_TIP[statusOf(o)]}">
-              <span class="st-dot ${statusOf(o)}" data-st-ip="${esc(o.ip || o.provider)}"></span>
-              <span class="st-txt">${STATUS_LABEL[statusOf(o)]}</span>
-            </span>
+          <td class="col-name">
+            <div class="name-line">
+              <span class="st-dot ${statusOf(o)}" data-st-id="${esc(o.id)}" title="${STATUS_LABEL[statusOf(o)]}"></span>
+              <span class="cell-name">${esc(o.name) || '<span class="muted">—</span>'}</span>
+            </div>
+            ${o.description ? `<div class="cell-sub">${esc(o.description)}</div>` : ''}
           </td>
-          <td class="col-type"><span class="type-badge ${o.type === 'cloud' ? 'cloud' : 'onprem'}">${o.type === 'cloud' ? 'Cloud' : 'On-prem'}</span></td>
-          <td class="col-addr">${addressOf(o)}</td>
-          <td class="col-desc">${esc(o.description) || '<span class="muted">—</span>'}</td>
-          <td class="col-method">${methodPills(o)}</td>
+          <td class="col-uuid"><span class="uuid-chip" title="${esc(o.id)}">${esc(o.id)}</span></td>
+          <td class="col-type"><span class="type-badge">${esc(TYPE_LABEL[o.type] || o.type)}</span></td>
+          <td class="col-access"><span class="access-badge ${o.platform}">${accessLabel(o)}</span></td>
+          <td class="col-endpoint">${esc(o.target) || '<span class="muted">—</span>'}</td>
           <td class="col-en">
             <label class="tgl" title="${o.enabled ? 'Enabled' : 'Disabled'}">
               <input type="checkbox" data-toggle="${i}" ${o.enabled ? 'checked' : ''}/>
@@ -158,26 +165,26 @@
         </tr>`).join('')
       : `<tr><td colspan="7"><div class="cfg-empty">No objects yet — click <b>Add Object</b> to define one.</div></td></tr>`;
 
-    const onprem = state.objects.filter(o => o.type !== 'cloud').length;
-    const cloud  = state.objects.length - onprem;
+    const direct = state.objects.filter(o => o.platform !== 'tenant').length;
+    const tenant = state.objects.length - direct;
 
     el.innerHTML = `
       <div class="cfg-page">
         <div class="cfg-toolbar">
           <div class="cfg-toolbar-meta">
             <span class="cfg-h">Inventory</span>
-            <span class="cfg-h-sub">${onprem} on-prem · ${cloud} cloud · excluded: ${EXCLUDED_IPS.join(', ')}</span>
+            <span class="cfg-h-sub">${direct} direct · ${tenant} tenant · excluded: ${EXCLUDED_IPS.join(', ')}</span>
           </div>
           <button class="btn-primary btn-sm" id="cfgAdd">+ Add Object</button>
         </div>
 
         <table class="cfg-table cfg-table-inv">
           <thead><tr>
-            <th class="col-st">Status</th>
-            <th class="col-type">Type</th>
-            <th class="col-addr">Address</th>
-            <th class="col-desc">Description</th>
-            <th class="col-method">Method</th>
+            <th class="col-name">Name</th>
+            <th class="col-uuid">UUID</th>
+            <th class="col-type">Device Type</th>
+            <th class="col-access">Access Type</th>
+            <th class="col-endpoint">Access Identifier</th>
             <th class="col-en">Enable</th>
             <th class="col-act"></th>
           </tr></thead>
@@ -188,7 +195,6 @@
           <span><i class="st-dot active"></i>Active</span>
           <span><i class="st-dot down"></i>No response</span>
           <span><i class="st-dot pending"></i>Pending</span>
-          <span><i class="st-dot cloud"></i>Cloud (API)</span>
           <span><i class="st-dot off"></i>Disabled</span>
         </div>
       </div>
@@ -210,6 +216,7 @@
   function openEditor(idx) {
     editIdx = idx;
     const o = idx == null ? blankObject() : normalize(JSON.parse(JSON.stringify(state.objects[idx])));
+    draftId = o.id;
     document.getElementById('soTitle').textContent = idx == null ? 'Add Object' : 'Edit Object';
     document.getElementById('soBody').innerHTML = editorForm(o);
     document.getElementById('soFoot').innerHTML = `
@@ -226,100 +233,57 @@
     document.getElementById('soPanel').classList.remove('open');
   }
 
-  function methodBlock(id, name, checked, detail) {
-    return `
-      <div class="method-block ${checked ? 'on' : ''}" data-mblock="${id}">
-        <label class="method-head"><input type="checkbox" data-mcheck="${id}" ${checked ? 'checked' : ''}/><span class="method-name">${name}</span></label>
-        <div class="method-detail">${detail}</div>
-      </div>`;
-  }
-
   function fieldRow(label, id, val, ph) {
     return `<div class="field-row"><label>${label}</label><input data-f="${id}" value="${esc(val)}" placeholder="${esc(ph || '')}"/></div>`;
   }
 
   function editorForm(o) {
     const f = fieldRow;
+    const typeOpts = TYPES.map(([v, l]) => `<option value="${v}" ${o.type === v ? 'selected' : ''}>${l}</option>`).join('');
+    const isTenant = o.platform === 'tenant';
 
-    const common = `
+    return `
+      <div class="field-row"><label>Access Type</label>
+        <select data-f="platform" data-platsel>
+          <option value="direct" ${!isTenant ? 'selected' : ''}>IP/FQDN (IP-based API platform)</option>
+          <option value="tenant" ${isTenant ? 'selected' : ''}>Tenant ID (cloud-based API platform)</option>
+        </select></div>
       <div class="field-row"><label>Type</label>
-        <select data-f="type" data-typesel>
-          <option value="on-prem" ${o.type !== 'cloud' ? 'selected' : ''}>On-prem (IP-reachable device)</option>
-          <option value="cloud"   ${o.type === 'cloud' ? 'selected' : ''}>Cloud (SASE / SaaS service)</option>
-        </select></div>
-      ${f('Description', 'description', o.description, 'e.g. core switch')}
-      <label class="field-check"><input type="checkbox" data-f="enabled" ${o.enabled ? 'checked' : ''}/><span>Enabled</span></label>`;
-
-    if (o.type === 'cloud') {
-      return common + `
-        <div class="editor-sec">IDENTITY</div>
-        ${f('Provider', 'provider', o.provider, 'Prisma Access / Zscaler / Microsoft 365')}
-        ${f('Account / Tenant', 'account', o.account, 'e.g. acme-1234')}
-        <div class="editor-sec">API</div>
-        ${f('Endpoint', 'api.endpoint', o.api.endpoint, 'https://api.vendor.com')}
-        ${f('Token', 'api.token', o.api.token)}
-        <p class="editor-note">Cloud objects are identified by <b>provider + account</b> (not IP) and monitored via their API — no ICMP.</p>`;
-    }
-
-    const snmp = `
-      <div class="field-row"><label>Version</label>
-        <select data-f="snmp.version" data-snmpver>
-          <option value="v2c" ${o.snmp.version === 'v2c' ? 'selected' : ''}>SNMP v2c</option>
-          <option value="v3"  ${o.snmp.version === 'v3'  ? 'selected' : ''}>SNMP v3</option>
-        </select></div>
-      <div data-snmpv2c style="${o.snmp.version === 'v2c' ? '' : 'display:none'}">${f('Community', 'snmp.community', o.snmp.community)}</div>
-      <div data-snmpv3 style="${o.snmp.version === 'v3' ? '' : 'display:none'}">
-        ${f('User', 'snmp.user', o.snmp.user)}${f('Auth Password', 'snmp.auth_pass', o.snmp.auth_pass)}${f('Priv Password', 'snmp.priv_pass', o.snmp.priv_pass)}
-      </div>
-      ${f('Port', 'snmp.port', o.snmp.port)}`;
-    const api = f('Endpoint', 'api.endpoint', o.api.endpoint, 'https://device/api') + f('Token', 'api.token', o.api.token);
-
-    return common + `
-      <div class="editor-sec">ADDRESS</div>
-      ${f('IP address', 'ip', o.ip, '192.168.0.10')}
-      <div class="editor-sec">COLLECTION METHODS</div>
-      ${methodBlock('snmp', 'SNMP', o.snmp.on, snmp)}
-      ${methodBlock('api', 'API', o.api.on, api)}
-      <p class="editor-note">ICMP reachability is probed automatically. ICMP timing is configured globally under System.</p>`;
+        <select data-f="type">${typeOpts}</select></div>
+      ${f('Name', 'name', o.name, 'e.g. core-fw-01')}
+      ${f('Description', 'description', o.description, 'optional')}
+      <label class="field-check"><input type="checkbox" data-f="enabled" ${o.enabled ? 'checked' : ''}/><span>Enabled</span></label>
+      <div class="editor-sec">ACCESS IDENTIFIER</div>
+      ${isTenant
+        ? f('Tenant ID / TSG', 'target', o.target, 'e.g. 1963594622')
+        : f('Management IP / FQDN', 'target', o.target, '192.168.0.10')}
+      <p class="editor-note">${isTenant
+        ? 'Identified by its tenant id (TSG); health-checked via the cloud platform API. Credentials are bound separately.'
+        : 'Reached at its management address; reachability probed by ICMP.'}</p>`;
   }
 
-  // Read the whole editor form into an object (type-aware; missing fields default).
+  // Read the editor form into an object. `id` is carried out-of-band (draftId) so it survives
+  // the access rebuild and stays immutable for the object's lifetime.
   function collectForm(body) {
     const g = (id) => { const e = body.querySelector(`[data-f="${id}"]`); return e ? (e.type === 'checkbox' ? e.checked : e.value.trim()) : undefined; };
-    const on = (id) => { const e = body.querySelector(`[data-mcheck="${id}"]`); return !!(e && e.checked); };
-    const type = g('type') || 'on-prem';
     return {
-      type,
-      ip: g('ip') || '',
-      provider: g('provider') || '',
-      account: g('account') || '',
+      id: draftId,
+      platform: g('platform') === 'tenant' ? 'tenant' : 'direct',
+      type: g('type') || 'firewall',
+      name: g('name') || '',
       description: g('description') || '',
+      target: g('target') || '',
       enabled: g('enabled') !== false,
-      snmp: { on: on('snmp'), version: g('snmp.version') || 'v2c', community: g('snmp.community') || '',
-              port: +g('snmp.port') || 161, user: g('snmp.user') || '',
-              auth_pass: g('snmp.auth_pass') || '', priv_pass: g('snmp.priv_pass') || '' },
-      api:  { on: type === 'cloud' ? true : on('api'), endpoint: g('api.endpoint') || '', token: g('api.token') || '' },
     };
   }
 
   function wireEditor() {
     const body = document.getElementById('soBody');
 
-    // Type switch → rebuild the form for that type, preserving entered values.
-    body.querySelector('[data-typesel]')?.addEventListener('change', (e) => {
-      const cur = collectForm(body);
-      cur.type = e.target.value;
-      body.innerHTML = editorForm(normalize(cur));
+    // Platform switch → rebuild the target field/labels, preserving entered values + id.
+    body.querySelector('[data-platsel]')?.addEventListener('change', () => {
+      body.innerHTML = editorForm(normalize(collectForm(body)));
       wireEditor();
-    });
-
-    body.querySelectorAll('[data-mcheck]').forEach(cb => cb.addEventListener('change', () => {
-      body.querySelector(`[data-mblock="${cb.dataset.mcheck}"]`).classList.toggle('on', cb.checked);
-    }));
-    const verSel = body.querySelector('[data-snmpver]');
-    if (verSel) verSel.addEventListener('change', () => {
-      body.querySelector('[data-snmpv2c]').style.display = verSel.value === 'v2c' ? '' : 'none';
-      body.querySelector('[data-snmpv3]').style.display  = verSel.value === 'v3'  ? '' : 'none';
     });
 
     document.getElementById('soCancel').onclick = closeEditor;
@@ -331,13 +295,7 @@
 
     document.getElementById('soSave').onclick = () => {
       const no = collectForm(body);
-      if (no.type === 'cloud') {
-        if (!no.provider) { alert('Provider is required for a cloud object.'); return; }
-        no.ip = ''; no.snmp.on = false; no.api.on = true;   // cloud identity = provider+account; API-monitored
-      } else {
-        if (!no.ip) { alert('IP address is required for an on-prem object.'); return; }
-        no.provider = ''; no.account = '';
-      }
+      if (!no.target) { alert(no.platform === 'tenant' ? 'Tenant ID is required.' : 'Management IP is required.'); return; }
       if (editIdx == null) state.objects.push(no); else state.objects[editIdx] = no;
       closeEditor(); render(); refreshPending();
     };
@@ -471,7 +429,7 @@
 
     deployed = staged;
     window.NMS.setPendingChanges(0);
-    pending = new Set(state.objects.filter(o => o.enabled && o.type !== 'cloud').map(o => o.ip));
+    pending = new Set(state.objects.filter(o => o.enabled && o.platform === 'direct').map(o => o.target));
     setProg(30, 'Applying');
     pollProgress(Date.now());
   }

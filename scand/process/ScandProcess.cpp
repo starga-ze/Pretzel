@@ -5,12 +5,9 @@ namespace pz::scand
 {
 
 constexpr int kIpcClientTimeoutMs = 10;
-constexpr int kSnmpEngineTimeoutMs = 5;
-constexpr int kApiEngineTimeoutMs = 0;
 
-ScandProcess::ScandProcess(pz::ipc::IpcClient* ipcClient, ScandServiceManager* serviceManager, SnmpEngine* snmpEngine,
-                           ApiEngine* apiEngine)
-    : m_ipcClient(ipcClient), m_serviceManager(serviceManager), m_snmpEngine(snmpEngine), m_apiEngine(apiEngine)
+ScandProcess::ScandProcess(pz::ipc::IpcClient* ipcClient, ScandServiceManager* serviceManager)
+    : m_ipcClient(ipcClient), m_serviceManager(serviceManager)
 {
 }
 
@@ -28,18 +25,6 @@ bool ScandProcess::start()
         return false;
     }
 
-    if (!m_snmpEngine)
-    {
-        LOG_ERROR("SnmpEngine is not initialized");
-        return false;
-    }
-
-    if (!m_apiEngine)
-    {
-        LOG_ERROR("ApiEngine is not initialized");
-        return false;
-    }
-
     m_serviceManager->start();
 
     return true;
@@ -48,9 +33,6 @@ bool ScandProcess::start()
 void ScandProcess::tick()
 {
     m_ipcClient->poll(kIpcClientTimeoutMs);
-
-    m_snmpEngine->poll(kSnmpEngineTimeoutMs);
-    m_apiEngine->poll(kApiEngineTimeoutMs);
 
     m_serviceManager->schedule();
 

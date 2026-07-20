@@ -78,7 +78,6 @@
     },
     "service": {
       "probe": {
-        "scan_cidr": "",
         "excluded_ips": "127.0.0.1",
         "icmp_timeout_ms": 1000,
         "icmp_retries": 2

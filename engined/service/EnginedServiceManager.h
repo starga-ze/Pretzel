@@ -10,7 +10,6 @@
 #include "service/commit/CommitService.h"
 #include "service/heartbeat/HeartbeatService.h"
 #include "service/probe/ProbeService.h"
-#include "service/scan/ScanService.h"
 
 #include "vendor/VendorResolver.h"
 
@@ -43,7 +42,6 @@ public:
     BootstrapService& bootstrapService();
     CommitService& commitService();
     HeartbeatService& heartbeatService();
-    ScanService& scanService();
     ProbeService& probeService();
     AdminService& adminService();
     VendorResolver& vendorResolver();
@@ -63,7 +61,6 @@ private:
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<CommitService> m_commitService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
-    std::unique_ptr<ScanService> m_scanService;
     std::unique_ptr<ProbeService> m_probeService;
     std::unique_ptr<AdminService> m_adminService;
     std::unique_ptr<VendorResolver> m_vendorResolver;

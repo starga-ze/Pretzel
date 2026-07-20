@@ -12,7 +12,7 @@ MgmtdServiceManager::MgmtdServiceManager(MgmtdEventFactory* eventFactory, MgmtdA
                                          MgmtdTxRouter* txRouter)
     : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_heartbeatService(std::make_unique<HeartbeatService>()), m_deviceService(std::make_unique<DeviceService>())
+      m_heartbeatService(std::make_unique<HeartbeatService>())
 {
 }
 
@@ -92,11 +92,6 @@ BootstrapService& MgmtdServiceManager::bootstrapService()
 HeartbeatService& MgmtdServiceManager::heartbeatService()
 {
     return *m_heartbeatService;
-}
-
-DeviceService& MgmtdServiceManager::deviceService()
-{
-    return *m_deviceService;
 }
 
 WebService& MgmtdServiceManager::webService()
