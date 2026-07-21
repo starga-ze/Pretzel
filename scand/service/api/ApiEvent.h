@@ -13,6 +13,7 @@ enum class ApiEventType : std::uint32_t
 {
     Unknown = 0,
     ReceiveConnectorTestRequest = 1,
+    ReceiveKeyState = 2,
 };
 
 class ApiEvent final : public ScandEvent

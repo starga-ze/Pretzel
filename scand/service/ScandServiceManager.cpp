@@ -31,6 +31,16 @@ void ScandServiceManager::schedule()
         postEvent(m_bootstrapService->schedule(now));
         return;
     }
+
+    // The issued keys live in engined's api_key_state; ask once bootstrap is through, so a test
+    // or a collection does not need the operator's password again. Not in start(): the IPC
+    // client has not registered yet there, and the request would be dropped on the floor.
+    // A config reload restarts the daemon, so this runs again with the new configuration.
+    if (!m_keysRequested)
+    {
+        m_keysRequested = true;
+        m_apiService->requestKeys(*this);
+    }
 }
 
 void ScandServiceManager::postEvent(std::unique_ptr<ScandEvent> event)

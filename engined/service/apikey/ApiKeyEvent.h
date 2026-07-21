@@ -13,6 +13,7 @@ enum class ApiKeyEventType : std::uint32_t
 {
     Unknown = 0,
     ReceiveStateUpdate = 1,
+    ReceiveStateRequest = 2,
 };
 
 class ApiKeyEvent final : public EnginedEvent

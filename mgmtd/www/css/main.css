@@ -687,6 +687,15 @@ html, body {
 }
 .btn-sm:hover { background: var(--border); }
 
+/* .btn-sm is declared after .btn-primary with the same specificity, so on its own it would
+   repaint every primary small button grey. Two classes beat one. */
+.btn-primary.btn-sm {
+  background: var(--accent); color: #fff; border-color: transparent;
+  box-shadow: 0 3px 10px rgba(249,115,22,.30);
+}
+.btn-primary.btn-sm:hover { background: var(--accent); opacity: .88; }
+.btn-primary.btn-sm:disabled { box-shadow: none; }
+
 /* ══════════════════════════════════════
    DAEMON HEALTH GRID (heartbeat cards)
 ══════════════════════════════════════ */
@@ -3636,6 +3645,15 @@ a.details-btn { display: inline-block; text-decoration: none; }
 }
 .field-row input:focus, .field-row select:focus { outline: none; border-color: var(--accent); }
 
+/* Selects default to the platform widget, which ignores the surrounding design entirely. */
+.field-row select, .item-main select {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  padding-right: 30px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center; background-size: 15px;
+}
+.field-row select:hover, .item-main select:hover { border-color: var(--text-muted); }
+
 /* ── Network config: compact probe-target table (no cards) ── */
 .cfg-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px;
@@ -3746,6 +3764,41 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .param-row input:focus { outline: none; border-color: var(--accent); }
 .param-row .icon-btn { width: 26px; height: 26px; }
 .param-row .icon-btn svg { width: 13px; height: 13px; }
+
+/* ── API Connector: the collected-endpoint schedule ─────────────────────────────────────
+   A connector is a policy, so its editor is a list of rows: which endpoint, how often, on/off,
+   and a test that proves that one row end to end. */
+.item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.item-head label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.item-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+
+.item-row { border: 1px solid var(--border); border-radius: 9px; padding: 9px 10px; background: var(--surface); }
+.item-main { display: grid; grid-template-columns: 1fr 72px auto auto 28px; gap: 6px; align-items: center; }
+.item-main select {
+  width: 100%; padding: 7px 9px; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text);
+}
+.item-main select:focus { outline: none; border-color: var(--accent); }
+.item-int {
+  width: 100%; padding: 7px 6px; font-size: 12px; text-align: right; font-family: var(--font-mono);
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text);
+}
+.item-int:focus { outline: none; border-color: var(--accent); }
+.item-en { display: flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--text-muted);
+  white-space: nowrap; }
+.item-row .icon-btn { width: 26px; height: 26px; }
+.item-row .icon-btn svg { width: 13px; height: 13px; }
+
+.item-path { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);
+  margin-top: 6px; word-break: break-all; }
+.item-result:not(:empty) { margin-top: 8px; }
+
+/* schedule summary in the connector table */
+.sched-row { display: flex; align-items: baseline; gap: 8px; padding: 1px 0; }
+.sched-row.off { opacity: .45; }
+.sched-int { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); flex: 0 0 auto; }
+.ep-name { font-size: 11.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
 
 /* live preview of the path the connector will actually call */
 .ep-preview { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; }

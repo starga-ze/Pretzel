@@ -45,6 +45,7 @@ pz_add_test(test-ipc-protocol       test_ipc_protocol.cpp       GTest::gtest_mai
 pz_add_test(test-ipc-codec          test_ipc_codec.cpp          GTest::gtest_main)
 pz_add_test(test-static-file-cache  test_static_file_cache.cpp  GTest::gtest_main)
 pz_add_test(test-url-encode         test_url_encode.cpp         GTest::gtest_main)
+pz_add_test(test-api-refs           test_api_refs.cpp           GTest::gtest_main)
 
 # No gtest_main: secret::masterKey() caches the key file in a function-local static, so this
 # suite needs its own main() to point PRETZEL_CONFIG_DIR at a fixture before any test runs.

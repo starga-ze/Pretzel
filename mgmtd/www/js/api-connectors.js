@@ -1,16 +1,16 @@
 /* api-connectors.js — Configuration ▸ API Connector.
  *
- * The last step of the configuration flow (Site → Inventory → Authentication → API Connector):
- * a Connector is what decides that a given inventory object is reached over its API — it binds
- * the object to the auth profile used against it, plus collection settings (poll interval,
- * enabled). Inventory itself holds no credentials; an object without a connector is monitored
- * by ICMP only.
+ * The last step of the configuration flow (Site → Inventory → Authentication → API Endpoint →
+ * API Connector). A connector is the collection POLICY for one inventory object: which
+ * credential to use against it, and which endpoints to poll how often. One connector per
+ * object, so a device's whole schedule is in one place; an object without a connector is
+ * monitored by ICMP only.
  *
- * The connection test lives here for the same reason: validating a credential needs both a host
- * (from the object) and a profile, and only a connector has both.
+ * It holds no paths and no query parameters. An endpoint defined on the API Endpoint page is a
+ * complete request, so two firewalls needing different arguments are two endpoints — which is
+ * what makes a PAN-OS upgrade a re-point here rather than an edit everywhere.
  *
- * Committed under scand.service.api.connectors (same domain as auth_profiles). Loaded on every
- * Configuration tab; rendered only on its own tab.
+ * Committed under scand.service.api.connectors.
  */
 (function () {
   'use strict';
@@ -30,52 +30,27 @@
   let editIdx = null;
   let draftOid = null;
 
-  // PAN-OS serves two APIs behind one credential. The operator states which one and the exact
-  // path, because customer devices run versions we do not control — the REST path carries the
-  // version (/restapi/v10.2/…), the XML path does not (/api/?type=…).
-  // [key, label, path placeholder, parameters PAN-OS requires for a typical call]
-  const API_TYPES = [
-    ['rest', 'REST API', '/restapi/v10.2/Objects/Addresses',
-      [{ name: 'location', value: 'vsys' }, { name: 'vsys', value: 'vsys1' }]],
-    ['xml', 'XML API', '/api/',
-      [{ name: 'type', value: 'op' }, { name: 'cmd', value: '<show><system><info></info></system></show>' }]],
-  ];
-  const apiTypeRow = (t) => API_TYPES.find(([k]) => k === t) || API_TYPES[0];
-  const apiTypeLabel = (t) => apiTypeRow(t)[1];
-  const apiTypeHint = (t) => apiTypeRow(t)[2];
-  const apiTypeParams = (t) => apiTypeRow(t)[3];
-
-  // The URL the connector will call, for display. Encoding matches what mgmtd does server-side.
-  function effectivePath(c) {
-    let path = c.endpoint || '';
-    (c.params || []).forEach(p => {
-      if (!p.name) return;
-      path += (path.indexOf('?') === -1) ? '?' : '&';
-      path += encodeURIComponent(p.name) + '=' + encodeURIComponent(p.value);
-    });
-    return path;
+  // ── Model ────────────────────────────────────────────────────────────────────
+  function normalizeItem(i) {
+    const interval = parseInt(i && i.poll_interval_sec, 10);
+    return {
+      endpoint: (i && typeof i.endpoint === 'string') ? i.endpoint : '',
+      poll_interval_sec: (Number.isInteger(interval) && interval >= MIN_INTERVAL_SEC)
+        ? interval : DEFAULT_INTERVAL_SEC,
+      enabled: !i || i.enabled !== false,
+    };
   }
 
   function normalize(c) {
-    const interval = parseInt(c.poll_interval_sec, 10);
     return {
       // `uuid` = legacy key; a numeric oid predates the merge and is replaced.
       oid: (typeof c.oid === 'string' && c.oid) ? c.oid : (c.uuid || newUuid()),
       name: c.name || '',
       description: c.description || '',
       object: c.object || '',              // inventory object oid
-      auth_profile: c.auth_profile || '',  // Authentication profile oid
-      api_type: c.api_type === 'xml' ? 'xml' : 'rest',
-      endpoint: c.endpoint || '',          // operator-entered path, without a query string
-      // Query parameters as name/value pairs — stored unencoded, encoded when the URL is built,
-      // so the operator can type raw values (PAN-OS cmd= XML included).
-      params: (Array.isArray(c.params) ? c.params : [])
-        .map(p => ({ name: String((p && p.name) || ''), value: String((p && p.value) || '') }))
-        .filter(p => p.name),
-      poll_interval_sec: (Number.isInteger(interval) && interval >= MIN_INTERVAL_SEC) ? interval : DEFAULT_INTERVAL_SEC,
-      enabled: c.enabled !== false,
-      // Set when the endpoint test last passed; a connector is only saved after it does.
-      last_test: c.last_test || null,
+      auth_profile: c.auth_profile || '',  // API Key profile oid
+      // What this device is collected for, each entry on its own schedule.
+      items: (Array.isArray(c.items) ? c.items : []).map(normalizeItem).filter(i => i.endpoint),
     };
   }
 
@@ -85,7 +60,6 @@
   const stage = () => { window.NMS.draft.set(DRAFT_KEY, state.connectors); refreshPending(); };
   const refreshPending = () => window.NMS.staging.refresh();
 
-  // ── Data load ────────────────────────────────────────────────────────────────
   async function load() {
     try {
       const r = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
@@ -102,7 +76,6 @@
 
   const commitPayload = () => [{ daemon: 'scand', domain: 'api', values: { connectors: state.connectors } }];
 
-  // ── Staging provider ─────────────────────────────────────────────────────────
   window.NMS.staging.register({
     key: DRAFT_KEY,
     dirty: () => JSON.stringify(state.connectors) !== JSON.stringify(deployed),
@@ -116,11 +89,32 @@
   });
 
   // ── Reference resolution ─────────────────────────────────────────────────────
-  // Any inventory object can be bound; the connector supplies the credential, so the picker
-  // offers the whole inventory rather than a pre-filtered subset.
   const objects = () => (window.NMS.devices && window.NMS.devices.list()) || [];
   const profiles = () => (window.NMS.apiKeys && window.NMS.apiKeys.list()) || [];
   const objectByOid = (oid) => objects().find(o => o.oid === oid) || null;
+
+  const endpointList = () => (window.NMS.apiEndpoints && window.NMS.apiEndpoints.list()) || [];
+  const endpointByOid = (oid) => (window.NMS.apiEndpoints && window.NMS.apiEndpoints.byOid(oid)) || null;
+  const endpointName = (oid) => { const e = endpointByOid(oid); return e ? e.name : ''; };
+
+  // The path with the endpoint's own parameters applied — what the device will actually be
+  // asked for, and what the test sends.
+  function endpointPath(oid) {
+    const e = endpointByOid(oid);
+    if (!e) return '';
+    let path = e.path || '';
+    (e.params || []).forEach(p => {
+      if (!p || !p.name) return;
+      path += (path.indexOf('?') === -1) ? '?' : '&';
+      path += encodeURIComponent(p.name) + '=' + encodeURIComponent(p.value || '');
+    });
+    return path;
+  }
+
+  const endpointApiType = (oid) => {
+    const e = endpointByOid(oid);
+    return (e && String(e.path || '').indexOf('/restapi/') === 0) ? 'rest' : 'xml';
+  };
 
   // Bindable = not already taken by another connector (one collector per object).
   const boundElsewhere = (oid, selfOid) =>
@@ -141,35 +135,45 @@
       : `<span class="authp-missing" title="Profile ${esc(c.auth_profile)} no longer exists">missing</span>`;
   }
 
+  const anyEnabled = (c) => (c.items || []).some(i => i.enabled);
+
+  function scheduleCell(c) {
+    const items = c.items || [];
+    if (!items.length) return '<span class="authp-missing">collects nothing</span>';
+
+    return items.map(i => {
+      const name = endpointName(i.endpoint);
+      const label = name
+        ? `<span class="ep-name">${esc(name)}</span>`
+        : `<span class="authp-missing" title="Endpoint ${esc(i.endpoint)} no longer exists">missing</span>`;
+      return `<div class="sched-row${i.enabled ? '' : ' off'}" title="${esc(endpointPath(i.endpoint))}">
+          ${label}<span class="sched-int">${esc(i.poll_interval_sec)}s</span>
+        </div>`;
+    }).join('');
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────────
   function render() {
     const el = document.getElementById('contentBody');
     if (!el || activeTab() !== 'api-connector') return;
 
-    const ready = objects().length && profiles().length;
+    const ready = objects().length && profiles().length && endpointList().length;
     const emptyHint = ready
-      ? 'click <b>Add Connector</b> to bind an object to a credential.'
-      : `define an <a href="settings?tab=devices">device</a> and an
-         <a href="settings?tab=api-key">API key</a> first, then bind them here.`;
+      ? 'click <b>Add Connector</b> to decide what a device is polled for.'
+      : `define a <a href="settings?tab=devices">device</a>, an
+         <a href="settings?tab=api-key">API key</a> and an
+         <a href="settings?tab=api-endpoint">API endpoint</a> first, then bind them here.`;
 
     const rows = state.connectors.length
       ? state.connectors.map((c, i) => `
-        <tr class="${c.enabled ? '' : 'row-off'}">
+        <tr class="${anyEnabled(c) ? '' : 'row-off'}">
           <td class="col-name">
             <div class="cell-name">${esc(c.name) || '<span class="muted">unnamed</span>'}</div>
             ${c.description ? `<div class="cell-sub">${esc(c.description)}</div>` : ''}
           </td>
           <td class="col-obj">${objectCell(c)}</td>
           <td class="col-authp">${profileCell(c)}</td>
-          <td class="col-api"><span class="api-badge ${esc(c.api_type)}">${esc(apiTypeLabel(c.api_type))}</span></td>
-          <td class="col-ep"><span class="ep-path" title="${esc(effectivePath(c))}">${esc(effectivePath(c))}</span></td>
-          <td class="col-int">${c.poll_interval_sec}s</td>
-          <td class="col-en">
-            <label class="tgl" title="${c.enabled ? 'Enabled' : 'Disabled'}">
-              <input type="checkbox" data-toggle="${i}" ${c.enabled ? 'checked' : ''}/>
-              <span class="tgl-track"></span>
-            </label>
-          </td>
+          <td class="col-ep">${scheduleCell(c)}</td>
           <td class="col-act">
             <button class="icon-btn" data-edit="${i}" title="Edit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
@@ -179,7 +183,7 @@
             </button>
           </td>
         </tr>`).join('')
-      : `<tr><td colspan="7"><div class="cfg-empty">No API connectors yet — ${emptyHint}</div></td></tr>`;
+      : `<tr><td colspan="5"><div class="cfg-empty">No API connectors yet — ${emptyHint}</div></td></tr>`;
 
     el.innerHTML = `
       <div class="cfg-page">
@@ -196,11 +200,8 @@
           <thead><tr>
             <th class="col-name">Name</th>
             <th class="col-obj">Object</th>
-            <th class="col-authp">Auth Profile</th>
-            <th class="col-api">API</th>
-            <th class="col-ep">Endpoint</th>
-            <th class="col-int">Interval</th>
-            <th class="col-en">Enable</th>
+            <th class="col-authp">API Key</th>
+            <th class="col-ep">Collects</th>
             <th class="col-act"></th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -221,49 +222,32 @@
   }
 
   // ── Editor ───────────────────────────────────────────────────────────────────
-  // Creating a connector is a gated sequence, because a credential that works and an endpoint
-  // that works are independent things and the operator needs to know which one failed:
-  //
-  //   API Key Generation Test  ──ok──▶  Endpoint Test  ──ok──▶  Save
-  //
-  // Each gate unlocks the next; editing any field that feeds a passed gate invalidates it, so
-  // a connector can never be saved against a path or credential that was never proven. On a
-  // first contact the keygen test stops at the certificate — HttpClient will not transmit
-  // credentials to an unpinned peer — and the operator confirms the fingerprint first.
-  const GATE = { idle: 'idle', running: 'running', ok: 'ok', fail: 'fail' };
-  let gate = { keygen: GATE.idle, endpoint: GATE.idle };
+  // No gated sequence: a connector is a schedule, and each row's API TEST proves that row
+  // end-to-end (credential exchanged, then the endpoint called) whenever the operator wants to
+  // check. Saving a schedule that has not been tested is allowed — an untested connector simply
+  // reports its failures at collection time, which is where they would surface anyway.
+  function itemRow(i) {
+    const opts = ['<option value="">— select an endpoint —</option>'].concat(
+      endpointList().map(e =>
+        `<option value="${esc(e.oid)}" ${i.endpoint === e.oid ? 'selected' : ''}>${esc(e.name)}</option>`)
+    ).join('');
 
-  function resetGates(from) {
-    if (from === 'keygen') gate = { keygen: GATE.idle, endpoint: GATE.idle };
-    else gate.endpoint = GATE.idle;
-    paintGates();
-  }
-
-  function paintGates() {
-    const keygenBtn = document.getElementById('acKeygenBtn');
-    const epBtn = document.getElementById('acEndpointBtn');
-    const saveBtn = document.getElementById('acSave');
-    if (!keygenBtn) return;
-
-    const c = collect(document.getElementById('acBody'));
-    const haveCred = !!(c.object && c.auth_profile);
-
-    keygenBtn.disabled = !haveCred || gate.keygen === GATE.running;
-    epBtn.disabled = gate.keygen !== GATE.ok || !c.endpoint || gate.endpoint === GATE.running;
-    epBtn.title = gate.keygen !== GATE.ok ? 'Run the API key generation test first' : '';
-    if (saveBtn) saveBtn.disabled = gate.endpoint !== GATE.ok;
-
-    document.getElementById('acKeygenState').className = 'gate-state ' + gate.keygen;
-    document.getElementById('acEndpointState').className = 'gate-state ' + gate.endpoint;
-  }
-
-  function paramRow(p) {
-    return `<div class="param-row">
-        <input data-p="name" data-gate="endpoint" value="${esc(p.name)}" placeholder="name"/>
-        <input data-p="value" data-gate="endpoint" value="${esc(p.value)}" placeholder="value"/>
-        <button class="icon-btn danger" data-prm-del type="button" title="Remove">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+    return `<div class="item-row">
+        <div class="item-main">
+          <select data-i="endpoint">${opts}</select>
+          <input data-i="poll_interval_sec" class="item-int" value="${esc(i.poll_interval_sec)}"
+                 title="Poll interval in seconds" placeholder="${DEFAULT_INTERVAL_SEC}"/>
+          <label class="item-en" title="Collect this endpoint">
+            <input type="checkbox" data-i="enabled" ${i.enabled ? 'checked' : ''}/><span>on</span>
+          </label>
+          <button class="btn-sm" data-item-test type="button"
+                  title="Exchange the credential for a key and call this endpoint">API TEST</button>
+          <button class="icon-btn danger" data-item-del type="button" title="Remove">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="item-path">${esc(endpointPath(i.endpoint) || '—')}</div>
+        <div class="item-result" data-item-result></div>
       </div>`;
   }
 
@@ -281,66 +265,42 @@
         `<option value="${esc(p.oid)}" ${c.auth_profile === p.oid ? 'selected' : ''}>${esc(p.name)}</option>`)
     ).join('');
 
-    const apiOpts = API_TYPES.map(([k, label]) =>
-      `<option value="${esc(k)}" ${c.api_type === k ? 'selected' : ''}>${esc(label)}</option>`).join('');
-
     return `
       <div class="field-row"><label>Name</label>
-        <input data-f="name" value="${esc(c.name)}" placeholder="e.g. core-fw-01 address objects"/></div>
+        <input data-f="name" value="${esc(c.name)}" placeholder="e.g. core-fw-01"/></div>
       <div class="field-row"><label>Description</label>
         <input data-f="description" value="${esc(c.description)}" placeholder="optional"/></div>
-      <label class="field-check"><input type="checkbox" data-f="enabled" ${c.enabled ? 'checked' : ''}/><span>Enabled</span></label>
 
-      <div class="editor-sec">1 · TARGET &amp; CREDENTIAL</div>
+      <div class="editor-sec">TARGET &amp; CREDENTIAL</div>
       <div class="field-row"><label>Object</label>
-        <select data-f="object" data-gate="keygen">${objOpts}</select></div>
-      <div class="field-row"><label>Auth Profile</label>
-        <select data-f="auth_profile" data-gate="keygen">${profOpts}</select></div>
-      <div class="gate-row">
-        <button class="btn-sm" id="acKeygenBtn">API Key Generation Test</button>
-        <span class="gate-state idle" id="acKeygenState"></span>
+        <select data-f="object">${objOpts}</select></div>
+      <div class="field-row"><label>API Key</label>
+        <select data-f="auth_profile">${profOpts}</select></div>
+
+      <div class="editor-sec">COLLECTED ENDPOINTS</div>
+      <p class="field-hint">Each endpoint is a complete request defined on the
+        <a href="settings?tab=api-endpoint">API Endpoint</a> page. This decides which of them this
+        device is polled for, and how often. <b>API TEST</b> issues a key and calls that one
+        endpoint against this device.</p>
+      <div class="item-head">
+        <label>Endpoints</label>
+        <button class="btn-sm" id="acItemAdd" type="button">+ Endpoint</button>
       </div>
-      <div class="test-result" id="acKeygenResult"></div>
-
-      <div class="editor-sec">2 · ENDPOINT</div>
-      <div class="field-row"><label>API</label>
-        <select data-f="api_type" data-gate="endpoint" data-apisel>${apiOpts}</select></div>
-      <div class="field-row"><label>Endpoint path</label>
-        <input data-f="endpoint" data-gate="endpoint" value="${esc(c.endpoint)}"
-               placeholder="${esc(apiTypeHint(c.api_type))}"/></div>
-
-      <div class="param-head">
-        <label>Query parameters</label>
-        <button class="btn-sm" id="acParamAdd" type="button">+ Param</button>
-      </div>
-      <div class="param-list" id="acParamList">${(c.params.length ? c.params : [{ name: '', value: '' }])
-        .map(paramRow).join('')}</div>
-      <p class="field-hint" id="acEpHint">Values are percent-encoded for you — type them raw.
-        The API key is added automatically (${c.api_type === 'xml' ? '<code>key=</code> parameter'
-                                                                  : '<code>X-PAN-KEY</code> header'}).</p>
-      <div class="ep-preview"><span class="ep-preview-h">Will call</span>
-        <code id="acEpPreview">${esc(effectivePath(c)) || '—'}</code></div>
-
-      <div class="gate-row">
-        <button class="btn-sm" id="acEndpointBtn">Endpoint Test</button>
-        <span class="gate-state idle" id="acEndpointState"></span>
-      </div>
-      <div class="test-result" id="acEndpointResult"></div>
-
-      <div class="editor-sec">3 · COLLECTION</div>
-      <div class="field-row"><label>Poll interval (sec)</label>
-        <input data-f="poll_interval_sec" value="${c.poll_interval_sec}" placeholder="${DEFAULT_INTERVAL_SEC}"/></div>`;
+      <div class="item-list" id="acItemList">${(c.items.length ? c.items : [normalizeItem({})])
+        .map(itemRow).join('')}</div>`;
   }
 
   function collect(body) {
     const g = (k) => {
-      const e = body.querySelector(`[data-f="${k}"]`);
-      return e ? (e.type === 'checkbox' ? e.checked : e.value.trim()) : undefined;
+      const el = body.querySelector(`[data-f="${k}"]`);
+      if (!el) return '';
+      return el.type === 'checkbox' ? el.checked : el.value.trim();
     };
-    const prev = editIdx == null ? null : state.connectors[editIdx];
-    const params = Array.from(body.querySelectorAll('.param-row')).map(row => ({
-      name: (row.querySelector('[data-p="name"]').value || '').trim(),
-      value: (row.querySelector('[data-p="value"]').value || '').trim(),
+
+    const items = Array.from(body.querySelectorAll('.item-row')).map(row => ({
+      endpoint: row.querySelector('[data-i="endpoint"]').value,
+      poll_interval_sec: row.querySelector('[data-i="poll_interval_sec"]').value,
+      enabled: row.querySelector('[data-i="enabled"]').checked,
     }));
 
     return normalize({
@@ -349,25 +309,33 @@
       description: g('description'),
       object: g('object'),
       auth_profile: g('auth_profile'),
-      api_type: g('api_type'),
-      endpoint: g('endpoint'),
-      params,
-      poll_interval_sec: g('poll_interval_sec'),
-      enabled: g('enabled') !== false,
-      last_test: prev ? prev.last_test : null,
+      items,
     });
+  }
+
+  // Save is blocked only by what makes a connector meaningless, and the reason is shown rather
+  // than left for the operator to guess at a greyed-out button.
+  function saveBlocker(c) {
+    if (!c.object) return 'Pick the object this connector collects from.';
+    if (!c.auth_profile) return 'Pick the API key used against it.';
+    if (!c.items.length) return 'Add at least one endpoint to collect.';
+    return '';
+  }
+
+  function refreshSave() {
+    const body = document.getElementById('acBody');
+    const saveBtn = document.getElementById('acSave');
+    if (!body || !saveBtn) return;
+
+    const reason = saveBlocker(collect(body));
+    saveBtn.disabled = !!reason;
+    saveBtn.title = reason;
   }
 
   function openEditor(idx) {
     editIdx = idx;
     const c = idx == null ? blank() : normalize(JSON.parse(JSON.stringify(state.connectors[idx])));
     draftOid = c.oid;
-
-    // An existing connector was already proven when it was created; re-testing is only forced
-    // once the operator edits something the proof depended on.
-    gate = (idx != null && c.last_test && c.last_test.ok)
-      ? { keygen: GATE.ok, endpoint: GATE.ok }
-      : { keygen: GATE.idle, endpoint: GATE.idle };
 
     document.getElementById('acTitle').textContent = idx == null ? 'Add Connector' : 'Edit Connector';
     document.getElementById('acBody').innerHTML = editorForm(c);
@@ -386,83 +354,43 @@
     document.getElementById('acPanel').classList.remove('open');
   };
 
-  // Bind one field so editing it invalidates the gate it fed (and everything downstream), and
-  // keeps the "Will call" preview honest.
-  function bindGateField(el) {
-    const evt = el.tagName === 'SELECT' ? 'change' : 'input';
-    el.addEventListener(evt, () => {
-      resetGates(el.dataset.gate);
-      document.getElementById('acKeygenResult').innerHTML = '';
-      document.getElementById('acEndpointResult').innerHTML = '';
-      refreshPreview();
+  function wireItemRow(row) {
+    row.querySelector('[data-i="endpoint"]').addEventListener('change', (e) => {
+      row.querySelector('.item-path').textContent = endpointPath(e.target.value) || '—';
+      row.querySelector('[data-item-result]').innerHTML = '';
+      refreshSave();
     });
-  }
 
-  function refreshPreview() {
-    const el = document.getElementById('acEpPreview');
-    if (el) el.textContent = effectivePath(collect(document.getElementById('acBody'))) || '—';
-  }
+    row.querySelector('[data-i="poll_interval_sec"]').addEventListener('input', refreshSave);
+    row.querySelector('[data-i="enabled"]').addEventListener('change', refreshSave);
 
-  function wireParamRow(row) {
-    row.querySelectorAll('[data-gate]').forEach(bindGateField);
-    row.querySelector('[data-prm-del]').addEventListener('click', () => {
+    row.querySelector('[data-item-del]').addEventListener('click', () => {
       row.remove();
-      resetGates('endpoint');
-      refreshPreview();
-      paintGates();
+      refreshSave();
+    });
+
+    row.querySelector('[data-item-test]').addEventListener('click', () => {
+      const oid = row.querySelector('[data-i="endpoint"]').value;
+      if (!oid) { alert('Pick an endpoint on this row first.'); return; }
+      runApiTest(row, oid);
     });
   }
 
   function wireEditor() {
     const body = document.getElementById('acBody');
 
-    // Any field a gate depended on invalidates that gate (and everything downstream of it).
-    body.querySelectorAll('[data-gate]').forEach(bindGateField);
-    body.querySelectorAll('.param-row').forEach(row => {
-      row.querySelector('[data-prm-del]').addEventListener('click', () => {
-        row.remove();
-        resetGates('endpoint');
-        refreshPreview();
-        paintGates();
-      });
+    body.querySelectorAll('[data-f]').forEach(el => {
+      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', refreshSave);
     });
+    body.querySelectorAll('.item-row').forEach(wireItemRow);
 
-    document.getElementById('acParamAdd').onclick = () => {
-      const list = document.getElementById('acParamList');
-      list.insertAdjacentHTML('beforeend', paramRow({ name: '', value: '' }));
-      wireParamRow(list.lastElementChild);
-      list.lastElementChild.querySelector('[data-p="name"]').focus();
+    document.getElementById('acItemAdd').onclick = () => {
+      const list = document.getElementById('acItemList');
+      list.insertAdjacentHTML('beforeend', itemRow(normalizeItem({})));
+      wireItemRow(list.lastElementChild);
+      list.lastElementChild.querySelector('[data-i="endpoint"]').focus();
+      refreshSave();
     };
-
-    // Switching API swaps the placeholder, the key-delivery note, and — when the operator has
-    // not typed anything yet — seeds the parameters that call normally needs.
-    body.querySelector('[data-apisel]')?.addEventListener('change', (e) => {
-      const type = e.target.value;
-      const input = body.querySelector('[data-f="endpoint"]');
-      const untouched = input && (!input.value.trim() || API_TYPES.some(([, , hint]) => hint === input.value.trim()));
-      if (input) {
-        input.placeholder = apiTypeHint(type);
-        if (untouched) input.value = apiTypeHint(type);
-      }
-
-      const list = document.getElementById('acParamList');
-      const current = collect(body).params.filter(p => p.name);
-      const seedable = untouched || current.length === 0 ||
-        API_TYPES.some(([, , , seed]) => JSON.stringify(seed) === JSON.stringify(current));
-      if (list && seedable) {
-        list.innerHTML = apiTypeParams(type).map(paramRow).join('');
-        list.querySelectorAll('.param-row').forEach(wireParamRow);
-      }
-
-      const hint = document.getElementById('acEpHint');
-      if (hint) hint.innerHTML = `Values are percent-encoded for you — type them raw.
-        The API key is added automatically (${type === 'xml' ? '<code>key=</code> parameter'
-                                                            : '<code>X-PAN-KEY</code> header'}).`;
-      refreshPreview();
-    });
-
-    document.getElementById('acKeygenBtn').onclick = () => runKeygenTest(body);
-    document.getElementById('acEndpointBtn').onclick = () => runEndpointTest(body);
 
     document.getElementById('acCancel').onclick = closeEditor;
     document.getElementById('acClose').onclick = closeEditor;
@@ -476,20 +404,20 @@
 
     document.getElementById('acSave').onclick = () => {
       const c = collect(body);
-      if (gate.endpoint !== GATE.ok) { alert('Run the endpoint test before saving.'); return; }
-      c.last_test = { at: Date.now(), ok: true };
+      const reason = saveBlocker(c);
+      if (reason) { alert(reason); return; }
       if (editIdx == null) state.connectors.push(c); else state.connectors[editIdx] = c;
       stage();
       closeEditor(); render();
     };
 
-    paintGates();
+    refreshSave();
   }
 
-  // ── Device tests ────────────────────────────────────────────────────────────
-  // mgmtd performs the call — the browser cannot reach a customer's firewall, and the daemon
-  // must not block its single loop on a slow device, so the request returns a ticket and we
-  // poll for the outcome.
+  // ── API test ────────────────────────────────────────────────────────────────
+  // One button, one round trip: mgmtd hands the request to scand, which exchanges the
+  // credential for a key and then calls the endpoint with it. The browser cannot reach a
+  // customer's firewall, and neither daemon blocks its loop on a slow device — hence the ticket.
   const POLL_MS = 700;
   const POLL_LIMIT = 40;
 
@@ -515,8 +443,8 @@
     throw new Error('timed out waiting for the device');
   }
 
-  // Both tests need the same device coordinates: the host from the object, the credential and
-  // TLS policy from the profile, and the secret from the browser-held store.
+  // The device coordinates: host from the object, username and keygen path from the API Key
+  // record, and the password from the browser-held store.
   function testPayload(c) {
     const o = objectByOid(c.object);
     const p = window.NMS.apiKeys ? window.NMS.apiKeys.byOid(c.auth_profile) : null;
@@ -524,8 +452,35 @@
       target: o ? o.target : '',
       fingerprint: o ? o.fingerprint : '',
       username: p ? p.username : '',
+      keygen_endpoint: p ? (p.endpoint || '') : '',
+      // Lets scand use the key already issued for this profile instead of asking for the
+      // password again — see ApiService::issuedKey.
+      api_key_oid: c.auth_profile,
       secrets: window.NMS.apiKeySecrets ? window.NMS.apiKeySecrets.for(c.auth_profile) : {},
     };
+  }
+
+  // Checked here rather than left to the backend, which can only answer "no username/password"
+  // without knowing WHICH key or where it is kept.
+  //
+  // The password is held in sessionStorage, per browser tab, and is never committed — so it is
+  // gone after the tab is closed, in a second tab, and after `pretzel reset` (the config version
+  // goes backwards and every draft is dropped). The API Key record still shows a username, which
+  // is why this reads as "the credentials are right there" when the test says otherwise.
+  function credentialProblem(c) {
+    const key = window.NMS.apiKeys ? window.NMS.apiKeys.byOid(c.auth_profile) : null;
+    if (!key) return 'That API Key no longer exists — pick another.';
+
+    const name = key.name || 'this API Key';
+    if (!key.username) {
+      return `API Key "${name}" has no username. Set it on the API Key page.`;
+    }
+
+    // Nothing else is checked here. Whether a key was already issued is scand's to know — it
+    // holds the ones it could open from api_key_state — and second-guessing that in the browser
+    // is how this ended up blocking a test that would have worked. `stored` is only a hint from
+    // the last generation in this tab; its absence proves nothing.
+    return '';
   }
 
   function stepRow(label, st) {
@@ -537,55 +492,18 @@
               <span class="ts-detail">${esc((st && st.detail) || '')}</span></div>`;
   }
 
-  // A device we have never pinned stops the test at the certificate. The operator confirms the
-  // fingerprint, it is stored on the profile, and the test is run again — only then does the
-  // credential leave this machine.
+  // A device we have never pinned stops the test at the certificate: HttpClient will not put a
+  // credential on the wire to an unverified peer. The operator confirms the fingerprint, it is
+  // stored on the object, and the test is run again.
   function trustPrompt(res, c) {
     if (!res.fingerprint || res.fingerprint_trusted) return '';
     return `<div class="fp-prompt">
         <div class="fp-warn">Certificate is not trusted yet (self-signed)</div>
         <code class="fp-val">${esc(res.fingerprint)}</code>
         <div class="fp-sub">${esc(res.cert_subject || '')}</div>
-        <button class="btn-sm btn-primary" id="acTrustFp" data-device="${esc(c.object)}"
+        <button class="btn-sm btn-primary" data-trust-fp data-device="${esc(c.object)}"
                 data-fp="${esc(res.fingerprint)}">Trust this certificate</button>
       </div>`;
-  }
-
-  function wireTrust(containerId) {
-    document.getElementById('acTrustFp')?.addEventListener('click', (e) => {
-      const btn = e.currentTarget;
-      window.NMS.devices.pinFingerprint(btn.dataset.device, btn.dataset.fp);
-      document.getElementById(containerId).innerHTML +=
-        `<div class="ts-note">Fingerprint pinned to the profile — run the test again.</div>`;
-      btn.outerHTML = '<span class="fp-trusted">Pinned</span>';
-    });
-  }
-
-  async function runKeygenTest(body) {
-    const c = collect(body);
-    const out = document.getElementById('acKeygenResult');
-    gate.keygen = GATE.running; gate.endpoint = GATE.idle; paintGates();
-    out.innerHTML = `<div class="test-panel running">${stepRow('TLS connection', null)}${stepRow('API key generation', null)}</div>`;
-
-    let res;
-    try {
-      res = await runDeviceTest('/api/connector/keygen-test', testPayload(c));
-    } catch (e) {
-      gate.keygen = GATE.fail; paintGates();
-      out.innerHTML = `<div class="test-panel err"><div class="ts-note">${esc(e.message)}</div></div>`;
-      return;
-    }
-
-    const steps = res.steps || {};
-    gate.keygen = res.ok ? GATE.ok : GATE.fail;
-    out.innerHTML = `<div class="test-panel ${res.ok ? 'ok' : 'err'}">
-        ${stepRow('TLS connection', steps.tls)}
-        ${stepRow('API key generation', steps.auth)}
-        ${trustPrompt(res, c)}
-      </div>`;
-    wireTrust('acKeygenResult');
-    paintGates();
-
   }
 
   // Pretty-print when the body is JSON; XML and error text are shown as returned.
@@ -595,21 +513,14 @@
     try { return JSON.stringify(JSON.parse(text), null, 2); } catch (_) { return text; }
   }
 
-  // The endpoint the operator typed is the thing being debugged, so the outcome gets its own
-  // window rather than a cramped strip inside the editor: the exact request line on top, the
-  // full response below. Kept in `lastEndpointResult` so it can be reopened without re-running
-  // the test against the customer's device.
-  let lastEndpointResult = null;
-
-  function showEndpointDetail() {
-    const res = lastEndpointResult;
+  function showDetail(res) {
     if (!res || !window.NMS.modal) return;
 
     const req = res.request || {};
     const rsp = res.response || {};
     const statusClass = res.ok ? 'ok' : 'err';
 
-    window.NMS.modal.open('Endpoint test', `
+    window.NMS.modal.open('API test', `
       <div class="ep-detail">
         <div class="ep-block">
           <div class="ep-block-h">Request</div>
@@ -627,49 +538,62 @@
       </div>`);
   }
 
-  async function runEndpointTest(body) {
+  async function runApiTest(row, endpointOid) {
+    const body = document.getElementById('acBody');
     const c = collect(body);
-    const out = document.getElementById('acEndpointResult');
-    gate.endpoint = GATE.running; paintGates();
-    out.innerHTML = `<div class="test-panel running">${stepRow('Endpoint response', null)}</div>`;
+    const out = row.querySelector('[data-item-result]');
+    const btn = row.querySelector('[data-item-test]');
+
+    const missing = !c.object ? 'Pick an object first.'
+                  : (!c.auth_profile ? 'Pick an API key first.' : credentialProblem(c));
+    if (missing) {
+      out.innerHTML = `<div class="test-panel err"><div class="ts-note">${esc(missing)}</div></div>`;
+      return;
+    }
+
+    btn.disabled = true;
+    out.innerHTML = `<div class="test-panel running">
+        ${stepRow('TLS connection', null)}${stepRow('API key generation', null)}${stepRow('Endpoint response', null)}
+      </div>`;
 
     let res;
     try {
+      // scand runs the test statelessly — the endpoint may not be committed yet, so the
+      // reference is resolved here and the finished path is sent.
       const payload = testPayload(c);
-      payload.api_type = c.api_type;
-      payload.endpoint = c.endpoint;
-      payload.params = c.params;
+      payload.api_type = endpointApiType(endpointOid);
+      payload.endpoint = endpointPath(endpointOid);
+      payload.params = [];   // an endpoint carries its own parameters
       res = await runDeviceTest('/api/connector/endpoint-test', payload);
     } catch (e) {
-      gate.endpoint = GATE.fail; paintGates();
-      lastEndpointResult = null;
+      btn.disabled = false;
       out.innerHTML = `<div class="test-panel err"><div class="ts-note">${esc(e.message)}</div></div>`;
       return;
     }
 
+    btn.disabled = false;
     const steps = res.steps || {};
-    gate.endpoint = res.ok ? GATE.ok : GATE.fail;
-    lastEndpointResult = res;
-
-    // The editor keeps only the verdict; the detail lives in the window.
     out.innerHTML = `<div class="test-panel ${res.ok ? 'ok' : 'err'}">
         ${stepRow('TLS connection', steps.tls)}
         ${stepRow('API key generation', steps.auth)}
         ${stepRow('Endpoint response', steps.endpoint)}
         ${trustPrompt(res, c)}
-        ${res.request ? `<div class="ts-more"><button class="btn-sm" id="acEpDetail">View request / response</button></div>` : ''}
+        ${res.request ? `<div class="ts-more"><button class="btn-sm" data-detail type="button">View request / response</button></div>` : ''}
       </div>`;
-    wireTrust('acEndpointResult');
-    document.getElementById('acEpDetail')?.addEventListener('click', showEndpointDetail);
-    paintGates();
+
+    out.querySelector('[data-trust-fp]')?.addEventListener('click', (e) => {
+      const b = e.currentTarget;
+      window.NMS.devices.pinFingerprint(b.dataset.device, b.dataset.fp);
+      b.outerHTML = '<span class="fp-trusted">Pinned — run the test again.</span>';
+    });
+    out.querySelector('[data-detail]')?.addEventListener('click', () => showDetail(res));
 
     // Raise the window straight away — the operator ran the test to see this.
-    if (res.request) showEndpointDetail();
+    if (res.request) showDetail(res);
   }
 
   // ── Wiring (table) ──────────────────────────────────────────────────────────
-  // render() replaces #contentBody wholesale, so every row control is re-bound here on each
-  // paint; render() calls this as its last step.
+  // render() replaces #contentBody wholesale, so row controls are re-bound on each paint.
   function wire() {
     const el = document.getElementById('contentBody');
     document.getElementById('acAdd')?.addEventListener('click', () => openEditor(null));
@@ -677,9 +601,6 @@
       b.addEventListener('click', () => openEditor(+b.dataset.edit)));
     el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       state.connectors.splice(+b.dataset.del, 1); stage(); render();
-    }));
-    el.querySelectorAll('[data-toggle]').forEach(cb => cb.addEventListener('change', () => {
-      state.connectors[+cb.dataset.toggle].enabled = cb.checked; stage(); render();
     }));
   }
 
@@ -701,7 +622,8 @@
     if (e.detail.tab === 'api-connector') activate();
   });
 
-  // Object/profile names come from the other tabs' data, which loads independently.
+  // Object/profile/endpoint names come from the other tabs' data, which loads independently.
   document.addEventListener('nms:devices-ready', () => { if (activeTab() === 'api-connector') render(); });
   document.addEventListener('nms:api-keys-ready', () => { if (activeTab() === 'api-connector') render(); });
+  document.addEventListener('nms:endpoints-ready', () => { if (activeTab() === 'api-connector') render(); });
 })();
