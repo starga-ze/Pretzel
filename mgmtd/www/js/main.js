@@ -2,6 +2,33 @@
 (function () {
   'use strict';
 
+  // ── Configuration groups ─────────────────────────────────────────────────
+  // One definition drives both navigation levels: the sidebar flyout lists the groups, and the
+  // topbar shows the tabs of whichever group is open. Grouped by what the operator is working
+  // on rather than by data type —
+  //   Site Management    where things are, and what is there (a Site is one customer)
+  //   API Profile        the reusable definitions a connector references
+  //   API Connector      binding a device + credential + endpoints on a schedule
+  //   System Management  this appliance, not the managed estate
+  // A group with a single tab renders no tab row; its name in the sidebar is the whole story.
+  const SETTINGS_GROUPS = [
+    { id: 'site-management', label: 'Site Management', tabs: [
+        { id: 'sites',        label: 'Sites'        },
+        { id: 'devices',      label: 'Devices'      } ] },
+    { id: 'api-profile', label: 'API Profile', tabs: [
+        { id: 'api-key',      label: 'API Key'      },
+        { id: 'api-endpoint', label: 'API Endpoint' } ] },
+    { id: 'api-connector', label: 'API Connector', tabs: [
+        { id: 'api-connector', label: 'API Connector' } ] },
+    { id: 'system-management', label: 'System Management', tabs: [
+        { id: 'user',         label: 'User'         },
+        { id: 'operation',    label: 'Operation'    } ] },
+  ];
+
+  const SETTINGS_TABS = SETTINGS_GROUPS.reduce((acc, g) => acc.concat(g.tabs), []);
+  const groupOfTab = (tabId) =>
+    SETTINGS_GROUPS.find(g => g.tabs.some(t => t.id === tabId)) || SETTINGS_GROUPS[0];
+
   // ── Sidebar definition ───────────────────────────────────────────────────
   // Single source of truth for all pages.
 
@@ -45,7 +72,15 @@
 
     { type: 'section', label: 'Administrator' },
     {
-      type: 'link', id: 'configuration', label: 'Configuration', href: 'settings',
+      // A flyout group, not a link: the groups live here so the topbar carries a single row of
+      // tabs. Each subitem opens its group's first tab.
+      type: 'group', id: 'configuration', label: 'Configuration',
+      subitems: SETTINGS_GROUPS.map(g => ({
+        id: g.id,
+        label: g.label,
+        href: `settings?tab=${g.tabs[0].id}`,
+        tabs: g.tabs.map(t => t.id),
+      })),
       icon: `<circle cx="12" cy="12" r="3"/>
              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
                       a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
@@ -84,14 +119,25 @@
     'rack-management': { title: 'Floor Map' },
     'log-viewer':      { title: 'Logs' },
     'events':          { title: 'Events' },
-    'settings':        { title: 'Configuration', tabs: [
-                           { id: 'inventory', label: 'Inventory' },
-                           { id: 'system',    label: 'System'    } ] },
+    // The group is chosen in the sidebar flyout (SETTINGS_GROUPS); the topbar shows that
+    // group's name and one row of its tabs.
+    'settings':        { title: 'Configuration', groups: SETTINGS_GROUPS },
     'audit':           { title: 'Audit', tabs: [
                            { id: 'config', label: 'Config History' },
                            { id: 'access', label: 'Access History' } ] },
     'laboratory':      { title: 'Laboratory' },
   };
+
+  // The flyout is rebuilt from the toggle's data-subitems each time it opens, so marking the
+  // active group there is enough to keep it correct after an in-place tab switch.
+  function syncFlyoutActive(tabId) {
+    const toggle = document.querySelector('.nav-group[data-group-id="configuration"] .nav-group-toggle');
+    if (!toggle) return;
+    let subs;
+    try { subs = JSON.parse(toggle.dataset.subitems || '[]'); } catch (_) { return; }
+    subs.forEach(s => { s.active = !!(s.tabs && s.tabs.indexOf(tabId) !== -1); });
+    toggle.dataset.subitems = JSON.stringify(subs);
+  }
 
   function buildTopbar() {
     const el = document.getElementById('pageTopbar');
@@ -101,15 +147,28 @@
     const cfg = PAGES[page];
     if (!cfg) { el.remove(); return; }
 
-    document.title = 'Pretzel — ' + cfg.title;
-
+    // Grouped pages still address a tab with a single ?tab= id; the group is derived from it, so
+    // links stay short and a module only ever has to look at one parameter.
+    const allTabs = cfg.groups ? cfg.groups.reduce((acc, g) => acc.concat(g.tabs), []) : (cfg.tabs || []);
+    const defaultTab = allTabs.length ? allTabs[0].id : '';
     const params = new URLSearchParams(location.search);
-    const activeTab = params.get('tab') || (cfg.tabs ? cfg.tabs[0].id : '');
+    const requested = params.get('tab');
+    const activeTab = allTabs.some(t => t.id === requested) ? requested : defaultTab;
+    const activeGroup = cfg.groups
+      ? (cfg.groups.find(g => g.tabs.some(t => t.id === activeTab)) || cfg.groups[0])
+      : null;
+
+    // With the group chosen in the sidebar, the heading names the group — otherwise the flyout
+    // closes and nothing on screen says which part of Configuration this is.
+    const heading = activeGroup ? activeGroup.label : cfg.title;
+    document.title = 'Pretzel — ' + heading;
 
     let html = `
       <div class="topbar-main">
-        <h1 class="topbar-title">${cfg.title}</h1>
+        <h1 class="topbar-title">${heading}</h1>
         <div class="topbar-actions">
+          <button class="topbar-view" id="viewBtn" type="button">View</button>
+          <button class="topbar-revert" id="revertBtn" type="button" disabled>Revert</button>
           <button class="topbar-commit" id="commitBtn" type="button" disabled>
             <span id="commitLabel">Publish</span>
           </button>
@@ -122,17 +181,98 @@
         </div>
       </div>`;
 
-    if (cfg.tabs) {
+    const tabRow = (tabs) => `<nav class="page-tabs">` + tabs.map(t =>
+      `<a class="page-tab ${t.id === activeTab ? 'active' : ''}" href="${page}?tab=${t.id}" data-tab="${t.id}">${t.label}</a>`
+    ).join('') + `</nav>`;
+
+    if (cfg.groups) {
+      // One row only: the tabs of the group the sidebar opened. A single-tab group is its own
+      // content, so a tab row of one would be noise.
+      if (activeGroup.tabs.length > 1) {
+        el.classList.add('has-tabs');
+        html += tabRow(activeGroup.tabs);
+      }
+    } else if (cfg.tabs) {
       el.classList.add('has-tabs');
-      html += `<nav class="page-tabs">` + cfg.tabs.map(t =>
-        `<a class="page-tab ${t.id === activeTab ? 'active' : ''}" href="${page}?tab=${t.id}">${t.label}</a>`
-      ).join('') + `</nav>`;
+      html += tabRow(cfg.tabs);
     }
 
     el.innerHTML = html;
 
+    // Settings navigation is client-side: every tab module stays loaded with its in-memory and
+    // staged state, so the topbar — and the Publish/Revert pending state — survives the switch
+    // instead of being rebuilt disabled and re-enabled once the data refetch lands. Modules
+    // repaint on 'nms:tab-change'. Other tabbed pages (audit) keep plain navigation.
+    if (cfg.groups && page === 'settings') {
+      const currentTab = () => {
+        const t = new URLSearchParams(location.search).get('tab');
+        return allTabs.some(x => x.id === t) ? t : defaultTab;
+      };
+
+      function onTabClick(e) {
+        e.preventDefault();
+        const tabId = e.currentTarget.dataset.tab;
+        if (tabId !== currentTab()) switchTab(tabId, true);
+      }
+
+      function switchTab(tabId, push) {
+        if (push) history.pushState({ tab: tabId }, '', `${page}?tab=${tabId}`);
+
+        const group = groupOfTab(tabId);
+
+        // Changing group changes both the heading and which tabs exist.
+        const title = el.querySelector('.topbar-title');
+        if (title) title.textContent = group.label;
+        document.title = 'Pretzel — ' + group.label;
+
+        const existing = el.querySelector('.page-tabs');
+        if (group.tabs.length > 1) {
+          if (existing) existing.outerHTML = tabRow(group.tabs);
+          else el.insertAdjacentHTML('beforeend', tabRow(group.tabs));
+          el.classList.add('has-tabs');
+          el.querySelectorAll('.page-tab').forEach(a => {
+            a.classList.toggle('active', a.dataset.tab === tabId);
+            a.addEventListener('click', onTabClick);
+          });
+        } else {
+          if (existing) existing.remove();
+          el.classList.remove('has-tabs');
+        }
+
+        // Keep the sidebar's flyout highlight in step. Only the stored subitem state is
+        // rewritten — rebuilding the sidebar would mean re-running initFlyouts, whose
+        // document/window listeners would then accumulate on every switch.
+        syncFlyoutActive(tabId);
+
+        document.dispatchEvent(new CustomEvent('nms:tab-change', { detail: { tab: tabId, group: group.id } }));
+      }
+
+      el.querySelectorAll('.page-tab').forEach(a => a.addEventListener('click', onTabClick));
+      window.addEventListener('popstate', () => switchTab(currentTab(), false));
+
+      // The sidebar flyout navigates between groups. While already on this page that should be
+      // the same in-place switch as a tab click — a full load would rebuild the topbar and make
+      // the Publish/Revert state flicker back through disabled.
+      window.NMS = window.NMS || {};
+      window.NMS.gotoSettingsTab = (tabId) => {
+        if (!allTabs.some(t => t.id === tabId) || tabId === currentTab()) return false;
+        switchTab(tabId, true);
+        return true;
+      };
+    }
+
     document.getElementById('commitBtn')?.addEventListener('click', () => {
       if (typeof window.NMS._onCommit === 'function') window.NMS._onCommit();
+    });
+
+    document.getElementById('revertBtn')?.addEventListener('click', () => {
+      if (typeof window.NMS._onRevert === 'function') window.NMS._onRevert();
+    });
+
+    // View is always available — it reads the committed configuration, so it does not depend on
+    // anything being staged (see NMS.viewRunningConfig in js/commit.js).
+    document.getElementById('viewBtn')?.addEventListener('click', () => {
+      if (typeof window.NMS.viewRunningConfig === 'function') window.NMS.viewRunningConfig();
     });
 
     document.getElementById('refreshBtn')?.addEventListener('click', (e) => {
@@ -160,8 +300,13 @@
 
     const activePage  = location.pathname.split('/').pop() || 'home';
     const params      = new URLSearchParams(location.search);
-    const activeTab   = params.get('tab')   || '';
     const activeProto = params.get('proto') || '';
+    // Settings without ?tab= lands on the first tab, so resolve it here too or the sidebar
+    // would show no group highlighted on a bare /settings.
+    const requestedTab = params.get('tab') || '';
+    const activeTab = (activePage === 'settings' && !SETTINGS_TABS.some(t => t.id === requestedTab))
+      ? SETTINGS_TABS[0].id
+      : requestedTab;
 
     // A link/subitem is active when its page matches and any tab/proto it pins matches.
     const hrefActive = (href, disabled) => {
@@ -212,9 +357,16 @@
         // Flyout group: the toggle never navigates; hovering/clicking it reveals a
         // flyout (built by initFlyouts from data-subitems) to the right — works the
         // same expanded or collapsed. The group is "active" if a subitem is active.
+        //
+        // A subitem links to its group's first tab, so matching on the href alone would drop
+        // the highlight the moment the operator moved to a second tab. When the subitem lists
+        // the tabs it owns, membership decides instead.
         const subs = item.subitems.map(s => ({
-          id: s.id, label: s.label, href: s.href,
-          soon: !!s.soon, active: hrefActive(s.href, false),
+          id: s.id, label: s.label, href: s.href, tabs: s.tabs || null,
+          soon: !!s.soon,
+          active: s.tabs
+            ? (parseHref(s.href).page === activePage && s.tabs.indexOf(activeTab) !== -1)
+            : hrefActive(s.href, false),
         }));
         const groupActive = subs.some(s => s.active);
         const cls = ['nav-item', 'nav-group-toggle', groupActive ? 'active' : ''].filter(Boolean).join(' ');
@@ -366,11 +518,23 @@
         subs.map(s => {
           const cls  = ['nav-flyout-item', s.active ? 'active' : '', s.soon ? 'is-soon' : ''].filter(Boolean).join(' ');
           const href = s.soon ? '#' : s.href;
-          return `<a class="${cls}" href="${href}">` +
+          const tab  = (s.tabs && s.tabs.length) ? ` data-goto-tab="${s.tabs[0]}"` : '';
+          return `<a class="${cls}" href="${href}"${tab}>` +
                  `<span>${s.label}</span>` +
                  (s.soon ? '<span class="nav-badge-soon">Soon</span>' : '') +
                  `</a>`;
         }).join('');
+
+      // Already on the target page: switch in place rather than reloading, so the topbar and
+      // the staged Publish/Revert state survive (see NMS.gotoSettingsTab).
+      flyout.querySelectorAll('[data-goto-tab]').forEach(a => {
+        a.addEventListener('click', (e) => {
+          if (typeof window.NMS.gotoSettingsTab !== 'function') return;
+          e.preventDefault();
+          window.NMS.gotoSettingsTab(a.dataset.gotoTab);
+          hide();
+        });
+      });
 
       // Anchor to the right edge of the toggle, clamped to the viewport.
       const r = toggle.getBoundingClientRect();
@@ -488,20 +652,35 @@
   /* ── Shared utils ── */
   window.NMS = window.NMS || {};
 
-  // Top-right Publish button control. A page calls setPendingChanges(n) whenever its staged
-  // change count changes (0 => disabled/muted, >0 => active); register the deploy action
-  // with onCommit(fn).
+  // Top-right Publish/Revert button control. setPendingChanges(n) is called whenever the staged
+  // change count changes (0 => both disabled/muted, >0 => both active); register the deploy and
+  // discard actions with onCommit(fn) / onRevert(fn).
   window.NMS.setPendingChanges = function (n) {
-    const btn = document.getElementById('commitBtn');
-    if (btn) btn.disabled = (n | 0) <= 0;   // label stays "Publish"; only enabled state changes
+    const dirty = (n | 0) > 0;
+    const commit = document.getElementById('commitBtn');
+    const revert = document.getElementById('revertBtn');
+    if (commit) commit.disabled = !dirty;   // label stays "Publish"; only enabled state changes
+    if (revert) revert.disabled = !dirty;
   };
   window.NMS.onCommit = function (fn) { window.NMS._onCommit = fn; };
+  window.NMS.onRevert = function (fn) { window.NMS._onRevert = fn; };
 
   // Register how the current page re-renders itself when the topbar Refresh is clicked.
   // Unregistered pages fall back to a full reload.
   window.NMS.onRefresh = function (fn) { window.NMS._onRefresh = fn; };
 
   window.NMS.utils = {
+    // Shared by the settings tab modules (see www/js/sites.js and friends).
+    esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    },
+    newUuid() {
+      if (crypto && crypto.randomUUID) return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    },
     formatUptime(seconds) {
       if (!seconds || seconds < 0) return '--';
       const d = Math.floor(seconds / 86400);

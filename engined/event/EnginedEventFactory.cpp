@@ -1,6 +1,7 @@
 #include "event/EnginedEventFactory.h"
 
 #include "service/admin/AdminEvent.h"
+#include "service/apikey/ApiKeyEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/commit/CommitEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
@@ -71,6 +72,9 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
 
     case pz::ipc::IpcCmd::AdminPasswordUpdate:
         return std::make_unique<AdminEvent>(AdminEventType::ReceivePasswordUpdate, std::move(msg));
+
+    case pz::ipc::IpcCmd::ApiKeyStateUpdate:
+        return std::make_unique<ApiKeyEvent>(ApiKeyEventType::ReceiveStateUpdate, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

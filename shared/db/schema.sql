@@ -8,10 +8,15 @@
 --   startup_config : baseline boot config (the shipped startup-config file).
 --   running_config : live, versioned config history (the active running-config).
 
+-- Identity-column naming: every configuration object has exactly ONE identity, `oid` — a UUID
+-- string issued at creation and immutable for the object's lifetime (pretzel calls it oid; there
+-- is no separate uuid/numeric-id pair). Internal singleton/serial row keys are also named `oid`.
+-- No table carries a bare `id`.
+
 -- Baseline boot config. Synced from /etc/pretzel/startup-config.json by mgmtd at
--- boot. Singleton row (id = 1).
+-- boot. Singleton row (oid = 1).
 CREATE TABLE IF NOT EXISTS startup_config (
-    id          INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    oid         INT PRIMARY KEY DEFAULT 1 CHECK (oid = 1),
     config_json JSONB NOT NULL,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -25,7 +30,7 @@ CREATE TABLE IF NOT EXISTS startup_config (
 -- cold-restarts mid-reload loads the highest 'active' (last-good) version, never the
 -- in-flight 'pending' one.
 CREATE TABLE IF NOT EXISTS running_config (
-    id           BIGSERIAL   PRIMARY KEY,
+    oid          BIGSERIAL   PRIMARY KEY,
     version      BIGINT      NOT NULL UNIQUE,
     config_json  JSONB       NOT NULL,
     committed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -41,6 +46,51 @@ BEGIN
             ADD CONSTRAINT running_config_state_check CHECK (state IN ('pending','active','superseded'));
     END IF;
 END $rc_state$;
+
+-- Upgrade path for databases created when the persistent tables still carried `id`
+-- (projections like inventory are drop+recreated, so only these two need renaming).
+DO $rename_oid$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'startup_config' AND column_name = 'id') THEN
+        ALTER TABLE startup_config RENAME COLUMN id TO oid;
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'running_config' AND column_name = 'id') THEN
+        ALTER TABLE running_config RENAME COLUMN id TO oid;
+    END IF;
+END $rename_oid$;
+
+-- Config-json normalization for the single-identity merge: objects carried `uuid` (and, on auth
+-- profiles / sites / connectors, a separate numeric `oid`). Fold uuid into oid and drop the
+-- numeric one, across every persisted version and the baseline. Idempotent — once folded, the
+-- `? 'uuid'` guards are false.
+DO $merge_oid$
+DECLARE
+    tbl  TEXT;
+    spec TEXT;
+    path TEXT[];
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['running_config', 'startup_config'] LOOP
+        FOREACH spec IN ARRAY ARRAY['icmpd.service.probe.probe_targets',
+                                    'scand.service.api.auth_profiles',
+                                    'scand.service.api.connectors',
+                                    'engined.service.site.sites'] LOOP
+            path := string_to_array(spec, '.');
+            EXECUTE format($fmt$
+                UPDATE %I SET config_json = jsonb_set(config_json, %L, (
+                    SELECT COALESCE(jsonb_agg(
+                        CASE WHEN elem ? 'uuid'
+                             THEN (elem - 'uuid') || jsonb_build_object('oid', elem->'uuid')
+                             ELSE elem END), '[]'::jsonb)
+                    FROM jsonb_array_elements(config_json #> %L) AS elem))
+                WHERE jsonb_typeof(config_json #> %L) = 'array'
+                  AND EXISTS (SELECT 1 FROM jsonb_array_elements(config_json #> %L) AS e
+                              WHERE e ? 'uuid')
+            $fmt$, tbl, path, path, path, path);
+        END LOOP;
+    END LOOP;
+END $merge_oid$;
 
 -- Local login accounts (operator credentials), stored hashed (SHA-256 of
 -- password+salt). A dedicated, NON-versioned store — kept out of running_config so
@@ -61,30 +111,68 @@ CREATE TABLE IF NOT EXISTS local_users (
 -- LLDP data) and state_snapshot (heartbeat snapshot written but never read).
 DROP TABLE IF EXISTS probe_devices;
 DROP TABLE IF EXISTS state_snapshot;
+-- device_credentials was an abandoned first pass at the encrypted credential store: no DDL, no
+-- reader, no writer, and it survived every reset because nothing listed it. It held cipher text
+-- nothing could decrypt, so it goes. api_key_state/api_endpoint_state were declared before they
+-- had a writer; see the note further down.
+DROP TABLE IF EXISTS device_credentials;
+DROP TABLE IF EXISTS api_endpoint_state;
 
--- Managed inventory: the operator-declared objects. Source of truth is running-config;
--- engined (the single DB writer) projects the configured objects here on reload and updates
--- `status` from probe results. Holds only config attributes + live status. It is a pure
--- projection (rebuilt from config), so the DDL drops+recreates it to evolve the shape.
---   id       : object UUID (immutable)
---   platform : direct (IP-based, mgmt IP/FQDN) | tenant (cloud platform, tenant-scoped)
---   target   : endpoint identifier — direct: mgmt IP/FQDN · tenant: tenant/TSG id
+-- ── Config vs state ─────────────────────────────────────────────────────────────
+-- running_config holds what the OPERATOR declared: sites, devices, API keys, endpoints,
+-- connectors. It is append-versioned, diffed before publish and revertable, so only things a
+-- human authored belong in it.
+--
+-- Everything the SYSTEM produces lives in the tables below instead — issued API keys, expiry,
+-- probe status, test outcomes. Writing those into running_config would mint a new configuration
+-- version every time a key was re-issued or a probe answered, and would show machine noise in
+-- the operator's review diff. engined is the single writer for all of them.
+
+-- Devices projected from running_config, plus live reachability. A pure projection (rebuilt
+-- from config on every reload), so the DDL drops and recreates it to evolve the shape.
+--   oid         : object identity — a UUID string, immutable
+--   site        : oid of the site the device belongs to ('' = unassigned)
+--   device_type : ngfw (reached at its own address) | prisma_access (tenant-scoped)
+--   target      : access identifier — ngfw: mgmt IP/FQDN · prisma_access: tenant/TSG id
 DROP TABLE IF EXISTS inventory;
-CREATE TABLE IF NOT EXISTS inventory (
-    id          TEXT PRIMARY KEY,
-    type        TEXT NOT NULL,
-    platform    TEXT NOT NULL DEFAULT 'direct',
+DROP TABLE IF EXISTS devices;
+CREATE TABLE IF NOT EXISTS devices (
+    oid         TEXT PRIMARY KEY,
+    site        TEXT,
+    device_type TEXT NOT NULL DEFAULT 'ngfw',
     target      TEXT,
     name        TEXT,
     description TEXT,
-    enabled     BOOLEAN NOT NULL DEFAULT true,
     status      TEXT,
     last_seen   TIMESTAMPTZ,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- One object per connection identity, per platform (dup-prevention).
-CREATE UNIQUE INDEX IF NOT EXISTS inventory_target_uniq ON inventory (platform, target)
+-- One device per access identifier, per device type (dup-prevention).
+CREATE UNIQUE INDEX IF NOT EXISTS devices_target_uniq ON devices (device_type, target)
     WHERE target IS NOT NULL AND target <> '';
+
+-- What pretzel learns about a device API key, as opposed to what the operator declared. The
+-- declaration (name, device, endpoint, account) lives in running_config; the issued secret and
+-- its verification history live here, because running_config is append-versioned, shown verbatim
+-- in the review diff and exported by Save-to-file — a key written there would be permanent,
+-- readable by every reviewer, and would mint a configuration version each time it was re-issued.
+-- Same reasoning that keeps admin passwords in local_users.
+--
+-- Written only by engined (mgmtd hands the result over by IPC). Keyed by the API Key oid.
+--   secret_enc : AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext), sealed by mgmtd with
+--                /etc/pretzel/credentials.key. A database copy without that file is useless.
+--   expires_at : NULL means no expiry — PAN-OS keys are indefinite unless an API key lifetime
+--                is configured on the device.
+CREATE TABLE IF NOT EXISTS api_key_state (
+    oid            TEXT PRIMARY KEY,
+    secret_enc     TEXT,
+    issued_at      TIMESTAMPTZ,
+    expires_at     TIMESTAMPTZ,
+    last_test_at   TIMESTAMPTZ,
+    last_test_ok   BOOLEAN,
+    last_test_note TEXT,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- One-time config-json normalizations (idempotent; run by engined via Config::preflight).
 DO $migrate$

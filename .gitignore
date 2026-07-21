@@ -24,6 +24,11 @@ tmp/
 cert/*.key
 cert/*.crt
 
+# Credential-store master key: generated locally by script/start.py (ensure_credentials_key).
+# Committing it would let anyone with the repository decrypt every customer's API key from a
+# database copy, so it is created per install and never travels with the source.
+secret/*.key
+
 # Generated/local env files (e.g. /etc copies are outside the repo, but guard any
 # in-tree ones such as a developer .env).
 .env

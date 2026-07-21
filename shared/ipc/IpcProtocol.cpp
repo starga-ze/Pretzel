@@ -109,6 +109,12 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "ScanResult";
     case IpcCmd::AdminPasswordUpdate:
         return "AdminPasswordUpdate";
+    case IpcCmd::ApiKeyStateUpdate:
+        return "ApiKeyStateUpdate";
+    case IpcCmd::ApiConnectorTestRequest:
+        return "ApiConnectorTestRequest";
+    case IpcCmd::ApiConnectorTestResponse:
+        return "ApiConnectorTestResponse";
     case IpcCmd::ProbeRequest:
         return "ProbeRequest";
     case IpcCmd::AuthLoginRequest:

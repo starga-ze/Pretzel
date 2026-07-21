@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import time
 from script.utils import (
-    ROOT_DIR, BUILD_DIR, CERT_DIR, run_cmd, install_file,
+    ROOT_DIR, BUILD_DIR, CERT_DIR, SECRET_DIR, run_cmd, install_file,
     PROMETHEUS_SRC_PATH, NODE_EXPORTER_SRC_PATH, POSTGRES_EXPORTER_SRC_PATH,
     PG_SERVICE, PG_DB_HOST, PG_DB_PORT, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
     PGADMIN_VENV, PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD,
@@ -23,7 +23,7 @@ from script.utils import (
 DAEMONS = [
     "pz-db-ready.service",
     "pz-ipcd.service", "pz-engined.service", "pz-authd.service", "pz-mgmtd.service",
-    "pz-icmpd.service", "pz-scand.service", "pz-topologyd.service",
+    "pz-icmpd.service", "pz-scand.service", "pz-topologyd.service", "pz-apid.service",
     "pz-prometheus.service", "pz-node-exporter.service", "pz-postgres-exporter.service",
     "pz-grafana.service", "pz-pgadmin.service",
 ]
@@ -35,6 +35,8 @@ SYSTEMD_DIR = "/etc/systemd/system"
 INSTALL_BIN_DIR = "/opt/pretzel/bin"
 ETC_ROOT_DIR = "/etc/pretzel"
 CERT_INSTALL_DIR = os.path.join(ETC_ROOT_DIR, "cert")
+CREDENTIALS_KEY_NAME = "credentials.key"
+CREDENTIALS_KEY_PATH = os.path.join(ETC_ROOT_DIR, CREDENTIALS_KEY_NAME)
 
 PROMETHEUS_CONFIG_DIR = os.path.join(ETC_ROOT_DIR, "prometheus")
 PROMETHEUS_DATA_DIR = "/var/lib/pretzel/prometheus"
@@ -58,6 +60,33 @@ STATE_ROOT_DIR = "/var/lib/pretzel"
 # binaries (see pz::mgmtd::HttpServer — overridable via PRETZEL_SHARE_DIR).
 SHARE_INSTALL_DIR = "/opt/pretzel/share"
 MGMTD_WWW_INSTALL_DIR = os.path.join(SHARE_INSTALL_DIR, "mgmtd", "www")
+
+def ensure_credentials_key() -> None:
+    """
+    Generates the credential-store master key in secret/ if missing, the same way
+    ensure_certificates() handles the TLS key: gitignored, created per install, deployed to
+    /etc/pretzel by this script.
+
+    It encrypts device API keys before they reach the database, so a database copy on its own
+    (a dump, a backup, a replica) is useless without the file. Committing it to the repository
+    would defeat that entirely, which is why it is generated rather than shipped.
+
+    Losing it is recoverable: the stored keys stop decrypting and each API Key is re-issued by
+    running its Key Gen Test again.
+    """
+    os.makedirs(SECRET_DIR, exist_ok=True)
+    key = os.path.join(SECRET_DIR, CREDENTIALS_KEY_NAME)
+    if os.path.isfile(key) and os.path.getsize(key) == 32:
+        return
+
+    try:
+        with open(key, "wb") as f:
+            f.write(os.urandom(32))          # AES-256
+        os.chmod(key, 0o600)
+    except OSError as e:
+        sys.exit(f"[FATAL] failed to create credential-store key {key}: {e}")
+    print(f"[*] Generated credential-store key -> secret/{CREDENTIALS_KEY_NAME}")
+
 
 def deploy_startup_config() -> None:
     """
@@ -421,6 +450,12 @@ def deploy_files():
             install_file(os.path.join(CERT_DIR, f), os.path.join(CERT_INSTALL_DIR, f), mode, quiet=True)
         print(f"[*] Deployed TLS cert/key -> {CERT_INSTALL_DIR}")
 
+    # 6b. Deploy the credential-store master key (0600: it decrypts stored device credentials).
+    src_key = os.path.join(SECRET_DIR, CREDENTIALS_KEY_NAME)
+    if os.path.isfile(src_key):
+        install_file(src_key, CREDENTIALS_KEY_PATH, 0o600, quiet=True)
+        print(f"[*] Deployed credential-store key -> {CREDENTIALS_KEY_PATH}")
+
     # 7. Install the baseline startup-config to /etc/pretzel/startup-config.json.
     #    mgmtd syncs it into the DB at boot; all daemons read it for DB conn params.
     deploy_startup_config()
@@ -474,9 +509,10 @@ def run():
     """Main orchestration logic for the deployment pipeline."""
     pre_flight_checks()
 
-    # A gitignored private key means a fresh checkout has no TLS cert — generate one
-    # before deploy_files copies cert/ into /etc/pretzel/cert.
+    # Both keys are gitignored, so a fresh checkout has neither — create them before
+    # deploy_files copies cert/ and secret/ into /etc/pretzel.
     ensure_certificates()
+    ensure_credentials_key()
 
     # [CRITICAL ORDER] stop -> overwrite files (+startup-config) -> DB up -> start
     # daemons. mgmtd seeds the DB from the startup-config at boot, so PostgreSQL must

@@ -17,6 +17,7 @@ enum class ScandEventDomain : std::uint32_t
     Heartbeat = 2,
     Scan = 3,
     Reload = 4,
+    Api = 5,
 };
 
 class ScandEvent : public pz::event::Event

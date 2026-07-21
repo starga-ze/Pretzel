@@ -57,6 +57,14 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
+    // scand ran the device call; seqNo is the ticket the browser is polling on.
+    if (msg->getCmd() == pz::ipc::IpcCmd::ApiConnectorTestResponse)
+    {
+        const auto& pl = msg->getPayload();
+        m_serviceManager->setApiTestResult(msg->getSeqNo(), std::string(pl.begin(), pl.end()));
+        return;
+    }
+
     std::unique_ptr<MgmtdEvent> event = m_eventFactory->create(std::move(msg));
 
     m_serviceManager->postEvent(std::move(event));

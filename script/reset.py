@@ -38,14 +38,24 @@ from script.utils import (
 TARGET = "pretzel.target"
 
 # The pretzel-owned tables, dropped with CASCADE so any dependent objects go too.
-# snmp_devices is the pre-rename (snmpd -> scand) legacy table: harmless if absent.
+# Everything the daemons create must be listed here, or a "clean" reset silently keeps rows.
+# The trailing block is retired tables — harmless if absent, but listed so an upgraded install
+# is left as clean as a fresh one.
 PZ_TABLES = [
+    # live
     "running_config",
     "startup_config",
-    "state_snapshot",
     "local_users",
-    "probe_devices",
-    "snmp_devices",
+    "devices",
+    "api_key_state",
+    # retired
+    "inventory",          # pre-rename device projection
+    "probe_devices",      # mixed ICMP status + discovered SNMP data
+    "snmp_devices",       # pre-rename (snmpd -> scand)
+    "state_snapshot",     # heartbeat snapshot, written but never read
+    "admin_user",         # pre-rename local_users
+    "device_credentials", # abandoned credential store, never wired
+    "api_endpoint_state", # declared before it had a writer
 ]
 
 

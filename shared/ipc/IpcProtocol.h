@@ -76,6 +76,17 @@ enum class IpcCmd : std::uint16_t
     AuthSamlStartResponse = 123,
     AuthSamlAcsRequest = 124,
     AuthSamlAcsResponse = 125,
+
+    // engined is the only database writer, so the outcome of a key generation (already-encrypted
+    // secret, expiry, test result) is handed over rather than written twice.
+    ApiKeyStateUpdate = 126,
+
+    // Connector tests run in scand, not mgmtd: scand is the daemon that will poll these devices
+    // on a schedule, and a test that exercised a different code path than the collector would
+    // not be testing much. mgmtd forwards the operator's (possibly uncommitted) target and
+    // correlates the reply by seqNo — the same shape as the SAML ACS delegation to authd.
+    ApiConnectorTestRequest = 127,
+    ApiConnectorTestResponse = 128,
 };
 
 enum class IpcFlag : std::uint8_t

@@ -136,6 +136,13 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
         return handleSettingsGet(sm, req, resp);
     }
 
+    if (target == "/api/settings/running-config" && req.method == "GET")
+    {
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleRunningConfig(sm, req, resp);
+    }
+
     if (target == "/api/settings/commit" && req.method == "POST")
     {
         if (!isAuthenticated(sm, req))
@@ -162,6 +169,27 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
         if (!isAuthenticated(sm, req))
             return unauthorized(resp);
         return handleInventoryStatus(sm, req, resp);
+    }
+
+    if (target == "/api/connector/keygen-test" && req.method == "POST")
+    {
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleKeygenTest(sm, req, resp);
+    }
+
+    if (target == "/api/connector/endpoint-test" && req.method == "POST")
+    {
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleEndpointTest(sm, req, resp);
+    }
+
+    if (target.rfind("/api/connector/test-result", 0) == 0 && req.method == "GET")
+    {
+        if (!isAuthenticated(sm, req))
+            return unauthorized(resp);
+        return handleApiTestResult(sm, req, resp);
     }
 
     if (target.rfind("/api/logs", 0) == 0 && req.method == "GET")
@@ -223,6 +251,30 @@ void WebService::handleHealth(MgmtdServiceManager& sm, const Request& req, Respo
     fill(resp, 200, R"({"status":"ok","daemon":"mgmtd"})");
 }
 
+namespace
+{
+
+// Hands a new local credential to engined, the only database writer. Shared by the explicit
+// password change and by the transparent upgrade a login performs when it meets an
+// old-format hash.
+void persistCredential(MgmtdServiceManager& sm, const std::string& username,
+                       const AuthService::Credential& cred)
+{
+    const json payload = {{"username", username}, {"password_hash", cred.passwordHash}, {"salt", cred.salt}};
+    const std::string payloadStr = payload.dump();
+
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
+    msg->setDst(pz::ipc::IpcDaemon::Engined);
+    msg->setCmd(pz::ipc::IpcCmd::AdminPasswordUpdate);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+    msg->setPayload(std::vector<std::uint8_t>(payloadStr.begin(), payloadStr.end()));
+
+    sm.txRouter().handleIpcMessage(std::move(msg));
+}
+
+}
+
 void WebService::handleLogin(MgmtdServiceManager& sm, const Request& req, Response& resp)
 {
     try
@@ -232,8 +284,28 @@ void WebService::handleLogin(MgmtdServiceManager& sm, const Request& req, Respon
         const auto password = body.at("password").get<std::string>();
 
         const auto result = sm.authService().login(username, password);
+        if (result.throttled)
+            return fill(resp, 429, R"({"error":"too many failed attempts — try again shortly"})");
         if (!result.success)
             return fill(resp, 401, R"({"error":"invalid credentials"})");
+
+        // The credential verified against an outdated hash format. This is the only moment the
+        // plaintext exists, so it is re-stored now rather than left to expire on its own — the
+        // operator sees nothing, and the old-format row is gone after one login.
+        if (result.rehashNeeded)
+        {
+            const auto cred = sm.authService().makeCredential(password);
+            if (cred.passwordHash.empty())
+            {
+                LOG_WARN("credential upgrade skipped — rehash failed (user={})", username);
+            }
+            else
+            {
+                persistCredential(sm, username, cred);
+                sm.authService().applyCredential(cred.passwordHash, cred.salt);
+                LOG_INFO("credential upgraded to the current hash format (user={})", username);
+            }
+        }
 
         const json okBody = {{"status", "ok"}, {"must_change", result.mustChange}};
         fill(resp, 200, okBody.dump());
@@ -270,18 +342,15 @@ void WebService::handleChangePassword(MgmtdServiceManager& sm, const Request& re
             return fill(resp, 401, R"({"error":"current password is incorrect"})");
 
         const auto cred = sm.authService().makeCredential(newPass);
+        if (cred.passwordHash.empty())
+        {
+            // The CSPRNG or the KDF failed. Reporting success here would leave the old password
+            // in place while telling the operator it had changed.
+            LOG_ERROR("password change aborted — credential could not be generated (user={})", user);
+            return fill(resp, 500, R"({"error":"could not generate the new credential"})");
+        }
 
-        const json payload = {{"username", user}, {"password_hash", cred.passwordHash}, {"salt", cred.salt}};
-        const std::string payloadStr = payload.dump();
-
-        auto msg = std::make_unique<pz::ipc::IpcMessage>();
-        msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
-        msg->setDst(pz::ipc::IpcDaemon::Engined);
-        msg->setCmd(pz::ipc::IpcCmd::AdminPasswordUpdate);
-        msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
-        msg->setPayload(std::vector<uint8_t>(payloadStr.begin(), payloadStr.end()));
-        sm.txRouter().handleIpcMessage(std::move(msg));
-
+        persistCredential(sm, user, cred);
         sm.authService().applyCredential(cred.passwordHash, cred.salt);
 
         LOG_INFO("admin password change sent to engined (user={})", user);
@@ -362,6 +431,140 @@ constexpr const char* kHiddenDomains[] = {
     "auth",
 };
 
+// ── Commit schema ────────────────────────────────────────────────────────────
+// The commit endpoint is generic — any domain of a known daemon passes through — but the
+// domains the UI publishes carry a declared schema, validated here so a malformed entry never
+// reaches the running_config. One schema per (daemon, domain, key); everything else is opaque.
+//
+// Every configuration object is identified by exactly one field, `oid`: a UUID string issued at
+// creation and immutable for the object's lifetime. Cross-references (site, auth_profile,
+// object) carry the referent's oid.
+
+// engined.site.devices — Devices (www/js/config.js). `device_type` is the single axis:
+// ngfw is reached at its own address, prisma_access through a tenant, so the access kind is
+// derived from it rather than stored twice. A device carries the TLS pin for its host but no
+// credential — an API Key references the device and holds the account.
+//   { oid, name, description?, site?, device_type: ngfw|prisma_access, target, fingerprint? }
+// `fingerprint` is written by the API Key test once the operator confirms the certificate, not
+// typed — pinning is unconditional, so there is no TLS mode to choose.
+bool validDevice(const json& d)
+{
+    if (!d.is_object())
+        return false;
+    if (d.value("oid", std::string()).empty() || d.value("target", std::string()).empty())
+        return false;
+
+    const std::string deviceType = d.value("device_type", std::string());
+    return deviceType == "ngfw" || deviceType == "prisma_access";
+}
+
+// engined.site.sites — Sites, one per customer (www/js/sites.js).
+//   { oid, name, description? }
+bool validSite(const json& s)
+{
+    if (!s.is_object())
+        return false;
+    return !s.value("oid", std::string()).empty() && !s.value("name", std::string()).empty();
+}
+
+// scand.api.api_keys — API Keys (www/js/api-keys.js). Bound to a device because a PAN-OS key is
+// issued by one box and worthless on another. The password and the issued key are NOT here:
+// running_config is append-versioned and shown verbatim in the review diff, so a secret written
+// there would be permanent and visible. They stay in the operator's browser until the encrypted
+// credential store exists, and a commit carrying one is refused below.
+//   { oid, name, device, endpoint, username? }
+bool validApiKey(const json& k)
+{
+    if (!k.is_object())
+        return false;
+    if (k.value("oid", std::string()).empty() || k.value("name", std::string()).empty() ||
+        k.value("device", std::string()).empty())
+        return false;
+
+    const std::string endpoint = k.value("endpoint", std::string());
+    if (endpoint.empty() || endpoint.front() != '/')
+        return false;
+
+    for (const auto* secret : {"password", "secret", "api_key", "key"})
+    {
+        if (k.contains(secret))
+            return false;
+    }
+    return true;
+}
+
+// scand.api.endpoints — API Endpoints (www/js/endpoints.js). Device-independent on purpose: the
+// definition is reusable, and a test names an API Key, which carries the device it was issued by.
+// The release sits inside the path (/restapi/v10.2/…) and pretzel does not rewrite it. Which API
+// it speaks is read from the path, not stored.
+//   { oid, name, description?, path, params: [{name, value}] }
+bool validApiEndpoint(const json& e)
+{
+    if (!e.is_object())
+        return false;
+    if (e.value("oid", std::string()).empty() || e.value("name", std::string()).empty())
+        return false;
+
+    const std::string path = e.value("path", std::string());
+    if (path.empty() || path.front() != '/')
+        return false;
+
+    if (e.contains("params"))
+    {
+        if (!e["params"].is_array())
+            return false;
+        for (const auto& p : e["params"])
+        {
+            if (!p.is_object() || p.value("name", std::string()).empty())
+                return false;
+        }
+    }
+    return true;
+}
+
+// scand.api.connectors — API Connectors (www/js/api-connectors.js). Still the pre-restructure
+// shape; it is rebuilt as device + api_key + [endpoint, interval] in the next change, so the
+// checks here stay deliberately loose.
+bool validApiConnector(const json& c)
+{
+    if (!c.is_object())
+        return false;
+    return !c.value("oid", std::string()).empty() && !c.value("object", std::string()).empty();
+}
+
+bool validateCommitValues(const std::string& daemon, const std::string& domain, const json& values,
+                          std::string& error)
+{
+    auto validateArray = [&](const char* key, bool (*validEntry)(const json&))
+    {
+        if (!values.contains(key))
+            return true;
+        if (!values[key].is_array())
+        {
+            error = std::string(key) + " must be an array";
+            return false;
+        }
+        for (const auto& entry : values[key])
+        {
+            if (!validEntry(entry))
+            {
+                error = std::string("invalid ") + key + " entry";
+                return false;
+            }
+        }
+        return true;
+    };
+
+    if (daemon == "engined" && domain == "site")
+        return validateArray("sites", validSite) && validateArray("devices", validDevice);
+
+    if (daemon == "scand" && domain == "api")
+        return validateArray("api_keys", validApiKey) && validateArray("endpoints", validApiEndpoint) &&
+               validateArray("connectors", validApiConnector);
+
+    return true;
+}
+
 }
 
 void WebService::handleSettingsGet(MgmtdServiceManager& sm, const Request& req, Response& resp)
@@ -395,6 +598,57 @@ void WebService::handleSettingsGet(MgmtdServiceManager& sm, const Request& req, 
 
     json body;
     body["daemons"] = std::move(daemons);
+
+    // Version of the active running-config these values came from. The browser stamps its staged
+    // edits with it: if the version later goes backwards, those drafts belong to a configuration
+    // lineage that no longer exists (a reset or a rollback) and must not be published.
+    body["version"] = 0;
+    try
+    {
+        const auto rows = pz::db::Database::instance().queryRows(
+            "SELECT version FROM running_config WHERE state = 'active' ORDER BY version DESC LIMIT 1");
+        if (!rows.empty() && !rows.front().empty())
+            body["version"] = std::stoll(rows.front()[0]);
+    }
+    catch (const std::exception&)
+    {
+    }
+
+    fill(resp, 200, body.dump());
+}
+
+// The whole active running-config, verbatim, as stored. /api/settings is a per-daemon,
+// hidden-domain-filtered projection for the editors; this is the raw document the operator sees
+// behind the topbar's View button. Secrets are already stripped on the way in (Config's
+// redactSecretsForPersist runs at persist time), so the stored copy is safe to return as-is.
+void WebService::handleRunningConfig(MgmtdServiceManager& sm, const Request& req, Response& resp)
+{
+    (void)sm;
+    (void)req;
+
+    json body;
+    try
+    {
+        auto& db = pz::db::Database::instance();
+        const auto rows = db.queryRows("SELECT version, committed_at, config_json FROM running_config "
+                                       "WHERE state = 'active' ORDER BY version DESC LIMIT 1");
+        if (rows.empty() || rows.front().size() < 3)
+            return fill(resp, 404, R"({"error":"no active running-config"})");
+
+        const auto& row = rows.front();
+        auto parsed = json::parse(row[2], nullptr, false);
+        if (parsed.is_discarded())
+            return fill(resp, 500, R"({"error":"stored running-config is not valid JSON"})");
+
+        body["version"] = row[0];
+        body["committed_at"] = row[1];
+        body["config"] = std::move(parsed);
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("running-config query failed: {}", e.what());
+        return fill(resp, 500, R"({"error":"query failed"})");
+    }
 
     fill(resp, 200, body.dump());
 }
@@ -447,6 +701,15 @@ void WebService::handleSettingsCommit(MgmtdServiceManager& sm, const Request& re
         if (!knownDaemon)
         {
             LOG_WARN("settings-commit unknown daemon (daemon={})", daemon);
+            failed++;
+            continue;
+        }
+
+        std::string schemaError;
+        if (!validateCommitValues(daemon, domain, values, schemaError))
+        {
+            LOG_WARN("settings-commit schema violation (daemon={}, domain={}, error={})", daemon, domain,
+                     schemaError);
             failed++;
             continue;
         }
@@ -566,13 +829,13 @@ void WebService::handleInventoryStatus(MgmtdServiceManager& sm, const Request& r
     (void)sm;
     (void)req;
 
-    // engined projects the configured objects into `inventory` and marks each direct (IP-based)
+    // engined projects the configured devices into `devices` and marks each NGFW (IP-based)
     // row 'active' when ICMP answers; return the set of currently-active targets (IPs).
     json alive = json::array();
     try
     {
         auto& db = pz::db::Database::instance();
-        for (const auto& row : db.queryRows("SELECT target FROM inventory WHERE status = 'active' AND target IS NOT NULL"))
+        for (const auto& row : db.queryRows("SELECT target FROM devices WHERE status = 'active' AND target IS NOT NULL"))
         {
             if (!row.empty() && !row[0].empty())
                 alive.push_back(row[0]);
@@ -580,10 +843,149 @@ void WebService::handleInventoryStatus(MgmtdServiceManager& sm, const Request& r
     }
     catch (const std::exception& e)
     {
-        LOG_WARN("inventory status query failed: {}", e.what());
+        LOG_WARN("device status query failed: {}", e.what());
     }
 
     fill(resp, 200, json{{"alive", std::move(alive)}}.dump());
+}
+
+// ── API connector tests ──────────────────────────────────────────────────────
+// Two gated checks the operator runs while creating a connector:
+//   1. keygen   — do these credentials produce an API key on this device?
+//   2. endpoint — does the path the operator typed answer with that key?
+// Both are separate because pretzel manages many customers' firewalls: the operator supplies
+// the endpoint explicitly (PAN-OS versions differ per customer, and the REST path carries the
+// version), so a working credential and a working path are independent failures worth
+// distinguishing.
+//
+// Neither call happens here. scand owns the device exchange: it is the daemon that will poll
+// these connectors on a schedule, and a test exercising a different code path than the
+// collector would not be testing much. mgmtd validates the request, forwards the target — which
+// the operator may not have committed yet, so the whole thing travels in the payload — and
+// correlates scand's reply by seqNo, the same shape as the SAML ACS delegation to authd. The
+// browser still polls /api/connector/test-result.
+namespace
+{
+
+// Rejects what can be judged without touching the device, so a typo answers immediately
+// instead of costing an IPC round trip and a ticket poll. scand re-checks defensively.
+std::string connectorTestInputError(const json& input, bool endpointMode)
+{
+    if (input.value("target", std::string()).empty())
+        return "target is required";
+
+    // is_object() is checked rather than assumed: nlohmann's value() throws when called on a
+    // non-object, and a malformed body must produce a 400, not an exception.
+    const auto secrets = input.value("secrets", json::object());
+    if (!secrets.is_object() || secrets.value("username", std::string()).empty() ||
+        secrets.value("password", std::string()).empty())
+        return "the auth profile has no username/password entered";
+
+    if (!endpointMode)
+        return {};
+
+    const std::string endpoint = input.value("endpoint", std::string());
+    if (endpoint.empty() || endpoint.front() != '/')
+        return "endpoint must be a path starting with /";
+
+    const std::string apiType = input.value("api_type", std::string("rest"));
+    if (apiType != "xml" && apiType != "rest")
+        return "api_type must be xml or rest";
+
+    // Query parameters are entered as name/value pairs rather than typed into the path, so the
+    // operator does not have to hand-encode them (PAN-OS REST requires ?location=, and XML API
+    // cmd= values contain characters that must be escaped).
+    if (!input.value("params", json::array()).is_array())
+        return "params must be an array of {name, value}";
+
+    return {};
+}
+
+void sendConnectorTest(MgmtdServiceManager& sm, std::uint32_t ticket, json input, const char* mode)
+{
+    input["mode"] = mode;
+    const std::string payload = input.dump();
+
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
+    msg->setDst(pz::ipc::IpcDaemon::Scand);
+    msg->setCmd(pz::ipc::IpcCmd::ApiConnectorTestRequest);
+    msg->setSeqNo(ticket);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+    msg->setPayload(std::vector<std::uint8_t>(payload.begin(), payload.end()));
+
+    sm.txRouter().handleIpcMessage(std::move(msg));
+}
+
+}
+
+void WebService::handleKeygenTest(MgmtdServiceManager& sm, const Request& req, Response& resp)
+{
+    json input;
+    try
+    {
+        input = json::parse(req.body);
+    }
+    catch (const std::exception&)
+    {
+        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    }
+
+    if (const auto err = connectorTestInputError(input, false); !err.empty())
+        return fill(resp, 400, json{{"error", err}}.dump());
+
+    const std::uint32_t ticket = m_apiTestTicket++;
+    const std::string host = input.value("target", std::string());
+    sendConnectorTest(sm, ticket, std::move(input), "keygen");
+
+    LOG_INFO("keygen test delegated to scand (ticket={}, host={})", ticket, host);
+    fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
+}
+
+void WebService::handleEndpointTest(MgmtdServiceManager& sm, const Request& req, Response& resp)
+{
+    json input;
+    try
+    {
+        input = json::parse(req.body);
+    }
+    catch (const std::exception&)
+    {
+        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    }
+
+    if (const auto err = connectorTestInputError(input, true); !err.empty())
+        return fill(resp, 400, json{{"error", err}}.dump());
+
+    const std::uint32_t ticket = m_apiTestTicket++;
+    const std::string host = input.value("target", std::string());
+    const std::string endpoint = input.value("endpoint", std::string());
+    sendConnectorTest(sm, ticket, std::move(input), "endpoint");
+
+    LOG_INFO("endpoint test delegated to scand (ticket={}, host={}, endpoint={})", ticket, host, endpoint);
+    fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
+}
+
+void WebService::handleApiTestResult(MgmtdServiceManager& sm, const Request& req, Response& resp)
+{
+    std::uint32_t ticket = 0;
+    if (auto pos = req.target.find("ticket="); pos != std::string::npos)
+        ticket = static_cast<std::uint32_t>(std::strtoul(req.target.c_str() + pos + 7, nullptr, 10));
+
+    if (ticket == 0)
+        return fill(resp, 400, R"({"error":"bad ticket"})");
+
+    auto result = sm.takeApiTestResult(ticket);
+    if (!result)
+        return fill(resp, 200, R"({"status":"pending"})");
+
+    // The worker stored a complete result document; tag it and hand it over as-is.
+    json body = json::parse(*result, nullptr, false);
+    if (body.is_discarded())
+        return fill(resp, 500, R"({"status":"done","ok":false,"message":"malformed test result"})");
+
+    body["status"] = "done";
+    fill(resp, 200, body.dump());
 }
 
 namespace

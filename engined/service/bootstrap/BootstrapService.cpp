@@ -536,10 +536,11 @@ void BootstrapService::dumpProcessMap() const
         pz::ipc::IpcDaemon::Icmpd,
         pz::ipc::IpcDaemon::Scand,
         pz::ipc::IpcDaemon::Topologyd,
+        pz::ipc::IpcDaemon::Apid
     };
 
     std::string dump;
-    dump += "Process readiness dump:\n";
+    dump += "Process State dump:\n";
 
     for (const auto daemon : dumpOrder)
     {

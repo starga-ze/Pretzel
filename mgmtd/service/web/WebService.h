@@ -39,10 +39,15 @@ private:
     void handleWhoami(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleStatus(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleSettingsGet(MgmtdServiceManager& sm, const Request& req, Response& resp);
+    void handleRunningConfig(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleSettingsCommit(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleReloadStatus(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleCommitQueue(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleInventoryStatus(MgmtdServiceManager& sm, const Request& req, Response& resp);
+
+    void handleKeygenTest(MgmtdServiceManager& sm, const Request& req, Response& resp);
+    void handleEndpointTest(MgmtdServiceManager& sm, const Request& req, Response& resp);
+    void handleApiTestResult(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleLogs(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleNodeMetrics(MgmtdServiceManager& sm, const Request& req, Response& resp);
     void handleLabExport(MgmtdServiceManager& sm, const Request& req, Response& resp);
@@ -61,6 +66,7 @@ private:
     std::shared_ptr<pz::http::StaticFileCache> m_cache;
 
     std::uint32_t m_ssoTicket{1};
+    std::uint32_t m_apiTestTicket{1};
 };
 
 }

@@ -1,52 +1,71 @@
-/* config.js — Configuration ▸ Inventory. Renders the managed-object table into #contentBody.
+/* config.js — Configuration ▸ Site Management ▸ Devices.
  *
- * Every object is modeled on two orthogonal axes:
- *   • type     — what it is:  firewall | switch | router | ddos | npb | lb | waf | sase | saas
- *   • platform — the access type, i.e. how the API is reached:
- *        direct — IP-based API platform, reached at its own address (mgmt IP/FQDN)  [on-prem/VM]
- *        tenant — cloud-based API platform, reached via a tenant-scoped API         [SASE/SaaS/SCM]
- * `target` is the access identifier (direct → IP/FQDN, tenant → tenant/TSG id).
- * Each object carries an immutable UUID (id). Collection/credentials are onboarded separately.
+ * A Device is one managed box (or one cloud tenant) belonging to a Site. `device_type` is the
+ * single axis that decides everything else:
  *
- * Publish opens a review modal with a side-by-side JSON diff, then a progress bar while the
- * reload converges. Status: direct = ICMP reachability, tenant = API health (wired later).
+ *   ngfw           on-prem/VM firewall → reached at its own address    → Access Identifier = IP / FQDN
+ *   prisma_access  cloud platform      → reached via a tenant-scoped API → Access Identifier = Tenant ID
+ *
+ * Access Type is therefore derived, never stored twice and never asked of the operator.
+ *
+ * The device also carries `fingerprint`, the pinned certificate of its host. It is not an
+ * operator-entered field: the first API Key test records it once the operator confirms it, and
+ * every later call to this box is checked against it. Credentials do not live here — an API Key
+ * (API Profile ▸ API Key) references a device and holds the account used against it.
  */
 (function () {
   'use strict';
 
-  const TAB = new URLSearchParams(location.search).get('tab') || 'inventory';
-  const EXCLUDED_IPS = ['127.0.0.1'];
-  const STATUS_POLL_MS = 5000;
+  window.NMS = window.NMS || {};
 
-  const TYPES = [
-    ['firewall', 'Firewall'], ['switch', 'Switch'], ['router', 'Router'],
-    ['ddos', 'DDoS'], ['npb', 'NPB'], ['lb', 'Load Balancer'], ['waf', 'WAF'],
-    ['sase', 'SASE'], ['saas', 'SaaS'],
+  // Read live (not once): settings tabs switch client-side without a page load (see main.js).
+  const activeTab = () => new URLSearchParams(location.search).get('tab') || 'sites';
+  const DRAFT_KEY = 'devices';
+
+  const { esc, newUuid } = window.NMS.utils;
+
+  // [key, label, access kind, access-identifier label, placeholder]
+  const DEVICE_TYPES = [
+    ['ngfw', 'NGFW', 'direct', 'IP / FQDN', '192.168.0.10'],
+    ['prisma_access', 'Prisma Access', 'tenant', 'Tenant ID', '1963594622'],
   ];
-  const TYPE_LABEL = Object.fromEntries(TYPES);
+  const typeRow = (t) => DEVICE_TYPES.find(([k]) => k === t) || DEVICE_TYPES[0];
+  const typeLabel = (t) => typeRow(t)[1];
+  const accessKind = (t) => typeRow(t)[2];
+  const accessLabel = (t) => typeRow(t)[3];
+  const accessPlaceholder = (t) => typeRow(t)[4];
 
-  const state = { objects: [] };   // [{ id, type, platform, name, description, target, enabled }]
-  let deployed = { excluded: '', objects: [] };
+  const state = { devices: [] };
+  let deployed = [];
   let editIdx = null;
-  let draftId = null;              // uuid of the object being edited (survives access/type rebuilds)
-  let liveAlive = new Set();
-  let statusReady = false;
-  let pending = new Set();
-  let statusTimer = null;
+  let draftOid = null;   // survives the rebuild a device-type change performs
 
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // Staged edits are held in NMS.draft so they survive a full page reload.
+  // Dirty state / publish / revert are owned by the cross-tab staging registry (js/commit.js).
+  const stage = () => { window.NMS.draft.set(DRAFT_KEY, state.devices); refreshPending(); };
+  const refreshPending = () => window.NMS.staging.refresh();
 
-  function uuid() {
-    if (crypto && crypto.randomUUID) return crypto.randomUUID();
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-      const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-    });
+  function normalize(d) {
+    // `type`/`platform` are the pre-consolidation keys: everything that was not a tenant
+    // platform was an on-prem firewall, so it maps to ngfw.
+    let deviceType = d.device_type;
+    if (!DEVICE_TYPES.some(([k]) => k === deviceType)) {
+      const legacyTenant = (d.platform || d.access) === 'tenant' || d.type === 'sase' || d.type === 'saas';
+      deviceType = legacyTenant ? 'prisma_access' : 'ngfw';
+    }
+    return {
+      oid: (typeof d.oid === 'string' && d.oid) ? d.oid : (d.uuid || d.id || newUuid()),
+      name: d.name || '',
+      description: d.description || '',
+      site: d.site || '',              // Site oid, '' = unassigned
+      device_type: deviceType,
+      target: d.target || '',          // access identifier: IP/FQDN or tenant id
+      // Pinned certificate of this host — written by the API Key test, never typed.
+      fingerprint: d.fingerprint || '',
+    };
   }
 
-  function refreshPending() {
-    window.NMS.setPendingChanges(JSON.stringify(state.objects) !== JSON.stringify(deployed.objects) ? 1 : 0);
-  }
+  const blank = () => normalize({ device_type: 'ngfw' });
 
   // ── Data load ────────────────────────────────────────────────────────────────
   async function load() {
@@ -54,108 +73,44 @@
       const r = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       if (r.status === 401) { location.href = '/'; return; }
       const d = await r.json();
-      const probe = ((d.daemons || {}).icmpd || {}).probe || {};
-      state.objects = (Array.isArray(probe.probe_targets) ? probe.probe_targets : []).map(normalize);
-      deployed = { excluded: String(probe.excluded_ips || ''), objects: JSON.parse(JSON.stringify(state.objects)) };
-    } catch (_) { /* leave empty on failure */ }
-    window.NMS.setPendingChanges(0);
+      window.NMS.draft.checkBase(d.version);
+      const site = ((d.daemons || {}).engined || {}).site || {};
+      deployed = (Array.isArray(site.devices) ? site.devices : []).map(normalize);
+    } catch (_) { deployed = []; }
+    const staged = window.NMS.draft.get(DRAFT_KEY, null);
+    state.devices = Array.isArray(staged) ? staged.map(normalize)
+                                          : JSON.parse(JSON.stringify(deployed));
+    refreshPending();
   }
 
-  function normalize(t) {
-    const platform = (t.platform || t.access) === 'tenant' ? 'tenant' : 'direct';   // `access` = legacy key
-    return {
-      id: t.id || uuid(),
-      type: TYPE_LABEL[t.type] ? t.type : 'firewall',
-      platform,
-      name: t.name || '',
-      description: t.description || '',
-      target: t.target || '',
-      enabled: t.enabled !== false,
-    };
-  }
+  const commitPayload = () => [{ daemon: 'engined', domain: 'site', values: { devices: state.devices } }];
 
-  function blankObject() {
-    return normalize({ platform: 'direct', type: 'firewall', enabled: true });
-  }
-
-  const accessLabel = (o) => (o.platform === 'tenant' ? 'Tenant ID' : 'IP/FQDN');
-
-  function commitPayload() {
-    return [{
-      daemon: 'icmpd', domain: 'probe',
-      values: { excluded_ips: EXCLUDED_IPS.join(','), probe_targets: state.objects },
-    }];
-  }
-
-  // ── Live status ──────────────────────────────────────────────────────────────
-  async function pollStatus() {
-    try {
-      const d = await fetch('/api/inventory/status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-        .then(r => (r.ok ? r.json() : null));
-      if (d && Array.isArray(d.alive)) {
-        liveAlive = new Set(d.alive);
-        statusReady = true;
-        pending.clear();
-        paintStatus();
-      }
-    } catch (_) { /* keep last known */ }
-  }
-
-  function startStatusPolling() {
-    if (statusTimer) return;
-    pollStatus();
-    statusTimer = setInterval(pollStatus, STATUS_POLL_MS);
-  }
-
-  // active · down(no response) · pending · off(disabled). direct=ICMP, tenant=API health.
-  function statusOf(o) {
-    if (!o.enabled) return 'off';
-    if (o.platform === 'tenant') return 'pending';   // TODO: from tenant API health once wired
-    if (pending.has(o.target) || !statusReady) return 'pending';
-    return liveAlive.has(o.target) ? 'active' : 'down';
-  }
-
-  const STATUS_LABEL = { active: 'Active', down: 'No response', pending: 'Pending', off: 'Disabled' };
-  const STATUS_TIP   = { active: 'Reachable', down: 'No response', pending: 'Awaiting first check', off: 'Disabled — not monitored' };
-
-  function paintStatus() {
-    document.querySelectorAll('[data-st-id]').forEach(dot => {
-      const o = state.objects.find(x => x.id === dot.dataset.stId);
-      const s = o ? statusOf(o) : 'off';
-      dot.className = 'st-dot ' + s;
-      dot.title = STATUS_LABEL[s] + ' — ' + STATUS_TIP[s];
-    });
+  // Site is a reference; show the site's name, and flag a dangling oid so a deleted site is
+  // visible rather than silently blank.
+  function siteCell(d) {
+    if (!d.site) return `<span class="muted">—</span>`;
+    const name = window.NMS.sites && window.NMS.sites.label(d.site);
+    return name
+      ? `<span class="site-chip">${esc(name)}</span>`
+      : `<span class="ref-missing" title="Site ${esc(d.site)} no longer exists">missing</span>`;
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────────
   function render() {
     const el = document.getElementById('contentBody');
-    if (!el) return;
+    if (!el || activeTab() !== 'devices') return;
 
-    if (TAB !== 'inventory') { el.innerHTML = `<div class="cfg-empty">Nothing here yet.</div>`; return; }
-
-    const rows = state.objects.length
-      ? state.objects.map((o, i) => `
-        <tr class="${o.enabled ? '' : 'row-off'}">
-          <td class="col-name">
-            <div class="name-line">
-              <span class="st-dot ${statusOf(o)}" data-st-id="${esc(o.id)}" title="${STATUS_LABEL[statusOf(o)]}"></span>
-              <span class="cell-name">${esc(o.name) || '<span class="muted">—</span>'}</span>
-            </div>
-            ${o.description ? `<div class="cell-sub">${esc(o.description)}</div>` : ''}
-          </td>
-          <td class="col-uuid"><span class="uuid-chip" title="${esc(o.id)}">${esc(o.id)}</span></td>
-          <td class="col-type"><span class="type-badge">${esc(TYPE_LABEL[o.type] || o.type)}</span></td>
-          <td class="col-access"><span class="access-badge ${o.platform}">${accessLabel(o)}</span></td>
-          <td class="col-endpoint">${esc(o.target) || '<span class="muted">—</span>'}</td>
-          <td class="col-en">
-            <label class="tgl" title="${o.enabled ? 'Enabled' : 'Disabled'}">
-              <input type="checkbox" data-toggle="${i}" ${o.enabled ? 'checked' : ''}/>
-              <span class="tgl-track"></span>
-            </label>
-          </td>
+    const rows = state.devices.length
+      ? state.devices.map((d, i) => `
+        <tr>
+          <td class="col-name"><div class="cell-name">${esc(d.name) || '<span class="muted">—</span>'}</div></td>
+          <td class="col-desc">${esc(d.description) || '<span class="muted">—</span>'}</td>
+          <td class="col-site">${siteCell(d)}</td>
+          <td class="col-type"><span class="type-badge">${esc(typeLabel(d.device_type))}</span></td>
+          <td class="col-access"><span class="access-badge ${esc(accessKind(d.device_type))}">${esc(accessLabel(d.device_type))}</span></td>
+          <td class="col-endpoint">${esc(d.target) || '<span class="muted">—</span>'}</td>
           <td class="col-act">
-            <button class="icon-btn" data-edit-btn="${i}" title="Edit">
+            <button class="icon-btn" data-edit="${i}" title="Edit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
             </button>
             <button class="icon-btn danger" data-del="${i}" title="Delete">
@@ -163,315 +118,253 @@
             </button>
           </td>
         </tr>`).join('')
-      : `<tr><td colspan="7"><div class="cfg-empty">No objects yet — click <b>Add Object</b> to define one.</div></td></tr>`;
+      : `<tr><td colspan="7"><div class="cfg-empty">No devices yet — click <b>Add Device</b> to define one.
+           ${(window.NMS.sites && window.NMS.sites.list().length) ? ''
+             : 'Tip: <a href="settings?tab=sites">create a site first</a> so devices can belong to one.'}</div></td></tr>`;
 
-    const direct = state.objects.filter(o => o.platform !== 'tenant').length;
-    const tenant = state.objects.length - direct;
+    const counts = DEVICE_TYPES.map(([k, label]) =>
+      `${state.devices.filter(d => d.device_type === k).length} ${label}`).join(' · ');
 
     el.innerHTML = `
       <div class="cfg-page">
         <div class="cfg-toolbar">
           <div class="cfg-toolbar-meta">
-            <span class="cfg-h">Inventory</span>
-            <span class="cfg-h-sub">${direct} direct · ${tenant} tenant · excluded: ${EXCLUDED_IPS.join(', ')}</span>
+            <span class="cfg-h">Devices</span>
+            <span class="cfg-h-sub">${counts}</span>
           </div>
-          <button class="btn-primary btn-sm" id="cfgAdd">+ Add Object</button>
+          <button class="btn-primary btn-sm" id="devAdd">+ Add Device</button>
         </div>
 
-        <table class="cfg-table cfg-table-inv">
+        <table class="cfg-table cfg-table-device">
           <thead><tr>
             <th class="col-name">Name</th>
-            <th class="col-uuid">UUID</th>
+            <th class="col-desc">Description</th>
+            <th class="col-site">Site</th>
             <th class="col-type">Device Type</th>
             <th class="col-access">Access Type</th>
             <th class="col-endpoint">Access Identifier</th>
-            <th class="col-en">Enable</th>
             <th class="col-act"></th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
-
-        <div class="st-legend">
-          <span><i class="st-dot active"></i>Active</span>
-          <span><i class="st-dot down"></i>No response</span>
-          <span><i class="st-dot pending"></i>Pending</span>
-          <span><i class="st-dot off"></i>Disabled</span>
-        </div>
       </div>
 
-      <div class="slideover-overlay" id="soOverlay"></div>
-      <aside class="slideover" id="soPanel">
+      <div class="slideover-overlay" id="devOverlay"></div>
+      <aside class="slideover" id="devPanel">
         <div class="slideover-head">
-          <span class="slideover-title" id="soTitle">Add Object</span>
-          <button class="slideover-close" id="soClose">&times;</button>
+          <span class="slideover-title" id="devTitle">Add Device</span>
+          <button class="slideover-close" id="devClose">&times;</button>
         </div>
-        <div class="slideover-body" id="soBody"></div>
-        <div class="slideover-foot" id="soFoot"></div>
+        <div class="slideover-body" id="devBody"></div>
+        <div class="slideover-foot" id="devFoot"></div>
       </aside>`;
 
     wire();
   }
 
   // ── Editor (slide-over) ─────────────────────────────────────────────────────
-  function openEditor(idx) {
-    editIdx = idx;
-    const o = idx == null ? blankObject() : normalize(JSON.parse(JSON.stringify(state.objects[idx])));
-    draftId = o.id;
-    document.getElementById('soTitle').textContent = idx == null ? 'Add Object' : 'Edit Object';
-    document.getElementById('soBody').innerHTML = editorForm(o);
-    document.getElementById('soFoot').innerHTML = `
-      ${idx == null ? '' : '<button class="btn-sm btn-danger" id="soDelete">Delete</button>'}
-      <span style="flex:1"></span>
-      <button class="btn-sm" id="soCancel">Cancel</button>
-      <button class="btn-primary btn-sm" id="soSave">Save</button>`;
-    wireEditor();
-    document.getElementById('soOverlay').classList.add('open');
-    document.getElementById('soPanel').classList.add('open');
-  }
-  function closeEditor() {
-    document.getElementById('soOverlay').classList.remove('open');
-    document.getElementById('soPanel').classList.remove('open');
+  function fieldRow(label, key, val, ph) {
+    return `<div class="field-row"><label>${esc(label)}</label>
+      <input data-f="${esc(key)}" value="${esc(val)}" placeholder="${esc(ph || '')}"/></div>`;
   }
 
-  function fieldRow(label, id, val, ph) {
-    return `<div class="field-row"><label>${label}</label><input data-f="${id}" value="${esc(val)}" placeholder="${esc(ph || '')}"/></div>`;
-  }
+  function editorForm(d) {
+    const typeOpts = DEVICE_TYPES.map(([k, label]) =>
+      `<option value="${esc(k)}" ${d.device_type === k ? 'selected' : ''}>${esc(label)}</option>`).join('');
 
-  function editorForm(o) {
-    const f = fieldRow;
-    const typeOpts = TYPES.map(([v, l]) => `<option value="${v}" ${o.type === v ? 'selected' : ''}>${l}</option>`).join('');
-    const isTenant = o.platform === 'tenant';
+    const sites = (window.NMS.sites && window.NMS.sites.list()) || [];
+    const siteOpts = ['<option value="">— none —</option>'].concat(
+      sites.map(s => `<option value="${esc(s.oid)}" ${d.site === s.oid ? 'selected' : ''}>${esc(s.name)}</option>`)
+    ).join('');
 
     return `
+      ${fieldRow('Name', 'name', d.name, 'e.g. core-fw-01')}
+      ${fieldRow('Description', 'description', d.description, 'optional')}
+      <div class="field-row"><label>Site</label>
+        <select data-f="site">${siteOpts}</select></div>
+      ${sites.length ? '' :
+        `<p class="field-hint"><a href="settings?tab=sites">Create a site first</a> to place this device.</p>`}
+
+      <div class="editor-sec">ACCESS</div>
+      <div class="field-row"><label>Device Type</label>
+        <select data-f="device_type" data-typesel>${typeOpts}</select></div>
       <div class="field-row"><label>Access Type</label>
-        <select data-f="platform" data-platsel>
-          <option value="direct" ${!isTenant ? 'selected' : ''}>IP/FQDN (IP-based API platform)</option>
-          <option value="tenant" ${isTenant ? 'selected' : ''}>Tenant ID (cloud-based API platform)</option>
-        </select></div>
-      <div class="field-row"><label>Type</label>
-        <select data-f="type">${typeOpts}</select></div>
-      ${f('Name', 'name', o.name, 'e.g. core-fw-01')}
-      ${f('Description', 'description', o.description, 'optional')}
-      <label class="field-check"><input type="checkbox" data-f="enabled" ${o.enabled ? 'checked' : ''}/><span>Enabled</span></label>
-      <div class="editor-sec">ACCESS IDENTIFIER</div>
-      ${isTenant
-        ? f('Tenant ID / TSG', 'target', o.target, 'e.g. 1963594622')
-        : f('Management IP / FQDN', 'target', o.target, '192.168.0.10')}
-      <p class="editor-note">${isTenant
-        ? 'Identified by its tenant id (TSG); health-checked via the cloud platform API. Credentials are bound separately.'
-        : 'Reached at its management address; reachability probed by ICMP.'}</p>`;
+        <input value="${esc(accessLabel(d.device_type))}" disabled/></div>
+      <p class="field-hint">Access Type follows the device type — an NGFW is reached at its own
+        address, Prisma Access through its tenant.</p>
+      ${fieldRow(accessLabel(d.device_type), 'target', d.target, accessPlaceholder(d.device_type))}
+      ${d.fingerprint
+        ? `<div class="fp-box"><div class="fp-label">Pinned certificate (SHA-256)</div>
+             <code class="fp-val">${esc(d.fingerprint)}</code>
+             <button class="btn-sm btn-danger" id="devUnpin" type="button">Clear pin</button></div>`
+        : ''}`;
   }
 
-  // Read the editor form into an object. `id` is carried out-of-band (draftId) so it survives
-  // the access rebuild and stays immutable for the object's lifetime.
+  // `oid` is carried out-of-band (draftOid) so it survives the device-type rebuild and stays
+  // immutable for the device's lifetime.
   function collectForm(body) {
-    const g = (id) => { const e = body.querySelector(`[data-f="${id}"]`); return e ? (e.type === 'checkbox' ? e.checked : e.value.trim()) : undefined; };
-    return {
-      id: draftId,
-      platform: g('platform') === 'tenant' ? 'tenant' : 'direct',
-      type: g('type') || 'firewall',
-      name: g('name') || '',
-      description: g('description') || '',
-      target: g('target') || '',
-      enabled: g('enabled') !== false,
+    const g = (k) => {
+      const e = body.querySelector(`[data-f="${k}"]`);
+      return e ? (e.type === 'checkbox' ? e.checked : e.value.trim()) : undefined;
     };
+    const prev = editIdx == null ? null : state.devices[editIdx];
+    return normalize({
+      oid: draftOid,
+      name: g('name'),
+      description: g('description'),
+      site: g('site'),
+      device_type: g('device_type'),
+      target: g('target'),
+      fingerprint: prev ? prev.fingerprint : '',
+    });
+  }
+
+  function openEditor(idx) {
+    editIdx = idx;
+    const d = idx == null ? blank() : normalize(JSON.parse(JSON.stringify(state.devices[idx])));
+    draftOid = d.oid;
+    document.getElementById('devTitle').textContent = idx == null ? 'Add Device' : 'Edit Device';
+    document.getElementById('devBody').innerHTML = editorForm(d);
+    document.getElementById('devFoot').innerHTML = `
+      ${idx == null ? '' : '<button class="btn-sm btn-danger" id="devDelete">Delete</button>'}
+      <span style="flex:1"></span>
+      <button class="btn-sm" id="devCancel">Cancel</button>
+      <button class="btn-primary btn-sm" id="devSave">Save</button>`;
+    wireEditor();
+    document.getElementById('devOverlay').classList.add('open');
+    document.getElementById('devPanel').classList.add('open');
+  }
+
+  const closeEditor = () => {
+    document.getElementById('devOverlay').classList.remove('open');
+    document.getElementById('devPanel').classList.remove('open');
+  };
+
+  // Anything referencing this device becomes dangling, so say so rather than silently orphaning.
+  function referenceCount(oid) {
+    const keys = (window.NMS.apiKeys && window.NMS.apiKeys.list()) || [];
+    return keys.filter(k => k.device === oid).length;
+  }
+
+  function removeDevice(idx) {
+    const d = state.devices[idx];
+    const used = referenceCount(d.oid);
+    if (used && !confirm(`${used} API key${used > 1 ? 's' : ''} reference this device. Delete anyway?`))
+      return false;
+    state.devices.splice(idx, 1);
+    stage();
+    return true;
   }
 
   function wireEditor() {
-    const body = document.getElementById('soBody');
+    const body = document.getElementById('devBody');
 
-    // Platform switch → rebuild the target field/labels, preserving entered values + id.
-    body.querySelector('[data-platsel]')?.addEventListener('change', () => {
-      body.innerHTML = editorForm(normalize(collectForm(body)));
+    // Device type drives the access labels and placeholder, so switching rebuilds the form —
+    // entered values and the oid survive through collectForm.
+    body.querySelector('[data-typesel]')?.addEventListener('change', () => {
+      body.innerHTML = editorForm(collectForm(body));
       wireEditor();
     });
 
-    document.getElementById('soCancel').onclick = closeEditor;
-    document.getElementById('soClose').onclick = closeEditor;
-    document.getElementById('soOverlay').onclick = closeEditor;
+    document.getElementById('devUnpin')?.addEventListener('click', () => {
+      const d = collectForm(body);
+      d.fingerprint = '';
+      if (editIdx != null) state.devices[editIdx].fingerprint = '';
+      body.innerHTML = editorForm(d);
+      wireEditor();
+      stage();
+    });
 
-    const delBtn = document.getElementById('soDelete');
-    if (delBtn) delBtn.onclick = () => { state.objects.splice(editIdx, 1); closeEditor(); render(); refreshPending(); };
+    document.getElementById('devCancel').onclick = closeEditor;
+    document.getElementById('devClose').onclick = closeEditor;
+    document.getElementById('devOverlay').onclick = closeEditor;
 
-    document.getElementById('soSave').onclick = () => {
-      const no = collectForm(body);
-      if (!no.target) { alert(no.platform === 'tenant' ? 'Tenant ID is required.' : 'Management IP is required.'); return; }
-      if (editIdx == null) state.objects.push(no); else state.objects[editIdx] = no;
-      closeEditor(); render(); refreshPending();
+    const del = document.getElementById('devDelete');
+    if (del) del.onclick = () => { if (removeDevice(editIdx)) { closeEditor(); render(); } };
+
+    document.getElementById('devSave').onclick = () => {
+      const d = collectForm(body);
+      if (!d.name) { alert('Device name is required.'); return; }
+      if (!d.target) { alert(`${accessLabel(d.device_type)} is required.`); return; }
+      if (editIdx == null) state.devices.push(d); else state.devices[editIdx] = d;
+      closeEditor(); stage(); render();
     };
   }
 
   // ── Wiring (table) ────────────────────────────────────────────────────────────
   function wire() {
     const el = document.getElementById('contentBody');
-    document.getElementById('cfgAdd')?.addEventListener('click', () => openEditor(null));
-    el.querySelectorAll('[data-edit-btn]').forEach(b => b.addEventListener('click', () => openEditor(+b.dataset.editBtn)));
-    el.querySelectorAll('[data-toggle]').forEach(cb => cb.addEventListener('change', () => {
-      state.objects[+cb.dataset.toggle].enabled = cb.checked; render(); refreshPending();
-    }));
+    document.getElementById('devAdd')?.addEventListener('click', () => openEditor(null));
+    el.querySelectorAll('[data-edit]').forEach(b =>
+      b.addEventListener('click', () => openEditor(+b.dataset.edit)));
     el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
-      state.objects.splice(+b.dataset.del, 1); render(); refreshPending();
+      if (removeDevice(+b.dataset.del)) render();
     }));
   }
 
-  // ── Commit: side-by-side JSON diff → publish → progress bar ──────────────────
-  const RELOAD_TIMEOUT_MS = 30000;
-  const POLL_MS = 800;
+  // ── Staging provider ────────────────────────────────────────────────────────
+  window.NMS.staging.register({
+    key: DRAFT_KEY,
+    dirty: () => JSON.stringify(state.devices) !== JSON.stringify(deployed),
+    payload: commitPayload,
+    before: () => ({ devices: deployed }),
+    after: () => ({ devices: state.devices }),
+    onPublished() {
+      deployed = JSON.parse(JSON.stringify(state.devices));
+      window.NMS.draft.clear(DRAFT_KEY);
+    },
+    problems() {
+      const sites = (window.NMS.sites && window.NMS.sites.list()) || [];
+      return state.devices
+        .filter(d => d.site && !sites.some(s => s.oid === d.site))
+        .map(d => `Device "${d.name || d.target}" belongs to a site that does not exist.`);
+    },
+  });
 
-  function splitDiff(beforeStr, afterStr) {
-    const a = beforeStr.split('\n'), b = afterStr.split('\n');
-    const n = a.length, m = b.length;
-    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
-    for (let i = n - 1; i >= 0; i--)
-      for (let j = m - 1; j >= 0; j--)
-        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    const rows = [];
-    let i = 0, j = 0, remq = [], addq = [];
-    const flush = () => {
-      for (let k = 0; k < Math.max(remq.length, addq.length); k++)
-        rows.push({ l: remq[k] ?? null, r: addq[k] ?? null, ch: true });
-      remq = []; addq = [];
-    };
-    while (i < n && j < m) {
-      if (a[i] === b[j]) { flush(); rows.push({ l: a[i], r: b[j], ch: false }); i++; j++; }
-      else if (dp[i + 1][j] >= dp[i][j + 1]) remq.push(a[i++]);
-      else addq.push(b[j++]);
-    }
-    while (i < n) remq.push(a[i++]);
-    while (j < m) addq.push(b[j++]);
-    flush();
-    return rows;
-  }
-
-  function diffHtml() {
-    const before = { excluded_ips: deployed.excluded, probe_targets: deployed.objects };
-    const after  = { excluded_ips: EXCLUDED_IPS.join(','), probe_targets: state.objects };
-    const rows = splitDiff(JSON.stringify(before, null, 2), JSON.stringify(after, null, 2));
-    const cell = (line, side, ch) => line == null
-      ? `<div class="sd-line sd-empty"></div>`
-      : `<div class="sd-line ${ch ? (side === 'l' ? 'sd-del' : 'sd-add') : ''}">${esc(line)}</div>`;
-    return `
-      <div class="cm-split">
-        <div class="cm-split-pane"><div class="cm-split-head">Before</div>${rows.map(r => cell(r.l, 'l', r.ch)).join('')}</div>
-        <div class="cm-split-pane"><div class="cm-split-head">After</div>${rows.map(r => cell(r.r, 'r', r.ch)).join('')}</div>
-      </div>`;
-  }
-
-  function ensureModal() {
-    let ov = document.getElementById('cmOverlay');
-    if (ov) return ov;
-    ov = document.createElement('div');
-    ov.id = 'cmOverlay';
-    ov.className = 'cm-overlay';
-    ov.innerHTML = `
-      <div class="cm-dialog" role="dialog" aria-modal="true">
-        <div class="cm-head"><span class="cm-title" id="cmTitle">Review changes</span><button class="cm-close" id="cmClose" aria-label="Close">&times;</button></div>
-        <div class="cm-body" id="cmBody"></div>
-        <div class="cm-foot" id="cmFoot"></div>
-      </div>`;
-    document.body.appendChild(ov);
-    ov.addEventListener('click', (e) => { if (e.target === ov) closeModal(); });
-    ov.querySelector('#cmClose').addEventListener('click', closeModal);
-    return ov;
-  }
-  function closeModal() { document.getElementById('cmOverlay')?.classList.remove('open'); }
-
-  function openCommitModal() {
-    refreshPending();
-    if (JSON.stringify(state.objects) === JSON.stringify(deployed.objects)) return;
-    const ov = ensureModal();
-    ov.querySelector('#cmTitle').textContent = 'Review changes';
-    ov.querySelector('#cmBody').innerHTML = diffHtml();
-    ov.querySelector('#cmFoot').innerHTML = `
-      <button class="btn-sm" id="cmCancel">Cancel</button>
-      <button class="btn-primary btn-sm" id="cmPublish">Publish</button>`;
-    ov.querySelector('#cmCancel').onclick = closeModal;
-    ov.querySelector('#cmPublish').onclick = doCommit;
-    ov.classList.add('open');
-  }
-
-  function progView() {
-    return `
-      <div class="cm-prog">
-        <div class="cm-prog-head"><span id="cmProgLabel">Publishing</span><span id="cmProgPct">0%</span></div>
-        <div class="cm-prog-track"><div class="cm-prog-fill" id="cmProgFill"></div></div>
-      </div>`;
-  }
-  function setProg(pct, label, kind) {
-    const f = document.getElementById('cmProgFill'), p = document.getElementById('cmProgPct'), l = document.getElementById('cmProgLabel');
-    if (f) { f.style.width = Math.round(pct) + '%'; f.className = 'cm-prog-fill' + (kind ? ' ' + kind : ''); }
-    if (p) p.textContent = Math.round(pct) + '%';
-    if (l && label) l.textContent = label;
-  }
-
-  async function doCommit() {
-    const staged = { excluded: EXCLUDED_IPS.join(','), objects: JSON.parse(JSON.stringify(state.objects)) };
-    const body = document.getElementById('cmBody'), foot = document.getElementById('cmFoot');
-    foot.innerHTML = `<button class="btn-sm" id="cmDone" disabled>Working…</button>`;
-    body.innerHTML = progView();
-    setProg(10, 'Publishing');
-
-    try {
-      const r = await fetch('/api/settings/commit', {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ changes: commitPayload() }),
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const res = await r.json().catch(() => ({}));
-      if ((res.applied | 0) <= 0) throw new Error('no changes applied (failed=' + (res.failed | 0) + ')');
-    } catch (e) {
-      setProg(100, 'Failed: ' + e.message, 'error');
-      foot.innerHTML = `<button class="btn-sm" id="cmDone">Close</button>`;
-      document.getElementById('cmDone').onclick = closeModal;
-      return;
-    }
-
-    deployed = staged;
-    window.NMS.setPendingChanges(0);
-    pending = new Set(state.objects.filter(o => o.enabled && o.platform === 'direct').map(o => o.target));
-    setProg(30, 'Applying');
-    pollProgress(Date.now());
-  }
-
-  async function pollProgress(startTs) {
-    if (!document.getElementById('cmProgFill')) return;
-    let st;
-    try {
-      st = await fetch('/api/settings/reload-status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-        .then(r => r.json());
-    } catch (_) { st = null; }
-
-    const elapsed = Date.now() - startTs;
-    if (st && st.status === 'complete') {
-      setProg(100, 'Published', 'ok');
-      pollStatus();
-      const foot = document.getElementById('cmFoot');
-      foot.innerHTML = `<button class="btn-primary btn-sm" id="cmDone">Done</button>`;
-      document.getElementById('cmDone').onclick = closeModal;
-      return;
-    }
-    if (elapsed >= RELOAD_TIMEOUT_MS) {
-      setProg(100, 'Timed out — committed, still applying', 'warn');
-      const foot = document.getElementById('cmFoot');
-      foot.innerHTML = `<button class="btn-sm" id="cmDone">Close</button>`;
-      document.getElementById('cmDone').onclick = closeModal;
-      return;
-    }
-    const cur = parseInt(document.getElementById('cmProgFill').style.width) || 30;
-    setProg(cur + (90 - cur) * 0.25, 'Applying');
-    setTimeout(() => pollProgress(startTs), POLL_MS);
-  }
+  // ── Cross-module surface ────────────────────────────────────────────────────
+  // API keys, endpoints and connectors all resolve a device from here.
+  window.NMS.devices = {
+    list: () => state.devices.map(d => ({
+      oid: d.oid, name: d.name, site: d.site, device_type: d.device_type,
+      target: d.target, fingerprint: d.fingerprint,
+    })),
+    byOid: (oid) => state.devices.find(d => d.oid === oid) || null,
+    label: (oid) => {
+      const d = state.devices.find(x => x.oid === oid);
+      return d ? (d.name || d.target) : null;
+    },
+    typeLabel,
+    // Trust-on-first-use: the certificate belongs to the host, so the pin is stored here and
+    // shared by every API key and endpoint that talks to this device.
+    pinFingerprint(oid, fingerprint) {
+      const d = state.devices.find(x => x.oid === oid);
+      if (!d || !fingerprint) return;
+      d.fingerprint = fingerprint;
+      stage();
+    },
+  };
 
   // ── Init ────────────────────────────────────────────────────────────────────
-  window.NMS = window.NMS || {};
-  window.NMS.onCommit(openCommitModal);
-  window.NMS.onRefresh(async () => { await load(); render(); pollStatus(); });
+  const devicesRefresh = async () => { await load(); render(); };
 
+  function activate() {
+    render();
+    window.NMS.onRefresh(devicesRefresh);
+  }
+
+  // Data loads on every Configuration tab — the registry needs this domain's dirty state even
+  // when another tab is showing — but rendering stays devices-only.
   document.addEventListener('DOMContentLoaded', async () => {
-    render();
+    if (activeTab() === 'devices') render();   // skeleton before the data lands
     await load();
-    render();
-    if (TAB === 'inventory') startStatusPolling();
+    if (activeTab() === 'devices') activate();
+    document.dispatchEvent(new Event('nms:devices-ready'));
   });
+
+  document.addEventListener('nms:tab-change', (e) => {
+    if (e.detail.tab === 'devices') activate();
+  });
+
+  // Site names come from the Sites tab, which loads independently.
+  document.addEventListener('nms:sites-ready', () => { if (activeTab() === 'devices') render(); });
 })();

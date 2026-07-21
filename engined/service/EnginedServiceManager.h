@@ -6,6 +6,7 @@
 #include "event/EnginedEvent.h"
 
 #include "service/admin/AdminService.h"
+#include "service/apikey/ApiKeyService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/commit/CommitService.h"
 #include "service/heartbeat/HeartbeatService.h"
@@ -44,6 +45,7 @@ public:
     HeartbeatService& heartbeatService();
     ProbeService& probeService();
     AdminService& adminService();
+    ApiKeyService& apiKeyService();
     VendorResolver& vendorResolver();
 
     EnginedTxRouter& txRouter();
@@ -63,6 +65,7 @@ private:
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ProbeService> m_probeService;
     std::unique_ptr<AdminService> m_adminService;
+    std::unique_ptr<ApiKeyService> m_apiKeyService;
     std::unique_ptr<VendorResolver> m_vendorResolver;
 
     std::vector<std::string> m_aliveIps;

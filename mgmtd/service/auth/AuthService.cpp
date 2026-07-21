@@ -4,9 +4,10 @@
 #include "util/Logger.h"
 #include "util/PasswordHash.h"
 
+#include <openssl/rand.h>
+
+#include <algorithm>
 #include <chrono>
-#include <random>
-#include <sstream>
 
 namespace pz::mgmtd
 {
@@ -38,21 +39,66 @@ bool AuthService::loadCredential()
 
 AuthService::LoginResult AuthService::login(const std::string& username, const std::string& password)
 {
+    // Checked before the username comparison so a blocked window cannot be probed by varying
+    // the username, and before the hash so a blocked attempt costs nothing.
+    if (now() < m_throttle.nextAllowedAt)
+    {
+        LoginResult blocked;
+        blocked.throttled = true;
+        return blocked;
+    }
+
     if (username != m_username)
     {
         return {};
     }
 
-    if (m_passwordHash.empty() || pz::util::hashSha256(password, m_salt) != m_passwordHash)
+    if (m_passwordHash.empty() || !pz::util::verifyPassword(password, m_salt, m_passwordHash))
     {
+        noteLoginFailure();
         return {};
     }
 
+    m_throttle = Throttle{};
+
     const auto sessionId = generateSessionId();
+    if (sessionId.empty())
+    {
+        LOG_ERROR("session id generation failed — refusing the login");
+        return {};
+    }
 
     m_sessions[sessionId] = Session{now() + m_sessionTtlSec, m_username};
 
-    return LoginResult{true, sessionId, m_mustChange};
+    LoginResult result;
+    result.success = true;
+    result.sessionId = sessionId;
+    result.mustChange = m_mustChange;
+    result.rehashNeeded = pz::util::needsRehash(m_passwordHash);
+    return result;
+}
+
+void AuthService::noteLoginFailure()
+{
+    ++m_throttle.failures;
+
+    if (m_throttle.failures <= kFreeAttempts)
+    {
+        return;
+    }
+
+    // Doubles per failure past the free allowance, capped — enough to make guessing
+    // impractical without locking a fat-fingered operator out for the rest of the day.
+    std::uint64_t delay = 1;
+    for (int i = kFreeAttempts + 1; i < m_throttle.failures && delay < kMaxBackoffSec; ++i)
+    {
+        delay *= 2;
+    }
+    delay = std::min(delay, kMaxBackoffSec);
+
+    m_throttle.nextAllowedAt = now() + delay;
+
+    LOG_WARN("login throttled after {} consecutive failures (retry in {}s)", m_throttle.failures, delay);
 }
 
 std::string AuthService::createSsoSession(const std::string& username)
@@ -76,14 +122,26 @@ bool AuthService::checkPassword(const std::string& username, const std::string& 
     {
         return false;
     }
-    return pz::util::hashSha256(password, m_salt) == m_passwordHash;
+    return pz::util::verifyPassword(password, m_salt, m_passwordHash);
 }
 
 AuthService::Credential AuthService::makeCredential(const std::string& newPassword) const
 {
     Credential cred;
     cred.salt = pz::util::generateSalt();
-    cred.passwordHash = pz::util::hashSha256(newPassword, cred.salt);
+    if (cred.salt.empty())
+    {
+        LOG_ERROR("salt generation failed — credential not created");
+        return {};
+    }
+
+    cred.passwordHash = pz::util::hashPassword(newPassword, cred.salt);
+    if (cred.passwordHash.empty())
+    {
+        LOG_ERROR("password hashing failed — credential not created");
+        return {};
+    }
+
     return cred;
 }
 
@@ -127,15 +185,27 @@ std::uint64_t AuthService::now()
         .count();
 }
 
+// 256 bits from the CSPRNG. The previous implementation seeded mt19937_64 from a single
+// random_device draw, so despite emitting a long string the whole session space was the 32 bits
+// of that seed — enumerable, and the timestamp prefix only narrowed it further. A session id is
+// a bearer token: guessing one is the same as stealing it.
 std::string AuthService::generateSessionId()
 {
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<std::uint64_t> dist;
+    unsigned char buf[32];
+    if (RAND_bytes(buf, static_cast<int>(sizeof(buf))) != 1)
+    {
+        return {};
+    }
 
-    std::ostringstream oss;
-    oss << std::hex << now() << dist(gen) << dist(gen);
-    return oss.str();
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    out.reserve(sizeof(buf) * 2);
+    for (unsigned char c : buf)
+    {
+        out.push_back(hex[(c >> 4) & 0xF]);
+        out.push_back(hex[c & 0xF]);
+    }
+    return out;
 }
 
 }

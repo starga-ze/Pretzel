@@ -58,8 +58,10 @@ bool ScandCore::onInit()
         return false;
     }
 
-    m_serviceManager =
-        std::make_unique<ScandServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
+    m_ioContext = std::make_unique<boost::asio::io_context>();
+
+    m_serviceManager = std::make_unique<ScandServiceManager>(m_eventFactory.get(), m_actionFactory.get(),
+                                                             m_txRouter.get(), m_ioContext.get());
 
     if (!m_serviceManager)
     {
@@ -67,7 +69,7 @@ bool ScandCore::onInit()
         return false;
     }
 
-    m_process = std::make_unique<ScandProcess>(m_ipcClient.get(), m_serviceManager.get());
+    m_process = std::make_unique<ScandProcess>(m_ipcClient.get(), m_serviceManager.get(), m_ioContext.get());
 
     if (!m_process)
     {

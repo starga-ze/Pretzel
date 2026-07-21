@@ -14,6 +14,8 @@
 
 #include "config/ConfigTypes.h"
 
+#include <boost/asio/io_context.hpp>
+
 #include <memory>
 
 namespace pz::scand
@@ -35,6 +37,11 @@ private:
 
     std::unique_ptr<pz::util::ThreadManager> m_threadManager;
     std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
+
+    // Drives outbound device calls (pz::http::requestAsync). scand serves no HTTP of its own,
+    // so unlike mgmtd there is no HttpServer to host the context — it is pumped directly from
+    // ScandProcess::tick(), and every completion handler therefore runs on the main loop.
+    std::unique_ptr<boost::asio::io_context> m_ioContext;
 
     std::unique_ptr<ScandProcess> m_process;
 

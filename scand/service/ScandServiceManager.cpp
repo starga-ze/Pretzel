@@ -8,8 +8,9 @@ namespace pz::scand
 {
 
 ScandServiceManager::ScandServiceManager(ScandEventFactory* eventFactory, ScandActionFactory* actionFactory,
-                                         ScandTxRouter* txRouter)
-    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
+                                         ScandTxRouter* txRouter, boost::asio::io_context* ioContext)
+    : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter), m_ioContext(ioContext),
+      m_apiService(std::make_unique<ApiService>()),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_heartbeatService(std::make_unique<HeartbeatService>()), m_reloadService(std::make_unique<ReloadService>())
 {
@@ -18,6 +19,7 @@ ScandServiceManager::ScandServiceManager(ScandEventFactory* eventFactory, ScandA
 void ScandServiceManager::start()
 {
     m_bootstrapService->start();
+    m_apiService->start();
 }
 
 void ScandServiceManager::schedule()
@@ -70,6 +72,11 @@ void ScandServiceManager::execute()
     }
 }
 
+ApiService& ScandServiceManager::apiService()
+{
+    return *m_apiService;
+}
+
 BootstrapService& ScandServiceManager::bootstrapService()
 {
     return *m_bootstrapService;
@@ -88,6 +95,11 @@ ReloadService& ScandServiceManager::reloadService()
 ScandTxRouter& ScandServiceManager::txRouter()
 {
     return *m_txRouter;
+}
+
+boost::asio::io_context& ScandServiceManager::ioContext()
+{
+    return *m_ioContext;
 }
 
 }

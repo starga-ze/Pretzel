@@ -60,3 +60,6 @@ add_subdirectory(topologyd)
 add_subdirectory(authd)
 add_subdirectory(mgmtd)
 add_subdirectory(apid)
+
+enable_testing()
+add_subdirectory(tests)

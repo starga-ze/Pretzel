@@ -83,14 +83,14 @@ void Core::checkReload()
         return;
     }
 
-    LOG_INFO("SIGHUP received, reloading config (daemon={})", m_name);
+    std::cout << "SIGHUP received, reloading config (daemon={})" << m_name << std::endl;
     pz::config::Config::invalidateConfigCache();
     onReload();
 }
 
 void Core::onReload()
 {
-    LOG_INFO("config reload, restarting process (daemon={})", m_name);
+    std::cout << "config reload, restarting process (daemon={})" << m_name << std::endl;
 
     std::vector<std::string> argStrings;
     {

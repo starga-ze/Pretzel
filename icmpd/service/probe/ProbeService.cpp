@@ -71,18 +71,19 @@ std::vector<std::string> probeExcludedIps()
 std::vector<std::string> probeExplicitTargets()
 {
     std::vector<std::string> result;
-    const auto& cfg = probeConfig();
-    const auto it = cfg.find("probe_targets");
+    // Devices are declared once, next to the sites they belong to; icmpd reads that list rather
+    // than keeping its own copy.
+    const auto& cfg = pz::config::Config::serviceSection("engined", "site");
+    const auto it = cfg.find("devices");
     if (it == cfg.end() || !it->is_array())
         return result;
 
     for (const auto& t : *it)
     {
-        if (!t.is_object() || !t.value("enabled", true))
+        if (!t.is_object())
             continue;
-        // `platform` is the current key; tolerate the legacy `access`. Skip tenant objects.
-        const std::string platform = t.value("platform", t.value("access", std::string("direct")));
-        if (platform == "tenant")
+        // Only an NGFW has an address to ping; prisma_access is reached through its tenant.
+        if (t.value("device_type", std::string("ngfw")) != "ngfw")
             continue;
         const std::string target = t.value("target", std::string());
         if (!target.empty())
@@ -276,7 +277,7 @@ void ProbeService::beginProbeSession()
     {
         m_lastAliveCount = 0;
         m_state = State::Idle;
-        LOG_INFO("no probe_targets configured — skipping probe sweep (reporting 0 alive)");
+        LOG_INFO("no devices configured — skipping probe sweep (reporting 0 alive)");
         return;
     }
 

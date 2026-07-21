@@ -1,5 +1,6 @@
 #include "event/ScandEventFactory.h"
 
+#include "service/api/ApiEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/reload/ReloadEvent.h"
@@ -26,6 +27,9 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(ScandEventDomain domain, s
 
     case ScandEventDomain::Reload:
         return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
+
+    case ScandEventDomain::Api:
+        return std::make_unique<ApiEvent>(static_cast<ApiEventType>(type));
 
     default:
         LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
@@ -54,6 +58,9 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<pz::ipc::I
 
     case pz::ipc::IpcCmd::ConfigReload:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
+
+    case pz::ipc::IpcCmd::ApiConnectorTestRequest:
+        return std::make_unique<ApiEvent>(ApiEventType::ReceiveConnectorTestRequest, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

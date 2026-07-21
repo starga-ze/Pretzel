@@ -102,7 +102,7 @@ AuthService::LocalResult AuthService::verifyLocal(const std::string& username, c
     const std::string& salt = rows.front()[2];
     const bool mustChange = (rows.front()[3] == "t");
 
-    if (hash.empty() || pz::util::hashSha256(password, salt) != hash)
+    if (hash.empty() || !pz::util::verifyPassword(password, salt, hash))
     {
         return r;
     }

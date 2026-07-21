@@ -7,7 +7,8 @@
   "//snmp": "web UI at runtime (stored in running_config, not here).",
   "//tiers": "This baseline carries only (a) infrastructure that cannot live in the DB",
   "//tiers2": "(ipc/logger/http/db/SAML) and (b) operator-facing config seeded for the UI",
-  "//tiers3": "(icmp scan_cidr/excluded_ips, snmp community/devices, racks). Internal",
+  "//tiers3": "(sites + devices, icmp excluded_ips/timeouts, snmp community, scand API keys",
+  "//tiers3b": "+ endpoints + connectors, racks). Internal",
   "//tiers4": "tuning (heartbeat/bootstrap/probe-batch/scan-timeouts) is NOT here — each",
   "//tiers5": "daemon reads it via config.value(key, <compiled default>), so it is owned",
   "//tiers6": "by the code defaults and never surfaces in the settings UI.",
@@ -39,6 +40,10 @@
     "service": {
       "rack": {
         "racks": []
+      },
+      "site": {
+        "sites": [],
+        "devices": []
       }
     }
   },
@@ -135,6 +140,11 @@
       "scan": {
         "community": "public",
         "v3_devices": []
+      },
+      "api": {
+        "api_keys": [],
+        "endpoints": [],
+        "connectors": []
       }
     }
   },

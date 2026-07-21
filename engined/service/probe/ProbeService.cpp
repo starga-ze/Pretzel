@@ -130,19 +130,19 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager, const Pr
 
     LOG_INFO("probe complete (alive={}, received_ips={})", aliveCount, ips.size());
 
-    // Keep inventory in sync with config, then reflect ICMP reachability into status.
+    // Keep the device projection in sync with config, then reflect ICMP reachability into status.
     projectInventory();
 
     auto& db = pz::db::Database::instance();
     const std::string alive = nlohmann::json(ips).dump();   // JSON array of alive IPs
 
     // Enabled direct (IP-based) objects that did not answer → down; answered → active.
-    db.exec("UPDATE inventory SET status='down' "
-            "WHERE platform='direct' AND enabled=true "
+    db.exec("UPDATE devices SET status='down' "
+            "WHERE device_type='ngfw' "
             "AND target <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
             {alive});
-    db.exec("UPDATE inventory SET status='active', last_seen=now() "
-            "WHERE platform='direct' "
+    db.exec("UPDATE devices SET status='active', last_seen=now() "
+            "WHERE device_type='ngfw' "
             "AND target = ANY(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
             {alive});
 
@@ -151,8 +151,8 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager, const Pr
 
 void ProbeService::projectInventory()
 {
-    const auto& probe = pz::config::Config::serviceSection("icmpd", "probe");
-    const auto targets = probe.value("probe_targets", nlohmann::json::array());
+    const auto& site = pz::config::Config::serviceSection("engined", "site");
+    const auto targets = site.value("devices", nlohmann::json::array());
 
     auto& db = pz::db::Database::instance();
     nlohmann::json ids = nlohmann::json::array();
@@ -163,32 +163,30 @@ void ProbeService::projectInventory()
             continue;
 
         const std::string target = t.value("target", std::string());
-        // Object UUID; fall back to target for pre-UUID configs so projection still works.
-        std::string id = t.value("id", std::string());
-        if (id.empty())
-            id = target;
-        if (id.empty())
+        // Object identity (a UUID string); tolerate the legacy `uuid`/`id` keys, then fall back
+        // to target for pre-identity configs so projection still works.
+        std::string oid = t.value("oid", t.value("uuid", t.value("id", std::string())));
+        if (oid.empty())
+            oid = target;
+        if (oid.empty())
             continue;
 
-        // `platform` is the current key; tolerate the legacy `access` key. Default direct.
-        std::string platform = t.value("platform", t.value("access", std::string("direct")));
-        if (platform != "tenant")
-            platform = "direct";
+        const std::string deviceType =
+            t.value("device_type", std::string()) == "prisma_access" ? "prisma_access" : "ngfw";
 
-        db.exec("INSERT INTO inventory (id, type, platform, target, name, description, enabled) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7) "
-                "ON CONFLICT (id) DO UPDATE SET type=EXCLUDED.type, platform=EXCLUDED.platform, "
+        db.exec("INSERT INTO devices (oid, site, device_type, target, name, description) "
+                "VALUES ($1,$2,$3,$4,$5,$6) "
+                "ON CONFLICT (oid) DO UPDATE SET site=EXCLUDED.site, device_type=EXCLUDED.device_type, "
                 "target=EXCLUDED.target, name=EXCLUDED.name, description=EXCLUDED.description, "
-                "enabled=EXCLUDED.enabled, updated_at=now()",
-                {id, t.value("type", std::string("firewall")), platform, target,
-                 t.value("name", std::string()), t.value("description", std::string()),
-                 t.value("enabled", true) ? "true" : "false"});
+                "updated_at=now()",
+                {oid, t.value("site", std::string()), deviceType, target,
+                 t.value("name", std::string()), t.value("description", std::string())});
 
-        ids.push_back(id);
+        ids.push_back(oid);
     }
 
     // Prune rows whose object is no longer in config (empty ids → clears the table).
-    db.exec("DELETE FROM inventory WHERE id <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+    db.exec("DELETE FROM devices WHERE oid <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
             {ids.dump()});
 }
 

@@ -335,8 +335,8 @@ bool Config::seedStore()
 
     const std::string persist = redactSecretsForPersist(startup).dump();
 
-    if (!dbi.exec("INSERT INTO startup_config (id, config_json) VALUES (1, $1::jsonb) "
-                  "ON CONFLICT (id) DO UPDATE SET config_json = EXCLUDED.config_json, "
+    if (!dbi.exec("INSERT INTO startup_config (oid, config_json) VALUES (1, $1::jsonb) "
+                  "ON CONFLICT (oid) DO UPDATE SET config_json = EXCLUDED.config_json, "
                   "updated_at = now()",
                   {persist}))
     {
@@ -353,10 +353,16 @@ bool Config::seedStore()
 
     {
         const std::string salt = pz::util::generateSalt();
-        const std::string hash = pz::util::hashSha256(kDefaultAdminPassword, salt);
-        if (!dbi.exec("INSERT INTO local_users (username, password_hash, salt, must_change) "
-                      "VALUES ($1, $2, $3, true) ON CONFLICT (username) DO NOTHING",
-                      {kDefaultAdminUser, hash, salt}))
+        const std::string hash = salt.empty() ? std::string() : pz::util::hashPassword(kDefaultAdminPassword, salt);
+        if (hash.empty())
+        {
+            // Seeding an account nobody can log into is worse than seeding none: the daemon
+            // would look healthy while the only local credential is unusable.
+            std::cerr << "seedStore: default admin credential could not be hashed — not seeded" << std::endl;
+        }
+        else if (!dbi.exec("INSERT INTO local_users (username, password_hash, salt, must_change) "
+                           "VALUES ($1, $2, $3, true) ON CONFLICT (username) DO NOTHING",
+                           {kDefaultAdminUser, hash, salt}))
         {
             std::cerr << "seedStore: local_users default seed failed" << std::endl;
         }

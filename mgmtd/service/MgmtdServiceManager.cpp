@@ -133,12 +133,34 @@ std::int64_t MgmtdServiceManager::reloadElapsedMs() const
 
 void MgmtdServiceManager::setCommitQueue(std::string snapshotJson)
 {
+    LOG_DEBUG("CommitQueue Update ({})", snapshotJson);
     m_commitQueueSnapshot = std::move(snapshotJson);
 }
 
 std::string MgmtdServiceManager::commitQueueSnapshot() const
 {
     return m_commitQueueSnapshot;
+}
+
+void MgmtdServiceManager::setApiTestResult(std::uint32_t ticket, std::string resultJson)
+{
+    if (m_apiTestResults.size() > 256)
+    {
+        m_apiTestResults.clear();
+    }
+    m_apiTestResults[ticket] = std::move(resultJson);
+}
+
+std::optional<std::string> MgmtdServiceManager::takeApiTestResult(std::uint32_t ticket)
+{
+    auto it = m_apiTestResults.find(ticket);
+    if (it == m_apiTestResults.end())
+    {
+        return std::nullopt;
+    }
+    std::string out = std::move(it->second);
+    m_apiTestResults.erase(it);
+    return out;
 }
 
 void MgmtdServiceManager::setSsoResult(std::uint32_t ticket, std::string resultJson)

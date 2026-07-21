@@ -20,6 +20,9 @@ ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
 
 BUILD_DIR = os.path.join(ROOT_DIR, "build")
 CERT_DIR = os.path.join(ROOT_DIR, "cert")
+# Credential-store master key lives beside the TLS key: generated locally, gitignored,
+# deployed to /etc/pretzel by script/start.py.
+SECRET_DIR = os.path.join(ROOT_DIR, "secret")
 
 INSTALL_ROOT = os.path.join(ROOT_DIR, "3rd_party", "install")
 THIRD_PARTY_DIR = os.path.join(ROOT_DIR, "3rd_party")

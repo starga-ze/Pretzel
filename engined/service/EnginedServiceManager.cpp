@@ -13,6 +13,7 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, 
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>()),
       m_probeService(std::make_unique<ProbeService>()), m_adminService(std::make_unique<AdminService>()),
+      m_apiKeyService(std::make_unique<ApiKeyService>()),
       m_vendorResolver(std::make_unique<VendorResolver>())
 {
 }
@@ -117,6 +118,11 @@ void EnginedServiceManager::setAliveIps(std::vector<std::string> ips)
 AdminService& EnginedServiceManager::adminService()
 {
     return *m_adminService;
+}
+
+ApiKeyService& EnginedServiceManager::apiKeyService()
+{
+    return *m_apiKeyService;
 }
 
 EnginedTxRouter& EnginedServiceManager::txRouter()
