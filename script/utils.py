@@ -55,6 +55,14 @@ JSON_INSTALL = os.path.join(INSTALL_ROOT, "nlohmann_json")
 JSON_TAR = os.path.join(JSON_DIR, f"json-{JSON_VERSION}.tar.gz")
 JSON_SRC_PATH = os.path.join(JSON_DIR, f"json-{JSON_VERSION}")
 
+# GoogleTest backs tests/ only — no daemon links it, and the build treats it as optional
+# (find_package(GTest QUIET)) so a tree without it still produces every binary.
+GTEST_VERSION = "1.14.0"
+GTEST_DIR = os.path.join(THIRD_PARTY_DIR, "googletest")
+GTEST_INSTALL = os.path.join(INSTALL_ROOT, "googletest")
+GTEST_TAR = os.path.join(GTEST_DIR, f"googletest-{GTEST_VERSION}.tar.gz")
+GTEST_SRC_PATH = os.path.join(GTEST_DIR, f"googletest-{GTEST_VERSION}")
+
 PROMETHEUS_VERSION = "3.5.0"
 PROMETHEUS_DIR = os.path.join(THIRD_PARTY_DIR, "prometheus")
 PROMETHEUS_TAR = os.path.join(PROMETHEUS_DIR, f"prometheus-{PROMETHEUS_VERSION}.linux-amd64.tar.gz")

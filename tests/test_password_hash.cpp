@@ -7,85 +7,167 @@
 
 #include "util/PasswordHash.h"
 
-#include <iostream>
+#include <gtest/gtest.h>
+
 #include <string>
+
+using namespace pz::util;
 
 namespace
 {
 
-int failures = 0;
+// Published PBKDF2-HMAC-SHA256 vectors for P="password", S="salt", dkLen=32.
+constexpr const char* kVectorC1 = "pbkdf2$1$120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b";
+constexpr const char* kVectorC4096 = "pbkdf2$4096$c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a";
 
-void check(const std::string& name, bool ok)
-{
-    std::cout << (ok ? "  ok   " : "  FAIL ") << name << "\n";
-    if (!ok)
-        ++failures;
-}
+// sha256("password" + "salt") — exactly what builds before the PBKDF2 change wrote.
+constexpr const char* kLegacyHash = "7a37b85c8918eac19a9089c0fa5a2ab4dce3f90528dcdeec108b23ddf3607b99";
 
 }
 
-int main()
+// ── The KDF is really PBKDF2-HMAC-SHA256 ────────────────────────────────────────────────
+// These pin the algorithm itself: were the implementation swapped or misconfigured, stored
+// credentials would keep verifying against each other and nothing else would notice.
+
+TEST(PasswordHashKdf, MatchesPublishedVectors)
 {
-    using namespace pz::util;
+    EXPECT_TRUE(verifyPassword("password", "salt", kVectorC1));
+    EXPECT_TRUE(verifyPassword("password", "salt", kVectorC4096));
+}
 
-    // ── The KDF is really PBKDF2-HMAC-SHA256 ────────────────────────────────────────────
-    // Published vectors for P="password", S="salt", dkLen=32. These pin the algorithm itself:
-    // if the implementation were quietly swapped or misconfigured, these stop matching.
-    check("pbkdf2 vector c=1",
-          verifyPassword("password", "salt",
-                         "pbkdf2$1$120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"));
-    check("pbkdf2 vector c=4096",
-          verifyPassword("password", "salt",
-                         "pbkdf2$4096$c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a"));
-    check("pbkdf2 vector rejects a near miss",
-          !verifyPassword("Password", "salt",
-                          "pbkdf2$1$120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"));
+TEST(PasswordHashKdf, RejectsANearMiss)
+{
+    EXPECT_FALSE(verifyPassword("Password", "salt", kVectorC1));
+    EXPECT_FALSE(verifyPassword("password ", "salt", kVectorC1));
+}
 
-    // A value is verified at the cost stored inside it, not the current one — otherwise raising
-    // kPbkdf2Iterations would lock out every existing account at once.
-    check("stored cost is honoured, not the current one",
-          verifyPassword("password", "salt",
-                         "pbkdf2$4096$c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a"));
+TEST(PasswordHashKdf, HonoursTheCostStoredInTheValue)
+{
+    // Verified at the cost recorded inside the value, not kPbkdf2Iterations — otherwise raising
+    // the cost would lock out every existing account at once.
+    ASSERT_NE(1, kPbkdf2Iterations);
+    EXPECT_TRUE(verifyPassword("password", "salt", kVectorC1));
+}
 
-    // ── Upgrade path from the pre-PBKDF2 format ─────────────────────────────────────────
-    // sha256("password" + "salt"), which is exactly what earlier builds wrote. If this check
-    // ever fails, the deployed operators cannot log in.
-    check("legacy sha256 hash still verifies",
-          verifyPassword("password", "salt",
-                         "7a37b85c8918eac19a9089c0fa5a2ab4dce3f90528dcdeec108b23ddf3607b99"));
-    check("legacy hash rejects a wrong password",
-          !verifyPassword("wrong", "salt", "7a37b85c8918eac19a9089c0fa5a2ab4dce3f90528dcdeec108b23ddf3607b99"));
-    check("legacy hash is flagged for rehash",
-          needsRehash("7a37b85c8918eac19a9089c0fa5a2ab4dce3f90528dcdeec108b23ddf3607b99"));
-    check("a hash below the current cost is flagged for rehash", needsRehash("pbkdf2$1000$aabb"));
+// ── Upgrade path from the pre-PBKDF2 format ─────────────────────────────────────────────
 
-    // ── Salt ────────────────────────────────────────────────────────────────────────────
+TEST(PasswordHashLegacy, OldSha256HashStillVerifies)
+{
+    // If this fails, every already-deployed operator is locked out.
+    EXPECT_TRUE(verifyPassword("password", "salt", kLegacyHash));
+}
+
+TEST(PasswordHashLegacy, OldHashStillRejectsAWrongPassword)
+{
+    EXPECT_FALSE(verifyPassword("wrong", "salt", kLegacyHash));
+}
+
+TEST(PasswordHashLegacy, OldHashIsFlaggedForRehash)
+{
+    EXPECT_TRUE(needsRehash(kLegacyHash));
+}
+
+TEST(PasswordHashLegacy, AHashBelowTheCurrentCostIsFlaggedForRehash)
+{
+    EXPECT_TRUE(needsRehash("pbkdf2$1000$aabb"));
+}
+
+// ── Salt ────────────────────────────────────────────────────────────────────────────────
+
+TEST(PasswordHashSalt, IsSixteenBytesHexEncoded)
+{
+    EXPECT_EQ(32u, generateSalt().size());
+}
+
+TEST(PasswordHashSalt, IsNotDegenerate)
+{
     const std::string salt = generateSalt();
-    check("salt is 16 bytes hex-encoded", salt.size() == 32);
-    check("salt is not degenerate", salt != std::string(32, '0'));
-    check("salts differ between calls", generateSalt() != generateSalt());
+    EXPECT_NE(std::string(32, '0'), salt);
+    EXPECT_FALSE(salt.empty());
+}
 
-    // ── Round trip ──────────────────────────────────────────────────────────────────────
-    const std::string stored = hashPassword("hunter2", salt);
-    check("hash is self-describing", stored.rfind("pbkdf2$", 0) == 0);
-    check("correct password verifies", verifyPassword("hunter2", salt, stored));
-    check("wrong password is rejected", !verifyPassword("hunter3", salt, stored));
-    check("right password with the wrong salt is rejected", !verifyPassword("hunter2", generateSalt(), stored));
-    check("a freshly written hash needs no rehash", !needsRehash(stored));
+TEST(PasswordHashSalt, DiffersBetweenCalls)
+{
+    EXPECT_NE(generateSalt(), generateSalt());
+}
 
-    // ── Malformed input is refused, never accepted by accident ──────────────────────────
-    check("empty stored value is rejected", !verifyPassword("x", salt, ""));
-    check("empty password does not match a real hash", !verifyPassword("", salt, stored));
-    check("truncated format is rejected", !verifyPassword("x", salt, "pbkdf2$$"));
-    check("non-numeric cost is rejected", !verifyPassword("x", salt, "pbkdf2$abc$aabb"));
-    check("non-numeric cost is flagged for rehash", needsRehash("pbkdf2$abc$aabb"));
+// ── Round trip ──────────────────────────────────────────────────────────────────────────
+// A fixture so each case starts from a freshly generated credential rather than sharing one.
 
-    if (failures)
+class PasswordHashRoundTrip : public ::testing::Test
+{
+protected:
+    void SetUp() override
     {
-        std::cout << "\n" << failures << " check(s) failed\n";
-        return 1;
+        salt = generateSalt();
+        ASSERT_FALSE(salt.empty()) << "CSPRNG unavailable — the rest of this case is meaningless";
+
+        stored = hashPassword("hunter2", salt);
+        ASSERT_FALSE(stored.empty()) << "hashing failed";
     }
 
-    std::cout << "\nall checks passed\n";
-    return 0;
+    std::string salt;
+    std::string stored;
+};
+
+TEST_F(PasswordHashRoundTrip, HashIsSelfDescribing)
+{
+    EXPECT_EQ(0u, stored.rfind("pbkdf2$", 0)) << "stored = " << stored;
+}
+
+TEST_F(PasswordHashRoundTrip, CorrectPasswordVerifies)
+{
+    EXPECT_TRUE(verifyPassword("hunter2", salt, stored));
+}
+
+TEST_F(PasswordHashRoundTrip, WrongPasswordIsRejected)
+{
+    EXPECT_FALSE(verifyPassword("hunter3", salt, stored));
+}
+
+TEST_F(PasswordHashRoundTrip, RightPasswordWithTheWrongSaltIsRejected)
+{
+    EXPECT_FALSE(verifyPassword("hunter2", generateSalt(), stored));
+}
+
+TEST_F(PasswordHashRoundTrip, FreshHashNeedsNoRehash)
+{
+    EXPECT_FALSE(needsRehash(stored));
+}
+
+// ── Malformed input is refused, never accepted by accident ──────────────────────────────
+
+class PasswordHashMalformed : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        salt = generateSalt();
+        stored = hashPassword("hunter2", salt);
+    }
+
+    std::string salt;
+    std::string stored;
+};
+
+TEST_F(PasswordHashMalformed, EmptyStoredValueIsRejected)
+{
+    EXPECT_FALSE(verifyPassword("x", salt, ""));
+}
+
+TEST_F(PasswordHashMalformed, EmptyPasswordDoesNotMatchARealHash)
+{
+    EXPECT_FALSE(verifyPassword("", salt, stored));
+}
+
+TEST_F(PasswordHashMalformed, TruncatedFormatIsRejected)
+{
+    EXPECT_FALSE(verifyPassword("x", salt, "pbkdf2$$"));
+    EXPECT_FALSE(verifyPassword("x", salt, "pbkdf2$"));
+}
+
+TEST_F(PasswordHashMalformed, NonNumericCostIsRejected)
+{
+    EXPECT_FALSE(verifyPassword("x", salt, "pbkdf2$abc$aabb"));
+    EXPECT_TRUE(needsRehash("pbkdf2$abc$aabb"));
 }
