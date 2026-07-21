@@ -17,6 +17,7 @@ from script.utils import (
     SPDLOG_VERSION, SPDLOG_DIR, SPDLOG_INSTALL, SPDLOG_TAR, SPDLOG_SRC_PATH,
     BOOST_VERSION, BOOST_VERSION_UNDERSCORE, BOOST_DIR, BOOST_INSTALL, BOOST_TAR, BOOST_SRC_PATH,
     JSON_VERSION, JSON_DIR, JSON_INSTALL, JSON_TAR, JSON_SRC_PATH,
+    GTEST_VERSION, GTEST_DIR, GTEST_INSTALL, GTEST_TAR, GTEST_SRC_PATH,
     PROMETHEUS_VERSION, PROMETHEUS_DIR, PROMETHEUS_TAR, PROMETHEUS_SRC_PATH,
     NODE_EXPORTER_VERSION, NODE_EXPORTER_DIR, NODE_EXPORTER_TAR, NODE_EXPORTER_SRC_PATH,
     POSTGRES_EXPORTER_VERSION, POSTGRES_EXPORTER_DIR, POSTGRES_EXPORTER_TAR, POSTGRES_EXPORTER_SRC_PATH,
@@ -90,6 +91,28 @@ def install_json():
         extra_args=["-DJSON_BuildTests=OFF"]
     )
     print("[*] nlohmann_json installation complete.")
+
+def install_googletest():
+    """
+    Installs GoogleTest, used by tests/ and by nothing else.
+
+    gmock is skipped: the current suite asserts on pure functions and needs no mock objects.
+    Turn BUILD_GMOCK back on when a test needs to stand in for Database or the IPC client.
+    """
+    if os.path.exists(os.path.join(GTEST_INSTALL, "lib", "cmake", "GTest", "GTestConfig.cmake")):
+        print("[*] googletest already installed, skipping...")
+        return
+
+    url = f"https://github.com/google/googletest/archive/refs/tags/v{GTEST_VERSION}.tar.gz"
+    download_and_extract(url, GTEST_TAR, GTEST_DIR, "Extracting googletest")
+
+    build_cmake_project(
+        src_path=GTEST_SRC_PATH,
+        install_prefix=GTEST_INSTALL,
+        extra_args=["-DBUILD_GMOCK=OFF", "-DINSTALL_GTEST=ON"],
+    )
+    print("[*] googletest installation complete.")
+
 
 def install_prometheus():
     """Downloads the Prometheus binary for monitoring (uses pre-compiled binary distribution)."""
@@ -419,8 +442,10 @@ def install_build_deps():
     """
     Build-time ONLY dependencies: the compiler toolchain, the C++ source libraries,
     and libpq-dev headers — everything needed to COMPILE the project (CMake +
-    shared/db link against these). Does NOT install the runtime services. Invoked by
-    script/build.py so a plain build is fast and side-effect-free.
+    shared/db link against these). Does NOT install the runtime services, and does not
+    install test-only libraries (see install_test_deps) — nothing here may require root,
+    because script/build.py calls this unprivileged and a plain build must stay
+    fast and side-effect-free.
     """
     install_system_packages()
     install_libpq_dev()
@@ -430,6 +455,31 @@ def install_build_deps():
     install_spdlog()
     install_boost()
     install_json()
+
+
+def install_test_deps():
+    """
+    Dependencies for tests/ only. Deliberately NOT part of install_build_deps(): no daemon
+    links GoogleTest, and `./pretzel build` runs unprivileged, so fetching into the
+    root-owned 3rd_party/ would fail there and block an ordinary build.
+
+    Failure is a warning, never fatal — CMake finds GoogleTest with find_package(..., QUIET)
+    and skips tests/ when it is absent, so the product still builds and installs.
+
+    SystemExit is caught alongside Exception on purpose: run_cmd() and download_and_extract()
+    report failure by calling sys.exit(), which raises SystemExit — and that derives from
+    BaseException, not Exception, so catching Exception alone would let a failed download or
+    build abort the whole install. KeyboardInterrupt is deliberately NOT caught, so Ctrl+C
+    during a slow download still stops everything.
+    """
+    try:
+        install_googletest()
+    except (Exception, SystemExit) as e:
+        # A SystemExit stringifies to its exit code, which alone reads like nonsense; the real
+        # error was already printed by whichever helper bailed out.
+        detail = f"exit status {e}" if isinstance(e, SystemExit) else str(e)
+        print(f"[WARN] googletest not installed ({detail}) — tests/ will be skipped.")
+        print("       The product build is unaffected; run './pretzel install' again to retry.")
 
 
 def install_runtime_deps():
@@ -449,9 +499,10 @@ def install_runtime_deps():
 
 
 def run():
-    """Full install (./pretzel install): build deps + all runtime services."""
+    """Full install (./pretzel install): build deps + test deps + all runtime services."""
     os.makedirs(INSTALL_ROOT, exist_ok=True)
     install_build_deps()
+    install_test_deps()
     install_runtime_deps()
     print("[*] All dependencies installed successfully.")
 

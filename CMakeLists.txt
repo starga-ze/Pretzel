@@ -17,12 +17,17 @@ list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/spdlog)
 list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/openssl)
 list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/boost)
 list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/nlohmann_json)
+list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/googletest)
 
 find_package(Threads REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED)
 find_package(nlohmann_json REQUIRED)
+
+# Tests only. QUIET, not REQUIRED: a checkout that has not run `./pretzel install` must still
+# build every daemon — a missing test framework may skip the suite, never block the product.
+find_package(GTest QUIET)
 
 # libpq (PostgreSQL client) — installed system-wide via apt (libpq-dev). Backs the
 # DB-stored running-config / state snapshots / device inventory in shared/db.
