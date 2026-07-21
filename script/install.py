@@ -465,11 +465,21 @@ def install_test_deps():
 
     Failure is a warning, never fatal — CMake finds GoogleTest with find_package(..., QUIET)
     and skips tests/ when it is absent, so the product still builds and installs.
+
+    SystemExit is caught alongside Exception on purpose: run_cmd() and download_and_extract()
+    report failure by calling sys.exit(), which raises SystemExit — and that derives from
+    BaseException, not Exception, so catching Exception alone would let a failed download or
+    build abort the whole install. KeyboardInterrupt is deliberately NOT caught, so Ctrl+C
+    during a slow download still stops everything.
     """
     try:
         install_googletest()
-    except Exception as e:
-        print(f"[WARN] googletest not installed ({e}); tests/ will be skipped.")
+    except (Exception, SystemExit) as e:
+        # A SystemExit stringifies to its exit code, which alone reads like nonsense; the real
+        # error was already printed by whichever helper bailed out.
+        detail = f"exit status {e}" if isinstance(e, SystemExit) else str(e)
+        print(f"[WARN] googletest not installed ({detail}) — tests/ will be skipped.")
+        print("       The product build is unaffected; run './pretzel install' again to retry.")
 
 
 def install_runtime_deps():
