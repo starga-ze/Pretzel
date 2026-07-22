@@ -9,7 +9,7 @@
 #include "config/ApiRefs.h"
 #include "config/Config.h"
 #include "db/Database.h"
-#include "http/HttpClient.h"
+#include "http/UrlEncode.h"
 #include "ipc/IpcMessage.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
