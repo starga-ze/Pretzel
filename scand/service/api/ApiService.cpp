@@ -4,7 +4,8 @@
 #include "service/api/ApiEvent.h"
 
 #include "config/Config.h"
-#include "http/HttpClient.h"
+#include "client/HttpClient.h"
+#include "http/UrlEncode.h"
 #include "ipc/IpcMessage.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"

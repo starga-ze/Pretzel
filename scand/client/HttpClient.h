@@ -12,22 +12,19 @@
 namespace pz::http
 {
 
-// Outbound HTTPS with certificate pinning, for reaching managed devices.
+// Outbound HTTPS with certificate pinning, for reaching managed devices. scand is the only user —
+// it runs the connector tests and the periodic collection — so this transport lives here rather
+// than in shared (which keeps the inbound HttpServer that apid and mgmtd share).
 //
-// Devices like PAN-OS ship a self-signed certificate whose CN is the chassis serial, so
-// hostname verification can never pass and the usual answer — disabling verification — leaves
-// the connection open to an active man-in-the-middle. Instead the caller pins the peer's
-// SHA-256 fingerprint: trust-on-first-use, then exact match on every later connect.
+// Devices like PAN-OS ship a self-signed certificate whose CN is the chassis serial, so hostname
+// verification can never pass and the usual answer — disabling verification — leaves the
+// connection open to an active man-in-the-middle. Instead the caller pins the peer's SHA-256
+// fingerprint: trust-on-first-use, then exact match on every later connect.
 //
-// The pin is enforced BEFORE the request is written, so credentials are never put on the wire
-// to an unverified peer. A first contact (no pin recorded yet) therefore completes the
-// handshake, reports the fingerprint, and stops — the operator confirms it, and only the next
-// call carries the credential.
-//
-// requestAsync() is the form a daemon should use: it drives the exchange on an io_context the
-// caller already polls from its tick loop, and invokes the handler — on that same thread —
-// when the exchange finishes. No worker thread is involved, so the handler may touch service
-// state, routers and the event queue directly.
+// The pin is enforced BEFORE the request is written, so credentials are never put on the wire to
+// an unverified peer. A first contact (no pin recorded yet) therefore completes the handshake,
+// reports the fingerprint, and stops — the operator confirms it, and only the next call carries
+// the credential.
 struct ClientRequest
 {
     std::string host;
@@ -57,17 +54,15 @@ struct ClientResponse
     std::string certSubject;
 };
 
-// Runs the exchange on `ioc` and calls `onDone` exactly once when it settles — success,
-// transport failure, pin refusal or timeout alike. The handler runs inside whatever pumps the
-// context (for the daemons, io_context::poll() from the tick loop), i.e. on the main thread.
+// Runs the exchange on `ioc` and calls `onDone` exactly once when it settles — success, transport
+// failure, pin refusal or timeout alike. The handler runs inside whatever pumps the context (for
+// the daemons, io_context::poll() from the tick loop), i.e. on the main thread, so it may touch
+// service state, routers and the event queue directly.
 //
 // The call returns immediately. The session keeps itself alive for the duration, so the caller
 // need not hold anything; `ioc` must outlive the exchange.
 using ResponseHandler = std::function<void(ClientResponse)>;
 
 void requestAsync(boost::asio::io_context& ioc, ClientRequest req, ResponseHandler onDone);
-
-// Percent-encode one query-string value (PAN-OS takes credentials as query parameters).
-std::string urlEncode(const std::string& raw);
 
 }

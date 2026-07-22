@@ -4,7 +4,7 @@
 // username and password as query parameters, so a character this fails to escape either breaks
 // the login or truncates the credential silently. RFC 3986 unreserved set is the contract.
 
-#include "http/HttpClient.h"
+#include "http/UrlEncode.h"
 
 #include <gtest/gtest.h>
 
