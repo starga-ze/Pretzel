@@ -87,6 +87,13 @@ enum class IpcCmd : std::uint16_t
     // correlates the reply by seqNo — the same shape as the SAML ACS delegation to authd.
     ApiConnectorTestRequest = 127,
     ApiConnectorTestResponse = 128,
+
+    // scand asks engined for the issued keys. engined answers with the SEALED blobs and scand
+    // opens them with credentials.key — the plaintext never crosses the socket, the same way it
+    // never does on the way in. scand caches the result rather than asking per call, because
+    // periodic collection would otherwise hit the database on every poll.
+    ApiKeyStateRequest = 129,
+    ApiKeyStateResponse = 130,
 };
 
 enum class IpcFlag : std::uint8_t

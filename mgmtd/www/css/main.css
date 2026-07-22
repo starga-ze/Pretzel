@@ -687,6 +687,15 @@ html, body {
 }
 .btn-sm:hover { background: var(--border); }
 
+/* .btn-sm is declared after .btn-primary with the same specificity, so on its own it would
+   repaint every primary small button grey. Two classes beat one. */
+.btn-primary.btn-sm {
+  background: var(--accent); color: #fff; border-color: transparent;
+  box-shadow: 0 3px 10px rgba(249,115,22,.30);
+}
+.btn-primary.btn-sm:hover { background: var(--accent); opacity: .88; }
+.btn-primary.btn-sm:disabled { box-shadow: none; }
+
 /* ══════════════════════════════════════
    DAEMON HEALTH GRID (heartbeat cards)
 ══════════════════════════════════════ */
@@ -3636,6 +3645,15 @@ a.details-btn { display: inline-block; text-decoration: none; }
 }
 .field-row input:focus, .field-row select:focus { outline: none; border-color: var(--accent); }
 
+/* Selects default to the platform widget, which ignores the surrounding design entirely. */
+.field-row select, .item-top select {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  padding-right: 30px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center; background-size: 15px;
+}
+.field-row select:hover, .item-top select:hover { border-color: var(--text-muted); }
+
 /* ── Network config: compact probe-target table (no cards) ── */
 .cfg-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px;
@@ -3696,11 +3714,12 @@ a.details-btn { display: inline-block; text-decoration: none; }
 /* API Endpoint tab table */
 
 .cfg-table-conn .col-api   { width: 8%;  white-space: nowrap; }
-.cfg-table-conn .col-ep    { width: 24%; }
-.cfg-table-conn .col-name  { width: 17%; }
+.cfg-table-conn .col-ep    { width: 30%; }
+.cfg-table-conn .col-name  { width: 15%; }
 .cfg-table-conn .col-oid   { width: 22%; }
-.cfg-table-conn .col-obj   { width: 19%; }
-.cfg-table-conn .col-authp { width: 14%; }
+.cfg-table-conn .col-site  { width: 12%; }
+.cfg-table-conn .col-obj   { width: 18%; }
+.cfg-table-conn .col-authp { width: 13%; }
 .cfg-table-conn .col-int   { width: 8%;  font-family: var(--font-mono); white-space: nowrap; }
 .cfg-table-conn .col-en    { width: 6%;  text-align: center; }
 .cfg-table-conn .col-act   { width: 8%;  text-align: right; white-space: nowrap; }
@@ -3746,6 +3765,115 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .param-row input:focus { outline: none; border-color: var(--accent); }
 .param-row .icon-btn { width: 26px; height: 26px; }
 .param-row .icon-btn svg { width: 13px; height: 13px; }
+
+/* ── API Connector: the collected-endpoint schedule ─────────────────────────────────────
+   A connector is a policy, so its editor is a list of rows: which endpoint, how often, on/off,
+   and a test that proves that one row end to end. */
+.item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.item-head label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.item-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 8px; }
+
+.item-row { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--surface); }
+
+/* Row 1: the endpoint itself gets the full width, plus its own remove control. */
+.item-top { display: flex; align-items: center; gap: 8px; }
+.item-top select {
+  flex: 1 1 auto; min-width: 0;
+  height: 42px; padding: 0 36px 0 13px;
+  font-family: var(--font-ui); font-size: 13.5px; font-weight: 500; letter-spacing: -0.01em;
+  color: var(--text); background-color: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.item-top select:hover { border-color: var(--text-muted); }
+.item-top select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(249,115,22,.14); }
+
+/* Custom select (window.NMS.utils.enhanceSelect) — one dropdown design on Windows, macOS and Linux.
+   The native <select> is hidden but kept in the DOM as the value store, so wiring is unaffected. */
+.cs { position: relative; display: block; width: 100%; }
+.item-top .cs { flex: 1 1 auto; min-width: 0; }
+.cs > select { display: none; }
+.cs-trigger {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 11px;
+  font-family: var(--font-ui); font-size: 13px; font-weight: 400;
+  color: var(--text); text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  transition: border-color .15s ease;
+}
+.cs-trigger:hover { border-color: var(--text-muted); }
+.cs-trigger[aria-expanded="true"], .cs-trigger:focus-visible { outline: none; border-color: var(--accent); }
+.cs-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-label.cs-placeholder { color: var(--text-muted); font-weight: 400; }
+.cs-caret {
+  flex: 0 0 auto; width: 8px; height: 8px; margin-left: 2px;
+  border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg) translate(-1px, -1px); transition: transform .18s ease;
+}
+.cs-trigger[aria-expanded="true"] .cs-caret { transform: rotate(-135deg) translate(-1px, -1px); }
+
+.cs-panel {
+  position: fixed; z-index: 1200; max-height: 264px; overflow-y: auto; padding: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(15,23,42,.16), 0 2px 8px rgba(15,23,42,.06);
+}
+.cs-opt {
+  padding: 9px 11px; border-radius: 8px; font-family: var(--font-ui); font-size: 13px; color: var(--text);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cs-opt + .cs-opt { margin-top: 1px; }
+.cs-opt.placeholder { color: var(--text-muted); }
+.cs-opt:hover, .cs-opt.active { background: var(--surface-2); }
+.cs-opt.sel { color: var(--accent); font-weight: 600; background: rgba(249,115,22,.08); }
+.cs-opt.sel.active, .cs-opt.sel:hover { background: rgba(249,115,22,.14); }
+.cs-opt.disabled { color: var(--text-muted); opacity: .5; cursor: not-allowed; }
+.cs-opt.disabled:hover { background: transparent; }
+
+/* Row 2: how often, whether it's live, and the test — spaced out, not crammed. */
+.item-ctl { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
+.item-ctl-spacer { flex: 1 1 auto; }
+.item-int-wrap { display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: var(--text-muted); white-space: nowrap; }
+.item-int {
+  width: 62px; padding: 6px 8px; font-size: 12px; text-align: right; font-family: var(--font-mono);
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text);
+}
+.item-int:focus { outline: none; border-color: var(--accent); }
+.item-en { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted);
+  white-space: nowrap; cursor: pointer; }
+.item-row .icon-btn { width: 28px; height: 28px; flex: 0 0 auto; }
+.item-row .icon-btn svg { width: 14px; height: 14px; }
+
+.item-path { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);
+  margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--border); word-break: break-all; }
+.item-result:not(:empty) { margin-top: 8px; }
+
+/* endpoint-count summary in the connector list (the "Collection Rule" column) */
+/* Endpoint Control — one row style (.epc-row) shared by the inline cell and the hover card, so
+   the two read identically. Compact type keeps the table rows short. */
+.epc { display: flex; flex-direction: column; gap: 2px; cursor: default; }
+.epc-count { font-size: 10px; color: var(--accent); font-weight: 600; margin-bottom: 2px; }
+.epc-count b { color: var(--accent); font-weight: 700; }
+.epc-row { display: flex; align-items: baseline; gap: 6px; }
+.epc-name { font-size: 11px; font-weight: 600; color: var(--text);
+  max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.epc-int { font-size: 10.5px; font-family: var(--font-mono); color: var(--text-muted); white-space: nowrap; }
+.epc-en { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
+.epc-int::before, .epc-en::before { content: "|"; color: var(--border); margin-right: 6px; }
+.epc-en.off { opacity: .65; }
+.epc-more { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+
+/* Hover card: the full list, reusing .epc-row verbatim. Body-mounted so the table's overflow
+   never crops it; opens directly below the hovered cell. */
+.ep-pop {
+  position: absolute; top: 0; left: 0; z-index: 1000;
+  width: max-content; max-width: 420px; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15,23,42,.14), 0 2px 8px rgba(15,23,42,.06);
+  opacity: 0; visibility: hidden; transform: translateY(3px); pointer-events: none;
+  transition: opacity .13s ease, transform .13s ease, visibility .13s;
+}
+.ep-pop.open { opacity: 1; visibility: visible; transform: translateY(0); }
+.ep-pop .epc-row { padding: 1px 0; }
 
 /* live preview of the path the connector will actually call */
 .ep-preview { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; }
@@ -3963,14 +4091,15 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .cfg-table-device tr.row-off td.col-act { opacity: 1; }
 
 /* API Key: Name | Device | Endpoint | Credential | Key | Status */
-.cfg-table-apikey .col-name   { width: 13%; }
-.cfg-table-apikey .col-device { width: 18%; }
-.cfg-table-apikey .col-ep     { width: 15%; }
-.cfg-table-apikey .col-cred   { width: 10%; font-family: var(--font-mono); }
-.cfg-table-apikey .col-key    { width: 11%; }
-.cfg-table-apikey .col-expiry { width: 9%;  white-space: nowrap; }
-.cfg-table-apikey .col-status { width: 9%;  white-space: nowrap; }
-.cfg-table-apikey .col-act    { width: 15%; text-align: right; }
+.cfg-table-apikey .col-name   { width: 11%; }
+.cfg-table-apikey .col-site   { width: 11%; }
+.cfg-table-apikey .col-device { width: 16%; }
+.cfg-table-apikey .col-ep     { width: 13%; }
+.cfg-table-apikey .col-cred   { width: 9%;  font-family: var(--font-mono); }
+.cfg-table-apikey .col-key    { width: 10%; }
+.cfg-table-apikey .col-expiry { width: 8%;  white-space: nowrap; }
+.cfg-table-apikey .col-status { width: 8%;  white-space: nowrap; }
+.cfg-table-apikey .col-act    { width: 14%; text-align: right; }
 
 /* API Endpoint: Name | Description | Device | Endpoint | Status */
 .cfg-table-endpoint .col-name   { width: 18%; }

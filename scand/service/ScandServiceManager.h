@@ -54,6 +54,9 @@ private:
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ReloadService> m_reloadService;
 
+    // One-shot: the issued keys are fetched after bootstrap completes, not at construction.
+    bool m_keysRequested{false};
+
     std::queue<std::unique_ptr<ScandEvent>> m_eventQueue;
     std::queue<std::unique_ptr<ScandAction>> m_actionQueue;
 };

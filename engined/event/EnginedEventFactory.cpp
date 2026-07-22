@@ -76,6 +76,9 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
     case pz::ipc::IpcCmd::ApiKeyStateUpdate:
         return std::make_unique<ApiKeyEvent>(ApiKeyEventType::ReceiveStateUpdate, std::move(msg));
 
+    case pz::ipc::IpcCmd::ApiKeyStateRequest:
+        return std::make_unique<ApiKeyEvent>(ApiKeyEventType::ReceiveStateRequest, std::move(msg));
+
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;

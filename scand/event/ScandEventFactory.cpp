@@ -62,6 +62,9 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<pz::ipc::I
     case pz::ipc::IpcCmd::ApiConnectorTestRequest:
         return std::make_unique<ApiEvent>(ApiEventType::ReceiveConnectorTestRequest, std::move(msg));
 
+    case pz::ipc::IpcCmd::ApiKeyStateResponse:
+        return std::make_unique<ApiEvent>(ApiEventType::ReceiveKeyState, std::move(msg));
+
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;

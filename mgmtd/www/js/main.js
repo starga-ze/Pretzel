@@ -669,6 +669,9 @@
   // Unregistered pages fall back to a full reload.
   window.NMS.onRefresh = function (fn) { window.NMS._onRefresh = fn; };
 
+  // Only one custom-select dropdown is open at a time; opening a second closes the first.
+  let csActiveClose = null;
+
   window.NMS.utils = {
     // Shared by the settings tab modules (see www/js/sites.js and friends).
     esc(s) {
@@ -696,6 +699,135 @@
       if (r.status === 401) { window.location.href = '/'; return null; }
       if (!r.ok) throw new Error(r.status);
       return r.json();
+    },
+
+    // Enhance every <select> in a container with the custom dropdown below.
+    enhanceSelects(container) {
+      if (container) container.querySelectorAll('select').forEach(s => this.enhanceSelect(s));
+    },
+
+    // Replace a native <select>'s look with a themed dropdown that renders identically on Windows,
+    // macOS and Linux — the OS draws native option lists and CSS cannot touch them. The <select>
+    // stays in the DOM (hidden) as the value store and event source, so existing `.value` reads and
+    // 'change' listeners keep working; picking an option sets it and dispatches a bubbling 'change'.
+    enhanceSelect(select) {
+      if (!select || select.dataset.csEnhanced) return;
+      select.dataset.csEnhanced = '1';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'cs';
+      select.parentNode.insertBefore(wrap, select);
+      wrap.appendChild(select);
+
+      const trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'cs-trigger';
+      trigger.setAttribute('aria-haspopup', 'listbox');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.innerHTML = '<span class="cs-label"></span><span class="cs-caret" aria-hidden="true"></span>';
+      wrap.appendChild(trigger);
+      const label = trigger.querySelector('.cs-label');
+
+      let panel = null, active = -1;
+
+      const syncLabel = () => {
+        const o = select.options[select.selectedIndex];
+        label.textContent = o ? o.textContent : '';
+        label.classList.toggle('cs-placeholder', !o || o.value === '');
+      };
+
+      const optionEls = () => (panel ? Array.from(panel.querySelectorAll('.cs-opt:not(.disabled)')) : []);
+
+      const setActive = (i) => {
+        const opts = optionEls();
+        if (!opts.length) return;
+        active = (i + opts.length) % opts.length;
+        opts.forEach((el, idx) => el.classList.toggle('active', idx === active));
+        opts[active].scrollIntoView({ block: 'nearest' });
+      };
+
+      const position = () => {
+        const r = trigger.getBoundingClientRect();
+        panel.style.width = r.width + 'px';
+        panel.style.left = r.left + 'px';
+        const below = window.innerHeight - r.bottom;
+        const ph = panel.offsetHeight;
+        panel.style.top = (below < ph + 8 && r.top > below ? r.top - ph - 6 : r.bottom + 6) + 'px';
+      };
+
+      const close = () => {
+        if (!panel) return;
+        panel.remove(); panel = null; active = -1;
+        trigger.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('mousedown', onDocDown, true);
+        document.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('resize', close, true);
+        window.removeEventListener('scroll', close, true);
+        if (csActiveClose === close) csActiveClose = null;
+      };
+
+      const choose = (optionIndex) => {
+        if (select.selectedIndex !== optionIndex) {
+          select.selectedIndex = optionIndex;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        syncLabel();
+        close();
+        trigger.focus();
+      };
+
+      const onDocDown = (e) => {
+        if (panel && !panel.contains(e.target) && !wrap.contains(e.target)) close();
+      };
+
+      const onKey = (e) => {
+        if (!panel) return;
+        if (e.key === 'Escape') { e.preventDefault(); close(); trigger.focus(); }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+        else if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          const opts = optionEls();
+          if (active >= 0 && opts[active]) opts[active].click();
+        }
+      };
+
+      const open = () => {
+        if (panel) { close(); return; }
+        if (csActiveClose) csActiveClose();
+
+        panel = document.createElement('div');
+        panel.className = 'cs-panel';
+        panel.setAttribute('role', 'listbox');
+        Array.from(select.options).forEach((o, i) => {
+          const el = document.createElement('div');
+          el.className = 'cs-opt'
+            + (o.disabled ? ' disabled' : '')
+            + (i === select.selectedIndex ? ' sel' : '')
+            + (o.value === '' ? ' placeholder' : '');
+          el.setAttribute('role', 'option');
+          el.textContent = o.textContent;
+          if (!o.disabled) el.addEventListener('click', () => choose(i));
+          panel.appendChild(el);
+        });
+        document.body.appendChild(panel);
+        trigger.setAttribute('aria-expanded', 'true');
+        position();
+
+        const opts = optionEls();
+        const sel = opts.findIndex(el => el.classList.contains('sel'));
+        setActive(sel >= 0 ? sel : 0);
+
+        document.addEventListener('mousedown', onDocDown, true);
+        document.addEventListener('keydown', onKey, true);
+        window.addEventListener('resize', close, true);
+        window.addEventListener('scroll', close, true);
+        csActiveClose = close;
+      };
+
+      trigger.addEventListener('click', open);
+      select.addEventListener('change', syncLabel);
+      syncLabel();
     },
   };
 }());

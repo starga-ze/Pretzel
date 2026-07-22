@@ -6,8 +6,10 @@
 
 #include "router/MgmtdTxRouter.h"
 
+#include "config/ApiRefs.h"
 #include "config/Config.h"
 #include "db/Database.h"
+#include "http/HttpClient.h"
 #include "ipc/IpcMessage.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -495,9 +497,14 @@ bool validApiKey(const json& k)
 
 // scand.api.endpoints — API Endpoints (www/js/endpoints.js). Device-independent on purpose: the
 // definition is reusable, and a test names an API Key, which carries the device it was issued by.
-// The release sits inside the path (/restapi/v10.2/…) and pretzel does not rewrite it. Which API
-// it speaks is read from the path, not stored.
-//   { oid, name, description?, path, params: [{name, value}] }
+// The release sits inside the path (/restapi/v10.2/…) and pretzel does not rewrite it.
+//
+// Path AND parameters together: an endpoint is a complete, callable request, which is why this
+// page can test one on its own. Two firewalls needing different arguments (vsys1 vs vsys2) are
+// two endpoints rather than one endpoint parameterised at every use — that keeps a connector a
+// pure schedule, and makes a PAN-OS upgrade a matter of publishing the new release's path as a
+// second endpoint and re-pointing the collections that moved.
+//   { oid, name, description?, path, api_type?, params?: [{name, value}] }
 bool validApiEndpoint(const json& e)
 {
     if (!e.is_object())
@@ -508,6 +515,13 @@ bool validApiEndpoint(const json& e)
     const std::string path = e.value("path", std::string());
     if (path.empty() || path.front() != '/')
         return false;
+
+    if (e.contains("api_type"))
+    {
+        const std::string apiType = e.value("api_type", std::string());
+        if (apiType != "xml" && apiType != "rest")
+            return false;
+    }
 
     if (e.contains("params"))
     {
@@ -522,14 +536,76 @@ bool validApiEndpoint(const json& e)
     return true;
 }
 
-// scand.api.connectors — API Connectors (www/js/api-connectors.js). Still the pre-restructure
-// shape; it is rebuilt as device + api_key + [endpoint, interval] in the next change, so the
-// checks here stay deliberately loose.
+// scand.api.connectors — API Connectors (www/js/api-connectors.js).
+//   { oid, name, description?, object, auth_profile,
+//     items: [{ endpoint, poll_interval_sec, enabled }] }
+//
+// The collection policy for one inventory object: which credential to use against it, and which
+// endpoints to poll how often. One connector per object, so a device's whole schedule is in one
+// place. `object`, `auth_profile` and each item's `endpoint` are oid references; the targets are
+// checked in validateApiReferences, which can see the other arrays.
 bool validApiConnector(const json& c)
 {
     if (!c.is_object())
         return false;
-    return !c.value("oid", std::string()).empty() && !c.value("object", std::string()).empty();
+
+    if (c.value("oid", std::string()).empty() || c.value("object", std::string()).empty() ||
+        c.value("auth_profile", std::string()).empty())
+        return false;
+
+    // Rejected explicitly rather than ignored: before connectors became schedules they carried a
+    // single endpoint and its parameters inline, and silently accepting that shape would leave a
+    // connector that collects nothing while looking configured.
+    if (c.contains("endpoint") || c.contains("params") || c.contains("poll_interval_sec"))
+        return false;
+
+    if (!c.contains("items"))
+        return false;
+
+    if (!c["items"].is_array())
+        return false;
+
+    for (const auto& item : c["items"])
+    {
+        if (!item.is_object())
+            return false;
+
+        if (item.value("endpoint", std::string()).empty())
+            return false;
+
+        if (item.contains("poll_interval_sec"))
+        {
+            if (!item["poll_interval_sec"].is_number_integer() ||
+                item["poll_interval_sec"].get<std::int64_t>() < 1)
+                return false;
+        }
+
+        if (item.contains("enabled") && !item["enabled"].is_boolean())
+            return false;
+    }
+
+    return true;
+}
+
+// Referential integrity across the three api arrays.
+//
+// A commit usually carries only one of them — the endpoints page publishes just `endpoints` —
+// so the rule runs against the EFFECTIVE post-commit view: what is already stored, overlaid
+// with what is arriving. That catches both directions at once: deleting an endpoint a stored
+// connector still points at, and adding a connector that points at nothing.
+//
+// The rule itself is pz::config::checkApiReferences, which takes the assembled section and
+// nothing else; only the assembling belongs here.
+bool validateApiReferences(const json& values, std::string& error)
+{
+    json effective = pz::config::Config::serviceSection("scand", "api");
+    if (!effective.is_object())
+        effective = json::object();
+
+    for (auto it = values.begin(); it != values.end(); ++it)
+        effective[it.key()] = it.value();
+
+    return pz::config::checkApiReferences(effective, error);
 }
 
 bool validateCommitValues(const std::string& daemon, const std::string& domain, const json& values,
@@ -560,7 +636,7 @@ bool validateCommitValues(const std::string& daemon, const std::string& domain, 
 
     if (daemon == "scand" && domain == "api")
         return validateArray("api_keys", validApiKey) && validateArray("endpoints", validApiEndpoint) &&
-               validateArray("connectors", validApiConnector);
+               validateArray("connectors", validApiConnector) && validateApiReferences(values, error);
 
     return true;
 }
@@ -867,6 +943,28 @@ void WebService::handleInventoryStatus(MgmtdServiceManager& sm, const Request& r
 namespace
 {
 
+// The path the device is actually asked for: the endpoint plus its query parameters, encoded the
+// same way scand builds the request (ApiService::runEndpointCall). The endpoint-page test carries
+// its parameters as a separate array, so the bare `endpoint` field understates what was called —
+// this reunites them so the log shows the full request the operator entered. The connector test
+// already bakes its parameters into `endpoint` and sends an empty array, so both flows log the
+// same shape.
+std::string fullEndpoint(const json& input)
+{
+    std::string path = input.value("endpoint", std::string());
+    for (const auto& p : input.value("params", json::array()))
+    {
+        if (!p.is_object())
+            continue;
+        const std::string name = p.value("name", std::string());
+        if (name.empty())
+            continue;
+        path += (path.find('?') == std::string::npos) ? '?' : '&';
+        path += pz::http::urlEncode(name) + "=" + pz::http::urlEncode(p.value("value", std::string()));
+    }
+    return path;
+}
+
 // Rejects what can be judged without touching the device, so a typo answers immediately
 // instead of costing an IPC round trip and a ticket poll. scand re-checks defensively.
 std::string connectorTestInputError(const json& input, bool endpointMode)
@@ -874,12 +972,25 @@ std::string connectorTestInputError(const json& input, bool endpointMode)
     if (input.value("target", std::string()).empty())
         return "target is required";
 
+    // A password is only one of two ways in. scand may already hold the key issued for this
+    // profile, in which case it needs no credential at all — and only scand knows that, so the
+    // check here is "is there ANY way to authenticate", not "is there a password".
+    //
     // is_object() is checked rather than assumed: nlohmann's value() throws when called on a
     // non-object, and a malformed body must produce a 400, not an exception.
     const auto secrets = input.value("secrets", json::object());
-    if (!secrets.is_object() || secrets.value("username", std::string()).empty() ||
-        secrets.value("password", std::string()).empty())
-        return "the auth profile has no username/password entered";
+    const bool haveCredential = secrets.is_object() && !secrets.value("username", std::string()).empty() &&
+                                !secrets.value("password", std::string()).empty();
+    const bool namesProfile = !input.value("api_key_oid", std::string()).empty();
+
+    // Generating a key is the one case a password is unavoidable — that exchange IS the
+    // password. Calling an endpoint can instead ride on a key already issued for the profile.
+    if (!endpointMode && !haveCredential)
+        return "generating a key needs the username and password — enter them on the API Key page";
+
+    if (endpointMode && !haveCredential && !namesProfile)
+        return "this test has no API key to use — pick one on the connector, or enter the "
+               "password on the API Key page and generate a key once";
 
     if (!endpointMode)
         return {};
@@ -932,7 +1043,11 @@ void WebService::handleKeygenTest(MgmtdServiceManager& sm, const Request& req, R
     }
 
     if (const auto err = connectorTestInputError(input, false); !err.empty())
+    {
+        LOG_DEBUG("keygen test rejected pre-flight (host={}, reason={})",
+                  input.value("target", std::string()), err);
         return fill(resp, 400, json{{"error", err}}.dump());
+    }
 
     const std::uint32_t ticket = m_apiTestTicket++;
     const std::string host = input.value("target", std::string());
@@ -955,11 +1070,16 @@ void WebService::handleEndpointTest(MgmtdServiceManager& sm, const Request& req,
     }
 
     if (const auto err = connectorTestInputError(input, true); !err.empty())
+    {
+        LOG_DEBUG("endpoint test rejected pre-flight (host={}, endpoint={}, reason={})",
+                  input.value("target", std::string()), fullEndpoint(input), err);
         return fill(resp, 400, json{{"error", err}}.dump());
+    }
 
     const std::uint32_t ticket = m_apiTestTicket++;
     const std::string host = input.value("target", std::string());
-    const std::string endpoint = input.value("endpoint", std::string());
+    // The full request as entered on the frontend: path + query parameters, not just the bare path.
+    const std::string endpoint = fullEndpoint(input);
     sendConnectorTest(sm, ticket, std::move(input), "endpoint");
 
     LOG_INFO("endpoint test delegated to scand (ticket={}, host={}, endpoint={})", ticket, host, endpoint);
