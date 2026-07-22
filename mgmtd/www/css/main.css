@@ -3645,6 +3645,20 @@ a.details-btn { display: inline-block; text-decoration: none; }
 }
 .field-row input:focus, .field-row select:focus { outline: none; border-color: var(--accent); }
 
+/* Segmented toggle (e.g. API type: REST | XML) — a themed replacement for a 2-option radio. */
+.seg { display: inline-flex; padding: 3px; gap: 3px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 9px; }
+.seg-btn { appearance: none; border: none; cursor: pointer; background: transparent;
+  padding: 6px 16px; font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;
+  color: var(--text-muted); border-radius: 7px; transition: background .15s ease, color .15s ease; }
+.seg-btn:hover { color: var(--text); }
+.seg-btn.active { background: var(--surface); color: var(--accent); box-shadow: 0 1px 2px rgba(15,23,42,.08); }
+
+/* API-endpoint editor: two call layouts share one slot, toggled by the type on #epCall. */
+#epCall.call-rest .call-xml-block { display: none; }
+#epCall.call-xml .call-rest-block { display: none; }
+.lbl-sub { font-weight: 400; color: var(--text-muted); }
+
 /* Selects default to the platform widget, which ignores the surrounding design entirely. */
 .field-row select, .item-top select {
   appearance: none; -webkit-appearance: none; -moz-appearance: none;
@@ -4102,10 +4116,11 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .cfg-table-apikey .col-act    { width: 14%; text-align: right; }
 
 /* API Endpoint: Name | Description | Device | Endpoint | Status */
-.cfg-table-endpoint .col-name   { width: 18%; }
-.cfg-table-endpoint .col-desc   { width: 22%; color: var(--text-muted); }
-.cfg-table-endpoint .col-ep     { width: 36%; }
-.cfg-table-endpoint .col-status { width: 9%;  white-space: nowrap; }
+.cfg-table-endpoint .col-name   { width: 17%; }
+.cfg-table-endpoint .col-desc   { width: 19%; color: var(--text-muted); }
+.cfg-table-endpoint .col-type   { width: 9%;  white-space: nowrap; }
+.cfg-table-endpoint .col-ep     { width: 32%; }
+.cfg-table-endpoint .col-status { width: 8%;  white-space: nowrap; }
 .cfg-table-endpoint .col-act    { width: 15%; text-align: right; }
 
 /* Enough of the issued key to recognise it, not enough to use it. */

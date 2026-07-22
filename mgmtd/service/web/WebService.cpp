@@ -1036,6 +1036,7 @@ void WebService::handleKeygenTest(MgmtdServiceManager& sm, const Request& req, R
     try
     {
         input = json::parse(req.body);
+        LOG_INFO("handle keygen test json dump : {}", input.dump());
     }
     catch (const std::exception&)
     {

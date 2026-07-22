@@ -28,12 +28,23 @@
 
   const { esc, newUuid } = window.NMS.utils;
 
-  // PAN-OS serves both APIs from fixed roots, so the path tells us which one this is.
+  // The API type is now stored on the endpoint (chosen in the editor). Legacy records that predate
+  // the field fall back to reading it from the path, PAN-OS's two roots being unambiguous.
   const apiTypeOf = (path) => (String(path || '').indexOf('/restapi/') === 0 ? 'rest' : 'xml');
+  const normType = (t, path) => (t === 'xml' || t === 'rest') ? t : apiTypeOf(path);
   const API_LABEL = { rest: 'REST API', xml: 'XML API' };
 
-  const PATH_HINT = '/restapi/v10.2/Objects/Addresses';
-  const SEED_PARAMS = [{ name: 'location', value: 'vsys' }, { name: 'vsys', value: 'vsys1' }];
+  // Per-type starting points. PAN-OS serves the REST API under /restapi/<ver>/… with its arguments
+  // as query parameters, and the XML API under /api/ where everything — including the command —
+  // is a query parameter. The key is attached differently too (X-PAN-KEY header vs key= param),
+  // which scand does from the api_type the endpoint now carries.
+  const TYPE_DEFAULTS = {
+    rest: { path: '/restapi/v10.2/Objects/Addresses',
+            params: [{ name: 'location', value: 'vsys' }, { name: 'vsys', value: 'vsys1' }] },
+    xml:  { path: '/api',
+            params: [{ name: 'type', value: 'op' },
+                     { name: 'cmd', value: '<show><system><info></info></system></show>' }] },
+  };
 
   // Test outcomes are runtime state, not part of the declaration, so they are held apart and
   // never stage the configuration. The database has api_endpoint_state for this.
@@ -57,6 +68,7 @@
       oid: (typeof e.oid === 'string' && e.oid) ? e.oid : newUuid(),
       name: e.name || '',
       description: e.description || '',
+      api_type: normType(e.api_type, e.path),
       path: e.path || '',
       // Stored unencoded; percent-encoded when the URL is built, so raw values (an XML API
       // cmd=<show>… included) can be typed as-is.
@@ -66,9 +78,10 @@
     };
   }
 
-  const blank = () => normalize({ path: PATH_HINT, params: SEED_PARAMS });
+  const blank = () => normalize({ api_type: 'rest', path: TYPE_DEFAULTS.rest.path, params: TYPE_DEFAULTS.rest.params });
 
-  // The full path this endpoint calls. Encoding matches mgmtd's server-side build.
+  // The full path this endpoint calls, percent-encoded — matches mgmtd's server-side build and is
+  // what actually goes on the wire.
   function effectivePath(e) {
     let path = e.path || '';
     (e.params || []).forEach(p => {
@@ -77,6 +90,31 @@
       path += encodeURIComponent(p.name) + '=' + encodeURIComponent(p.value);
     });
     return path;
+  }
+
+  // XML API endpoints are entered as one line — the whole URL the firewall's API browser prints,
+  // e.g. /api?type=op&cmd=<show><system><info/></system></show>. It is stored the same way every
+  // endpoint is (path + params), so the encode-on-send path is unchanged; these two just convert
+  // between that shape and the single readable string the operator pastes and edits.
+  function rawXmlUrl(e) {
+    const params = (e.params || []).filter(p => p.name);
+    if (!params.length) return e.path || '';
+    return (e.path || '') + '?' + params.map(p => `${p.name}=${p.value}`).join('&');
+  }
+
+  function parseXmlUrl(raw) {
+    const s = String(raw || '').trim();
+    const q = s.indexOf('?');
+    const path = q === -1 ? s : s.slice(0, q);
+    const query = q === -1 ? '' : s.slice(q + 1);
+    // The cmd value can contain '=' (an XML attribute), so split on the FIRST '=' only. '<>' are
+    // stored raw and percent-encoded at send time, exactly like a REST parameter value.
+    const params = query.split('&').filter(Boolean).map(tok => {
+      const eq = tok.indexOf('=');
+      return eq === -1 ? { name: tok.trim(), value: '' }
+                       : { name: tok.slice(0, eq).trim(), value: tok.slice(eq + 1) };
+    }).filter(p => p.name);
+    return { path, params };
   }
 
   // ── Staging ──────────────────────────────────────────────────────────────────
@@ -115,7 +153,7 @@
   // ── Cross-module surface ─────────────────────────────────────────────────────
   window.NMS.apiEndpoints = {
     list: () => state.endpoints.map(e => ({
-      oid: e.oid, name: e.name, api_type: apiTypeOf(e.path), path: effectivePath(e),
+      oid: e.oid, name: e.name, api_type: e.api_type, path: effectivePath(e),
     })),
     byOid: (oid) => state.endpoints.find(e => e.oid === oid) || null,
     label: (oid) => {
@@ -146,8 +184,8 @@
         <tr>
           <td class="col-name"><div class="cell-name">${esc(e.name) || '<span class="muted">unnamed</span>'}</div></td>
           <td class="col-desc">${esc(e.description) || '<span class="muted">—</span>'}</td>
+          <td class="col-type"><span class="api-badge ${esc(e.api_type)}">${esc(API_LABEL[e.api_type])}</span></td>
           <td class="col-ep">
-            <span class="api-badge ${esc(apiTypeOf(e.path))}">${esc(API_LABEL[apiTypeOf(e.path)])}</span>
             <span class="ep-path" title="${esc(effectivePath(e))}">${esc(effectivePath(e))}</span>
           </td>
           <td class="col-status">${statusCell(e)}</td>
@@ -161,7 +199,7 @@
             </button>
           </td>
         </tr>`).join('')
-      : `<tr><td colspan="5"><div class="cfg-empty">No API endpoints yet — click <b>Add Endpoint</b> to define one.
+      : `<tr><td colspan="6"><div class="cfg-empty">No API endpoints yet — click <b>Add Endpoint</b> to define one.
            An endpoint is device-independent; a test names the API Key to run it against.</div></td></tr>`;
 
     el.innerHTML = `
@@ -178,6 +216,7 @@
           <thead><tr>
             <th class="col-name">Name</th>
             <th class="col-desc">Description</th>
+            <th class="col-type">Type</th>
             <th class="col-ep">Endpoint</th>
             <th class="col-status">Status</th>
             <th class="col-act"></th>
@@ -215,6 +254,12 @@
   }
 
   function editorForm(e) {
+    // Both call layouts are rendered and toggled by a class on #epCall (no rebuild, so edits in the
+    // hidden one survive a switch). The inactive type is pre-seeded with its default so switching
+    // lands on a usable starting point.
+    const restData = e.api_type === 'rest' ? e : { path: TYPE_DEFAULTS.rest.path, params: TYPE_DEFAULTS.rest.params };
+    const xmlData = e.api_type === 'xml' ? e : { path: TYPE_DEFAULTS.xml.path, params: TYPE_DEFAULTS.xml.params };
+
     return `
       <div class="field-row"><label>Name</label>
         <input data-f="name" value="${esc(e.name)}" placeholder="e.g. address objects"/></div>
@@ -222,18 +267,36 @@
         <input data-f="description" value="${esc(e.description)}" placeholder="optional"/></div>
 
       <div class="editor-sec">CALL</div>
-      <div class="field-row"><label>Endpoint</label>
-        <input data-f="path" value="${esc(e.path)}" placeholder="${esc(PATH_HINT)}"/></div>
-      <p class="field-hint" id="epApiHint"></p>
+      <div class="field-row"><label>API type</label>
+        <div class="seg" id="epTypeSeg">
+          <button type="button" class="seg-btn${e.api_type === 'rest' ? ' active' : ''}" data-seg="rest">REST API</button>
+          <button type="button" class="seg-btn${e.api_type === 'xml' ? ' active' : ''}" data-seg="xml">XML API</button>
+        </div></div>
 
-      <div class="param-head">
-        <label>Query parameters</label>
-        <button class="btn-sm" id="epParamAdd" type="button">+ Param</button>
+      <div id="epCall" class="call-${e.api_type === 'xml' ? 'xml' : 'rest'}">
+        <div class="call-block call-rest-block">
+          <div class="field-row"><label>Endpoint</label>
+            <input data-f="rest-path" value="${esc(restData.path)}" placeholder="${esc(TYPE_DEFAULTS.rest.path)}"/></div>
+          <p class="field-hint">Key attached as an <code>X-PAN-KEY</code> header.</p>
+          <div class="param-head">
+            <label>Query parameters</label>
+            <button class="btn-sm" id="epParamAdd" type="button">+ Param</button>
+          </div>
+          <div class="param-list" id="epParamList">${(restData.params.length ? restData.params : [{ name: '', value: '' }])
+            .map(paramRow).join('')}</div>
+          <p class="field-hint">Values are percent-encoded for you — type them raw.</p>
+        </div>
+
+        <div class="call-block call-xml-block">
+          <div class="field-row"><label>Endpoint <span class="lbl-sub">— full XML API URL</span></label>
+            <input data-f="xml-url" value="${esc(rawXmlUrl(xmlData))}"
+              placeholder="/api?type=op&amp;cmd=&lt;show&gt;&lt;system&gt;&lt;info/&gt;&lt;/system&gt;&lt;/show&gt;"/></div>
+          <p class="field-hint">Paste the URL straight from the firewall's <b>API browser</b>. The key
+            is added automatically (<code>key=</code> parameter) and <code>&lt;&gt;</code> are
+            percent-encoded for you — type them raw.</p>
+        </div>
       </div>
-      <div class="param-list" id="epParamList">${(e.params.length ? e.params : [{ name: '', value: '' }])
-        .map(paramRow).join('')}</div>
-      <p class="field-hint">Values are percent-encoded for you — type them raw. The host and the
-        API key come from whichever key the test names, so neither belongs here.</p>
+
       <div class="ep-preview"><span class="ep-preview-h">Calls</span>
         <code id="epPreview">${esc(effectivePath(e)) || '—'}</code></div>`;
   }
@@ -243,30 +306,37 @@
       const el = body.querySelector(`[data-f="${k}"]`);
       return el ? el.value.trim() : '';
     };
-    const params = Array.from(body.querySelectorAll('.param-row')).map(row => ({
-      name: (row.querySelector('[data-p="name"]').value || '').trim(),
-      value: (row.querySelector('[data-p="value"]').value || '').trim(),
-    }));
+    const type = body.querySelector('#epTypeSeg .seg-btn.active')?.dataset.seg || 'rest';
+
+    // Read only the active layout: XML is one pasted URL (parsed back into path + params); REST is
+    // an explicit path plus parameter rows.
+    let path, params;
+    if (type === 'xml') {
+      ({ path, params } = parseXmlUrl(g('xml-url')));
+    } else {
+      path = g('rest-path');
+      params = Array.from(body.querySelectorAll('.call-rest-block .param-row')).map(row => ({
+        name: (row.querySelector('[data-p="name"]').value || '').trim(),
+        value: (row.querySelector('[data-p="value"]').value || '').trim(),
+      }));
+    }
+
     return normalize({
       oid: draftOid,
       name: g('name'),
       description: g('description'),
-      path: g('path'),
+      api_type: type,
+      path,
       params,
     });
   }
 
+  // The preview is the encoded URL that actually goes on the wire — for XML that means the pasted
+  // <> show up percent-encoded, which is the point.
   function refreshPreview() {
     const body = document.getElementById('epBody');
-    const e = collect(body);
     const prev = document.getElementById('epPreview');
-    if (prev) prev.textContent = effectivePath(e) || '—';
-    const hint = document.getElementById('epApiHint');
-    if (hint) {
-      const t = apiTypeOf(e.path);
-      hint.innerHTML = `Read as <b>${esc(API_LABEL[t])}</b> from the path — the key is attached
-        automatically (${t === 'xml' ? '<code>key=</code> parameter' : '<code>X-PAN-KEY</code> header'}).`;
-    }
+    if (prev) prev.textContent = effectivePath(collect(body)) || '—';
   }
 
   function wireParamRow(row) {
@@ -317,6 +387,15 @@
       el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', refreshPreview));
     body.querySelectorAll('.param-row').forEach(wireParamRow);
 
+    // Switching type just shows the other layout (both are already in the DOM, pre-seeded).
+    body.querySelectorAll('#epTypeSeg .seg-btn').forEach(btn => btn.addEventListener('click', () => {
+      body.querySelectorAll('#epTypeSeg .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const call = document.getElementById('epCall');
+      call.classList.remove('call-rest', 'call-xml');
+      call.classList.add('call-' + btn.dataset.seg);
+      refreshPreview();
+    }));
+
     document.getElementById('epParamAdd').onclick = () => {
       const list = document.getElementById('epParamList');
       list.insertAdjacentHTML('beforeend', paramRow({ name: '', value: '' }));
@@ -335,6 +414,11 @@
       const e = collect(body);
       if (!e.name) { alert('Name is required.'); return; }
       if (!e.path || e.path[0] !== '/') { alert('Endpoint must be a path starting with /'); return; }
+      // Every PAN-OS XML API request needs a type= (op, config, commit, …); without it the device
+      // answers "type is required", so catch it here rather than at test time.
+      if (e.api_type === 'xml' && !e.params.some(p => p.name === 'type')) {
+        alert('An XML API URL needs a type= parameter, e.g. /api?type=op&cmd=…'); return;
+      }
       if (editIdx == null) state.endpoints.push(e); else state.endpoints[editIdx] = e;
       stage();
       closeEditor(); render();
@@ -464,7 +548,7 @@
         target: dev.target,
         fingerprint: dev.fingerprint,
         keygen_endpoint: keyRecord.endpoint,
-        api_type: apiTypeOf(e.path),
+        api_type: e.api_type,
         endpoint: e.path,
         params: e.params,
         secrets: { username: keyRecord.username, password: held.password },
