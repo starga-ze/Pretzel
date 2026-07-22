@@ -53,6 +53,7 @@
   let deployed = [];
   let editIdx = null;
   let draftOid = null;
+  let draftSite = '';   // Editor-only: the site whose devices the Device select is scoped to.
 
   // ── Secrets (browser-only, see the header note) ──────────────────────────────
   // Runtime state for one key: { password, key, issued_at, expires_at, last_test }.
@@ -139,12 +140,33 @@
 
   // ── Render ───────────────────────────────────────────────────────────────────
   const deviceOf = (k) => (window.NMS.devices && window.NMS.devices.byOid(k.device)) || null;
+  const devices = () => (window.NMS.devices && window.NMS.devices.list()) || [];
+  const sites = () => (window.NMS.sites && window.NMS.sites.list()) || [];
+  const siteName = (oid) => (window.NMS.sites && window.NMS.sites.label(oid)) || '';
+
+  // Devices are picked Site-first: choose a site, then only that site's devices are offered.
+  function deviceOptsForSite(siteOid, selectedOid) {
+    if (!siteOid) return '<option value="">— select a site first —</option>';
+    const inSite = devices().filter(d => d.site === siteOid);
+    if (!inSite.length) return '<option value="">— no devices in this site —</option>';
+    return ['<option value="">— select a device —</option>'].concat(
+      inSite.map(d => `<option value="${esc(d.oid)}" ${d.oid === selectedOid ? 'selected' : ''}>${
+        esc(d.name || d.target)} (${esc(window.NMS.devices.typeLabel(d.device_type))})</option>`)
+    ).join('');
+  }
 
   function deviceCell(k) {
     const d = deviceOf(k);
     if (!d) return `<span class="ref-missing" title="Device ${esc(k.device)} no longer exists">missing</span>`;
     return `<div class="cell-name">${esc(d.name) || esc(d.target)}</div>
             <div class="cell-sub">${esc(window.NMS.devices.typeLabel(d.device_type))} · ${esc(d.target)}</div>`;
+  }
+
+  // The site is derived from the bound device, not stored on the key.
+  function siteCell(k) {
+    const d = deviceOf(k);
+    const name = d ? siteName(d.site) : '';
+    return name ? `<div class="cell-name">${esc(name)}</div>` : `<span class="muted">—</span>`;
   }
 
   // The key itself never comes back to the browser — it is encrypted and stored by engined, so
@@ -189,6 +211,7 @@
       ? state.keys.map((k, i) => `
         <tr>
           <td class="col-name"><div class="cell-name">${esc(k.name) || '<span class="muted">unnamed</span>'}</div></td>
+          <td class="col-site">${siteCell(k)}</td>
           <td class="col-device">${deviceCell(k)}</td>
           <td class="col-ep"><span class="ep-path" title="${esc(k.endpoint)}">${esc(k.endpoint) || '<span class="muted">—</span>'}</span></td>
           <td class="col-cred">${esc(k.username) || '<span class="muted">—</span>'}</td>
@@ -205,7 +228,7 @@
             </button>
           </td>
         </tr>`).join('')
-      : `<tr><td colspan="8"><div class="cfg-empty">No API keys yet — click <b>Add API Key</b> to define one.
+      : `<tr><td colspan="9"><div class="cfg-empty">No API keys yet — click <b>Add API Key</b> to define one.
            ${devices.length ? '' : 'Tip: <a href="settings?tab=devices">add a device first</a>; a key belongs to one.'}</div></td></tr>`;
 
     el.innerHTML = `
@@ -222,6 +245,7 @@
         <table class="cfg-table cfg-table-apikey">
           <thead><tr>
             <th class="col-name">Name</th>
+            <th class="col-site">Site</th>
             <th class="col-device">Device</th>
             <th class="col-ep">Endpoint</th>
             <th class="col-cred">Credential</th>
@@ -263,15 +287,13 @@
   }
 
   function editorForm(k) {
-    const devices = (window.NMS.devices && window.NMS.devices.list()) || [];
-    const devOpts = ['<option value="">— select a device —</option>'].concat(
-      devices.map(d => `<option value="${esc(d.oid)}" ${k.device === d.oid ? 'selected' : ''}>${
-        esc(d.name || d.target)} (${esc(window.NMS.devices.typeLabel(d.device_type))})</option>`)
-    ).join('');
-
-    const dev = devices.find(d => d.oid === k.device);
+    const dev = devices().find(d => d.oid === k.device);
     const spec = credSpec(dev ? dev.device_type : 'ngfw');
     const held = secrets.for(k.oid);
+
+    const siteOpts = ['<option value="">— select a site —</option>'].concat(
+      sites().map(s => `<option value="${esc(s.oid)}" ${draftSite === s.oid ? 'selected' : ''}>${esc(s.name)}</option>`)
+    ).join('');
 
     const creds = spec.supported
       ? spec.fields.map(([f, label, type, ph]) =>
@@ -281,8 +303,10 @@
 
     return `
       ${fieldRow('Name', 'name', k.name, 'text', 'e.g. sherpain-fw key')}
+      <div class="field-row"><label>Site</label>
+        <select data-sitesel>${siteOpts}</select></div>
       <div class="field-row"><label>Device</label>
-        <select data-f="device" data-devsel>${devOpts}</select></div>
+        <select data-f="device" data-devsel>${deviceOptsForSite(draftSite, k.device)}</select></div>
       ${dev ? `<p class="field-hint">Device type <b>${esc(window.NMS.devices.typeLabel(dev.device_type))}</b>
                  — reached at <code>${esc(dev.target)}</code>.</p>` : ''}
 
@@ -317,6 +341,7 @@
     editIdx = idx;
     const k = idx == null ? blank() : normalize(JSON.parse(JSON.stringify(state.keys[idx])));
     draftOid = k.oid;
+    draftSite = (deviceOf(k) || {}).site || '';   // scope the Device select to the current device's site
     document.getElementById('akTitle').textContent = idx == null ? 'Add API Key' : 'Edit API Key';
     document.getElementById('akBody').innerHTML = editorForm(k);
     document.getElementById('akFoot').innerHTML = `
@@ -337,6 +362,15 @@
   function wireEditor() {
     const body = document.getElementById('akBody');
 
+    // Picking a site re-scopes the device list and clears any prior device.
+    body.querySelector('[data-sitesel]')?.addEventListener('change', (e) => {
+      draftSite = e.target.value;
+      const k = collect(body);
+      k.device = '';
+      body.innerHTML = editorForm(k);
+      wireEditor();
+    });
+
     // Device decides the credential shape, so changing it rebuilds the form.
     body.querySelector('[data-devsel]')?.addEventListener('change', () => {
       const k = collect(body);
@@ -346,6 +380,9 @@
       body.innerHTML = editorForm(k);
       wireEditor();
     });
+
+    // Site and Device selects get the themed dropdown (consistent across OSes).
+    window.NMS.utils.enhanceSelects(body);
 
     document.getElementById('akCancel').onclick = closeEditor;
     document.getElementById('akClose').onclick = closeEditor;
@@ -515,5 +552,6 @@
 
   // Device names and the connector usage count load independently.
   document.addEventListener('nms:devices-ready', () => { if (activeTab() === 'api-key') render(); });
+  document.addEventListener('nms:sites-ready', () => { if (activeTab() === 'api-key') render(); });
   document.addEventListener('nms:connectors-ready', () => { if (activeTab() === 'api-key') render(); });
 })();

@@ -91,7 +91,24 @@
   // ── Reference resolution ─────────────────────────────────────────────────────
   const objects = () => (window.NMS.devices && window.NMS.devices.list()) || [];
   const profiles = () => (window.NMS.apiKeys && window.NMS.apiKeys.list()) || [];
+  const sites = () => (window.NMS.sites && window.NMS.sites.list()) || [];
   const objectByOid = (oid) => objects().find(o => o.oid === oid) || null;
+  const siteName = (oid) => (window.NMS.sites && window.NMS.sites.label(oid)) || '';
+
+  // Devices are picked Site-first: choose a site, then only that site's devices are offered. Keeps
+  // the list short on a large estate and stops a device being bound to the wrong customer.
+  function deviceOptsForSite(siteOid, selectedOid, selfOid) {
+    if (!siteOid) return '<option value="">— select a site first —</option>';
+    const inSite = objects().filter(o => o.site === siteOid);
+    if (!inSite.length) return '<option value="">— no devices in this site —</option>';
+    return ['<option value="">— select a device —</option>'].concat(
+      inSite.map(o => {
+        const taken = boundElsewhere(o.oid, selfOid);
+        const label = `${o.name || o.target} (${o.target})${taken ? ' — already bound' : ''}`;
+        return `<option value="${esc(o.oid)}" ${o.oid === selectedOid ? 'selected' : ''} ${taken ? 'disabled' : ''}>${esc(label)}</option>`;
+      })
+    ).join('');
+  }
 
   const endpointList = () => (window.NMS.apiEndpoints && window.NMS.apiEndpoints.list()) || [];
   const endpointByOid = (oid) => (window.NMS.apiEndpoints && window.NMS.apiEndpoints.byOid(oid)) || null;
@@ -127,6 +144,13 @@
             <div class="cell-sub">${esc(o.target)}</div>`;
   }
 
+  // The site is derived from the bound device, not stored on the connector.
+  function siteCell(c) {
+    const o = objectByOid(c.object);
+    const name = o ? siteName(o.site) : '';
+    return name ? `<span class="cell-name">${esc(name)}</span>` : `<span class="muted">—</span>`;
+  }
+
   function profileCell(c) {
     if (!c.auth_profile) return `<span class="authp-missing">none</span>`;
     const name = window.NMS.apiKeys && window.NMS.apiKeys.label(c.auth_profile);
@@ -137,19 +161,82 @@
 
   const anyEnabled = (c) => (c.items || []).some(i => i.enabled);
 
-  function scheduleCell(c) {
+  // Up to this many endpoints are shown inline in the cell; beyond it, a "+N items" hint and a
+  // hover card carry the rest.
+  const EPC_INLINE_LIMIT = 2;
+
+  // One endpoint line: name | interval | state. Shared by the cell and the hover card so the two
+  // read identically — same font, same colours.
+  function epRowHtml(i) {
+    const name = endpointName(i.endpoint);
+    const label = name ? esc(name) : `${esc(i.endpoint)} (missing)`;
+    return `<div class="epc-row">`
+         + `<span class="epc-name">${label}</span>`
+         + `<span class="epc-int">${esc(i.poll_interval_sec)}s</span>`
+         + `<span class="epc-en${i.enabled ? '' : ' off'}">${i.enabled ? 'Enabled' : 'Disabled'}</span>`
+         + `</div>`;
+  }
+
+  function epCountHtml(items) {
+    return `<div class="epc-count"><b>${items.length}</b> endpoint${items.length === 1 ? '' : 's'}</div>`;
+  }
+
+  function collectionCell(c) {
     const items = c.items || [];
     if (!items.length) return '<span class="authp-missing">collects nothing</span>';
 
-    return items.map(i => {
-      const name = endpointName(i.endpoint);
-      const label = name
-        ? `<span class="ep-name">${esc(name)}</span>`
-        : `<span class="authp-missing" title="Endpoint ${esc(i.endpoint)} no longer exists">missing</span>`;
-      return `<div class="sched-row${i.enabled ? '' : ' off'}" title="${esc(endpointPath(i.endpoint))}">
-          ${label}<span class="sched-int">${esc(i.poll_interval_sec)}s</span>
-        </div>`;
-    }).join('');
+    const shown = items.slice(0, EPC_INLINE_LIMIT);
+    const extra = items.length - shown.length;
+
+    return `<div class="epc">
+        ${epCountHtml(items)}
+        ${shown.map(epRowHtml).join('')}
+        ${extra > 0 ? `<div class="epc-more">+${extra} items</div>` : ''}
+      </div>`;
+  }
+
+  // Hover card: the full list, using the exact same row markup as the cell. A single shared,
+  // body-mounted element positioned by the cell so the table's overflow never crops it.
+  function epPopEl() {
+    let el = document.getElementById('acEpPop');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'acEpPop';
+      el.className = 'ep-pop';
+      document.body.appendChild(el);
+    }
+    return el;
+  }
+
+  function epPopHtml(c) {
+    const items = c.items || [];
+    return epCountHtml(items) + items.map(epRowHtml).join('');
+  }
+
+  function showEpPop(cell) {
+    const c = state.connectors[+cell.dataset.ep];
+    // A hover card appears only when the cell can't show everything — i.e. more than the inline
+    // limit; at or below it, every endpoint is already visible.
+    if (!c || (c.items || []).length <= EPC_INLINE_LIMIT) return;
+
+    const pop = epPopEl();
+    pop.innerHTML = epPopHtml(c);
+    pop.classList.add('open');
+
+    // Directly below the cell, left edges aligned; flip above only if it would leave the viewport.
+    const r = cell.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let left = r.left;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - 8 - pw;
+    let top = r.bottom + 6;
+    if (top + ph > window.innerHeight - 8 && r.top - 6 - ph > 8) top = r.top - 6 - ph;
+    pop.style.left = `${Math.max(8, left) + window.scrollX}px`;
+    pop.style.top = `${top + window.scrollY}px`;
+  }
+
+  function hideEpPop() {
+    const el = document.getElementById('acEpPop');
+    if (el) el.classList.remove('open');
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -171,9 +258,10 @@
             <div class="cell-name">${esc(c.name) || '<span class="muted">unnamed</span>'}</div>
             ${c.description ? `<div class="cell-sub">${esc(c.description)}</div>` : ''}
           </td>
+          <td class="col-site">${siteCell(c)}</td>
           <td class="col-obj">${objectCell(c)}</td>
           <td class="col-authp">${profileCell(c)}</td>
-          <td class="col-ep">${scheduleCell(c)}</td>
+          <td class="col-ep" data-ep="${i}">${collectionCell(c)}</td>
           <td class="col-act">
             <button class="icon-btn" data-edit="${i}" title="Edit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
@@ -183,7 +271,7 @@
             </button>
           </td>
         </tr>`).join('')
-      : `<tr><td colspan="5"><div class="cfg-empty">No API connectors yet — ${emptyHint}</div></td></tr>`;
+      : `<tr><td colspan="6"><div class="cfg-empty">No API connectors yet — ${emptyHint}</div></td></tr>`;
 
     el.innerHTML = `
       <div class="cfg-page">
@@ -191,7 +279,7 @@
           <div class="cfg-toolbar-meta">
             <span class="cfg-h">API Connectors</span>
             <span class="cfg-h-sub">${state.connectors.length} connector${state.connectors.length === 1 ? '' : 's'}
-              · ${objects().length} inventory object${objects().length === 1 ? '' : 's'} available</span>
+              · ${objects().length} device${objects().length === 1 ? '' : 's'} available</span>
           </div>
           <button class="btn-primary btn-sm" id="acAdd" ${ready ? '' : 'disabled'}>+ Add Connector</button>
         </div>
@@ -199,9 +287,10 @@
         <table class="cfg-table cfg-table-conn">
           <thead><tr>
             <th class="col-name">Name</th>
-            <th class="col-obj">Object</th>
+            <th class="col-site">Site</th>
+            <th class="col-obj">Device</th>
             <th class="col-authp">API Key</th>
-            <th class="col-ep">Collects</th>
+            <th class="col-ep">Endpoint Control</th>
             <th class="col-act"></th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -233,18 +322,25 @@
     ).join('');
 
     return `<div class="item-row">
-        <div class="item-main">
+        <div class="item-top">
           <select data-i="endpoint">${opts}</select>
-          <input data-i="poll_interval_sec" class="item-int" value="${esc(i.poll_interval_sec)}"
-                 title="Poll interval in seconds" placeholder="${DEFAULT_INTERVAL_SEC}"/>
-          <label class="item-en" title="Collect this endpoint">
-            <input type="checkbox" data-i="enabled" ${i.enabled ? 'checked' : ''}/><span>on</span>
-          </label>
-          <button class="btn-sm" data-item-test type="button"
-                  title="Exchange the credential for a key and call this endpoint">API TEST</button>
-          <button class="icon-btn danger" data-item-del type="button" title="Remove">
+          <button class="icon-btn danger" data-item-del type="button" title="Remove endpoint">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
+        </div>
+        <div class="item-ctl">
+          <label class="item-int-wrap" title="Poll interval in seconds">
+            <span>Every</span>
+            <input data-i="poll_interval_sec" class="item-int" value="${esc(i.poll_interval_sec)}"
+                   placeholder="${DEFAULT_INTERVAL_SEC}"/>
+            <span>sec</span>
+          </label>
+          <label class="item-en" title="Enable collection of this endpoint">
+            <input type="checkbox" data-i="enabled" ${i.enabled ? 'checked' : ''}/><span>Enable</span>
+          </label>
+          <span class="item-ctl-spacer"></span>
+          <button class="btn-sm" data-item-test type="button"
+                  title="Exchange the credential for a key and call this endpoint">API TEST</button>
         </div>
         <div class="item-path">${esc(endpointPath(i.endpoint) || '—')}</div>
         <div class="item-result" data-item-result></div>
@@ -252,12 +348,10 @@
   }
 
   function editorForm(c) {
-    const objOpts = ['<option value="">— select an object —</option>'].concat(
-      objects().map(o => {
-        const taken = boundElsewhere(o.oid, c.oid);
-        const label = `${o.name || o.target} (${o.target})${taken ? ' — already bound' : ''}`;
-        return `<option value="${esc(o.oid)}" ${c.object === o.oid ? 'selected' : ''} ${taken ? 'disabled' : ''}>${esc(label)}</option>`;
-      })
+    // Site is derived from the bound device when editing an existing connector.
+    const curSite = (objectByOid(c.object) || {}).site || '';
+    const siteOpts = ['<option value="">— select a site —</option>'].concat(
+      sites().map(s => `<option value="${esc(s.oid)}" ${curSite === s.oid ? 'selected' : ''}>${esc(s.name)}</option>`)
     ).join('');
 
     const profOpts = ['<option value="">— select a profile —</option>'].concat(
@@ -272,12 +366,14 @@
         <input data-f="description" value="${esc(c.description)}" placeholder="optional"/></div>
 
       <div class="editor-sec">TARGET &amp; CREDENTIAL</div>
-      <div class="field-row"><label>Object</label>
-        <select data-f="object">${objOpts}</select></div>
+      <div class="field-row"><label>Site</label>
+        <select data-sitesel>${siteOpts}</select></div>
+      <div class="field-row"><label>Device</label>
+        <select data-f="object" data-devsel>${deviceOptsForSite(curSite, c.object, c.oid)}</select></div>
       <div class="field-row"><label>API Key</label>
         <select data-f="auth_profile">${profOpts}</select></div>
 
-      <div class="editor-sec">COLLECTED ENDPOINTS</div>
+      <div class="editor-sec">ENDPOINT CONTROL</div>
       <p class="field-hint">Each endpoint is a complete request defined on the
         <a href="settings?tab=api-endpoint">API Endpoint</a> page. This decides which of them this
         device is polled for, and how often. <b>API TEST</b> issues a key and calls that one
@@ -316,7 +412,7 @@
   // Save is blocked only by what makes a connector meaningless, and the reason is shown rather
   // than left for the operator to guess at a greyed-out button.
   function saveBlocker(c) {
-    if (!c.object) return 'Pick the object this connector collects from.';
+    if (!c.object) return 'Pick the device this connector collects from.';
     if (!c.auth_profile) return 'Pick the API key used against it.';
     if (!c.items.length) return 'Add at least one endpoint to collect.';
     return '';
@@ -384,11 +480,24 @@
     });
     body.querySelectorAll('.item-row').forEach(wireItemRow);
 
+    // Picking a site re-scopes the device list to that site and clears any prior device.
+    body.querySelector('[data-sitesel]')?.addEventListener('change', (e) => {
+      const dev = body.querySelector('[data-devsel]');
+      dev.innerHTML = deviceOptsForSite(e.target.value, '', draftOid);
+      dev.value = '';
+      dev.dispatchEvent(new Event('change', { bubbles: true }));   // updates the themed label + Save
+    });
+
+    // Site, Device, API Key and every endpoint select get the themed dropdown (consistent OS-wide).
+    window.NMS.utils.enhanceSelects(body);
+
     document.getElementById('acItemAdd').onclick = () => {
       const list = document.getElementById('acItemList');
       list.insertAdjacentHTML('beforeend', itemRow(normalizeItem({})));
-      wireItemRow(list.lastElementChild);
-      list.lastElementChild.querySelector('[data-i="endpoint"]').focus();
+      const row = list.lastElementChild;
+      wireItemRow(row);
+      window.NMS.utils.enhanceSelect(row.querySelector('[data-i="endpoint"]'));
+      row.querySelector('.cs-trigger').focus();
       refreshSave();
     };
 
@@ -602,6 +711,11 @@
     el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       state.connectors.splice(+b.dataset.del, 1); stage(); render();
     }));
+    el.querySelectorAll('td.col-ep[data-ep]').forEach(cell => {
+      cell.addEventListener('mouseenter', () => showEpPop(cell));
+      cell.addEventListener('mouseleave', hideEpPop);
+    });
+    hideEpPop();
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
@@ -624,6 +738,7 @@
 
   // Object/profile/endpoint names come from the other tabs' data, which loads independently.
   document.addEventListener('nms:devices-ready', () => { if (activeTab() === 'api-connector') render(); });
+  document.addEventListener('nms:sites-ready', () => { if (activeTab() === 'api-connector') render(); });
   document.addEventListener('nms:api-keys-ready', () => { if (activeTab() === 'api-connector') render(); });
   document.addEventListener('nms:endpoints-ready', () => { if (activeTab() === 'api-connector') render(); });
 })();

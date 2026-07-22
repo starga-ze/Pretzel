@@ -438,10 +438,14 @@ void ApiService::runConnectorTest(ScandServiceManager& serviceManager, std::uint
     const TestTarget target = parseTestTarget(input);
     const std::string mode = input.value("mode", std::string("keygen"));
 
+    LOG_DEBUG("connector test received (seq={}, mode={}, host={}, port={}, api_key_oid={})", seqNo, mode,
+              target.host, target.port, target.authProfileOid);
+
     // Validation failures answer immediately — mgmtd is holding a browser on this ticket, so
     // every path has to produce exactly one response.
     auto reject = [&](const std::string& message)
     {
+        LOG_DEBUG("connector test rejected (seq={}, reason={})", seqNo, message);
         json out;
         out["ok"] = false;
         out["steps"] = json::object();
@@ -518,11 +522,13 @@ void ApiService::runConnectorTest(ScandServiceManager& serviceManager, std::uint
 
     if (!stored.empty())
     {
+        LOG_DEBUG("connector test using stored key (seq={}, api_key_oid={})", seqNo, target.authProfileOid);
         (*out)["steps"]["auth"] = stepJson(true, "using the key already issued for this profile");
         (*out)["used_stored_key"] = true;
         return proceed(stored, *out);
     }
 
+    LOG_DEBUG("connector test has no stored key — running keygen (seq={}, host={})", seqNo, target.host);
     runKeygen(serviceManager, target, std::move(proceed), out);
 }
 
@@ -540,15 +546,24 @@ void ApiService::runKeygen(ScandServiceManager& serviceManager, const TestTarget
                  "&password=" + pz::http::urlEncode(target.password);
 
     const bool hadPin = !target.fingerprint.empty();
+    const std::string host = target.host;
 
     pz::http::requestAsync(serviceManager.ioContext(), std::move(req),
-                           [hadPin, out, onDone = std::move(onDone)](pz::http::ClientResponse res)
+                           [hadPin, host, out, onDone = std::move(onDone)](pz::http::ClientResponse res)
                            {
                                if (!recordTlsStep(res, hadPin, *out))
+                               {
+                                   LOG_DEBUG("keygen stopped at TLS (host={}, tls_ok={}, pin_matched={})", host,
+                                             res.tlsOk, res.pinMatched);
                                    return onDone(std::string(), *out);
+                               }
 
                                if (res.status != 200)
                                {
+                                   // The credential exchange the operator most needs to see fail — this is where
+                                   // a wrong password or an unauthorised account surfaces as a device 403.
+                                   LOG_WARN("keygen rejected by device (host={}, status={}, msg={})", host,
+                                            res.status, xmlErrorMessage(res.body));
                                    (*out)["steps"]["auth"] = stepJson(
                                        false, "HTTP " + std::to_string(res.status) + " — " + xmlErrorMessage(res.body));
                                    (*out)["message"] = xmlErrorMessage(res.body);
@@ -558,11 +573,14 @@ void ApiService::runKeygen(ScandServiceManager& serviceManager, const TestTarget
                                const std::string key = extractXmlTag(res.body, "key");
                                if (key.empty())
                                {
+                                   LOG_WARN("keygen returned no key (host={}, msg={})", host, xmlErrorMessage(res.body));
                                    (*out)["steps"]["auth"] = stepJson(false, xmlErrorMessage(res.body));
                                    (*out)["message"] = xmlErrorMessage(res.body);
                                    return onDone(std::string(), *out);
                                }
 
+                               // Length only — the key itself never reaches a log line.
+                               LOG_INFO("keygen succeeded (host={}, key_len={})", host, key.size());
                                (*out)["steps"]["auth"] =
                                    stepJson(true, "API key issued (" + std::to_string(key.size()) + " chars)");
                                onDone(key, *out);
@@ -611,9 +629,14 @@ void ApiService::runEndpointCall(ScandServiceManager& serviceManager, const Test
     }
 
     const std::string portPart = (target.port == 443) ? "" : ":" + std::to_string(target.port);
+    const std::string displayUrl = "https://" + target.host + portPart + displayTarget;
     (*out)["request"] = {{"method", "GET"},
-                         {"url", "https://" + target.host + portPart + displayTarget},
+                         {"url", displayUrl},
                          {"key_delivery", apiType == "xml" ? "key= query parameter" : "X-PAN-KEY header"}};
+
+    // The wire request, with the key redacted (displayTarget hides it) — off by default, on when
+    // an operator is chasing why a path answers differently than they expect.
+    LOG_TRACE("endpoint request (seq={}, GET {})", seqNo, displayUrl);
 
     pz::http::requestAsync(
         serviceManager.ioContext(), std::move(call),
@@ -621,6 +644,8 @@ void ApiService::runEndpointCall(ScandServiceManager& serviceManager, const Test
         {
             if (!res.tlsOk || !res.requestSent)
             {
+                LOG_WARN("endpoint test could not send (seq={}, error={})", seqNo,
+                         res.error.empty() ? "request was not sent" : res.error);
                 (*out)["steps"]["endpoint"] = stepJson(false, res.error.empty() ? "request was not sent" : res.error);
                 (*out)["ok"] = false;
                 (*out)["message"] = res.error;
@@ -633,6 +658,13 @@ void ApiService::runEndpointCall(ScandServiceManager& serviceManager, const Test
             constexpr std::size_t kMaxBody = 16000;
             const bool truncated = res.body.size() > kMaxBody;
             const bool ok = (res.status == 200);
+
+            // The endpoint outcome, at a level that shows by default: this is what was missing when a
+            // stored key returned 403 and the only trace of it lived in the browser's test panel.
+            if (ok)
+                LOG_INFO("endpoint test result (seq={}, status={}, bytes={})", seqNo, res.status, res.body.size());
+            else
+                LOG_WARN("endpoint test result (seq={}, status={}, bytes={})", seqNo, res.status, res.body.size());
 
             (*out)["steps"]["endpoint"] =
                 stepJson(ok, "HTTP " + std::to_string(res.status) +
@@ -667,6 +699,8 @@ void ApiService::sendTestResponse(ScandServiceManager& serviceManager, std::uint
 void ApiService::sendApiKeyState(ScandServiceManager& serviceManager, const std::string& keyOid,
                                  const std::string& key, bool ok, const std::string& note)
 {
+    LOG_DEBUG("persisting api key state to engined (oid={}, ok={}, has_key={})", keyOid, ok, !key.empty());
+
     json state;
     state["oid"] = keyOid;
     state["ok"] = ok;
@@ -695,6 +729,7 @@ void ApiService::sendApiKeyState(ScandServiceManager& serviceManager, const std:
 
 void ApiService::requestKeys(ScandServiceManager& serviceManager)
 {
+    LOG_DEBUG("requesting issued api keys from engined");
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Scand);
     msg->setDst(pz::ipc::IpcDaemon::Engined);

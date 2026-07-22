@@ -9,6 +9,7 @@
 #include "config/ApiRefs.h"
 #include "config/Config.h"
 #include "db/Database.h"
+#include "http/HttpClient.h"
 #include "ipc/IpcMessage.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -942,6 +943,28 @@ void WebService::handleInventoryStatus(MgmtdServiceManager& sm, const Request& r
 namespace
 {
 
+// The path the device is actually asked for: the endpoint plus its query parameters, encoded the
+// same way scand builds the request (ApiService::runEndpointCall). The endpoint-page test carries
+// its parameters as a separate array, so the bare `endpoint` field understates what was called —
+// this reunites them so the log shows the full request the operator entered. The connector test
+// already bakes its parameters into `endpoint` and sends an empty array, so both flows log the
+// same shape.
+std::string fullEndpoint(const json& input)
+{
+    std::string path = input.value("endpoint", std::string());
+    for (const auto& p : input.value("params", json::array()))
+    {
+        if (!p.is_object())
+            continue;
+        const std::string name = p.value("name", std::string());
+        if (name.empty())
+            continue;
+        path += (path.find('?') == std::string::npos) ? '?' : '&';
+        path += pz::http::urlEncode(name) + "=" + pz::http::urlEncode(p.value("value", std::string()));
+    }
+    return path;
+}
+
 // Rejects what can be judged without touching the device, so a typo answers immediately
 // instead of costing an IPC round trip and a ticket poll. scand re-checks defensively.
 std::string connectorTestInputError(const json& input, bool endpointMode)
@@ -1020,7 +1043,11 @@ void WebService::handleKeygenTest(MgmtdServiceManager& sm, const Request& req, R
     }
 
     if (const auto err = connectorTestInputError(input, false); !err.empty())
+    {
+        LOG_DEBUG("keygen test rejected pre-flight (host={}, reason={})",
+                  input.value("target", std::string()), err);
         return fill(resp, 400, json{{"error", err}}.dump());
+    }
 
     const std::uint32_t ticket = m_apiTestTicket++;
     const std::string host = input.value("target", std::string());
@@ -1043,11 +1070,16 @@ void WebService::handleEndpointTest(MgmtdServiceManager& sm, const Request& req,
     }
 
     if (const auto err = connectorTestInputError(input, true); !err.empty())
+    {
+        LOG_DEBUG("endpoint test rejected pre-flight (host={}, endpoint={}, reason={})",
+                  input.value("target", std::string()), fullEndpoint(input), err);
         return fill(resp, 400, json{{"error", err}}.dump());
+    }
 
     const std::uint32_t ticket = m_apiTestTicket++;
     const std::string host = input.value("target", std::string());
-    const std::string endpoint = input.value("endpoint", std::string());
+    // The full request as entered on the frontend: path + query parameters, not just the bare path.
+    const std::string endpoint = fullEndpoint(input);
     sendConnectorTest(sm, ticket, std::move(input), "endpoint");
 
     LOG_INFO("endpoint test delegated to scand (ticket={}, host={}, endpoint={})", ticket, host, endpoint);
