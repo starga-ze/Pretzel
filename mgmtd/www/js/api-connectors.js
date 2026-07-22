@@ -130,7 +130,11 @@
 
   const endpointApiType = (oid) => {
     const e = endpointByOid(oid);
-    return (e && String(e.path || '').indexOf('/restapi/') === 0) ? 'rest' : 'xml';
+    if (!e) return 'rest';
+    // Stored on the endpoint now; fall back to the path for records that predate the field.
+    return (e.api_type === 'xml' || e.api_type === 'rest')
+      ? e.api_type
+      : (String(e.path || '').indexOf('/restapi/') === 0 ? 'rest' : 'xml');
   };
 
   // Bindable = not already taken by another connector (one collector per object).
