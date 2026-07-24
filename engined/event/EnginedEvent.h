@@ -20,6 +20,7 @@ enum class EnginedEventDomain : std::uint32_t
     Admin = 5,
     Probe = 6,
     ApiKey = 7,
+    Collection = 8,
 };
 
 class EnginedEvent : public pz::event::Event

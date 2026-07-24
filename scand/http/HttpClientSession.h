@@ -1,6 +1,6 @@
 #pragma once
 
-#include "client/HttpClient.h"
+#include "http/HttpClient.h"
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>

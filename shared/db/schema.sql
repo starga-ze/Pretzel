@@ -174,6 +174,61 @@ CREATE TABLE IF NOT EXISTS api_key_state (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- API collection samples: what each connector's scheduled endpoint poll returned. Pure state
+-- (system-produced, never operator-declared), written only by engined from scand's IPC — the same
+-- config-vs-state split that keeps issued keys out of running_config. Raw response + call metadata
+-- now; structured metric extraction is a later analytics layer that reads these rows back.
+--   connector_oid/endpoint_oid : which connector schedule, and which of its endpoints, this is from
+--   ok        : the poll produced a usable response (HTTP 200)
+--   body      : the response, capped; oversized replies are cut and `truncated` is set
+CREATE TABLE IF NOT EXISTS api_collection (
+    oid           BIGSERIAL   PRIMARY KEY,
+    connector_oid TEXT        NOT NULL,
+    endpoint_oid  TEXT        NOT NULL,
+    collected_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ok            BOOLEAN     NOT NULL,
+    http_status   INT,
+    latency_ms    INT,
+    bytes         INT,
+    truncated     BOOLEAN     NOT NULL DEFAULT false,
+    body          TEXT,
+    error         TEXT
+);
+-- Time-series read paths: latest samples for a connector, and one endpoint's history.
+CREATE INDEX IF NOT EXISTS api_collection_conn_time ON api_collection (connector_oid, collected_at DESC);
+CREATE INDEX IF NOT EXISTS api_collection_endpoint_time ON api_collection (endpoint_oid, collected_at DESC);
+
+-- System logs: a structured, queryable copy of each daemon's spdlog file. engined tails the rotating
+-- log files from a checkpoint (system_log_offset) and batch-inserts parsed rows here — the files stay
+-- as local durability, this table is the index the web UI reads. All parsing, ANSI stripping and
+-- multi-line folding happens once at ingest, so the frontend renders clean rows without parsing logs.
+--   level   : spdlog severity — 0=trace 1=debug 2=info 3=warn 4=error 5=critical
+--   loc     : source location "file.cpp:line" when the line carried one
+--   message : the log text, ANSI-stripped; continuation lines of a multi-line entry are folded in
+CREATE TABLE IF NOT EXISTS system_log (
+    oid     BIGSERIAL   PRIMARY KEY,
+    ts      TIMESTAMPTZ NOT NULL,
+    daemon  TEXT        NOT NULL,
+    level   SMALLINT    NOT NULL,
+    loc     TEXT,
+    message TEXT        NOT NULL
+);
+-- Reads are always "newest first, filtered": keyset-paginate on oid DESC, optionally narrowed by
+-- daemon or severity. oid order matches insert (hence time) order, so it doubles as the paging cursor.
+CREATE INDEX IF NOT EXISTS system_log_oid        ON system_log (oid DESC);
+CREATE INDEX IF NOT EXISTS system_log_daemon_oid ON system_log (daemon, oid DESC);
+CREATE INDEX IF NOT EXISTS system_log_level_oid  ON system_log (level, oid DESC);
+
+-- Tailer checkpoint: how far into each daemon's current log file engined has already ingested.
+-- inode detects rotation (spdlog renames the base file, so a new inode appears) — on mismatch the
+-- offset resets to 0 instead of skipping the fresh file; a size < offset (truncation) resets too.
+CREATE TABLE IF NOT EXISTS system_log_offset (
+    daemon     TEXT        PRIMARY KEY,
+    inode      BIGINT      NOT NULL,
+    offset_b   BIGINT      NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- One-time config-json normalizations (idempotent; run by engined via Config::preflight).
 DO $migrate$
 BEGIN

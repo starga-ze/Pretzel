@@ -14,6 +14,8 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, 
       m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>()),
       m_probeService(std::make_unique<ProbeService>()), m_adminService(std::make_unique<AdminService>()),
       m_apiKeyService(std::make_unique<ApiKeyService>()),
+      m_collectionService(std::make_unique<CollectionService>()),
+      m_logTailService(std::make_unique<LogTailService>()),
       m_vendorResolver(std::make_unique<VendorResolver>())
 {
 }
@@ -24,6 +26,7 @@ void EnginedServiceManager::start()
     m_bootstrapService->start();
     m_heartbeatService->start();
     m_probeService->start();
+    m_logTailService->start();
 }
 
 void EnginedServiceManager::schedule()
@@ -39,6 +42,10 @@ void EnginedServiceManager::schedule()
 
     postEvent(m_heartbeatService->schedule(now));
     postEvent(m_probeService->schedule(now));
+
+    // Self-contained: reads the daemon log files and writes system_log directly on this thread, so it
+    // posts no event — just runs when the DB is up (guaranteed past the bootstrap gate above).
+    m_logTailService->poll(now);
 }
 
 void EnginedServiceManager::postEvent(std::unique_ptr<EnginedEvent> event)
@@ -123,6 +130,16 @@ AdminService& EnginedServiceManager::adminService()
 ApiKeyService& EnginedServiceManager::apiKeyService()
 {
     return *m_apiKeyService;
+}
+
+CollectionService& EnginedServiceManager::collectionService()
+{
+    return *m_collectionService;
+}
+
+LogTailService& EnginedServiceManager::logTailService()
+{
+    return *m_logTailService;
 }
 
 EnginedTxRouter& EnginedServiceManager::txRouter()

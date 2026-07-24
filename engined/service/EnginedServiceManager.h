@@ -8,8 +8,10 @@
 #include "service/admin/AdminService.h"
 #include "service/apikey/ApiKeyService.h"
 #include "service/bootstrap/BootstrapService.h"
+#include "service/collection/CollectionService.h"
 #include "service/commit/CommitService.h"
 #include "service/heartbeat/HeartbeatService.h"
+#include "service/logtail/LogTailService.h"
 #include "service/probe/ProbeService.h"
 
 #include "vendor/VendorResolver.h"
@@ -46,6 +48,8 @@ public:
     ProbeService& probeService();
     AdminService& adminService();
     ApiKeyService& apiKeyService();
+    CollectionService& collectionService();
+    LogTailService& logTailService();
     VendorResolver& vendorResolver();
 
     EnginedTxRouter& txRouter();
@@ -66,6 +70,8 @@ private:
     std::unique_ptr<ProbeService> m_probeService;
     std::unique_ptr<AdminService> m_adminService;
     std::unique_ptr<ApiKeyService> m_apiKeyService;
+    std::unique_ptr<CollectionService> m_collectionService;
+    std::unique_ptr<LogTailService> m_logTailService;
     std::unique_ptr<VendorResolver> m_vendorResolver;
 
     std::vector<std::string> m_aliveIps;

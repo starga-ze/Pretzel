@@ -1,10 +1,9 @@
 #pragma once
 
-#include "http/HttpMessage.h"
-#include "http/StaticFileCache.h"
+#include "service/web/WebRouter.h"
 
-#include <cstdint>
-#include <memory>
+#include "http/HttpMessage.h"
+
 #include <string>
 
 namespace pz::mgmtd
@@ -14,12 +13,14 @@ class MgmtdServiceManager;
 class WebEvent;
 class WebAction;
 
+// The mgmtd HTTP entry point. It owns the route table and, on each WebEvent, dispatches through it.
+// The handlers are static: everything they need comes from the service manager passed in, so they
+// hold no state, and the route table is a list of plain function pointers — no std::function, no
+// std::bind, no lambdas.
 class WebService
 {
 public:
     WebService() = default;
-
-    void setCache(std::shared_ptr<pz::http::StaticFileCache> cache);
 
     void handleEvent(MgmtdServiceManager& serviceManager, const WebEvent& event);
 
@@ -31,42 +32,22 @@ private:
 
     void route(MgmtdServiceManager& sm, const Request& req, Response& resp);
 
-    void handleMetric(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleHealth(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleLogin(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleLogout(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleChangePassword(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleWhoami(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleStatus(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleSettingsGet(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleRunningConfig(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleSettingsCommit(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleReloadStatus(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleCommitQueue(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleInventoryStatus(MgmtdServiceManager& sm, const Request& req, Response& resp);
+    // Builds the route table on first use, registering the static handlers below.
+    void registerRoutes();
 
-    void handleKeygenTest(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleEndpointTest(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleApiTestResult(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleLogs(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleNodeMetrics(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleLabExport(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleStatic(MgmtdServiceManager& sm, const Request& req, Response& resp);
+    // Non-/api targets that no route claimed: serve the file, redirecting to the login page when the
+    // page is not public and the caller has no session.
+    static void handleStaticFallback(MgmtdServiceManager& sm, const Request& req, Response& resp);
 
-    void handleSsoInfo(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleSsoLogin(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleSamlAcs(MgmtdServiceManager& sm, const Request& req, Response& resp);
-    void handleSamlResult(MgmtdServiceManager& sm, const Request& req, Response& resp);
-
-    bool isAuthenticated(MgmtdServiceManager& sm, const Request& req) const;
+    // Handlers that stay on the service itself: /metrics is a one-liner over MetricService, and
+    // static file serving is the fallback. Every other domain lives in a controller under controller/.
+    static void handleMetric(MgmtdServiceManager& sm, const Request& req, Response& resp);
+    static void handleStatic(MgmtdServiceManager& sm, const Request& req, Response& resp);
 
     static bool isStaticTarget(const std::string& target);
-    static std::string extractSession(const Request& req);
 
-    std::shared_ptr<pz::http::StaticFileCache> m_cache;
-
-    std::uint32_t m_ssoTicket{1};
-    std::uint32_t m_apiTestTicket{1};
+    WebRouter m_router;
+    bool m_routesRegistered{false};
 };
 
 }

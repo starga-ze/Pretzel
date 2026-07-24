@@ -11,6 +11,8 @@
 #include "service/metrics/MetricService.h"
 #include "service/web/WebService.h"
 
+#include "http/StaticFileCache.h"
+
 #include "router/MgmtdTxRouter.h"
 
 #include <atomic>
@@ -72,6 +74,16 @@ public:
     void setApiTestResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeApiTestResult(std::uint32_t ticket);
 
+    // Static file cache, set once at startup by MgmtdCore. The web handlers read it from here so
+    // they can stay stateless (plain functions in the route table).
+    void setStaticCache(std::shared_ptr<pz::http::StaticFileCache> cache);
+    const std::shared_ptr<pz::http::StaticFileCache>& staticCache() const;
+
+    // Monotonic ticket ids the web handlers hand to the browser to poll an async result on. Kept
+    // here beside the result stores they key into, not on the (now stateless) WebService.
+    std::uint32_t nextSsoTicket();
+    std::uint32_t nextApiTestTicket();
+
 private:
     MgmtdEventFactory* m_eventFactory{nullptr};
     MgmtdActionFactory* m_actionFactory{nullptr};
@@ -94,6 +106,10 @@ private:
     std::unordered_map<std::uint32_t, std::string> m_ssoResults;
 
     std::unordered_map<std::uint32_t, std::string> m_apiTestResults;
+
+    std::shared_ptr<pz::http::StaticFileCache> m_staticCache;
+    std::uint32_t m_ssoTicket{1};
+    std::uint32_t m_apiTestTicket{1};
 };
 
 }

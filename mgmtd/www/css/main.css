@@ -223,7 +223,11 @@ html, body {
   width: 100%;
   background: none;
   border: none;
-  font: inherit;
+  /* Inherit the family only — `font: inherit` here reset font-size back to the body size, making
+     this group toggle (Configuration) larger than the sibling .nav-item links. Keep it in step. */
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
   text-align: left;
 }
 
@@ -310,11 +314,11 @@ html, body {
 .nav-flyout {
   position: fixed;
   z-index: 500;
-  min-width: 190px;
+  min-width: 158px;
   background: #20242f;
   border: 1px solid var(--sb-border);
-  border-radius: 10px;
-  padding: 6px;
+  border-radius: 9px;
+  padding: 5px;
   box-shadow: 0 12px 34px rgba(0,0,0,.5);
   opacity: 0;
   visibility: hidden;
@@ -323,24 +327,24 @@ html, body {
 }
 .nav-flyout.visible { opacity: 1; visibility: visible; transform: none; }
 .nav-flyout-title {
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 700;
   letter-spacing: .13em;
   text-transform: uppercase;
   color: var(--sb-muted);
-  padding: 6px 10px;
+  padding: 4px 9px;
 }
 .nav-flyout-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
+  padding: 5px 9px;
   margin: 1px 0;
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--sb-text);
   opacity: .82;
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
   transition: background var(--tr), opacity var(--tr), color var(--tr);
@@ -2189,688 +2193,6 @@ html, body {
 .muted { color: var(--text-muted); }
 
 /* ══════════════════════════════════════
-   LOG VIEWER
-══════════════════════════════════════ */
-/* ══════════════════════════════════════
-   LOG VIEWER (table-based)
-══════════════════════════════════════ */
-.lv-page { display: flex; flex-direction: column; height: calc(100vh - 32px); }
-
-/* Top toolbar */
-.lv-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-.lv-topbar-left { display: flex; align-items: center; gap: 12px; }
-.lv-title { font-size: 18px; font-weight: 700; color: var(--text); }
-.lv-topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-/* Selects */
-.lv-select-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  height: 34px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  position: relative;
-  color: var(--text-muted);
-  /* Keep rounded corners even when native select popup is open */
-  overflow: visible;
-}
-.lv-select-wrap:focus-within {
-  border-color: var(--accent);
-  border-radius: 8px;
-}
-.lv-select-wrap svg:first-child { flex-shrink: 0; }
-.lv-select {
-  appearance: none;
-  -webkit-appearance: none;
-  border: none;
-  background: transparent;
-  font: inherit;
-  font-size: 12.5px;
-  color: var(--text);
-  cursor: pointer;
-  outline: none;
-  padding-right: 16px;
-}
-.select-chevron { position: absolute; right: 8px; pointer-events: none; color: var(--text-muted); }
-
-/* ── Custom dropdown ─────────────────────────────── */
-.lv-dd-wrap {
-  position: relative;
-}
-
-/* Trigger button */
-.lv-dd-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  height: 34px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text);
-  cursor: pointer;
-  transition: border-color var(--tr), background var(--tr);
-  white-space: nowrap;
-  user-select: none;
-}
-.lv-dd-btn:hover { border-color: var(--accent); }
-.lv-dd-btn.lv-dd-active {
-  border-color: var(--accent);
-  background: var(--surface);
-}
-
-/* Chevron rotation when open */
-.lv-dd-chevron {
-  color: var(--text-muted);
-  flex-shrink: 0;
-  transition: transform var(--tr);
-  margin-left: 2px;
-}
-.lv-dd-btn.lv-dd-active .lv-dd-chevron { transform: rotate(180deg); }
-
-/* Label */
-.lv-dd-label {
-  flex: 1;
-  text-align: left;
-  color: var(--text);
-}
-
-/* Color dot inside level dropdown button */
-.lv-level-dot {
-  display: none;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-/* Dropdown list panel */
-.lv-dd-list {
-  display: none;
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
-  z-index: 300;
-  min-width: 100%;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.13);
-  padding: 4px;
-  list-style: none;
-  margin: 0;
-  overflow: hidden;
-}
-.lv-dd-list.lv-dd-open { display: block; }
-/* Flip upward when near bottom of viewport */
-.lv-dd-list.lv-dd-up {
-  top: auto;
-  bottom: calc(100% + 5px);
-}
-
-/* Individual item */
-.lv-dd-item {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 10px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background var(--tr), color var(--tr);
-  white-space: nowrap;
-}
-.lv-dd-item:hover { background: var(--bg); }
-.lv-dd-item.lv-dd-selected {
-  background: rgba(249,115,22,.1);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-/* Dot indicator inside list items (level dropdown) */
-.lv-dd-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-/* Date range — disabled/upcoming state */
-.lv-date-disabled .lv-date-btn {
-  opacity: 0.42;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-.lv-date-disabled .lv-date-btn::after {
-  content: '(soon)';
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-left: 4px;
-  font-weight: 500;
-}
-
-/* Search */
-.lv-search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  height: 34px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-muted);
-  min-width: 180px;
-}
-.lv-search {
-  border: none;
-  background: transparent;
-  font: inherit;
-  font-size: 12.5px;
-  color: var(--text);
-  outline: none;
-  width: 100%;
-}
-.lv-search::placeholder { color: var(--text-muted); }
-
-/* Divider */
-.lv-divider { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
-
-/* Auto-refresh toggle */
-.lv-auto-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  height: 34px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  cursor: pointer;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-muted);
-  user-select: none;
-  transition: all var(--tr);
-}
-.lv-auto-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  transition: background var(--tr);
-}
-.lv-dot-live { background: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,.2); }
-.lv-auto-toggle:has(.lv-dot-live) { color: #16a34a; border-color: rgba(22,163,74,.35); background: rgba(22,163,74,.07); }
-
-/* Icon buttons */
-.lv-icon-btn {
-  width: 34px; height: 34px;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  cursor: pointer;
-  color: var(--text-muted);
-  transition: all var(--tr);
-}
-.lv-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-/* Combined filter bar — service tabs | divider | level tabs | stats */
-/* Stats — sits in topbar-left next to title */
-.lv-stats     { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; padding-top: 2px; }
-.lv-stats-sep { margin: 0 4px; }
-
-/* Level select-wrap legacy — kept for compat */
-.lv-level-select-wrap { gap: 7px; }
-
-/* Table */
-.lv-table-wrap {
-  flex: 1;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  min-height: 0;
-  position: relative;
-}
-.lv-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12.5px;
-  table-layout: fixed;
-}
-.lv-col-lv     { width: 72px; }
-.lv-col-time   { width: 186px; }
-.lv-col-daemon { width: 96px; }
-.lv-col-loc    { width: 200px; }
-.lv-col-msg    { width: auto; }
-
-.lv-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: 8px 12px;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  color: var(--text-muted);
-  text-align: left;
-  white-space: nowrap;
-}
-.lv-table tbody tr {
-  border-bottom: 1px solid rgba(0,0,0,.04);
-  transition: background var(--tr);
-}
-.lv-table tbody tr:hover { background: var(--bg); }
-
-.lv-td-lv     { padding: 5px 12px; }
-.lv-td-time   { padding: 5px 16px 5px 12px; white-space: nowrap; }
-.lv-td-daemon { padding: 5px 16px 5px 12px; }
-.lv-td-loc    { padding: 5px 16px 5px 12px; white-space: nowrap; }
-.lv-td-msg    { padding: 5px 12px; word-break: break-word; font-size: 12.5px; line-height: 1.6; color: var(--text); letter-spacing: .01em; }
-
-.lv-time  { color: var(--text-muted); font-family: var(--font-mono); font-size: 11.5px; }
-.lv-muted { color: var(--text-muted); opacity: .5; }
-.lv-loc   {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text);
-  opacity: 1;
-  display: inline-block;
-  max-width: 190px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-.lv-daemon-chip {
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 10.5px;
-  font-weight: 700;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-/* Level badges */
-.lv-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .05em;
-  white-space: nowrap;
-  min-width: 44px;
-}
-/* Level badge colours: INFO=green DEBUG=blue WARN=amber ERROR=red */
-.lv-badge-crit  { background: rgba(220,38,38,.12);  color: #dc2626;  border: 1px solid rgba(220,38,38,.25); }
-.lv-badge-error { background: rgba(239,68,68,.12);  color: #ef4444;  border: 1px solid rgba(239,68,68,.3);  }
-.lv-badge-warn  { background: rgba(245,158,11,.12); color: #f59e0b;  border: 1px solid rgba(245,158,11,.3); }
-.lv-badge-info  { background: rgba(34,197,94,.11);  color: #16a34a;  border: 1px solid rgba(34,197,94,.3);  }
-.lv-badge-debug { background: rgba(59,130,246,.11); color: #3b82f6;  border: 1px solid rgba(59,130,246,.3); }
-.lv-badge-trace { background: rgba(107,114,128,.1); color: #6b7280;  border: 1px solid var(--border); }
-
-/* Row tint by level */
-.lv-row-error { background: rgba(234,88,12,.025); }
-.lv-row-warn  { background: rgba(217,119,6,.02);  }
-
-/* Search highlight */
-.lv-mark { background: rgba(249,115,22,.3); color: inherit; border-radius: 2px; padding: 0 1px; }
-
-/* Placeholder */
-.lv-placeholder {
-  padding: 40px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-.lv-err { color: var(--red); }
-
-/* Legacy classes kept for compatibility */
-.log-toolbar { display: none; }
-.log-output  { display: none; }
-.loading-row.error { color: var(--red); }
-
-/* Refresh button — icon only, spin on loading */
-.lv-refresh-btn { /* inherits btn-icon-only styles */ }
-.lv-refreshing svg { animation: lv-spin 0.7s linear infinite; }
-@keyframes lv-spin { to { transform: rotate(360deg); } }
-
-/* Progress bar */
-/* Loading overlay — sits on top of the table area */
-.lv-loading-overlay {
-  display: none;
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-}
-.lv-loading-overlay.visible { display: flex; }
-.lv-loading-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-}
-.lv-spinner {
-  color: var(--accent);
-  animation: lv-spin 0.75s linear infinite;
-  filter: drop-shadow(0 0 6px rgba(249,115,22,.35));
-}
-.lv-loading-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: .01em;
-}
-
-/* ══════════════════════════════════════
-   DATE FILTER — log-viewer
-══════════════════════════════════════ */
-.lv-date-wrap { position: relative; }
-
-.lv-date-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  height: 34px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-muted);
-  transition: all var(--tr);
-  white-space: nowrap;
-}
-.lv-date-btn:hover   { border-color: var(--accent); color: var(--accent); }
-.lv-date-btn.active  { border-color: var(--accent); color: var(--accent); background: rgba(249,115,22,.06); }
-.lv-date-chevron     { transition: transform var(--tr); }
-.lv-date-btn.active .lv-date-chevron { transform: rotate(180deg); }
-.lv-date-label       { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Calendar range dropdown */
-.lv-cal-dropdown {
-  display: none;
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 200;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0,0,0,.14);
-  padding: 14px;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 560px;
-}
-.lv-cal-dropdown.visible { display: flex; }
-
-/* Range header row */
-.lv-range-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-}
-.lv-range-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .07em;
-  color: var(--text-muted);
-  flex: 1;
-  text-align: center;
-}
-/* Two panels side by side */
-.lv-range-panels {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-}
-.lv-range-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.lv-range-sep {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  padding-top: 80px;
-  font-size: 18px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.lv-cal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.lv-cal-month {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
-}
-.lv-cal-nav {
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  cursor: pointer;
-  color: var(--text-muted);
-  transition: all var(--tr);
-}
-.lv-cal-nav:hover { border-color: var(--accent); color: var(--accent); }
-
-.lv-cal-weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  text-align: center;
-}
-.lv-cal-weekdays span {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--text-muted);
-  padding: 4px 0;
-}
-
-.lv-cal-days {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-.lv-cal-day {
-  aspect-ratio: 1;
-  display: flex; align-items: center; justify-content: center;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  font: inherit;
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--tr);
-}
-.lv-cal-day:not(.empty):hover { background: var(--bg); color: var(--text); }
-.lv-cal-day.selected {
-  background: var(--accent);
-  color: #fff;
-  font-weight: 700;
-}
-.lv-cal-day.empty { cursor: default; }
-
-.lv-cal-time {
-  display: flex;
-  gap: 8px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-}
-.lv-cal-time-group {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.lv-cal-time-group label {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-.lv-cal-time-sel {
-  width: 100%;
-  padding: 5px 8px;
-  font: inherit;
-  font-size: 12.5px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  appearance: none;
-  cursor: pointer;
-}
-.lv-cal-time-sel:focus { outline: none; border-color: var(--accent); }
-
-.lv-cal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 6px;
-  border-top: 1px solid var(--border);
-}
-.lv-cal-clear {
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--tr);
-}
-.lv-cal-clear:hover { border-color: var(--red); color: var(--red); }
-.lv-cal-apply { padding: 5px 14px; font-size: 12px; }
-
-/* ══════════════════════════════════════
-   PAGINATION — log-viewer
-══════════════════════════════════════ */
-.lv-table-outer {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-.lv-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  padding: 8px 12px;
-  flex-shrink: 0;
-}
-
-/* Nav buttons: <<<  <<  <  >  >>  >>> */
-.lv-page-nav {
-  height: 28px;
-  padding: 0 7px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--tr);
-  letter-spacing: -.5px;
-  white-space: nowrap;
-}
-.lv-page-nav:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.lv-page-nav:disabled { opacity: .3; cursor: default; }
-
-/* Page input + /total */
-.lv-page-input-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin: 0 4px;
-}
-.lv-page-input {
-  width: 46px;
-  height: 28px;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-  text-align: center;
-  outline: none;
-  transition: border-color var(--tr);
-  /* hide spinner arrows */
-  -moz-appearance: textfield;
-}
-.lv-page-input::-webkit-outer-spin-button,
-.lv-page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.lv-page-input:focus { border-color: var(--accent); }
-.lv-page-total {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-/* ══════════════════════════════════════
    LIST EDITOR — settings.html
 ══════════════════════════════════════ */
 
@@ -3826,12 +3148,12 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .cs-trigger[aria-expanded="true"] .cs-caret { transform: rotate(-135deg) translate(-1px, -1px); }
 
 .cs-panel {
-  position: fixed; z-index: 1200; max-height: 264px; overflow-y: auto; padding: 6px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  position: fixed; z-index: 1200; max-height: 264px; overflow-y: auto; padding: 5px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 14px 36px rgba(15,23,42,.16), 0 2px 8px rgba(15,23,42,.06);
 }
 .cs-opt {
-  padding: 9px 11px; border-radius: 8px; font-family: var(--font-ui); font-size: 13px; color: var(--text);
+  padding: 6px 10px; border-radius: 7px; font-family: var(--font-ui); font-size: 12px; color: var(--text);
   cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cs-opt + .cs-opt { margin-top: 1px; }
@@ -4145,3 +3467,105 @@ a.details-btn { display: inline-block; text-decoration: none; }
 
 /* Expiry approaching — not yet a failure, but worth noticing */
 .st-warn { color: #b45309; font-weight: 700; font-size: 10px; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Monitor › System Log (log-viewer.js)
+   ══════════════════════════════════════════════════════════════════════ */
+.syslog { display: flex; flex-direction: column; min-height: 0; }
+
+/* Constrain the toolbar selects — .cs stretches to 100% by default. */
+.syslog-select-wrap { width: 150px; flex-shrink: 0; }
+.syslog-select-wrap .cs-trigger { padding: 6px 11px; font-size: 12px; }
+/* Keep the whole toolbar on one compact type scale. */
+.syslog .table-search-wrap { padding: 5px 11px; }
+.syslog .table-search-input { font-size: 12px; }
+.syslog .table-search-input::placeholder { font-size: 12px; }
+
+.syslog-live {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 13px; font: inherit; font-size: 12px; font-weight: 600;
+  border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-muted); cursor: pointer;
+  transition: all var(--tr); margin-left: auto;
+}
+.syslog-live:hover { border-color: var(--accent); color: var(--accent); }
+.syslog-live-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .5;
+}
+.syslog-live.active { border-color: var(--green); color: var(--green); background: rgba(22,163,74,.08); }
+.syslog-live.active .syslog-live-dot { opacity: 1; animation: syslog-pulse 1.4s ease-in-out infinite; }
+@keyframes syslog-pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
+.syslog-card { padding: 0; overflow: hidden; }
+.syslog-table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 230px);
+}
+.syslog-table { width: 100%; min-width: 640px; border-collapse: collapse; table-layout: fixed; }
+.syslog-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); background: var(--surface);
+  padding: 7px 12px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Default column widths — freely resizable at runtime via the drag grips (see log-viewer.js), with
+   the chosen widths persisted to localStorage. Time is sized to the full mono timestamp plus a gap. */
+.syslog-th-time   { width: 190px; }
+.syslog-th-lv     { width: 78px; }
+.syslog-th-daemon { width: 90px; }
+.syslog-th-loc    { width: 170px; }
+/* Level and Service are short pills — centre them, header and cell alike. Qualified with the table
+   ancestor so this outranks the general `.syslog-table thead th { text-align:left }` rule. */
+.syslog-table thead th.syslog-th-lv,
+.syslog-table thead th.syslog-th-daemon,
+.syslog-table tbody td.syslog-td-lv,
+.syslog-table tbody td.syslog-td-daemon { text-align: center; }
+
+.syslog-table tbody td {
+  padding: 4px 12px; border-bottom: 1px solid rgba(228,231,240,.6);
+  vertical-align: top; font-size: 10px; color: var(--text);
+  overflow: hidden;
+}
+.syslog-table tbody tr:hover td { background: var(--surface-2); }
+/* The badge must never be clipped or ellipsised, whatever the column width — otherwise a trailing
+   "…" appears right after it when the column is narrow. */
+.syslog-td-lv { overflow: visible; }
+.syslog-td-time { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-muted); white-space: nowrap; padding-right: 16px; }
+.syslog-td-loc  { font-family: var(--font-mono); font-size: 9.5px; color: var(--text-muted); word-break: break-all; }
+.syslog-td-msg  { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.syslog-muted   { color: var(--text-muted); opacity: .5; }
+
+.syslog-chip {
+  display: inline-block; padding: 1px 6px; border-radius: 5px;
+  font-size: 9.5px; font-weight: 600; font-family: var(--font-mono);
+  background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border);
+}
+.syslog-badge {
+  display: inline-block; min-width: 40px; text-align: center;
+  padding: 1px 6px; border-radius: 5px; font-size: 9px; font-weight: 700; letter-spacing: .04em;
+}
+
+/* Column resize grip: a thin hit-area on each header's right edge. */
+.syslog-col-grip {
+  position: absolute; top: 0; right: 0; width: 8px; height: 100%;
+  cursor: col-resize; user-select: none; z-index: 3;
+}
+.syslog-col-grip::after {
+  content: ''; position: absolute; top: 22%; right: 3px; width: 1px; height: 56%;
+  background: var(--border); transition: background var(--tr);
+}
+.syslog-col-grip:hover::after, .syslog-col-grip.dragging::after { background: var(--accent); width: 2px; }
+.syslog-table.resizing { cursor: col-resize; user-select: none; }
+.syslog-lv-trace { background: rgba(139,92,246,.12); color: #7c3aed; }
+.syslog-lv-debug { background: rgba(37,99,235,.12);  color: var(--blue); }
+.syslog-lv-info  { background: rgba(22,163,74,.12);  color: var(--green); }
+.syslog-lv-warn  { background: rgba(234,88,12,.14);  color: var(--orange); }
+.syslog-lv-error { background: rgba(220,38,38,.12);  color: var(--red); }
+.syslog-lv-crit  { background: var(--red); color: #fff; }
+
+.syslog-sentinel { height: 1px; }
+.syslog-status {
+  padding: 12px 14px; font-size: 11.5px; color: var(--text-muted); text-align: center;
+}
+.syslog-status.syslog-err { color: var(--red); }
