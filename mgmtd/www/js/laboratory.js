@@ -652,9 +652,8 @@
           ? meta.name : meta.name.replace(/\.[^./\\]+$/, '') + '.pdf';
 
         const via = this.$('dlVia')?.value || 'blob';
-        if (via === 'server')    this._serverRouteDownload(blob, fname);  // real route URL, no blob:
-        else if (via === 'data') this.downloader.saveDataUrl(blob, fname); // data: URL
-        else                     this.downloader.saveBlob(blob, fname);    // blob: URL
+        if (via === 'data') this.downloader.saveDataUrl(blob, fname); // data: URL
+        else                this.downloader.saveBlob(blob, fname);    // blob: URL
         const bytes = blob.size;
 
         const ms = (performance.now() - t0).toFixed(1);
@@ -664,43 +663,6 @@
       } catch (err) {
         this.activity.error(`download failed: ${err && err.message ? err.message : err}`);
       }
-    }
-
-    // Server-route download: POST the (canvas) PDF as base64 to /api/lab/cidi-export in
-    // a hidden iframe; the server reflects it back with Content-Disposition. The browser
-    // downloads from the route, so the event's File download URL is the real server path
-    // (no blob:/data:), while the content stays canvas pixels.
-    _serverRouteDownload(blob, fname) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const b64 = String(reader.result).split(',')[1] || '';
-
-        let frame = document.getElementById('labDlFrame');
-        if (!frame) {
-          frame = document.createElement('iframe');
-          frame.id = 'labDlFrame';
-          frame.name = 'labDlFrame';
-          frame.style.display = 'none';
-          document.body.appendChild(frame);
-        }
-
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/api/lab/cidi-export';
-        form.target = 'labDlFrame';
-        const field = (name, value) => {
-          const i = document.createElement('input');
-          i.type = 'hidden'; i.name = name; i.value = value;
-          form.appendChild(i);
-        };
-        field('pdf', b64);
-        field('name', fname);
-        document.body.appendChild(form);
-        form.submit();
-        form.remove();
-        this.activity.info(`POST /api/lab/cidi-export (${formatBytes(blob.size)}) — server-served download`);
-      };
-      reader.readAsDataURL(blob);
     }
 
     // ── Upload ──

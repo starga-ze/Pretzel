@@ -83,7 +83,7 @@ bool MgmtdCore::onInit()
     const char* reloadEnv = std::getenv("PRETZEL_MGMTD_STATIC_RELOAD");
     const bool staticReload = reloadEnv && *reloadEnv && std::string(reloadEnv) != "0";
     auto httpCache = std::make_shared<pz::http::StaticFileCache>(shareDir() + "/mgmtd/www", staticReload);
-    m_serviceManager->webService().setCache(httpCache);
+    m_serviceManager->setStaticCache(httpCache);
 
     m_httpServer = std::make_unique<pz::http::HttpServer>(m_httpConfig.listenAddress, m_httpConfig.listenPort,
                                                           m_httpConfig.tlsEnabled, m_httpConfig.certFile,

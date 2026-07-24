@@ -3,8 +3,6 @@
 #include <nlohmann/json_fwd.hpp>
 
 #include <cstdint>
-#include <functional>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -123,6 +121,11 @@ public:
     // sealed blob at cache time, so this is plaintext and must not be logged.
     const std::string& issuedKey(const std::string& authProfileOid) const;
 
+    // Caches a key the connector test just had issued, so the operator's next test does not have to
+    // re-enter the password before engined's persist round-trip returns. The one write the
+    // ApiConnectorTester makes back into this service; the read side is issuedKey().
+    void rememberIssuedKey(const std::string& authProfileOid, std::string key);
+
     const std::vector<AuthProfile>& profiles() const;
     const AuthProfile* findProfile(const std::string& oid) const;
 
@@ -135,26 +138,6 @@ private:
     void loadProfiles(const nlohmann::json& cfg);
     void loadEndpoints(const nlohmann::json& cfg);
     void loadConnectors(const nlohmann::json& cfg);
-
-    // Both tests begin by exchanging username/password for an API key; the endpoint test then
-    // continues with that key. Each stage is an async completion, so the daemon loop keeps
-    // running while a slow or unreachable device is waited on.
-    void runConnectorTest(ScandServiceManager& serviceManager, std::uint32_t seqNo, const nlohmann::json& input);
-
-    void runKeygen(ScandServiceManager& serviceManager, const TestTarget& target,
-                   std::function<void(const std::string& key, nlohmann::json& out)> onDone,
-                   std::shared_ptr<nlohmann::json> out);
-
-    void runEndpointCall(ScandServiceManager& serviceManager, const TestTarget& target, const nlohmann::json& input,
-                         const std::string& key, std::uint32_t seqNo, std::shared_ptr<nlohmann::json> out);
-
-    // Answers mgmtd's request. seqNo is the ticket mgmtd is holding the browser on.
-    void sendTestResponse(ScandServiceManager& serviceManager, std::uint32_t seqNo, const nlohmann::json& out);
-
-    // Hands the issued key to engined, the only database writer. The secret is sealed here so
-    // the plaintext never crosses the IPC socket.
-    void sendApiKeyState(ScandServiceManager& serviceManager, const std::string& keyOid, const std::string& key,
-                         bool ok, const std::string& note);
 
     // Applies an ApiKeyStateResponse: opens each sealed blob and replaces the cache.
     void cacheKeys(const nlohmann::json& payload);

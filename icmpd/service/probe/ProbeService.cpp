@@ -311,7 +311,7 @@ void ProbeService::beginProbeSession()
     m_lastReplyAt = {};
     m_state = State::Sending;
 
-    LOG_INFO("starting probe cycle (targets={})", m_targets.size());
+    LOG_DEBUG("starting probe cycle (targets={})", m_targets.size());
 }
 
 void ProbeService::sendProbeBatch(IcmpdServiceManager& serviceManager)
@@ -411,7 +411,7 @@ void ProbeService::completeProbeSession()
 
     m_lastAliveCount = static_cast<std::uint32_t>(aliveIps.size());
 
-    LOG_INFO("probe cycle complete (total={}, alive={}, dead={}, elapsed_ms={})", m_targets.size(), aliveIps.size(),
+    LOG_DEBUG("probe cycle complete (total={}, alive={}, dead={}, elapsed_ms={})", m_targets.size(), aliveIps.size(),
              m_targets.size() - aliveIps.size(),
              std::chrono::duration_cast<std::chrono::milliseconds>(now - m_probeStartedAt).count());
 

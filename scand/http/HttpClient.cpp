@@ -1,6 +1,6 @@
-#include "client/HttpClient.h"
+#include "http/HttpClient.h"
 
-#include "client/HttpClientSession.h"
+#include "http/HttpClientSession.h"
 
 #include <exception>
 #include <memory>
