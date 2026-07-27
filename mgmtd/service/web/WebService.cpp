@@ -73,6 +73,7 @@ void WebService::registerRoutes()
 
     // ── Public ──────────────────────────────────────────────────────────────────────────────
     m_router.get("/metrics", Access::Public, &WebService::handleMetric);
+    m_router.get("/health", Access::Public, &WebService::handleHealth);
 
     // ── Domain controllers ────────────────────────────────────────────────────────────────────
     AuthController::registerRoutes(m_router);
@@ -111,6 +112,20 @@ void WebService::handleMetric(MgmtdServiceManager& sm, const Request& req, Respo
 {
     (void)req;
     fill(resp, 200, sm.metricService().renderPrometheus(), "text/plain; version=0.0.4; charset=utf-8");
+}
+
+// Unauthenticated liveness probe. Always 200 while mgmtd is serving — reaching this handler is itself
+// proof of that — with the body carrying engined's latest per-daemon heartbeat roll-up
+// ({timestamp_ms, daemons:[{name,status,latency_ms}]}) so the Home page can render a status grid.
+// Until the first heartbeat round lands, the daemon list is empty rather than stale. Public route.
+void WebService::handleHealth(MgmtdServiceManager& sm, const Request& req, Response& resp)
+{
+    (void)req;
+    auto& hb = sm.heartbeatService();
+    if (hb.hasData())
+        fill(resp, 200, hb.latestJson());
+    else
+        fill(resp, 200, R"({"timestamp_ms":0,"daemons":[]})");
 }
 
 void WebService::handleStatic(MgmtdServiceManager& sm, const Request& req, Response& resp)

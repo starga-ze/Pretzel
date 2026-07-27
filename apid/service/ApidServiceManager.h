@@ -6,6 +6,7 @@
 #include "event/ApidEvent.h"
 
 #include "service/bootstrap/BootstrapService.h"
+#include "service/heartbeat/HeartbeatService.h"
 #include "service/ingest/IngestService.h"
 
 #include "router/ApidTxRouter.h"
@@ -33,6 +34,7 @@ public:
 
     BootstrapService& bootstrapService();
     IngestService& ingestService();
+    HeartbeatService& heartbeatService();
     ApidTxRouter& txRouter();
 
 private:
@@ -42,6 +44,7 @@ private:
 
     std::unique_ptr<BootstrapService> m_bootstrapService;
     IngestService m_ingestService;
+    HeartbeatService m_heartbeatService;
 
     std::queue<std::unique_ptr<ApidEvent>> m_eventQueue;
     std::queue<std::unique_ptr<ApidAction>> m_actionQueue;

@@ -24,33 +24,19 @@
     <header class="page-topbar" id="pageTopbar"><!-- populated by main.js --></header>
     <main class="content-body" id="contentBody">
 
-      <div class="stat-row">
-        <div class="stat-card">
-          <div class="stat-label">Sites</div>
-          <div class="stat-value" id="statSites">&mdash;</div>
+      <div class="home-cols">
+        <div class="info-card">
+          <div class="info-card-title">General Information <span class="info-hint" id="ovHint">&mdash;</span></div>
+          <div id="overviewBody">
+            <div class="home-empty">Loading&hellip;</div>
+          </div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Racks</div>
-          <div class="stat-value" id="statRacks">&mdash;</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Devices</div>
-          <div class="stat-value" id="statDevices">&mdash;</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Reachable</div>
-          <div class="stat-value" id="statOnline">&mdash;</div>
-          <div class="stat-sub"><span class="dot dot-red"></span><span id="statOffline">&mdash;</span> unreachable</div>
-        </div>
-      </div>
 
-      <div class="section-card">
-        <div class="section-header">
-          <span class="section-title">Rack Status</span>
-          <span class="section-hint">Device health per rack</span>
-        </div>
-        <div class="rack-grid" id="rackGrid">
-          <div class="home-empty">No racks configured yet &mdash; add a site and racks in <b>Configuration</b>.</div>
+        <div class="info-card">
+          <div class="info-card-title">System Status <span class="info-hint" id="daemonHint">&mdash;</span></div>
+          <div id="daemonList">
+            <div class="home-empty">Checking daemons&hellip;</div>
+          </div>
         </div>
       </div>
 
@@ -59,5 +45,144 @@
 
 </div>
 <script src="js/main.js"></script>
+<script>
+  // Home. Left card: sites with their devices (from the running config, one load). Right card: live
+  // daemon status from /health, polled on the same ~5s cadence engined refreshes the heartbeat.
+  (function () {
+    var DAEMON_POLL_MS = 5000;
+
+    function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+    function oidOf(o) { return (o && (o.oid || o.uuid || o.id)) || ''; }
+
+    // ── General Information: sites, their devices, and each device's live reachability ──
+    var ovBody = document.getElementById('overviewBody');
+    var ovHint = document.getElementById('ovHint');
+    var PIN = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+
+    var siteData = null;   // config { sites, devices } from /api/settings, loaded once
+    var aliveSet = null;   // reachable targets from /api/inventory/status; null until first poll
+
+    // ngfw and prisma_access are the two device types; tag each on the right of its row.
+    function typeTag(t) {
+      return t === 'prisma_access'
+        ? '<span class="type-badge badge-server">Prisma Access</span>'
+        : '<span class="type-badge badge-network">NGFW</span>';
+    }
+
+    // Reachability dot after the type tag. Only NGFW (IP-probed) devices have an ICMP state; hold the
+    // dot back until the first status poll so nothing flashes red before we actually know.
+    function statusDot(d) {
+      if (d.device_type === 'prisma_access' || !aliveSet) return '';
+      var active = aliveSet.has(d.target);
+      return '<span class="dot ' + (active ? 'dot-green' : 'dot-red') + '" title="' + (active ? 'active' : 'inactive') + '"></span>';
+    }
+
+    function devRow(d) {
+      return '<div class="ov-dev"><span class="ov-dev-nm">' + esc(d.name || 'unnamed') +
+             '</span><span class="ov-dev-meta">' + typeTag(d.device_type) + statusDot(d) + '</span></div>';
+    }
+
+    function block(name, devices, muted) {
+      var html = '<div class="ov-block"><div class="ov-head"><span class="ov-name' + (muted ? ' muted' : '') + '">' +
+                 (muted ? '' : PIN) + esc(name) + '</span><span class="ov-count">' + devices.length + ' device(s)</span></div>';
+      html += devices.length ? devices.map(devRow).join('') : '<div class="ov-empty">no devices</div>';
+      return html + '</div>';
+    }
+
+    function renderOverview() {
+      if (!siteData) return;
+      var sites = Array.isArray(siteData.sites) ? siteData.sites : [];
+      var devices = Array.isArray(siteData.devices) ? siteData.devices : [];
+
+      ovHint.textContent = sites.length + ' site(s)';
+
+      var html = sites.map(function (s) {
+        return block(s.name || 'unnamed', devices.filter(function (d) { return (d.site || '') === oidOf(s); }), false);
+      }).join('');
+
+      var orphan = devices.filter(function (d) { return !(d.site || ''); });
+      if (orphan.length) html += block('Unassigned', orphan, true);
+
+      ovBody.innerHTML = html || '<div class="home-empty">No sites configured yet.</div>';
+    }
+
+    fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) { if (r.status === 401) { location.href = '/'; return null; } return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) { if (d) { siteData = ((d.daemons || {}).engined || {}).site || { sites: [], devices: [] }; renderOverview(); } })
+      .catch(function () { ovBody.innerHTML = '<div class="home-empty">Failed to load configuration.</div>'; });
+
+    // Device reachability, polled like the daemon status. engined marks NGFW rows active/down from ICMP.
+    function pollAlive() {
+      fetch('/api/inventory/status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (d) { aliveSet = new Set((d && d.alive) || []); renderOverview(); })
+        .catch(function () {});
+    }
+    pollAlive();
+    setInterval(pollAlive, DAEMON_POLL_MS);
+
+    // ── Status: daemon state by colour only (green active, amber pending, red inactive) ──
+    var list = document.getElementById('daemonList');
+    var hint = document.getElementById('daemonHint');
+    var inFlight = false;
+
+    // Heartbeat reports alive/dead: active (green) or inactive (red).
+    function meta(status) {
+      if (status === 'alive' || status === 'active') return { dot: 'dot-green', word: 'active', cls: 'st-active', active: true };
+      return { dot: 'dot-red', word: 'inactive', cls: 'st-inactive' };
+    }
+
+    function daemonRow(d) {
+      var m = meta(d.status);
+      var r = document.createElement('div');
+      r.className = 'info-row';
+
+      var label = document.createElement('span');
+      label.className = 'info-label';
+      label.textContent = d.name;
+
+      var val = document.createElement('span');
+      val.className = 'info-value ' + m.cls;
+      var dot = document.createElement('span');
+      dot.className = 'dot ' + m.dot;
+      val.appendChild(dot);
+      val.appendChild(document.createTextNode(m.word));
+
+      r.appendChild(label);
+      r.appendChild(val);
+      return r;
+    }
+
+    function renderStatus(daemons) {
+      if (!daemons.length) {
+        list.innerHTML = '<div class="home-empty">No daemon data yet &mdash; waiting for the first heartbeat.</div>';
+        hint.textContent = '—';
+        return;
+      }
+      var active = 0;
+      var frag = document.createDocumentFragment();
+      daemons.forEach(function (d) {
+        if (meta(d.status).active) active++;
+        frag.appendChild(daemonRow(d));
+      });
+      list.innerHTML = '';
+      list.appendChild(frag);
+      hint.textContent = active + ' / ' + daemons.length + ' active';
+    }
+
+    function poll() {
+      if (inFlight) return;
+      inFlight = true;
+      fetch('/health', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (d) { renderStatus((d && d.daemons) || []); })
+        .catch(function () { hint.textContent = 'unreachable'; })
+        .then(function () { inFlight = false; });
+    }
+
+    poll();
+    setInterval(poll, DAEMON_POLL_MS);
+  })();
+</script>
 </body>
 </html>

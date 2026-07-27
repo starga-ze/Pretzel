@@ -42,6 +42,7 @@ private:
     // Handlers that stay on the service itself: /metrics is a one-liner over MetricService, and
     // static file serving is the fallback. Every other domain lives in a controller under controller/.
     static void handleMetric(MgmtdServiceManager& sm, const Request& req, Response& resp);
+    static void handleHealth(MgmtdServiceManager& sm, const Request& req, Response& resp);
     static void handleStatic(MgmtdServiceManager& sm, const Request& req, Response& resp);
 
     static bool isStaticTarget(const std::string& target);

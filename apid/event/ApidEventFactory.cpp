@@ -1,6 +1,7 @@
 #include "event/ApidEventFactory.h"
 
 #include "service/bootstrap/BootstrapEvent.h"
+#include "service/heartbeat/HeartbeatEvent.h"
 
 #include "util/Logger.h"
 
@@ -18,6 +19,9 @@ std::unique_ptr<ApidEvent> ApidEventFactory::create(ApidEventDomain domain, std:
     {
     case ApidEventDomain::Bootstrap:
         return std::make_unique<BootstrapEvent>(static_cast<BootstrapEventType>(type));
+
+    case ApidEventDomain::Heartbeat:
+        return std::make_unique<HeartbeatEvent>(static_cast<HeartbeatEventType>(type));
 
     default:
         LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
@@ -40,6 +44,9 @@ std::unique_ptr<ApidEvent> ApidEventFactory::create(std::unique_ptr<pz::ipc::Ipc
 
     case pz::ipc::IpcCmd::RuntimeStart:
         return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveRuntimeStart, std::move(msg));
+
+    case pz::ipc::IpcCmd::HeartbeatRequest:
+        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
