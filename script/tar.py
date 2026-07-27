@@ -10,7 +10,7 @@ import os
 
 # List of target directories to include in the packaging
 TARGET_ITEMS = ['authd', 'icmpd', 'mgmtd', 'scand', 'shared', 'topologyd', 'apid', 'engined', 'ipcd']
-TAR_FILENAME = "pretzel-ims.tar.gz"
+TAR_FILENAME = "pretzel.tar.gz"
 
 def run():
     root_dir = os.getcwd()
