@@ -16,7 +16,7 @@ enum class CollectionEventType : std::uint32_t
 };
 
 // An api_collection sample arriving from scand — one connector's scheduled endpoint poll result,
-// to be persisted. Same shape as ApiKeyEvent: engined is the sole DB writer, scand hands the row
+// to be persisted. Same shape as ApiCredentialEvent: engined is the sole DB writer, scand hands the row
 // over by IPC.
 class CollectionEvent final : public EnginedEvent
 {

@@ -62,7 +62,7 @@ std::unique_ptr<ScandEvent> ScandEventFactory::create(std::unique_ptr<pz::ipc::I
     case pz::ipc::IpcCmd::ApiConnectorTestRequest:
         return std::make_unique<ApiEvent>(ApiEventType::ReceiveConnectorTestRequest, std::move(msg));
 
-    case pz::ipc::IpcCmd::ApiKeyStateResponse:
+    case pz::ipc::IpcCmd::ApiCredentialStateResponse:
         return std::make_unique<ApiEvent>(ApiEventType::ReceiveKeyState, std::move(msg));
 
     default:

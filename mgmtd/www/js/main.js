@@ -16,7 +16,7 @@
         { id: 'sites',        label: 'Sites'        },
         { id: 'devices',      label: 'Devices'      } ] },
     { id: 'api-profile', label: 'API Profile', tabs: [
-        { id: 'api-key',      label: 'API Key'      },
+        { id: 'api-key',      label: 'API Credential' },
         { id: 'api-endpoint', label: 'API Endpoint' } ] },
     { id: 'api-connector', label: 'API Connector', tabs: [
         { id: 'api-connector', label: 'API Connector' } ] },

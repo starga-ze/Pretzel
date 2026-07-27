@@ -142,7 +142,7 @@
         "v3_devices": []
       },
       "api": {
-        "api_keys": [],
+        "api_credentials": [],
         "endpoints": [],
         "connectors": []
       }

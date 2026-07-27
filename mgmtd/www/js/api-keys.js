@@ -24,7 +24,7 @@
 
   // Read live (not once): settings tabs switch client-side without a page load (see main.js).
   const activeTab = () => new URLSearchParams(location.search).get('tab') || 'sites';
-  const DRAFT_KEY = 'api_keys';
+  const DRAFT_KEY = 'api_credentials';
   const SECRET_KEY = 'api_key_secrets';
 
   const { esc, newUuid } = window.NMS.utils;
@@ -40,11 +40,20 @@
         ['password', 'Password', 'password', ''],
       ],
     },
+    // SASE (Prisma Access) issues a short-lived OAuth2 bearer token from a service account. The token
+    // URL is fixed on Palo Alto's auth server (no operator endpoint), and the tenant (TSG) comes from
+    // the device's target. Client ID / Client Secret reuse the username/password slots, so they land
+    // in the same api_key_state id_enc/pw_enc as an NGFW account.
     sase: {
-      supported: false,
-      keygenHint: '',
-      fields: [],
-      note: 'SASE uses tenant OAuth credentials — not implemented yet.',
+      supported: true,
+      // The endpoint is the auth server host+path (editable, for a different region/cloud), not a
+      // device path — so it is shown and validated differently from NGFW.
+      hostEndpoint: true,
+      keygenHint: 'auth.apps.paloaltonetworks.com/oauth2/access_token',
+      fields: [
+        ['username', 'Client ID', 'text', 'service account client id'],
+        ['password', 'Client Secret', 'password', ''],
+      ],
     },
   };
   const credSpec = (deviceType) => CREDENTIALS[deviceType] || CREDENTIALS.ngfw;
@@ -102,6 +111,9 @@
       device: k.device || '',        // Device oid — decides the credential shape
       endpoint: k.endpoint || '',    // key-generation path, operator-entered
       username: k.username || '',
+      // Refresh policy: 'manual' re-issues on Test; 'auto' re-issues on the interval (minutes).
+      refresh_mode: k.refresh_mode === 'auto' ? 'auto' : 'manual',
+      refresh_interval_min: Number(k.refresh_interval_min) > 0 ? Number(k.refresh_interval_min) : 60,
     };
   }
 
@@ -119,7 +131,7 @@
       const d = await r.json();
       window.NMS.draft.checkBase(d.version);
       const api = ((d.daemons || {}).scand || {}).api || {};
-      deployed = (Array.isArray(api.api_keys) ? api.api_keys : []).map(normalize);
+      deployed = (Array.isArray(api.api_credentials) ? api.api_credentials : []).map(normalize);
     } catch (_) { deployed = []; }
     await loadKeyState();   // shared per-key runtime state (stored/expiry/last test)
     const staged = window.NMS.draft.get(DRAFT_KEY, null);
@@ -127,14 +139,14 @@
     refreshPending();
   }
 
-  const commitPayload = () => [{ daemon: 'scand', domain: 'api', values: { api_keys: state.keys } }];
+  const commitPayload = () => [{ daemon: 'scand', domain: 'api', values: { api_credentials: state.keys } }];
 
   window.NMS.staging.register({
     key: DRAFT_KEY,
     dirty: () => JSON.stringify(state.keys) !== JSON.stringify(deployed),
     payload: commitPayload,
-    before: () => ({ api_keys: deployed }),
-    after: () => ({ api_keys: state.keys }),
+    before: () => ({ api_credentials: deployed }),
+    after: () => ({ api_credentials: state.keys }),
     onPublished() {
       deployed = JSON.parse(JSON.stringify(state.keys));
       window.NMS.draft.clear(DRAFT_KEY);
@@ -143,7 +155,7 @@
       const devices = (window.NMS.devices && window.NMS.devices.list()) || [];
       return state.keys
         .filter(k => !k.device || !devices.some(d => d.oid === k.device))
-        .map(k => `API Key "${k.name}" is bound to a device that does not exist.`);
+        .map(k => `API Credential "${k.name}" is bound to a device that does not exist.`);
     },
   });
 
@@ -163,6 +175,23 @@
   // ── Render ───────────────────────────────────────────────────────────────────
   const deviceOf = (k) => (window.NMS.devices && window.NMS.devices.byOid(k.device)) || null;
   const devices = () => (window.NMS.devices && window.NMS.devices.list()) || [];
+
+  // Endpoint column: the stored endpoint, or the device type's default when none was saved yet
+  // (that default is exactly what the backend falls back to), so SASE and NGFW both always show one.
+  function endpointCell(k) {
+    const dev = deviceOf(k);
+    const spec = credSpec(dev ? dev.device_type : 'ngfw');
+    const ep = k.endpoint || spec.keygenHint || '';
+    return ep ? `<span class="ep-path" title="${esc(ep)}">${esc(ep)}</span>` : '<span class="muted">—</span>';
+  }
+
+  // Credential column: the account id, plus a masked marker when a secret is held (typed this
+  // session or stored on the appliance) — the secret itself never reaches the browser.
+  function credCell(k) {
+    const st = secrets.for(k.oid);
+    const user = esc(k.username) || '<span class="muted">—</span>';
+    return user + ((st.has_credential || st.password) ? '<div class="cred-pw">*****</div>' : '');
+  }
   const sites = () => (window.NMS.sites && window.NMS.sites.list()) || [];
   const siteName = (oid) => (window.NMS.sites && window.NMS.sites.label(oid)) || '';
 
@@ -214,13 +243,22 @@
       days > 0 ? days + 'd left' : 'today'}</span>`;
   }
 
+  // Refresh policy at a glance.
+  function refreshCell(k) {
+    return k.refresh_mode === 'auto'
+      ? `<span class="st-ok" title="Re-issued automatically">auto · ${esc(k.refresh_interval_min || 60)}m</span>`
+      : `<span class="muted" title="Re-issued on Test">manual</span>`;
+  }
+
+  // Status reflects whether a currently-valid token/key is held: none, expired (invalid), or valid.
   function statusCell(k) {
-    const t = secrets.for(k.oid).last_test;
-    if (!t) return `<span class="st-never">never tested</span>`;
-    const when = new Date(t.at).toLocaleString();
-    return t.ok
-      ? `<span class="st-ok" title="${esc(when)}">OK</span>`
-      : `<span class="st-fail" title="${esc(t.detail || '')} — ${esc(when)}">failed</span>`;
+    const st = secrets.for(k.oid);
+    if (!st.stored) return `<span class="st-never">no token</span>`;
+    if (st.expires_at) {
+      const left = new Date(st.expires_at).getTime() - Date.now();
+      if (left <= 0) return `<span class="st-fail" title="${esc(new Date(st.expires_at).toLocaleString())}">invalid (expired)</span>`;
+    }
+    return `<span class="st-ok">valid</span>`;
   }
 
   function render() {
@@ -235,13 +273,14 @@
           <td class="col-name"><div class="cell-name">${esc(k.name) || '<span class="muted">unnamed</span>'}</div></td>
           <td class="col-site">${siteCell(k)}</td>
           <td class="col-device">${deviceCell(k)}</td>
-          <td class="col-ep"><span class="ep-path" title="${esc(k.endpoint)}">${esc(k.endpoint) || '<span class="muted">—</span>'}</span></td>
-          <td class="col-cred">${esc(k.username) || '<span class="muted">—</span>'}</td>
+          <td class="col-ep">${endpointCell(k)}</td>
+          <td class="col-cred">${credCell(k)}</td>
           <td class="col-key">${keyCell(k)}</td>
           <td class="col-expiry">${expiryCell(k)}</td>
+          <td class="col-refresh">${refreshCell(k)}</td>
           <td class="col-status">${statusCell(k)}</td>
           <td class="col-act">
-            <button class="btn-sm" data-test="${i}">Key Gen Test</button>
+            <button class="btn-sm" data-test="${i}">Test</button>
             <button class="icon-btn" data-edit="${i}" title="Edit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
             </button>
@@ -250,18 +289,18 @@
             </button>
           </td>
         </tr>`).join('')
-      : `<tr><td colspan="9"><div class="cfg-empty">No API keys yet — click <b>Add API Key</b> to define one.
+      : `<tr><td colspan="10"><div class="cfg-empty">No API credentials yet — click <b>Add API Credential</b> to define one.
            ${devices.length ? '' : 'Tip: <a href="settings?tab=devices">add a device first</a>; a key belongs to one.'}</div></td></tr>`;
 
     el.innerHTML = `
       <div class="cfg-page">
         <div class="cfg-toolbar">
           <div class="cfg-toolbar-meta">
-            <span class="cfg-h">API Keys</span>
+            <span class="cfg-h">API Credentials</span>
             <span class="cfg-h-sub">${state.keys.length} key${state.keys.length === 1 ? '' : 's'}
               · one credential per device</span>
           </div>
-          <button class="btn-primary btn-sm" id="akAdd" ${devices.length ? '' : 'disabled'}>+ Add API Key</button>
+          <button class="btn-primary btn-sm" id="akAdd" ${devices.length ? '' : 'disabled'}>+ Add API Credential</button>
         </div>
 
         <table class="cfg-table cfg-table-apikey">
@@ -273,6 +312,7 @@
             <th class="col-cred">Credential</th>
             <th class="col-key">Key</th>
             <th class="col-expiry">Expiry</th>
+            <th class="col-refresh">Refresh</th>
             <th class="col-status">Status</th>
             <th class="col-act"></th>
           </tr></thead>
@@ -288,7 +328,7 @@
       <div class="slideover-overlay" id="akOverlay"></div>
       <aside class="slideover" id="akPanel">
         <div class="slideover-head">
-          <span class="slideover-title" id="akTitle">Add API Key</span>
+          <span class="slideover-title" id="akTitle">Add API Credential</span>
           <button class="slideover-close" id="akClose">&times;</button>
         </div>
         <div class="slideover-body" id="akBody"></div>
@@ -333,11 +373,26 @@
                  — reached at <code>${esc(dev.target)}</code>.</p>` : ''}
 
       <div class="editor-sec">KEY GENERATION</div>
-      ${fieldRow('Endpoint', 'endpoint', k.endpoint, 'text', spec.keygenHint)}
-      <p class="field-hint">Path only — the host comes from the device.</p>
+      ${fieldRow(spec.hostEndpoint ? 'Token endpoint' : 'Endpoint', 'endpoint', k.endpoint || spec.keygenHint || '', 'text', spec.keygenHint)}
+      <p class="field-hint">${spec.hostEndpoint
+        ? 'OAuth token host and path — change only for a different region or cloud.'
+        : 'Path only — the host comes from the device.'}</p>
 
       <div class="editor-sec">CREDENTIAL</div>
-      ${creds}`;
+      ${creds}
+
+      <div class="editor-sec">REFRESH</div>
+      <div class="field-row"><label>Mode</label>
+        <div class="ak-refresh">
+          <label class="ak-radio"><input type="radio" name="rmode" value="manual" ${k.refresh_mode !== 'auto' ? 'checked' : ''}/> Manual</label>
+          <label class="ak-radio"><input type="radio" name="rmode" value="auto" ${k.refresh_mode === 'auto' ? 'checked' : ''}/> Auto</label>
+        </div></div>
+      <div class="field-row" id="akIntervalRow" style="${k.refresh_mode === 'auto' ? '' : 'display:none'}">
+        <label>Interval (min)</label>
+        <input type="number" min="1" data-f="refresh_interval_min" value="${esc(k.refresh_interval_min || 60)}"/></div>
+      <p class="field-hint">${spec.hostEndpoint
+        ? 'SASE tokens expire (~15 min). Auto re-issues on the interval; Manual re-issues when you press Test.'
+        : 'NGFW keys do not expire, so auto refresh is not required. Enable Auto only to re-issue the key periodically for freshness.'}</p>`;
   }
 
   function collect(body) {
@@ -345,12 +400,15 @@
       const el = body.querySelector(`[data-f="${f}"]`);
       return el ? el.value.trim() : '';
     };
+    const rmode = body.querySelector('input[name="rmode"]:checked');
     const out = normalize({
       oid: draftOid,
       name: g('name'),
       device: g('device'),
       endpoint: g('endpoint'),
       username: g('username'),
+      refresh_mode: rmode ? rmode.value : 'manual',
+      refresh_interval_min: g('refresh_interval_min'),
     });
 
     // Typed passwords go straight to the browser-held store, never into the record.
@@ -364,7 +422,7 @@
     const k = idx == null ? blank() : normalize(JSON.parse(JSON.stringify(state.keys[idx])));
     draftOid = k.oid;
     draftSite = (deviceOf(k) || {}).site || '';   // scope the Device select to the current device's site
-    document.getElementById('akTitle').textContent = idx == null ? 'Add API Key' : 'Edit API Key';
+    document.getElementById('akTitle').textContent = idx == null ? 'Add API Credential' : 'Edit API Credential';
     document.getElementById('akBody').innerHTML = editorForm(k);
     document.getElementById('akFoot').innerHTML = `
       ${idx == null ? '' : '<button class="btn-sm btn-danger" id="akDelete">Delete</button>'}
@@ -384,6 +442,12 @@
   function wireEditor() {
     const body = document.getElementById('akBody');
 
+    // Auto/Manual toggles the interval row.
+    body.querySelectorAll('input[name="rmode"]').forEach(r => r.addEventListener('change', () => {
+      const row = body.querySelector('#akIntervalRow');
+      if (row) row.style.display = (r.value === 'auto' && r.checked) ? '' : 'none';
+    }));
+
     // Picking a site re-scopes the device list and clears any prior device.
     body.querySelector('[data-sitesel]')?.addEventListener('change', (e) => {
       draftSite = e.target.value;
@@ -393,12 +457,15 @@
       wireEditor();
     });
 
-    // Device decides the credential shape, so changing it rebuilds the form.
+    // Device decides the credential shape, so changing it rebuilds the form. The endpoint form
+    // differs by type (device path vs full token URL), so reset it to the new type's default unless
+    // the operator already typed one that still fits that type.
     body.querySelector('[data-devsel]')?.addEventListener('change', () => {
       const k = collect(body);
       const dev = (window.NMS.devices && window.NMS.devices.byOid(k.device)) || null;
       const spec = credSpec(dev ? dev.device_type : 'ngfw');
-      if (!k.endpoint && spec.keygenHint) k.endpoint = spec.keygenHint;
+      const fitsType = k.endpoint && (spec.hostEndpoint ? k.endpoint.indexOf('/') > 0 : k.endpoint[0] === '/');
+      if (!fitsType) k.endpoint = spec.keygenHint || '';
       body.innerHTML = editorForm(k);
       wireEditor();
     });
@@ -415,9 +482,15 @@
 
     document.getElementById('akSave').onclick = () => {
       const k = collect(body);
+      const dv = (window.NMS.devices && window.NMS.devices.byOid(k.device)) || null;
+      const sp = credSpec(dv ? dv.device_type : 'ngfw');
       if (!k.name) { alert('Name is required.'); return; }
       if (!k.device) { alert('Select the device this key belongs to.'); return; }
-      if (!k.endpoint || k.endpoint[0] !== '/') { alert('Endpoint must be a path starting with /'); return; }
+      if (sp.hostEndpoint) {
+        if (!k.endpoint || k.endpoint.indexOf('/') < 1) { alert('Token endpoint must be a host and path, e.g. auth.apps.paloaltonetworks.com/oauth2/access_token'); return; }
+      } else if (!k.endpoint || k.endpoint[0] !== '/') {
+        alert('Endpoint must be a path starting with /'); return;
+      }
       if (editIdx == null) state.keys.push(k); else state.keys[editIdx] = k;
       stage();
       closeEditor(); render();
@@ -483,18 +556,26 @@
     if (!dev) { alert('This key references a device that no longer exists.'); return; }
 
     const held = secrets.for(k.oid);
-    if (!held.password) { alert('Enter the password first — edit the key and save it.'); return; }
+    const isSase = dev.device_type === 'sase';
+    if (!held.password) {
+      alert(isSase ? 'Enter the Client Secret first — edit the key and save it.'
+                   : 'Enter the password first — edit the key and save it.');
+      return;
+    }
 
     const modal = window.NMS.modal;
     const body = (inner) => `<div class="test-panel-wrap">${inner}</div>`;
+    const step1 = isSase ? 'Connect to auth server' : 'TLS connection';
+    const step2 = isSase ? 'Token issuance' : 'API key generation';
     modal.open('API Key Generation Test',
-      body(`<div class="test-panel running">${stepRow('TLS connection', null)}${stepRow('API key generation', null)}</div>`));
+      body(`<div class="test-panel running">${stepRow(step1, null)}${stepRow(step2, null)}</div>`));
 
     let res;
     try {
       res = await runDeviceTest('/api/connector/keygen-test', {
         oid: k.oid,
         target: dev.target,
+        device_type: dev.device_type,
         fingerprint: dev.fingerprint,
         endpoint: k.endpoint,
         secrets: { username: k.username, password: held.password },
@@ -510,8 +591,9 @@
     const steps = res.steps || {};
 
     // A first contact stops at the certificate — HttpClient will not transmit credentials to an
-    // unpinned peer. The pin belongs to the device, so confirming it updates the device.
-    const trust = (res.fingerprint && !res.fingerprint_trusted)
+    // unpinned peer. The pin belongs to the device, so confirming it updates the device. SASE uses a
+    // public CA endpoint (no pinning), so there is never a fingerprint to trust.
+    const trust = (!isSase && res.fingerprint && !res.fingerprint_trusted)
       ? `<div class="fp-prompt">
            <div class="fp-warn">Certificate is not trusted yet (self-signed)</div>
            <code class="fp-val">${esc(res.fingerprint)}</code>
@@ -526,8 +608,8 @@
 
     modal.open('API Key Generation Test', body(`
       <div class="test-panel ${res.ok ? 'ok' : 'err'}">
-        ${stepRow('TLS connection', steps.tls)}
-        ${stepRow('API key generation', steps.auth)}
+        ${stepRow(step1, steps.tls)}
+        ${stepRow(step2, steps.auth)}
         ${trust}
       </div>`));
 

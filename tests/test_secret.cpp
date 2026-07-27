@@ -108,7 +108,7 @@ TEST(SecretRoundTrip, HandlesALongPlaintext)
 
 TEST(SecretRoundTrip, OutputIsAsciiSoItSurvivesATextColumn)
 {
-    // The sealed value goes into api_key_state.secret_enc, a TEXT column.
+    // The sealed value goes into api_credential_state.secret_enc, a TEXT column.
     const auto sealed = pz::util::secret::encrypt("some key");
     ASSERT_TRUE(sealed.has_value());
 

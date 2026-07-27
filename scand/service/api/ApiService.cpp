@@ -29,7 +29,7 @@ const json& apiConfig()
 
 void ApiService::loadProfiles(const nlohmann::json& cfg)
 {
-    const auto it = cfg.find("api_keys");
+    const auto it = cfg.find("api_credentials");
     if (it == cfg.end() || !it->is_array())
         return;
 
@@ -46,6 +46,10 @@ void ApiService::loadProfiles(const nlohmann::json& cfg)
         profile.username = p.value("username", std::string());
         profile.tls = p.value("tls", std::string("pin"));
         profile.fingerprint = p.value("fingerprint", std::string());
+        profile.device = p.value("device", std::string());
+        profile.endpoint = p.value("endpoint", std::string());
+        profile.refreshMode = p.value("refresh_mode", std::string("manual"));
+        profile.refreshIntervalMin = p.value("refresh_interval_min", 60);
 
         if (profile.oid.empty())
         {
@@ -263,7 +267,7 @@ void ApiService::handleEvent(ScandServiceManager& serviceManager, const ApiEvent
     {
         if (!msg || msg->getPayload().empty())
         {
-            LOG_WARN("empty ApiKeyStateResponse — dropping");
+            LOG_WARN("empty ApiCredentialStateResponse — dropping");
             return;
         }
         const auto& body = msg->getPayload();
@@ -273,7 +277,7 @@ void ApiService::handleEvent(ScandServiceManager& serviceManager, const ApiEvent
         }
         catch (const std::exception& e)
         {
-            LOG_WARN("failed to parse ApiKeyStateResponse (error={})", e.what());
+            LOG_WARN("failed to parse ApiCredentialStateResponse (error={})", e.what());
         }
         return;
     }
@@ -315,7 +319,7 @@ void ApiService::requestKeys(ScandServiceManager& serviceManager)
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Scand);
     msg->setDst(pz::ipc::IpcDaemon::Engined);
-    msg->setCmd(pz::ipc::IpcCmd::ApiKeyStateRequest);
+    msg->setCmd(pz::ipc::IpcCmd::ApiCredentialStateRequest);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
@@ -328,6 +332,7 @@ void ApiService::cacheKeys(const json& payload)
         return;
 
     std::unordered_map<std::string, std::string> opened;
+    std::unordered_map<std::string, IssuedCredential> creds;
     std::size_t failed = 0;
 
     for (const auto& k : keys)
@@ -336,19 +341,34 @@ void ApiService::cacheKeys(const json& payload)
             continue;
 
         const std::string oid = k.value("oid", std::string());
-        const std::string sealed = k.value("secret_enc", std::string());
-        if (oid.empty() || sealed.empty())
+        if (oid.empty())
             continue;
 
         // A blob that will not open is a real condition, not a parse error: credentials.key was
         // replaced or lost. Say how many rather than which, so no oid/key pairing reaches a log.
-        if (auto plain = pz::util::secret::decrypt(sealed))
-            opened.emplace(oid, *plain);
-        else
-            ++failed;
+        const std::string sealed = k.value("secret_enc", std::string());
+        if (!sealed.empty())
+        {
+            if (auto plain = pz::util::secret::decrypt(sealed))
+                opened.emplace(oid, *plain);
+            else
+                ++failed;
+        }
+
+        // The durable account credential, for auto-refresh re-issue.
+        const std::string idEnc = k.value("id_enc", std::string());
+        const std::string pwEnc = k.value("pw_enc", std::string());
+        if (!idEnc.empty() && !pwEnc.empty())
+        {
+            auto id = pz::util::secret::decrypt(idEnc);
+            auto pw = pz::util::secret::decrypt(pwEnc);
+            if (id && pw)
+                creds.emplace(oid, IssuedCredential{*id, *pw});
+        }
     }
 
     m_issuedKeys = std::move(opened);
+    m_credentials = std::move(creds);
 
     if (failed)
     {
@@ -367,6 +387,12 @@ const std::string& ApiService::issuedKey(const std::string& authProfileOid) cons
     static const std::string kNone;
     const auto it = m_issuedKeys.find(authProfileOid);
     return it == m_issuedKeys.end() ? kNone : it->second;
+}
+
+const IssuedCredential* ApiService::credentialFor(const std::string& oid) const
+{
+    const auto it = m_credentials.find(oid);
+    return it == m_credentials.end() ? nullptr : &it->second;
 }
 
 void ApiService::rememberIssuedKey(const std::string& authProfileOid, std::string key)

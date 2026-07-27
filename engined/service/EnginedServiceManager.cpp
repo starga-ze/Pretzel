@@ -13,7 +13,7 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, 
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>()),
       m_probeService(std::make_unique<ProbeService>()), m_adminService(std::make_unique<AdminService>()),
-      m_apiKeyService(std::make_unique<ApiKeyService>()),
+      m_apiCredentialService(std::make_unique<ApiCredentialService>()),
       m_collectionService(std::make_unique<CollectionService>()),
       m_logTailService(std::make_unique<LogTailService>()),
       m_vendorResolver(std::make_unique<VendorResolver>())
@@ -127,9 +127,9 @@ AdminService& EnginedServiceManager::adminService()
     return *m_adminService;
 }
 
-ApiKeyService& EnginedServiceManager::apiKeyService()
+ApiCredentialService& EnginedServiceManager::apiCredentialService()
 {
-    return *m_apiKeyService;
+    return *m_apiCredentialService;
 }
 
 CollectionService& EnginedServiceManager::collectionService()

@@ -25,7 +25,7 @@ namespace
 json apiSection()
 {
     return json{
-        {"api_keys", json::array({{{"oid", "key-1"}, {"name", "core-fw creds"}}})},
+        {"api_credentials", json::array({{{"oid", "key-1"}, {"name", "core-fw creds"}}})},
         {"endpoints", json::array({{{"oid", "ep-v10"}, {"name", "Addresses v10.2"},
                                     {"path", "/restapi/v10.2/Objects/Addresses"}}})},
         {"connectors", json::array({{{"oid", "conn-1"},
@@ -82,7 +82,7 @@ TEST(ApiRefs, RejectsDeletingAnEndpointAConnectorStillUses)
 TEST(ApiRefs, RejectsDeletingAnApiKeyAConnectorStillUses)
 {
     json api = apiSection();
-    api["api_keys"] = json::array();
+    api["api_credentials"] = json::array();
 
     std::string error;
     EXPECT_FALSE(checkApiReferences(api, error));

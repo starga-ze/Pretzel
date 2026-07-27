@@ -113,7 +113,7 @@ DROP TABLE IF EXISTS probe_devices;
 DROP TABLE IF EXISTS state_snapshot;
 -- device_credentials was an abandoned first pass at the encrypted credential store: no DDL, no
 -- reader, no writer, and it survived every reset because nothing listed it. It held cipher text
--- nothing could decrypt, so it goes. api_key_state/api_endpoint_state were declared before they
+-- nothing could decrypt, so it goes. api_credential_state/api_endpoint_state were declared before they
 -- had a writer; see the note further down.
 DROP TABLE IF EXISTS device_credentials;
 DROP TABLE IF EXISTS api_endpoint_state;
@@ -168,7 +168,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS devices_target_uniq ON devices (device_type, t
 --                without credentials.key is useless.
 --   expires_at : NULL means no expiry — PAN-OS keys are indefinite unless an API key lifetime is
 --                configured on the device.
-CREATE TABLE IF NOT EXISTS api_key_state (
+-- Rename from the pre-"credential" table name, preserving rows, before the CREATE below no-ops.
+DO $rename_credstate$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'api_key_state')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'api_credential_state') THEN
+        ALTER TABLE api_key_state RENAME TO api_credential_state;
+    END IF;
+END $rename_credstate$;
+CREATE TABLE IF NOT EXISTS api_credential_state (
     oid            TEXT PRIMARY KEY,
     id_enc         TEXT,
     pw_enc         TEXT,
@@ -181,8 +189,8 @@ CREATE TABLE IF NOT EXISTS api_key_state (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- Upgrade path for databases created before the credential columns existed.
-ALTER TABLE api_key_state ADD COLUMN IF NOT EXISTS id_enc TEXT;
-ALTER TABLE api_key_state ADD COLUMN IF NOT EXISTS pw_enc TEXT;
+ALTER TABLE api_credential_state ADD COLUMN IF NOT EXISTS id_enc TEXT;
+ALTER TABLE api_credential_state ADD COLUMN IF NOT EXISTS pw_enc TEXT;
 
 -- API collection samples: what each connector's scheduled endpoint poll returned. Pure state
 -- (system-produced, never operator-declared), written only by engined from scand's IPC — the same
@@ -279,4 +287,14 @@ BEGIN
                       WHERE e->>'device_type' = 'prisma_access');
     -- Projection table too, in case a reload has not rebuilt it yet.
     UPDATE devices SET device_type = 'sase' WHERE device_type = 'prisma_access';
+    -- API key -> credential rename: move scand.service.api.api_keys to .api_credentials in every
+    -- persisted version and the baseline. Idempotent — once moved, the `? 'api_keys'` guard is false.
+    UPDATE running_config SET config_json =
+        jsonb_set(config_json, '{scand,service,api,api_credentials}', config_json #> '{scand,service,api,api_keys}', true)
+            #- '{scand,service,api,api_keys}'
+        WHERE config_json #> '{scand,service,api}' ? 'api_keys';
+    UPDATE startup_config SET config_json =
+        jsonb_set(config_json, '{scand,service,api,api_credentials}', config_json #> '{scand,service,api,api_keys}', true)
+            #- '{scand,service,api,api_keys}'
+        WHERE config_json #> '{scand,service,api}' ? 'api_keys';
 END $migrate$;

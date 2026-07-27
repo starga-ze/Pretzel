@@ -6,7 +6,7 @@
 #include "event/EnginedEvent.h"
 
 #include "service/admin/AdminService.h"
-#include "service/apikey/ApiKeyService.h"
+#include "service/apicredential/ApiCredentialService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/collection/CollectionService.h"
 #include "service/commit/CommitService.h"
@@ -47,7 +47,7 @@ public:
     HeartbeatService& heartbeatService();
     ProbeService& probeService();
     AdminService& adminService();
-    ApiKeyService& apiKeyService();
+    ApiCredentialService& apiCredentialService();
     CollectionService& collectionService();
     LogTailService& logTailService();
     VendorResolver& vendorResolver();
@@ -69,7 +69,7 @@ private:
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ProbeService> m_probeService;
     std::unique_ptr<AdminService> m_adminService;
-    std::unique_ptr<ApiKeyService> m_apiKeyService;
+    std::unique_ptr<ApiCredentialService> m_apiCredentialService;
     std::unique_ptr<CollectionService> m_collectionService;
     std::unique_ptr<LogTailService> m_logTailService;
     std::unique_ptr<VendorResolver> m_vendorResolver;

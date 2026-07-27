@@ -79,7 +79,7 @@ enum class IpcCmd : std::uint16_t
 
     // engined is the only database writer, so the outcome of a key generation (already-encrypted
     // secret, expiry, test result) is handed over rather than written twice.
-    ApiKeyStateUpdate = 126,
+    ApiCredentialStateUpdate = 126,
 
     // Connector tests run in scand, not mgmtd: scand is the daemon that will poll these devices
     // on a schedule, and a test that exercised a different code path than the collector would
@@ -92,8 +92,8 @@ enum class IpcCmd : std::uint16_t
     // opens them with credentials.key — the plaintext never crosses the socket, the same way it
     // never does on the way in. scand caches the result rather than asking per call, because
     // periodic collection would otherwise hit the database on every poll.
-    ApiKeyStateRequest = 129,
-    ApiKeyStateResponse = 130,
+    ApiCredentialStateRequest = 129,
+    ApiCredentialStateResponse = 130,
 
     // scand → engined: one connector's scheduled endpoint poll result, persisted to api_collection.
     ApiCollectionSample = 131,

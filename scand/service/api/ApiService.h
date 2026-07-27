@@ -16,7 +16,7 @@ class ScandServiceManager;
 // One reusable set of vendor API credentials, published from the mgmtd UI into
 // scand.service.api.auth_profiles (schema validated in mgmtd's WebService, seeded in
 // config/startup-config.json). Secrets are NOT part of the profile: the issued key is sealed
-// with the credential store and lives in engined's api_key_state, keyed by the profile oid.
+// with the credential store and lives in engined's api_credential_state, keyed by the profile oid.
 //
 // `oid` is the object's single identity: a UUID string issued at creation, immutable, and what
 // inventory objects reference.
@@ -28,6 +28,18 @@ struct AuthProfile
     std::string username;
     std::string tls;           // "pin" | "strict"
     std::string fingerprint;   // pinned SHA-256, empty until first trusted test
+    std::string device;        // device oid this credential is bound to (resolves target/device_type)
+    std::string endpoint;      // keygen path (ngfw) / token host+path (sase)
+    std::string refreshMode{"manual"};   // "manual" | "auto"
+    int refreshIntervalMin{60};          // auto: minutes between re-issues
+};
+
+// The durable account credential (ngfw user/pass, sase client id/secret) opened from
+// api_credential_state so scand can re-issue on its own for auto-refresh. Memory-only.
+struct IssuedCredential
+{
+    std::string id;
+    std::string pw;
 };
 
 // PAN-OS serves two APIs behind one credential. Which one a call speaks is a property of the
@@ -97,10 +109,11 @@ struct TestTarget
     std::string host;
     std::uint16_t port{443};
     std::string fingerprint;   // pinned SHA-256, empty on first contact
-    std::string username;
-    std::string password;
+    std::string username;      // ngfw: admin user   · sase: OAuth client id
+    std::string password;      // ngfw: admin passwd · sase: OAuth client secret
     std::string keygenEndpoint;
     std::string authProfileOid;   // which API Key profile — used to find an already-issued key
+    std::string deviceType{"ngfw"};   // ngfw | sase — selects the key-issuance flow
 };
 
 class ApiService
@@ -121,6 +134,10 @@ public:
     // sealed blob at cache time, so this is plaintext and must not be logged.
     const std::string& issuedKey(const std::string& authProfileOid) const;
 
+    // The opened account credential for a profile, or nullptr when none is cached. Used by
+    // auto-refresh to re-issue without an operator typing the secret again.
+    const IssuedCredential* credentialFor(const std::string& oid) const;
+
     // Caches a key the connector test just had issued, so the operator's next test does not have to
     // re-enter the password before engined's persist round-trip returns. The one write the
     // ApiConnectorTester makes back into this service; the read side is issuedKey().
@@ -139,13 +156,15 @@ private:
     void loadEndpoints(const nlohmann::json& cfg);
     void loadConnectors(const nlohmann::json& cfg);
 
-    // Applies an ApiKeyStateResponse: opens each sealed blob and replaces the cache.
+    // Applies an ApiCredentialStateResponse: opens each sealed blob and replaces the cache.
     void cacheKeys(const nlohmann::json& payload);
 
     std::vector<AuthProfile> m_profiles;
     // authProfileOid -> issued key, plaintext. Held in memory only: it is re-fetched from
     // engined on every start, so nothing here outlives the process.
     std::unordered_map<std::string, std::string> m_issuedKeys;
+    // authProfileOid -> opened account credential (id/pw). Same lifetime as m_issuedKeys.
+    std::unordered_map<std::string, IssuedCredential> m_credentials;
     std::vector<ApiEndpoint> m_endpoints;
     std::vector<ApiConnector> m_connectors;
 };

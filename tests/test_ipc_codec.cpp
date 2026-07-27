@@ -55,7 +55,7 @@ IpcFrameView viewOf(const std::vector<std::uint8_t>& v)
 TEST(IpcCodecRoundTrip, PreservesEveryHeaderField)
 {
     IpcCodec codec;
-    const auto frame = codec.encode(makeMessage("hello", IpcCmd::ApiKeyStateUpdate, 0xDEADBEEF));
+    const auto frame = codec.encode(makeMessage("hello", IpcCmd::ApiCredentialStateUpdate, 0xDEADBEEF));
     ASSERT_FALSE(frame.empty());
 
     std::unique_ptr<IpcMessage> out;
@@ -64,7 +64,7 @@ TEST(IpcCodecRoundTrip, PreservesEveryHeaderField)
 
     EXPECT_EQ(IpcDaemon::Mgmtd, out->getSrc());
     EXPECT_EQ(IpcDaemon::Scand, out->getDst());
-    EXPECT_EQ(IpcCmd::ApiKeyStateUpdate, out->getCmd());
+    EXPECT_EQ(IpcCmd::ApiCredentialStateUpdate, out->getCmd());
     EXPECT_EQ(0xDEADBEEFu, out->getSeqNo());
     EXPECT_EQ(IPC_PROTOCOL_VERSION, out->getVersion());
     EXPECT_TRUE(out->isRequest());
@@ -332,7 +332,7 @@ TEST(IpcCodecStreaming, TwoConcatenatedFramesAreSplitByPeekAndDecodedInOrder)
 {
     // The realistic case: a socket read returns several messages at once.
     IpcCodec codec;
-    const auto first = codec.encode(makeMessage("first", IpcCmd::ApiKeyStateUpdate, 1));
+    const auto first = codec.encode(makeMessage("first", IpcCmd::ApiCredentialStateUpdate, 1));
     const auto second = codec.encode(makeMessage("second", IpcCmd::ApiConnectorTestResponse, 2));
 
     std::vector<std::uint8_t> stream;

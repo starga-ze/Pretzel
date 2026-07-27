@@ -84,7 +84,7 @@ bool validSite(const json& s)
     return !s.value("oid", std::string()).empty() && !s.value("name", std::string()).empty();
 }
 
-// scand.api.api_keys — API Keys (www/js/api-keys.js). Bound to a device because a PAN-OS key is
+// scand.api.api_credentials — API Keys (www/js/api-keys.js). Bound to a device because a PAN-OS key is
 // issued by one box and worthless on another. The password and the issued key are NOT here:
 // running_config is append-versioned and shown verbatim in the review diff, so a secret written
 // there would be permanent and visible. They stay in the operator's browser until the encrypted
@@ -98,9 +98,9 @@ bool validApiKey(const json& k)
         k.value("device", std::string()).empty())
         return false;
 
-    const std::string endpoint = k.value("endpoint", std::string());
-    if (endpoint.empty() || endpoint.front() != '/')
-        return false;
+    // The endpoint is operator-entered and interpreted per device type — an NGFW device path
+    // ("/api/…") or a SASE auth host+path ("auth.…/oauth2/access_token"). Both shapes (and empty) are
+    // accepted here; the frontend validates the shape per type and scand parses it.
 
     for (const auto* secret : {"password", "secret", "api_key", "key"})
     {
@@ -235,13 +235,17 @@ bool validateCommitValues(const std::string& daemon, const std::string& domain, 
             error = std::string(key) + " must be an array";
             return false;
         }
+        std::size_t idx = 0;
         for (const auto& entry : values[key])
         {
             if (!validEntry(entry))
             {
-                error = std::string("invalid ") + key + " entry";
+                const std::string name = entry.is_object() ? entry.value("name", std::string()) : std::string();
+                error = "invalid " + std::string(key) + " entry #" + std::to_string(idx) +
+                        (name.empty() ? "" : " (\"" + name + "\")");
                 return false;
             }
+            ++idx;
         }
         return true;
     };
@@ -250,7 +254,7 @@ bool validateCommitValues(const std::string& daemon, const std::string& domain, 
         return validateArray("sites", validSite) && validateArray("devices", validDevice);
 
     if (daemon == "scand" && domain == "api")
-        return validateArray("api_keys", validApiKey) && validateArray("endpoints", validApiEndpoint) &&
+        return validateArray("api_credentials", validApiKey) && validateArray("endpoints", validApiEndpoint) &&
                validateArray("connectors", validApiConnector) && validateApiReferences(values, error);
 
     return true;
@@ -362,14 +366,21 @@ void handleSettingsCommit(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
     const json& changes = input["changes"];
 
     json validChanges = json::array();
+    json results = json::array();   // per-change outcome, returned to the browser and used below
     int failed = 0;
+
+    // Record a per-change rejection: logged (so the reason survives in mgmtd.log) and returned.
+    auto reject = [&](const std::string& daemon, const std::string& domain, const std::string& why) {
+        LOG_WARN("settings-commit rejected (daemon={}, domain={}, reason={})", daemon, domain, why);
+        results.push_back({{"daemon", daemon}, {"domain", domain}, {"ok", false}, {"error", why}});
+        failed++;
+    };
 
     for (const auto& change : changes)
     {
         if (!change.contains("daemon") || !change.contains("domain") || !change.contains("values"))
         {
-            LOG_WARN("skipping settings-commit entry missing daemon/domain/values");
-            failed++;
+            reject(change.value("daemon", ""), change.value("domain", ""), "entry is missing daemon/domain/values");
             continue;
         }
 
@@ -379,8 +390,7 @@ void handleSettingsCommit(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
 
         if (!values.is_object())
         {
-            LOG_WARN("settings-commit values not an object (daemon={}, domain={})", daemon, domain);
-            failed++;
+            reject(daemon, domain, "values is not an object");
             continue;
         }
 
@@ -389,24 +399,24 @@ void handleSettingsCommit(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
 
         if (!knownDaemon)
         {
-            LOG_WARN("settings-commit unknown daemon (daemon={})", daemon);
-            failed++;
+            reject(daemon, domain, "unknown daemon");
             continue;
         }
 
         std::string schemaError;
         if (!validateCommitValues(daemon, domain, values, schemaError))
         {
-            LOG_WARN("settings-commit schema violation (daemon={}, domain={}, error={})", daemon, domain,
-                     schemaError);
-            failed++;
+            reject(daemon, domain, schemaError.empty() ? "schema validation failed" : schemaError);
             continue;
         }
 
+        results.push_back({{"daemon", daemon}, {"domain", domain}, {"ok", true}});
         validChanges.push_back(change);
     }
 
     const int applied = static_cast<int>(validChanges.size());
+    if (failed > 0)
+        LOG_WARN("settings-commit: {} change(s) rejected, {} accepted", failed, applied);
 
     if (applied > 0)
     {
@@ -428,8 +438,10 @@ void handleSettingsCommit(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
     json body;
     body["applied"] = applied;
     body["failed"] = failed;
-    body["results"] = json::array();
+    body["results"] = std::move(results);
     body["reloading"] = (applied > 0);
+    if (failed > 0 && applied == 0)
+        body["error"] = "no change was accepted — see results";
 
     fill(resp, status, body.dump());
 }

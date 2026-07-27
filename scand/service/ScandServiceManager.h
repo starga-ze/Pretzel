@@ -12,7 +12,10 @@
 
 #include <boost/asio/io_context.hpp>
 
+#include <chrono>
 #include <queue>
+#include <string>
+#include <unordered_map>
 
 namespace pz::scand
 {
@@ -45,6 +48,9 @@ public:
     boost::asio::io_context& ioContext();
 
 private:
+    // Re-issue key/token for credentials set to auto-refresh whose interval has elapsed.
+    void autoRefreshTick(std::chrono::steady_clock::time_point now);
+
     ScandEventFactory* m_eventFactory;
     ScandActionFactory* m_actionFactory;
     ScandTxRouter* m_txRouter;
@@ -58,6 +64,9 @@ private:
 
     // One-shot: the issued keys are fetched after bootstrap completes, not at construction.
     bool m_keysRequested{false};
+
+    // Per-credential last auto-refresh time (steady clock), so each fires on its own interval.
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_lastRefresh;
 
     std::queue<std::unique_ptr<ScandEvent>> m_eventQueue;
     std::queue<std::unique_ptr<ScandAction>> m_actionQueue;

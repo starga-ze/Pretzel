@@ -171,7 +171,7 @@ TEST(IpcProtocolNaming, EveryCommandHasAName)
     const IpcCmd cmds[] = {IpcCmd::ClientHello,
                            IpcCmd::ServerHello,
                            IpcCmd::AdminPasswordUpdate,
-                           IpcCmd::ApiKeyStateUpdate,
+                           IpcCmd::ApiCredentialStateUpdate,
                            IpcCmd::ApiConnectorTestRequest,
                            IpcCmd::ApiConnectorTestResponse,
                            IpcCmd::AuthSamlAcsRequest,
@@ -190,6 +190,6 @@ TEST(IpcProtocolNaming, DistinctCommandsHaveDistinctNames)
 {
     EXPECT_STRNE(IpcProtocol::cmdToStr(IpcCmd::ApiConnectorTestRequest),
                  IpcProtocol::cmdToStr(IpcCmd::ApiConnectorTestResponse));
-    EXPECT_STRNE(IpcProtocol::cmdToStr(IpcCmd::ApiKeyStateUpdate),
+    EXPECT_STRNE(IpcProtocol::cmdToStr(IpcCmd::ApiCredentialStateUpdate),
                  IpcProtocol::cmdToStr(IpcCmd::AdminPasswordUpdate));
 }

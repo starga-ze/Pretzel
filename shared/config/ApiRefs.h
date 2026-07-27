@@ -9,7 +9,7 @@ namespace pz::config
 
 // Referential integrity for a scand.service.api section.
 //
-// The section holds three arrays — api_keys, endpoints, connectors — and a connector is nothing
+// The section holds three arrays — api_credentials, endpoints, connectors — and a connector is nothing
 // but references: which object, which credential, which endpoint. Endpoints in particular are
 // versioned by the vendor (/restapi/v10.2/…), so an estate accumulates several and connectors
 // are re-pointed between them; deleting the one still in use has to be refused rather than

@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <ctime>
 #include <memory>
 #include <string>
 #include <utility>
@@ -76,7 +77,32 @@ TestTarget parseTestTarget(const json& body)
     }
     t.keygenEndpoint = body.value("keygen_endpoint", body.value("endpoint", std::string()));
     t.authProfileOid = body.value("api_key_oid", std::string());
+    t.deviceType = body.value("device_type", std::string("ngfw"));
     return t;
+}
+
+// Standard base64 (for the SASE token request's HTTP Basic credential). Small enough to keep local
+// rather than widen the Secret module's surface.
+std::string base64(const std::string& in)
+{
+    static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    int val = 0, bits = -6;
+    for (unsigned char c : in)
+    {
+        val = (val << 8) + c;
+        bits += 8;
+        while (bits >= 0)
+        {
+            out.push_back(T[(val >> bits) & 0x3F]);
+            bits -= 6;
+        }
+    }
+    if (bits > -6)
+        out.push_back(T[((val << 8) >> (bits + 8)) & 0x3F]);
+    while (out.size() % 4)
+        out.push_back('=');
+    return out;
 }
 
 pz::http::ClientRequest baseRequest(const TestTarget& t)
@@ -153,6 +179,7 @@ struct ConnectorTest
     TestTarget target;
     std::string mode;     // "keygen" | "endpoint"
     std::string keyOid;   // API Key record oid the issued key is persisted under (keygen mode)
+    std::string expiresAt;// issued-key expiry, ISO-8601 UTC — set for SASE tokens, empty for NGFW
     json input;           // original request payload — endpoint path/params are read back from here
     json out;             // the result document
 };
@@ -160,8 +187,9 @@ struct ConnectorTest
 // The stages call one another across async boundaries; forward-declared so they can be written in
 // call order below.
 void sendTestResponse(ScandServiceManager& sm, std::uint32_t seqNo, const json& out);
-void sendApiKeyState(ScandServiceManager& sm, const std::string& keyOid, const std::string& id,
-                     const std::string& pw, const std::string& key, bool ok, const std::string& note);
+void sendApiCredentialState(ScandServiceManager& sm, const std::string& keyOid, const std::string& id,
+                     const std::string& pw, const std::string& key, const std::string& expiresAt, bool ok,
+                     const std::string& note);
 void runConnectorTest(const std::shared_ptr<ConnectorTest>& ctx);
 void rejectTest(const std::shared_ptr<ConnectorTest>& ctx, const std::string& message);
 void afterKey(const std::shared_ptr<ConnectorTest>& ctx, const std::string& key);
@@ -169,6 +197,8 @@ void runKeygen(const std::shared_ptr<ConnectorTest>& ctx);
 void onKeygenResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResponse res);
 void runEndpointCall(const std::shared_ptr<ConnectorTest>& ctx, const std::string& key);
 void onEndpointResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResponse res);
+void runSaseToken(const std::shared_ptr<ConnectorTest>& ctx);
+void onSaseResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResponse res);
 
 void runConnectorTest(const std::shared_ptr<ConnectorTest>& ctx)
 {
@@ -187,8 +217,19 @@ void runConnectorTest(const std::shared_ptr<ConnectorTest>& ctx)
     if (target.host.empty())
         return rejectTest(ctx, "target is required");
 
+    // SASE issues an OAuth2 bearer token from a fixed auth server rather than a key from the device,
+    // so it takes its own flow. The token is short-lived, so it is always minted fresh (no stored-key
+    // reuse) — the client id/secret are what persist.
+    if (target.deviceType == "sase")
+    {
+        if (target.username.empty() || target.password.empty())
+            return rejectTest(ctx, "the SASE client id and client secret are required to issue a token");
+        ctx->out["steps"] = json::object();
+        return runSaseToken(ctx);
+    }
+
     // A key already issued for this profile stands in for the password: it was sealed at
-    // issuance and lives in api_key_state, so the operator types the password once rather than
+    // issuance and lives in api_credential_state, so the operator types the password once rather than
     // once per browser session. Falling back to keygen keeps the first run — and a re-issue
     // after the key is rejected — working.
     const std::string stored = ctx->api->issuedKey(target.authProfileOid);
@@ -258,8 +299,8 @@ void afterKey(const std::shared_ptr<ConnectorTest>& ctx, const std::string& key)
 
     if (!ctx->keyOid.empty())
     {
-        sendApiKeyState(*ctx->sm, ctx->keyOid, ctx->target.username, ctx->target.password, key, !key.empty(),
-                        ctx->out.value("message", std::string()));
+        sendApiCredentialState(*ctx->sm, ctx->keyOid, ctx->target.username, ctx->target.password, key, ctx->expiresAt,
+                        !key.empty(), ctx->out.value("message", std::string()));
 
         // Cache it now rather than waiting for a round trip: the operator's next action is usually
         // another test, and it should not ask for the password again just because engined has not
@@ -429,9 +470,123 @@ void onEndpointResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResp
     sendTestResponse(*ctx->sm, seqNo, out);
 }
 
-// Answers mgmtd's request. seqNo is the ticket mgmtd is holding the browser on.
+// SASE key issuance: exchange the service-account client id/secret for a bearer token at Palo Alto's
+// OAuth server. The tenant (TSG) id is the device's target. Unlike a device keygen this hits a public
+// CA endpoint, so the chain+hostname are verified (verifyCa) rather than a self-signed pin.
+void runSaseToken(const std::shared_ptr<ConnectorTest>& ctx)
+{
+    const TestTarget& t = ctx->target;
+
+    // The token URL is operator-editable (region/cloud); fall back to the public default. Parse
+    // scheme://host[:port]/path so the host and path can drive the request.
+    std::string host = "auth.apps.paloaltonetworks.com";
+    std::string path = "/oauth2/access_token";
+    std::uint16_t port = 443;
+    if (!t.keygenEndpoint.empty())
+    {
+        std::string rest = t.keygenEndpoint;
+        if (const auto s = rest.find("://"); s != std::string::npos)
+            rest.erase(0, s + 3);
+        const auto slash = rest.find('/');
+        std::string hostport = (slash == std::string::npos) ? rest : rest.substr(0, slash);
+        path = (slash == std::string::npos) ? "/" : rest.substr(slash);
+        if (const auto colon = hostport.rfind(':'); colon != std::string::npos)
+        {
+            try
+            {
+                port = static_cast<std::uint16_t>(std::stoi(hostport.substr(colon + 1)));
+                hostport.erase(colon);
+            }
+            catch (const std::exception&)
+            {
+            }
+        }
+        if (!hostport.empty())
+            host = hostport;
+    }
+
+    pz::http::ClientRequest req;
+    req.host = host;
+    req.port = port;
+    req.verifyCa = true;
+    req.method = "POST";
+    req.target = path;
+    req.timeout = std::chrono::seconds(15);
+    req.headers.push_back({"Authorization", "Basic " + base64(t.username + ":" + t.password)});
+    req.headers.push_back({"Content-Type", "application/x-www-form-urlencoded"});
+    req.body = "grant_type=client_credentials&scope=tsg_id:" + pz::http::urlEncode(t.host);
+
+    LOG_DEBUG("SASE token request (seq={}, tsg={})", ctx->seqNo, t.host);
+    pz::http::requestAsync(ctx->sm->ioContext(), std::move(req),
+                           [ctx](pz::http::ClientResponse res) { onSaseResponse(ctx, std::move(res)); });
+}
+
+void onSaseResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResponse res)
+{
+    if (!res.tlsOk)
+    {
+        LOG_WARN("SASE token failed — auth server unreachable (seq={}, err={})", ctx->seqNo, res.error);
+        ctx->out["steps"]["tls"] =
+            stepJson(false, res.error.empty() ? "could not reach the SASE auth server" : res.error);
+        ctx->out["message"] = res.error.empty() ? "could not reach the SASE auth server" : res.error;
+        return afterKey(ctx, "");
+    }
+    ctx->out["steps"]["tls"] = stepJson(true, "connected to the SASE auth server");
+
+    const auto body = json::parse(res.body, nullptr, false);
+    const bool haveJson = !body.is_discarded() && body.is_object();
+
+    if (res.status != 200)
+    {
+        std::string detail = "auth server returned HTTP " + std::to_string(res.status);
+        if (haveJson)
+        {
+            const std::string e = body.value("error_description", body.value("error", std::string()));
+            if (!e.empty())
+                detail = e;
+        }
+        LOG_WARN("SASE token rejected (seq={}, http={}, detail={})", ctx->seqNo, res.status, detail);
+        ctx->out["steps"]["auth"] = stepJson(false, detail);
+        ctx->out["message"] = detail;
+        return afterKey(ctx, "");
+    }
+
+    const std::string token = haveJson ? body.value("access_token", std::string()) : std::string();
+    if (token.empty())
+    {
+        LOG_WARN("SASE token response had no access_token (seq={})", ctx->seqNo);
+        ctx->out["steps"]["auth"] = stepJson(false, "no access_token in the auth server response");
+        ctx->out["message"] = "token issuance failed";
+        return afterKey(ctx, "");
+    }
+
+    // Record the token's expiry so the UI can show it (SASE tokens live ~15 min). Prefer the
+    // response's expires_in (seconds from now); the token is a JWT with an `exp` claim too, but
+    // expires_in needs no decoding.
+    const long expiresIn = haveJson ? body.value("expires_in", 0L) : 0L;
+    if (expiresIn > 0)
+    {
+        const std::time_t tt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now() +
+                                                                    std::chrono::seconds(expiresIn));
+        std::tm tmv{};
+        gmtime_r(&tt, &tmv);
+        char buf[32];
+        if (std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &tmv) > 0)
+            ctx->expiresAt = buf;
+    }
+
+    LOG_INFO("SASE token issued (seq={}, token_len={}, expires_in={}s)", ctx->seqNo, token.size(), expiresIn);
+    ctx->out["steps"]["auth"] = stepJson(true, "access token issued");
+    afterKey(ctx, token);
+}
+
+// Answers mgmtd's request. seqNo is the ticket mgmtd is holding the browser on. seqNo 0 is the
+// headless auto-refresh path — no browser is waiting, so there is nothing to answer.
 void sendTestResponse(ScandServiceManager& sm, std::uint32_t seqNo, const json& out)
 {
+    if (seqNo == 0)
+        return;
+
     const std::string payload = out.dump();
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
@@ -449,16 +604,19 @@ void sendTestResponse(ScandServiceManager& sm, std::uint32_t seqNo, const json& 
 // sensitive is sealed here so plaintext never crosses the IPC socket. id/pw and key are each written
 // only when present, so a test that reuses a stored key does not wipe the saved credential (engined
 // COALESCEs the columns).
-void sendApiKeyState(ScandServiceManager& sm, const std::string& keyOid, const std::string& id,
-                     const std::string& pw, const std::string& key, bool ok, const std::string& note)
+void sendApiCredentialState(ScandServiceManager& sm, const std::string& keyOid, const std::string& id,
+                     const std::string& pw, const std::string& key, const std::string& expiresAt, bool ok,
+                     const std::string& note)
 {
-    LOG_DEBUG("persisting api key state to engined (oid={}, ok={}, has_key={}, has_cred={})", keyOid, ok,
-              !key.empty(), !id.empty() || !pw.empty());
+    LOG_DEBUG("persisting api key state to engined (oid={}, ok={}, has_key={}, has_cred={}, expires={})", keyOid, ok,
+              !key.empty(), !id.empty() || !pw.empty(), expiresAt.empty() ? "none" : expiresAt);
 
     json state;
     state["oid"] = keyOid;
     state["ok"] = ok;
     state["note"] = note;
+    if (!expiresAt.empty())
+        state["expires_at"] = expiresAt;
 
     // The account (id/pw) is the durable credential — for sase the bearer token expires, so the
     // credential is what lets a later session re-issue without re-prompting the operator.
@@ -479,7 +637,7 @@ void sendApiKeyState(ScandServiceManager& sm, const std::string& keyOid, const s
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Scand);
     msg->setDst(pz::ipc::IpcDaemon::Engined);
-    msg->setCmd(pz::ipc::IpcCmd::ApiKeyStateUpdate);
+    msg->setCmd(pz::ipc::IpcCmd::ApiCredentialStateUpdate);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
     msg->setPayload(std::vector<std::uint8_t>(payload.begin(), payload.end()));
 

@@ -106,8 +106,8 @@ PGADMIN_VENV             = os.path.join(INSTALL_ROOT, "pgadmin", "venv")
 # have to live in version control. The literals below are localhost-only DEV
 # defaults; override them by exporting PZ_PGADMIN_EMAIL / PZ_PGADMIN_PASSWORD (and
 # PZ_PG_PASSWORD for the DB) before `./pretzel install` / `./pretzel start`.
-PGADMIN_SETUP_EMAIL      = os.environ.get("PZ_PGADMIN_EMAIL", "pretzel@pretzel.io")
-PGADMIN_SETUP_PASSWORD   = os.environ.get("PZ_PGADMIN_PASSWORD", "pretzel")
+PGADMIN_SETUP_EMAIL      = os.environ.get("PZ_PGADMIN_EMAIL", "admin@pretzel.io")
+PGADMIN_SETUP_PASSWORD   = os.environ.get("PZ_PGADMIN_PASSWORD", "padmin")
 
 # PostgreSQL is installed from the distro APT repo (not built from source) and
 # runs under its own systemd unit (postgresql.service). Pretzel provisions a

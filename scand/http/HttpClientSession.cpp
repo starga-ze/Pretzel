@@ -93,7 +93,19 @@ void ClientSession::start()
     m_sslCtx.set_options(ssl::context::default_workarounds | ssl::context::no_sslv2 |
                          ssl::context::no_sslv3 | ssl::context::no_tlsv1 | ssl::context::no_tlsv1_1);
     if (m_req.verifyCa)
-        m_sslCtx.set_default_verify_paths();
+    {
+        // Our statically-linked OpenSSL was built with its own OPENSSLDIR, which is not the host's
+        // trust store, so set_default_verify_paths() alone finds no CAs and every public-CA handshake
+        // fails "certificate verify failed". Load the system bundle explicitly (Debian/Ubuntu, then
+        // RHEL); missing files are ignored so the default paths still apply where they work.
+        boost::system::error_code vec;
+        m_sslCtx.set_default_verify_paths(vec);
+        for (const char* bundle : {"/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt"})
+        {
+            boost::system::error_code fe;
+            m_sslCtx.load_verify_file(bundle, fe);
+        }
+    }
 
     // SNI — some platforms serve a different certificate without it.
     if (!SSL_set_tlsext_host_name(m_stream.native_handle(), m_req.host.c_str()))

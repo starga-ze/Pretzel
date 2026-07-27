@@ -1,7 +1,7 @@
 #include "event/EnginedEventFactory.h"
 
 #include "service/admin/AdminEvent.h"
-#include "service/apikey/ApiKeyEvent.h"
+#include "service/apicredential/ApiCredentialEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/collection/CollectionEvent.h"
 #include "service/commit/CommitEvent.h"
@@ -74,11 +74,11 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
     case pz::ipc::IpcCmd::AdminPasswordUpdate:
         return std::make_unique<AdminEvent>(AdminEventType::ReceivePasswordUpdate, std::move(msg));
 
-    case pz::ipc::IpcCmd::ApiKeyStateUpdate:
-        return std::make_unique<ApiKeyEvent>(ApiKeyEventType::ReceiveStateUpdate, std::move(msg));
+    case pz::ipc::IpcCmd::ApiCredentialStateUpdate:
+        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveStateUpdate, std::move(msg));
 
-    case pz::ipc::IpcCmd::ApiKeyStateRequest:
-        return std::make_unique<ApiKeyEvent>(ApiKeyEventType::ReceiveStateRequest, std::move(msg));
+    case pz::ipc::IpcCmd::ApiCredentialStateRequest:
+        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveStateRequest, std::move(msg));
 
     case pz::ipc::IpcCmd::ApiCollectionSample:
         return std::make_unique<CollectionEvent>(CollectionEventType::ReceiveSample, std::move(msg));

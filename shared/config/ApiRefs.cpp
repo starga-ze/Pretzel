@@ -31,7 +31,7 @@ bool checkApiReferences(const json& api, std::string& error)
         return true;
 
     const json endpoints = api.value("endpoints", json::array());
-    const json apiKeys = api.value("api_keys", json::array());
+    const json apiKeys = api.value("api_credentials", json::array());
     const json connectors = api.value("connectors", json::array());
 
     if (!connectors.is_array())

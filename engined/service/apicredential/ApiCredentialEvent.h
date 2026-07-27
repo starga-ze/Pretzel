@@ -9,26 +9,26 @@
 namespace pz::engined
 {
 
-enum class ApiKeyEventType : std::uint32_t
+enum class ApiCredentialEventType : std::uint32_t
 {
     Unknown = 0,
     ReceiveStateUpdate = 1,
     ReceiveStateRequest = 2,
 };
 
-class ApiKeyEvent final : public EnginedEvent
+class ApiCredentialEvent final : public EnginedEvent
 {
 public:
-    explicit ApiKeyEvent(ApiKeyEventType type);
-    ApiKeyEvent(ApiKeyEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
+    explicit ApiCredentialEvent(ApiCredentialEventType type);
+    ApiCredentialEvent(ApiCredentialEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(EnginedServiceManager& serviceManager) override;
 
-    ApiKeyEventType type() const;
+    ApiCredentialEventType type() const;
     const pz::ipc::IpcMessage* message() const;
 
 private:
-    ApiKeyEventType m_type{ApiKeyEventType::Unknown};
+    ApiCredentialEventType m_type{ApiCredentialEventType::Unknown};
     std::unique_ptr<pz::ipc::IpcMessage> m_message;
 };
 

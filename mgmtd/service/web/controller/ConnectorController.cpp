@@ -211,7 +211,7 @@ void handleApiTestResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& r
 }
 
 // The shared, session-independent view of every API key's runtime state: whether a key/credential
-// is held, expiry, and the last test outcome. Read straight from api_key_state (engined is the
+// is held, expiry, and the last test outcome. Read straight from api_credential_state (engined is the
 // writer, mgmtd may read), keyed by the API Key oid. Sealed blobs (secret_enc/id_enc/pw_enc) are
 // NEVER returned — only whether they exist — so the plaintext stays in the one process that holds it.
 void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
@@ -227,7 +227,7 @@ void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, 
             "COALESCE(to_char(expires_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
             "COALESCE(to_char(last_test_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
             "COALESCE(last_test_ok::int::text, ''), COALESCE(last_test_note, '') "
-            "FROM api_key_state");
+            "FROM api_credential_state");
 
         for (const auto& r : rows)
         {
