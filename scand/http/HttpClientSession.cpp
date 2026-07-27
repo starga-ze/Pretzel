@@ -1,4 +1,4 @@
-#include "client/HttpClientSession.h"
+#include "http/HttpClientSession.h"
 
 #include <boost/asio/connect.hpp>
 

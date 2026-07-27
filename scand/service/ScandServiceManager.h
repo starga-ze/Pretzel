@@ -2,6 +2,7 @@
 
 #include "service/ServiceManager.h"
 
+#include "service/api/ApiCollector.h"
 #include "service/api/ApiService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
@@ -50,6 +51,7 @@ private:
     boost::asio::io_context* m_ioContext;
 
     std::unique_ptr<ApiService> m_apiService;
+    std::unique_ptr<ApiCollector> m_apiCollector;
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ReloadService> m_reloadService;

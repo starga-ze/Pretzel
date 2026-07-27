@@ -119,6 +119,8 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "ApiKeyStateRequest";
     case IpcCmd::ApiKeyStateResponse:
         return "ApiKeyStateResponse";
+    case IpcCmd::ApiCollectionSample:
+        return "ApiCollectionSample";
     case IpcCmd::ProbeRequest:
         return "ProbeRequest";
     case IpcCmd::AuthLoginRequest:

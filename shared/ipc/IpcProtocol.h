@@ -94,6 +94,9 @@ enum class IpcCmd : std::uint16_t
     // periodic collection would otherwise hit the database on every poll.
     ApiKeyStateRequest = 129,
     ApiKeyStateResponse = 130,
+
+    // scand → engined: one connector's scheduled endpoint poll result, persisted to api_collection.
+    ApiCollectionSample = 131,
 };
 
 enum class IpcFlag : std::uint8_t

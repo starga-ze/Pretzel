@@ -184,4 +184,24 @@ std::optional<std::string> MgmtdServiceManager::takeSsoResult(std::uint32_t tick
     return out;
 }
 
+void MgmtdServiceManager::setStaticCache(std::shared_ptr<pz::http::StaticFileCache> cache)
+{
+    m_staticCache = std::move(cache);
+}
+
+const std::shared_ptr<pz::http::StaticFileCache>& MgmtdServiceManager::staticCache() const
+{
+    return m_staticCache;
+}
+
+std::uint32_t MgmtdServiceManager::nextSsoTicket()
+{
+    return m_ssoTicket++;
+}
+
+std::uint32_t MgmtdServiceManager::nextApiTestTicket()
+{
+    return m_apiTestTicket++;
+}
+
 }

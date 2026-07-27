@@ -40,13 +40,6 @@
              <polyline points="9 22 9 12 15 12 15 22"/>`,
     },
 
-    { type: 'section', label: 'Insight' },
-    {
-      type: 'link', id: 'floor-map', label: 'Floor Map', href: 'rack-management',
-      icon: `<polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21 1 6"/>
-             <line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/>`,
-    },
-
     { type: 'section', label: 'Control' },
     {
       type: 'link', id: 'remote-access', label: 'Remote Access', href: '#', soon: true,
@@ -55,19 +48,6 @@
     {
       type: 'link', id: 'power', label: 'Power Control', href: '#', soon: true,
       icon: `<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>`,
-    },
-
-    { type: 'section', label: 'Monitor' },
-    {
-      type: 'link', id: 'events', label: 'Events', href: 'events',
-      icon: `<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-             <path d="M13.73 21a2 2 0 0 1-3.46 0"/>`,
-    },
-    {
-      type: 'link', id: 'log-viewer', label: 'Logs', href: 'log-viewer',
-      icon: `<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-             <polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/>
-             <line x1="8" y1="17" x2="16" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/>`,
     },
 
     { type: 'section', label: 'Administrator' },
@@ -92,11 +72,11 @@
                       l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
                       a1.65 1.65 0 0 0-1.51 1z"/>`,
     },
+    { type: 'section', label: 'Monitor' },
     {
-      type: 'link', id: 'audit', label: 'Audit', href: 'audit',
-      icon: `<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
-             <rect x="9" y="3" width="6" height="4" rx="1"/>
-             <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>`,
+      type: 'link', id: 'system-log', label: 'System Log', href: 'log-viewer',
+      icon: `<path d="M4 5h16"/><path d="M4 12h10"/><path d="M4 19h7"/>
+             <path d="M15 16l2.5 3 3.5-6"/>`,
     },
 
     { type: 'section', label: 'Laboratory' },
@@ -116,15 +96,10 @@
   // page gets the same fixed header band (injected into #pageTopbar by buildTopbar).
   const PAGES = {
     'home':            { title: 'Home' },
-    'rack-management': { title: 'Floor Map' },
-    'log-viewer':      { title: 'Logs' },
-    'events':          { title: 'Events' },
     // The group is chosen in the sidebar flyout (SETTINGS_GROUPS); the topbar shows that
     // group's name and one row of its tabs.
     'settings':        { title: 'Configuration', groups: SETTINGS_GROUPS },
-    'audit':           { title: 'Audit', tabs: [
-                           { id: 'config', label: 'Config History' },
-                           { id: 'access', label: 'Access History' } ] },
+    'log-viewer':      { title: 'System Log' },
     'laboratory':      { title: 'Laboratory' },
   };
 

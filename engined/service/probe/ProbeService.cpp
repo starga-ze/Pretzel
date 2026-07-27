@@ -94,7 +94,7 @@ void ProbeService::sendProbeRequest(EnginedServiceManager& serviceManager)
     m_pending = true;
     m_requestedAt = std::chrono::steady_clock::now();
 
-    LOG_DEBUG("sending ProbeRequest to icmpd");
+    LOG_TRACE("sending ProbeRequest to icmpd");
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
@@ -128,7 +128,7 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager, const Pr
         return;
     }
 
-    LOG_INFO("probe complete (alive={}, received_ips={})", aliveCount, ips.size());
+    LOG_DEBUG("probe complete (alive={}, received_ips={})", aliveCount, ips.size());
 
     // Keep the device projection in sync with config, then reflect ICMP reachability into status.
     projectInventory();

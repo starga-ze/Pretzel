@@ -13,7 +13,8 @@ enum class ApidEventDomain : std::uint32_t
 {
     Unknown = 0,
     Bootstrap = 1,
-    Ingest = 2
+    Ingest = 2,
+    Heartbeat = 3
 };
 
 class ApidEvent : public pz::event::Event

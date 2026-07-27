@@ -21,6 +21,17 @@ PZ_PGADMIN_LISTEN_PORT = 5050
 DEFAULT_SERVER = PZ_PGADMIN_LISTEN_ADDRESS
 DEFAULT_SERVER_PORT = PZ_PGADMIN_LISTEN_PORT
 
+# Serve the pgAdmin web UI over HTTPS, reusing the same TLS pair mgmtd serves with
+# (script/start.py deploys cert/ to /etc/pretzel/cert). These PZ_-prefixed names are
+# read by script/start.py to add gunicorn --certfile/--keyfile. This is browser <-> pgAdmin
+# transport only; pgAdmin <-> PostgreSQL stays the PG wire protocol on 5432, unchanged.
+PZ_PGADMIN_TLS_ENABLED = True
+PZ_PGADMIN_TLS_CERT = "/etc/pretzel/cert/server.crt"
+PZ_PGADMIN_TLS_KEY = "/etc/pretzel/cert/server.key"
+
+# Behind gunicorn's TLS the session cookie should only travel over HTTPS.
+SESSION_COOKIE_SECURE = True
+
 # All writable runtime state lives under the pretzel state/log roots, consistent
 # with the other services.
 DATA_DIR = "/var/lib/pretzel/pgadmin"
