@@ -110,8 +110,8 @@ DROP TABLE IF EXISTS api_endpoint_state;
 -- from config on every reload), so the DDL drops and recreates it to evolve the shape.
 --   oid         : object identity — a UUID string, immutable
 --   site        : oid of the site the device belongs to ('' = unassigned)
---   device_type : ngfw (reached at its own address) | prisma_access (tenant-scoped)
---   target      : access identifier — ngfw: mgmt IP/FQDN · prisma_access: tenant/TSG id
+--   device_type : ngfw (reached at its own address) | sase (tenant-scoped)
+--   target      : access identifier — ngfw: mgmt IP/FQDN · sase: tenant/TSG id
 DROP TABLE IF EXISTS inventory;
 DROP TABLE IF EXISTS devices;
 CREATE TABLE IF NOT EXISTS devices (
@@ -136,13 +136,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS devices_target_uniq ON devices (device_type, t
 -- readable by every reviewer, and would mint a configuration version each time it was re-issued.
 -- Same reasoning that keeps admin passwords in local_users.
 --
--- Written only by engined (mgmtd hands the result over by IPC). Keyed by the API Key oid.
---   secret_enc : AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext), sealed by mgmtd with
---                /etc/pretzel/credentials.key. A database copy without that file is useless.
---   expires_at : NULL means no expiry — PAN-OS keys are indefinite unless an API key lifetime
---                is configured on the device.
+-- Written only by engined; the values arrive already sealed over IPC (scand seals them with
+-- /etc/pretzel/credentials.key, the one process that holds a plaintext credential). Keyed by the
+-- API Key oid. A single schema serves both device types: for ngfw the durable secret is the issued
+-- key; for sase it is the tenant OAuth credential (the bearer token stays ephemeral in memory).
+--   id_enc     : account identity  — ngfw username / sase client id     (AES-256-GCM, base64)
+--   pw_enc     : account secret    — ngfw password / sase client secret (AES-256-GCM, base64)
+--   secret_enc : issued key/token  — AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext). A database copy
+--                without credentials.key is useless.
+--   expires_at : NULL means no expiry — PAN-OS keys are indefinite unless an API key lifetime is
+--                configured on the device.
 CREATE TABLE IF NOT EXISTS api_key_state (
     oid            TEXT PRIMARY KEY,
+    id_enc         TEXT,
+    pw_enc         TEXT,
     secret_enc     TEXT,
     issued_at      TIMESTAMPTZ,
     expires_at     TIMESTAMPTZ,
@@ -151,6 +158,9 @@ CREATE TABLE IF NOT EXISTS api_key_state (
     last_test_note TEXT,
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Upgrade path for databases created before the credential columns existed.
+ALTER TABLE api_key_state ADD COLUMN IF NOT EXISTS id_enc TEXT;
+ALTER TABLE api_key_state ADD COLUMN IF NOT EXISTS pw_enc TEXT;
 
 -- API collection samples: what each connector's scheduled endpoint poll returned. Pure state
 -- (system-produced, never operator-declared), written only by engined from scand's IPC — the same
@@ -223,6 +233,28 @@ BEGIN
         WHERE config_json #> '{ipcd,service}' ? 'daemon_map';
     UPDATE startup_config SET config_json = config_json #- '{ipcd,service,daemon_map}'
         WHERE config_json #> '{ipcd,service}' ? 'daemon_map';
+    -- Device-type rename (prisma_access -> sase): rewrite device_type across the devices array of
+    -- every persisted version and the baseline. Idempotent — once renamed nothing matches the guard.
+    UPDATE running_config SET config_json = jsonb_set(config_json, '{engined,service,site,devices}', (
+        SELECT COALESCE(jsonb_agg(
+            CASE WHEN elem->>'device_type' = 'prisma_access'
+                 THEN jsonb_set(elem, '{device_type}', '"sase"')
+                 ELSE elem END), '[]'::jsonb)
+        FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') AS elem))
+        WHERE jsonb_typeof(config_json #> '{engined,service,site,devices}') = 'array'
+          AND EXISTS (SELECT 1 FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') AS e
+                      WHERE e->>'device_type' = 'prisma_access');
+    UPDATE startup_config SET config_json = jsonb_set(config_json, '{engined,service,site,devices}', (
+        SELECT COALESCE(jsonb_agg(
+            CASE WHEN elem->>'device_type' = 'prisma_access'
+                 THEN jsonb_set(elem, '{device_type}', '"sase"')
+                 ELSE elem END), '[]'::jsonb)
+        FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') AS elem))
+        WHERE jsonb_typeof(config_json #> '{engined,service,site,devices}') = 'array'
+          AND EXISTS (SELECT 1 FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') AS e
+                      WHERE e->>'device_type' = 'prisma_access');
+    -- Projection table too, in case a reload has not rebuilt it yet.
+    UPDATE devices SET device_type = 'sase' WHERE device_type = 'prisma_access';
 END $migrate$;
 )SQL";
 

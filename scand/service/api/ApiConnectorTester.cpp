@@ -160,8 +160,8 @@ struct ConnectorTest
 // The stages call one another across async boundaries; forward-declared so they can be written in
 // call order below.
 void sendTestResponse(ScandServiceManager& sm, std::uint32_t seqNo, const json& out);
-void sendApiKeyState(ScandServiceManager& sm, const std::string& keyOid, const std::string& key, bool ok,
-                     const std::string& note);
+void sendApiKeyState(ScandServiceManager& sm, const std::string& keyOid, const std::string& id,
+                     const std::string& pw, const std::string& key, bool ok, const std::string& note);
 void runConnectorTest(const std::shared_ptr<ConnectorTest>& ctx);
 void rejectTest(const std::shared_ptr<ConnectorTest>& ctx, const std::string& message);
 void afterKey(const std::shared_ptr<ConnectorTest>& ctx, const std::string& key);
@@ -258,7 +258,8 @@ void afterKey(const std::shared_ptr<ConnectorTest>& ctx, const std::string& key)
 
     if (!ctx->keyOid.empty())
     {
-        sendApiKeyState(*ctx->sm, ctx->keyOid, key, !key.empty(), ctx->out.value("message", std::string()));
+        sendApiKeyState(*ctx->sm, ctx->keyOid, ctx->target.username, ctx->target.password, key, !key.empty(),
+                        ctx->out.value("message", std::string()));
 
         // Cache it now rather than waiting for a round trip: the operator's next action is usually
         // another test, and it should not ask for the password again just because engined has not
@@ -444,25 +445,34 @@ void sendTestResponse(ScandServiceManager& sm, std::uint32_t seqNo, const json& 
     sm.txRouter().handleIpcMessage(std::move(msg));
 }
 
-// Hands the issued key to engined, the only database writer. The secret is sealed here so the
-// plaintext never crosses the IPC socket.
-void sendApiKeyState(ScandServiceManager& sm, const std::string& keyOid, const std::string& key, bool ok,
-                     const std::string& note)
+// Hands the issued key and the account credential to engined, the only database writer. Everything
+// sensitive is sealed here so plaintext never crosses the IPC socket. id/pw and key are each written
+// only when present, so a test that reuses a stored key does not wipe the saved credential (engined
+// COALESCEs the columns).
+void sendApiKeyState(ScandServiceManager& sm, const std::string& keyOid, const std::string& id,
+                     const std::string& pw, const std::string& key, bool ok, const std::string& note)
 {
-    LOG_DEBUG("persisting api key state to engined (oid={}, ok={}, has_key={})", keyOid, ok, !key.empty());
+    LOG_DEBUG("persisting api key state to engined (oid={}, ok={}, has_key={}, has_cred={})", keyOid, ok,
+              !key.empty(), !id.empty() || !pw.empty());
 
     json state;
     state["oid"] = keyOid;
     state["ok"] = ok;
     state["note"] = note;
 
-    if (!key.empty())
-    {
-        if (auto sealed = pz::util::secret::encrypt(key))
-            state["secret_enc"] = *sealed;
+    // The account (id/pw) is the durable credential — for sase the bearer token expires, so the
+    // credential is what lets a later session re-issue without re-prompting the operator.
+    const auto seal = [&](const char* field, const std::string& plain) {
+        if (plain.empty())
+            return;
+        if (auto sealed = pz::util::secret::encrypt(plain))
+            state[field] = *sealed;
         else
-            LOG_WARN("credential store unavailable — key not persisted (oid={})", keyOid);
-    }
+            LOG_WARN("credential store unavailable — {} not persisted (oid={})", field, keyOid);
+    };
+    seal("id_enc", id);
+    seal("pw_enc", pw);
+    seal("secret_enc", key);
 
     const std::string payload = state.dump();
 

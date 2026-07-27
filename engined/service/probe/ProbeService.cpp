@@ -171,8 +171,9 @@ void ProbeService::projectInventory()
         if (oid.empty())
             continue;
 
-        const std::string deviceType =
-            t.value("device_type", std::string()) == "prisma_access" ? "prisma_access" : "ngfw";
+        const std::string dt = t.value("device_type", std::string());
+        // Tolerate the pre-rename "prisma_access" alias until the migration has rewritten every row.
+        const std::string deviceType = (dt == "sase" || dt == "prisma_access") ? "sase" : "ngfw";
 
         db.exec("INSERT INTO devices (oid, site, device_type, target, name, description) "
                 "VALUES ($1,$2,$3,$4,$5,$6) "

@@ -3,7 +3,7 @@
  * An API Key is the credential pretzel uses against one device. It is bound to a Device rather
  * than floating free, because a PAN-OS key is issued by a specific box and is worthless on any
  * other — so "one credential, many devices" would be a fiction. The device also decides the
- * credential shape (NGFW: username/password today; Prisma Access comes later).
+ * credential shape (NGFW: username/password today; SASE comes later).
  *
  * The operator supplies the key-generation endpoint, since customer estates run releases we do
  * not control. Testing happens from the list, not the editor: a key is a thing you keep and
@@ -29,8 +29,8 @@
 
   const { esc, newUuid } = window.NMS.utils;
 
-  // Credential shape per device type. Prisma Access uses a different scheme (client id/secret
-  // against a tenant), so it is declared but left unimplemented rather than faked with id/pw.
+  // Credential shape per device type. SASE uses a different scheme (client id/secret against a
+  // tenant), so it is declared but left unimplemented rather than faked with id/pw.
   const CREDENTIALS = {
     ngfw: {
       supported: true,
@@ -40,11 +40,11 @@
         ['password', 'Password', 'password', ''],
       ],
     },
-    prisma_access: {
+    sase: {
       supported: false,
       keygenHint: '',
       fields: [],
-      note: 'Prisma Access uses tenant OAuth credentials — not implemented yet.',
+      note: 'SASE uses tenant OAuth credentials — not implemented yet.',
     },
   };
   const credSpec = (deviceType) => CREDENTIALS[deviceType] || CREDENTIALS.ngfw;
@@ -55,12 +55,33 @@
   let draftOid = null;
   let draftSite = '';   // Editor-only: the site whose devices the Device select is scoped to.
 
-  // ── Secrets (browser-only, see the header note) ──────────────────────────────
-  // Runtime state for one key: { password, key, issued_at, expires_at, last_test }.
-  // The destination is the api_key_state table; this is its stand-in until then.
+  // ── Key runtime state ─────────────────────────────────────────────────────────
+  // Split by ownership. The stored-key flag, expiry and last-test outcome are server truth, shared
+  // across sessions — engined persists them in api_key_state and mgmtd serves them at
+  // /api/connector/keys-state. The password the operator types stays browser-local (sessionStorage
+  // via NMS.draft): it is never persisted here and goes nowhere but a test request.
+  let serverState = {};
+
+  async function loadKeyState() {
+    try {
+      const r = await fetch('/api/connector/keys-state', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (r.ok) serverState = (await r.json()) || {};
+    } catch (_) { /* keep the last snapshot on a blip */ }
+  }
+
   const secrets = {
-    for: (oid) => (window.NMS.draft.get(SECRET_KEY, {})[oid] || {}),
-    put(oid, vals) {
+    for: (oid) => {
+      const srv = serverState[oid] || {};
+      const local = window.NMS.draft.get(SECRET_KEY, {})[oid] || {};
+      return {
+        stored: !!srv.stored,
+        has_credential: !!srv.has_credential,
+        expires_at: srv.expires_at || null,
+        last_test: srv.last_test || null,
+        password: local.password,   // browser-local, this session only
+      };
+    },
+    put(oid, vals) {   // browser-local store — only the typed password is kept here
       const s = window.NMS.draft.get(SECRET_KEY, {});
       s[oid] = Object.assign(s[oid] || {}, vals);
       window.NMS.draft.set(SECRET_KEY, s);
@@ -100,6 +121,7 @@
       const api = ((d.daemons || {}).scand || {}).api || {};
       deployed = (Array.isArray(api.api_keys) ? api.api_keys : []).map(normalize);
     } catch (_) { deployed = []; }
+    await loadKeyState();   // shared per-key runtime state (stored/expiry/last test)
     const staged = window.NMS.draft.get(DRAFT_KEY, null);
     state.keys = Array.isArray(staged) ? staged.map(normalize) : JSON.parse(JSON.stringify(deployed));
     refreshPending();
@@ -478,7 +500,8 @@
         secrets: { username: k.username, password: held.password },
       });
     } catch (e) {
-      secrets.put(k.oid, { last_test: { at: Date.now(), ok: false, detail: e.message } });
+      // The test never reached the appliance (client-side/network error), so there is no persisted
+      // outcome to show; surface it in the modal and leave the shared row state untouched.
       render();
       modal.open('API Key Generation Test', body(`<div class="test-panel err"><div class="ts-note">${esc(e.message)}</div></div>`));
       return;
@@ -497,13 +520,9 @@
          </div>`
       : '';
 
-    // Recording an outcome must not dirty the configuration — it is state, not a declaration.
-    // `stored` reflects what engined actually kept; a missing credentials.key means the test
-    // succeeded but nothing was persisted, and the row should say so rather than imply otherwise.
-    secrets.put(k.oid, {
-      last_test: { at: Date.now(), ok: !!res.ok, detail: res.message || '' },
-      ...(res.ok ? { stored: !!res.stored, issued_at: Date.now(), expires_at: res.expires_at || null } : {}),
-    });
+    // The outcome (and any newly issued/sealed key) was persisted by engined; re-pull the shared
+    // state so this row — and every other session — reflects what was actually kept.
+    await loadKeyState();
 
     modal.open('API Key Generation Test', body(`
       <div class="test-panel ${res.ok ? 'ok' : 'err'}">

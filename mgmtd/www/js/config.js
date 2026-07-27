@@ -4,7 +4,7 @@
  * single axis that decides everything else:
  *
  *   ngfw           on-prem/VM firewall → reached at its own address    → Access Identifier = IP / FQDN
- *   prisma_access  cloud platform      → reached via a tenant-scoped API → Access Identifier = Tenant ID
+ *   sase           cloud platform      → reached via a tenant-scoped API → Access Identifier = Tenant ID
  *
  * Access Type is therefore derived, never stored twice and never asked of the operator.
  *
@@ -27,7 +27,7 @@
   // [key, label, access kind, access-identifier label, placeholder]
   const DEVICE_TYPES = [
     ['ngfw', 'NGFW', 'direct', 'IP / FQDN', '192.168.0.10'],
-    ['prisma_access', 'Prisma Access', 'tenant', 'Tenant ID', '1963594622'],
+    ['sase', 'SASE', 'tenant', 'Tenant ID', '1963594622'],
   ];
   const typeRow = (t) => DEVICE_TYPES.find(([k]) => k === t) || DEVICE_TYPES[0];
   const typeLabel = (t) => typeRow(t)[1];
@@ -49,9 +49,10 @@
     // `type`/`platform` are the pre-consolidation keys: everything that was not a tenant
     // platform was an on-prem firewall, so it maps to ngfw.
     let deviceType = d.device_type;
+    if (deviceType === 'prisma_access') deviceType = 'sase';   // pre-rename canonical value
     if (!DEVICE_TYPES.some(([k]) => k === deviceType)) {
       const legacyTenant = (d.platform || d.access) === 'tenant' || d.type === 'sase' || d.type === 'saas';
-      deviceType = legacyTenant ? 'prisma_access' : 'ngfw';
+      deviceType = legacyTenant ? 'sase' : 'ngfw';
     }
     return {
       oid: (typeof d.oid === 'string' && d.oid) ? d.oid : (d.uuid || d.id || newUuid()),
@@ -191,7 +192,7 @@
       <div class="field-row"><label>Access Type</label>
         <input value="${esc(accessLabel(d.device_type))}" disabled/></div>
       <p class="field-hint">Access Type follows the device type — an NGFW is reached at its own
-        address, Prisma Access through its tenant.</p>
+        address, SASE through its tenant.</p>
       ${fieldRow(accessLabel(d.device_type), 'target', d.target, accessPlaceholder(d.device_type))}
       ${d.fingerprint
         ? `<div class="fp-box"><div class="fp-label">Pinned certificate (SHA-256)</div>

@@ -82,7 +82,7 @@ std::vector<std::string> probeExplicitTargets()
     {
         if (!t.is_object())
             continue;
-        // Only an NGFW has an address to ping; prisma_access is reached through its tenant.
+        // Only an NGFW has an address to ping; sase is reached through its tenant.
         if (t.value("device_type", std::string("ngfw")) != "ngfw")
             continue;
         const std::string target = t.value("target", std::string());

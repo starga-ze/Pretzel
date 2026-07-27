@@ -48,6 +48,9 @@ PZ_TABLES = [
     "local_users",
     "devices",
     "api_key_state",
+    "api_collection",     # connector endpoint-poll samples
+    "system_log",         # tailed daemon logs
+    "system_log_offset",  # per-daemon tailer checkpoint
     # retired
     "inventory",          # pre-rename device projection
     "probe_devices",      # mixed ICMP status + discovered SNMP data

@@ -17,8 +17,14 @@
 
 #include <nlohmann/json.hpp>
 
+#include <sys/stat.h>
+
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -50,10 +56,10 @@ constexpr const char* kHiddenDomains[] = {
 // object) carry the referent's oid.
 
 // engined.site.devices — Devices (www/js/config.js). `device_type` is the single axis:
-// ngfw is reached at its own address, prisma_access through a tenant, so the access kind is
+// ngfw is reached at its own address, sase through a tenant, so the access kind is
 // derived from it rather than stored twice. A device carries the TLS pin for its host but no
 // credential — an API Key references the device and holds the account.
-//   { oid, name, description?, site?, device_type: ngfw|prisma_access, target, fingerprint? }
+//   { oid, name, description?, site?, device_type: ngfw|sase, target, fingerprint? }
 // `fingerprint` is written by the API Key test once the operator confirms the certificate, not
 // typed — pinning is unconditional, so there is no TLS mode to choose.
 bool validDevice(const json& d)
@@ -64,7 +70,9 @@ bool validDevice(const json& d)
         return false;
 
     const std::string deviceType = d.value("device_type", std::string());
-    return deviceType == "ngfw" || deviceType == "prisma_access";
+    // "prisma_access" accepted as the pre-rename alias so a stale draft still commits; the frontend
+    // normalizes it to "sase" and the schema migration rewrites persisted rows.
+    return deviceType == "ngfw" || deviceType == "sase" || deviceType == "prisma_access";
 }
 
 // engined.site.sites — Sites, one per customer (www/js/sites.js).
@@ -451,6 +459,157 @@ void handleCommitQueue(MgmtdServiceManager& sm, const pz::http::HttpRequest& req
     fill(resp, 200, sm.commitQueueSnapshot());
 }
 
+// ── Saved configurations (named running-config snapshots on the appliance) ─────────────────
+// Plain files under <config-dir>/saved-configs. They survive `pretzel reset` (which only drops DB
+// tables) and a redeploy (which rewrites only startup-config.json), so they are the durable on-box
+// backup. No secrets involved — the running-config is already redacted at persist time.
+
+std::string savedConfigDir()
+{
+    const char* env = std::getenv("PRETZEL_CONFIG_DIR");
+    return std::string(env && *env ? env : "/etc/pretzel") + "/saved-configs";
+}
+
+// A safe "<name>.json" path, or "" if the operator's name is unusable. Guards against path
+// traversal: only [A-Za-z0-9._-], no leading dot, length-capped, no directory separators.
+std::string savedConfigFile(std::string name)
+{
+    const std::string ext = ".json";
+    if (name.size() >= ext.size() && name.compare(name.size() - ext.size(), ext.size(), ext) == 0)
+        name.erase(name.size() - ext.size());   // tolerate an entered ".json"
+    if (name.empty() || name.size() > 100 || name.front() == '.')
+        return "";
+    for (char c : name)
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '_' || c == '-'))
+            return "";
+    return savedConfigDir() + "/" + name + ext;
+}
+
+std::string activeRunningConfigJson()
+{
+    const auto rows = pz::db::Database::instance().queryRows(
+        "SELECT config_json FROM running_config WHERE state='active' ORDER BY version DESC LIMIT 1");
+    if (rows.empty() || rows.front().empty())
+        return "";
+    return rows.front()[0];
+}
+
+void handleSaveConfig(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    (void)sm;
+    json input;
+    try
+    {
+        input = json::parse(req.body);
+    }
+    catch (const std::exception&)
+    {
+        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    }
+
+    const std::string path = savedConfigFile(input.value("name", std::string()));
+    if (path.empty())
+        return fill(resp, 400, R"({"error":"invalid name — use letters, digits, dot, dash or underscore"})");
+
+    // Two callers: Save persists the live running-config (no "content"); Import persists a document
+    // the browser uploaded (its raw text in "content"). An uploaded document is validated as JSON so
+    // a saved file is always loadable later.
+    std::string cfg;
+    if (input.contains("content"))
+    {
+        cfg = input.value("content", std::string());
+        if (json::parse(cfg, nullptr, false).is_discarded())
+            return fill(resp, 400, R"({"error":"uploaded content is not valid JSON"})");
+    }
+    else
+    {
+        cfg = activeRunningConfigJson();
+        if (cfg.empty())
+            return fill(resp, 404, R"({"error":"no active running-config to save"})");
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(savedConfigDir(), ec);
+
+    // Write to a temp then rename so a reader never sees a half-written document.
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::trunc);
+        if (!f)
+            return fill(resp, 500, R"({"error":"could not open file for writing"})");
+        f << cfg;
+        if (!f)
+        {
+            std::filesystem::remove(tmp, ec);
+            return fill(resp, 500, R"({"error":"write failed"})");
+        }
+    }
+    std::filesystem::rename(tmp, path, ec);
+    if (ec)
+    {
+        std::filesystem::remove(tmp, ec);
+        return fill(resp, 500, R"({"error":"rename failed"})");
+    }
+
+    LOG_INFO("running-config saved to {}", path);
+    fill(resp, 200, json{{"ok", true}}.dump());
+}
+
+void handleSavedConfigs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    (void)sm;
+    (void)req;
+
+    json out = json::array();
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(savedConfigDir(), ec))
+    {
+        if (ec)
+            break;
+        const auto& p = entry.path();
+        if (!entry.is_regular_file() || p.extension() != ".json")
+            continue;
+        struct ::stat st{};
+        std::uint64_t mtime = 0, bytes = 0;
+        if (::stat(p.c_str(), &st) == 0)
+        {
+            mtime = static_cast<std::uint64_t>(st.st_mtime);
+            bytes = static_cast<std::uint64_t>(st.st_size);
+        }
+        out.push_back({{"name", p.stem().string()}, {"saved_at", mtime}, {"bytes", bytes}});
+    }
+    std::sort(out.begin(), out.end(),
+              [](const json& a, const json& b) { return a.value("saved_at", 0ull) > b.value("saved_at", 0ull); });
+
+    fill(resp, 200, out.dump());
+}
+
+// Returns the raw saved document so the browser can apply it through the same commit path Import
+// uses. Selected from the list, so the name is already one of ours; still validated defensively.
+void handleSavedConfigContent(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    (void)sm;
+
+    std::string name;
+    if (auto pos = req.target.find("name="); pos != std::string::npos)
+    {
+        name = req.target.substr(pos + 5);
+        if (auto amp = name.find('&'); amp != std::string::npos)
+            name.erase(amp);
+    }
+
+    const std::string path = savedConfigFile(name);
+    if (path.empty())
+        return fill(resp, 400, R"({"error":"invalid name"})");
+
+    std::ifstream f(path);
+    if (!f)
+        return fill(resp, 404, R"({"error":"not found"})");
+
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    fill(resp, 200, content);   // already a JSON config document
+}
+
 }
 
 void SettingsController::registerRoutes(WebRouter& router)
@@ -462,6 +621,9 @@ void SettingsController::registerRoutes(WebRouter& router)
     router.post("/api/settings/commit", Access::Authenticated, &handleSettingsCommit);
     router.get("/api/settings/reload-status", Access::Authenticated, &handleReloadStatus);
     router.get("/api/settings/commit-queue", Access::Authenticated, &handleCommitQueue);
+    router.post("/api/settings/save-config", Access::Authenticated, &handleSaveConfig);
+    router.get("/api/settings/saved-configs", Access::Authenticated, &handleSavedConfigs);
+    router.getPrefix("/api/settings/saved-config-content", Access::Authenticated, &handleSavedConfigContent);
 }
 
 }

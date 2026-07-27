@@ -7,6 +7,7 @@
 
 #include "router/MgmtdTxRouter.h"
 
+#include "db/Database.h"
 #include "http/HttpMessage.h"
 #include "http/UrlEncode.h"
 #include "ipc/IpcMessage.h"
@@ -209,6 +210,47 @@ void handleApiTestResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& r
     fill(resp, 200, body.dump());
 }
 
+// The shared, session-independent view of every API key's runtime state: whether a key/credential
+// is held, expiry, and the last test outcome. Read straight from api_key_state (engined is the
+// writer, mgmtd may read), keyed by the API Key oid. Sealed blobs (secret_enc/id_enc/pw_enc) are
+// NEVER returned — only whether they exist — so the plaintext stays in the one process that holds it.
+void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    (void)sm;
+    (void)req;
+
+    json out = json::object();
+    try
+    {
+        const auto rows = pz::db::Database::instance().queryRows(
+            "SELECT oid, (secret_enc IS NOT NULL)::int, (id_enc IS NOT NULL AND pw_enc IS NOT NULL)::int, "
+            "COALESCE(to_char(expires_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
+            "COALESCE(to_char(last_test_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
+            "COALESCE(last_test_ok::int::text, ''), COALESCE(last_test_note, '') "
+            "FROM api_key_state");
+
+        for (const auto& r : rows)
+        {
+            if (r.size() < 7 || r[0].empty())
+                continue;
+            json e;
+            e["stored"] = (r[1] == "1");
+            e["has_credential"] = (r[2] == "1");
+            if (!r[3].empty())
+                e["expires_at"] = r[3];
+            if (!r[4].empty())   // a test has run
+                e["last_test"] = {{"at", r[4]}, {"ok", r[5] == "1"}, {"detail", r[6]}};
+            out[r[0]] = std::move(e);
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        LOG_WARN("keys-state query failed: {}", ex.what());
+    }
+
+    fill(resp, 200, out.dump());
+}
+
 }
 
 void ConnectorController::registerRoutes(WebRouter& router)
@@ -218,6 +260,7 @@ void ConnectorController::registerRoutes(WebRouter& router)
     router.post("/api/connector/keygen-test", Access::Authenticated, &handleKeygenTest);
     router.post("/api/connector/endpoint-test", Access::Authenticated, &handleEndpointTest);
     router.getPrefix("/api/connector/test-result", Access::Authenticated, &handleApiTestResult);
+    router.get("/api/connector/keys-state", Access::Authenticated, &handleKeysState);
 }
 
 }

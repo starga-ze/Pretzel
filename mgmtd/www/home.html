@@ -46,33 +46,37 @@
 </div>
 <script src="js/main.js"></script>
 <script>
-  // Home. Left card: sites with their devices (from the running config, one load). Right card: live
-  // daemon status from /health, polled on the same ~5s cadence engined refreshes the heartbeat.
+  // Home dashboard. One refresh cycle drives the whole page: every 5s (and on the topbar Refresh
+  // button) it re-pulls config, device reachability and daemon health, then re-renders both cards.
   (function () {
-    var DAEMON_POLL_MS = 5000;
+    var PAGE_REFRESH_MS = 5000;
 
     function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
     function oidOf(o) { return (o && (o.oid || o.uuid || o.id)) || ''; }
 
-    // ── General Information: sites, their devices, and each device's live reachability ──
     var ovBody = document.getElementById('overviewBody');
     var ovHint = document.getElementById('ovHint');
+    var list = document.getElementById('daemonList');
+    var hint = document.getElementById('daemonHint');
     var PIN = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
 
-    var siteData = null;   // config { sites, devices } from /api/settings, loaded once
-    var aliveSet = null;   // reachable targets from /api/inventory/status; null until first poll
+    // Latest snapshot, refreshed each cycle; kept so a single failed fetch shows last-known data.
+    var siteData = null;   // config { sites, devices } from /api/settings
+    var aliveSet = null;   // reachable targets from /api/inventory/status (null until first success)
+    var daemons = [];      // heartbeat roll-up from /health
+    var healthOk = false;
 
-    // ngfw and prisma_access are the two device types; tag each on the right of its row.
+    // ── General Information render ──────────────────────────────────────────────────────
     function typeTag(t) {
-      return t === 'prisma_access'
-        ? '<span class="type-badge badge-server">Prisma Access</span>'
+      return t === 'sase'
+        ? '<span class="type-badge badge-server">SASE</span>'
         : '<span class="type-badge badge-network">NGFW</span>';
     }
 
     // Reachability dot after the type tag. Only NGFW (IP-probed) devices have an ICMP state; hold the
-    // dot back until the first status poll so nothing flashes red before we actually know.
+    // dot back until reachability is known so nothing flashes red before we actually have data.
     function statusDot(d) {
-      if (d.device_type === 'prisma_access' || !aliveSet) return '';
+      if (d.device_type === 'sase' || !aliveSet) return '';
       var active = aliveSet.has(d.target);
       return '<span class="dot ' + (active ? 'dot-green' : 'dot-red') + '" title="' + (active ? 'active' : 'inactive') + '"></span>';
     }
@@ -90,7 +94,7 @@
     }
 
     function renderOverview() {
-      if (!siteData) return;
+      if (!siteData) { ovBody.innerHTML = '<div class="home-empty">Failed to load configuration.</div>'; return; }
       var sites = Array.isArray(siteData.sites) ? siteData.sites : [];
       var devices = Array.isArray(siteData.devices) ? siteData.devices : [];
 
@@ -106,27 +110,7 @@
       ovBody.innerHTML = html || '<div class="home-empty">No sites configured yet.</div>';
     }
 
-    fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-      .then(function (r) { if (r.status === 401) { location.href = '/'; return null; } return r.ok ? r.json() : Promise.reject(r.status); })
-      .then(function (d) { if (d) { siteData = ((d.daemons || {}).engined || {}).site || { sites: [], devices: [] }; renderOverview(); } })
-      .catch(function () { ovBody.innerHTML = '<div class="home-empty">Failed to load configuration.</div>'; });
-
-    // Device reachability, polled like the daemon status. engined marks NGFW rows active/down from ICMP.
-    function pollAlive() {
-      fetch('/api/inventory/status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-        .then(function (d) { aliveSet = new Set((d && d.alive) || []); renderOverview(); })
-        .catch(function () {});
-    }
-    pollAlive();
-    setInterval(pollAlive, DAEMON_POLL_MS);
-
-    // ── Status: daemon state by colour only (green active, amber pending, red inactive) ──
-    var list = document.getElementById('daemonList');
-    var hint = document.getElementById('daemonHint');
-    var inFlight = false;
-
-    // Heartbeat reports alive/dead: active (green) or inactive (red).
+    // ── System Status render (green active / red inactive) ──────────────────────────────
     function meta(status) {
       if (status === 'alive' || status === 'active') return { dot: 'dot-green', word: 'active', cls: 'st-active', active: true };
       return { dot: 'dot-red', word: 'inactive', cls: 'st-inactive' };
@@ -136,24 +120,22 @@
       var m = meta(d.status);
       var r = document.createElement('div');
       r.className = 'info-row';
-
       var label = document.createElement('span');
       label.className = 'info-label';
       label.textContent = d.name;
-
       var val = document.createElement('span');
       val.className = 'info-value ' + m.cls;
       var dot = document.createElement('span');
       dot.className = 'dot ' + m.dot;
       val.appendChild(dot);
       val.appendChild(document.createTextNode(m.word));
-
       r.appendChild(label);
       r.appendChild(val);
       return r;
     }
 
-    function renderStatus(daemons) {
+    function renderStatus() {
+      if (!healthOk) { hint.textContent = 'unreachable'; return; }  // keep last-known rows on a blip
       if (!daemons.length) {
         list.innerHTML = '<div class="home-empty">No daemon data yet &mdash; waiting for the first heartbeat.</div>';
         hint.textContent = '—';
@@ -170,18 +152,43 @@
       hint.textContent = active + ' / ' + daemons.length + ' active';
     }
 
-    function poll() {
-      if (inFlight) return;
-      inFlight = true;
-      fetch('/health', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    // ── Data fetches (each resolves quietly; a failure leaves the prior snapshot in place) ──
+    function loadConfig() {
+      return fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (r) { if (r.status === 401) { location.href = '/'; return null; } return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (d) { if (d) siteData = ((d.daemons || {}).engined || {}).site || { sites: [], devices: [] }; })
+        .catch(function () {});
+    }
+    function loadAlive() {
+      return fetch('/api/inventory/status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-        .then(function (d) { renderStatus((d && d.daemons) || []); })
-        .catch(function () { hint.textContent = 'unreachable'; })
-        .then(function () { inFlight = false; });
+        .then(function (d) { aliveSet = new Set((d && d.alive) || []); })
+        .catch(function () {});
+    }
+    function loadHealth() {
+      return fetch('/health', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (d) { daemons = (d && d.daemons) || []; healthOk = true; })
+        .catch(function () { healthOk = false; });
     }
 
-    poll();
-    setInterval(poll, DAEMON_POLL_MS);
+    // One cycle: pull everything, then render once. The guard skips a tick if the previous is still
+    // in flight (slow network), so overlapping cycles never stack up.
+    var busy = false;
+    function refreshAll() {
+      if (busy) return;
+      busy = true;
+      Promise.all([loadConfig(), loadAlive(), loadHealth()]).then(function () {
+        renderOverview();
+        renderStatus();
+        busy = false;
+      });
+    }
+
+    refreshAll();
+    setInterval(refreshAll, PAGE_REFRESH_MS);
+    // The topbar Refresh button (id=refreshBtn) triggers the same full refresh.
+    if (window.NMS && typeof window.NMS.onRefresh === 'function') window.NMS.onRefresh(refreshAll);
   })();
 </script>
 </body>
