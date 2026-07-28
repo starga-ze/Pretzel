@@ -16,8 +16,8 @@ enum class IpcDaemon : std::uint8_t
     Ipcd = 1,
     Engined = 2,
     Authd = 3,
-    Icmpd = 4,
-    Scand = 5,
+    Probed = 4,
+    Collectord = 5,
     Topologyd = 6,
     Mgmtd = 7,
     Apid = 8,
@@ -81,21 +81,21 @@ enum class IpcCmd : std::uint16_t
     // secret, expiry, test result) is handed over rather than written twice.
     ApiCredentialStateUpdate = 126,
 
-    // Connector tests run in scand, not mgmtd: scand is the daemon that will poll these devices
+    // Connector tests run in collectord, not mgmtd: collectord is the daemon that will poll these devices
     // on a schedule, and a test that exercised a different code path than the collector would
     // not be testing much. mgmtd forwards the operator's (possibly uncommitted) target and
     // correlates the reply by seqNo — the same shape as the SAML ACS delegation to authd.
     ApiConnectorTestRequest = 127,
     ApiConnectorTestResponse = 128,
 
-    // scand asks engined for the issued keys. engined answers with the SEALED blobs and scand
+    // collectord asks engined for the issued keys. engined answers with the SEALED blobs and collectord
     // opens them with credentials.key — the plaintext never crosses the socket, the same way it
-    // never does on the way in. scand caches the result rather than asking per call, because
+    // never does on the way in. collectord caches the result rather than asking per call, because
     // periodic collection would otherwise hit the database on every poll.
     ApiCredentialStateRequest = 129,
     ApiCredentialStateResponse = 130,
 
-    // scand → engined: one connector's scheduled endpoint poll result, persisted to api_collection.
+    // collectord → engined: one connector's scheduled endpoint poll result, persisted to api_collection.
     ApiCollectionSample = 131,
 };
 

@@ -67,7 +67,7 @@ std::string urlDecode(const std::string& in)
     return out;
 }
 
-const std::array<const char*, 7> kKnownDaemons = {"ipcd", "engined", "mgmtd", "authd", "icmpd", "scand", "topologyd"};
+const std::array<const char*, 7> kKnownDaemons = {"ipcd", "engined", "mgmtd", "authd", "probed", "collectord", "topologyd"};
 
 // Severity threshold: a level filter of "warn" returns warn and worse. Accepts a name or a raw digit;
 // returns -1 for "no filter" / unrecognised.

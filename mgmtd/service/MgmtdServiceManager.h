@@ -69,7 +69,7 @@ public:
     std::optional<std::string> takeSsoResult(std::uint32_t ticket);
 
     // API connector tests reach out to a customer device, which may be slow or unreachable, so
-    // scand performs them and answers over IPC. Both ends of this store are on the main loop —
+    // collectord performs them and answers over IPC. Both ends of this store are on the main loop —
     // MgmtdRxRouter fills it, the polling web handler drains it — so no lock is needed.
     void setApiTestResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeApiTestResult(std::uint32_t ticket);

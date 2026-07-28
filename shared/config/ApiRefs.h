@@ -7,7 +7,7 @@
 namespace pz::config
 {
 
-// Referential integrity for a scand.service.api section.
+// Referential integrity for a collectord.service.api section.
 //
 // The section holds three arrays — api_credentials, endpoints, connectors — and a connector is nothing
 // but references: which object, which credential, which endpoint. Endpoints in particular are

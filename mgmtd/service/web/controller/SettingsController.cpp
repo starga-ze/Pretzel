@@ -38,7 +38,7 @@ namespace
 using json = nlohmann::json;
 
 constexpr const char* kSettingsDaemons[] = {
-    "engined", "authd", "icmpd", "scand", "topologyd",
+    "engined", "authd", "probed", "collectord", "topologyd",
 };
 
 constexpr const char* kHiddenDomains[] = {
@@ -84,7 +84,7 @@ bool validSite(const json& s)
     return !s.value("oid", std::string()).empty() && !s.value("name", std::string()).empty();
 }
 
-// scand.api.api_credentials — API Keys (www/js/api-keys.js). Bound to a device because a PAN-OS key is
+// collectord.api.api_credentials — API Keys (www/js/api-keys.js). Bound to a device because a PAN-OS key is
 // issued by one box and worthless on another. The password and the issued key are NOT here:
 // running_config is append-versioned and shown verbatim in the review diff, so a secret written
 // there would be permanent and visible. They stay in the operator's browser until the encrypted
@@ -100,7 +100,7 @@ bool validApiKey(const json& k)
 
     // The endpoint is operator-entered and interpreted per device type — an NGFW device path
     // ("/api/…") or a SASE auth host+path ("auth.…/oauth2/access_token"). Both shapes (and empty) are
-    // accepted here; the frontend validates the shape per type and scand parses it.
+    // accepted here; the frontend validates the shape per type and collectord parses it.
 
     for (const auto* secret : {"password", "secret", "api_key", "key"})
     {
@@ -110,7 +110,7 @@ bool validApiKey(const json& k)
     return true;
 }
 
-// scand.api.endpoints — API Endpoints (www/js/endpoints.js). Device-independent on purpose: the
+// collectord.api.endpoints — API Endpoints (www/js/endpoints.js). Device-independent on purpose: the
 // definition is reusable, and a test names an API Key, which carries the device it was issued by.
 // The release sits inside the path (/restapi/v10.2/…) and pretzel does not rewrite it.
 //
@@ -151,7 +151,7 @@ bool validApiEndpoint(const json& e)
     return true;
 }
 
-// scand.api.connectors — API Connectors (www/js/api-connectors.js).
+// collectord.api.connectors — API Connectors (www/js/api-connectors.js).
 //   { oid, name, description?, object, auth_profile,
 //     items: [{ endpoint, poll_interval_sec, enabled }] }
 //
@@ -213,7 +213,7 @@ bool validApiConnector(const json& c)
 // nothing else; only the assembling belongs here.
 bool validateApiReferences(const json& values, std::string& error)
 {
-    json effective = pz::config::Config::serviceSection("scand", "api");
+    json effective = pz::config::Config::serviceSection("collectord", "api");
     if (!effective.is_object())
         effective = json::object();
 
@@ -253,7 +253,7 @@ bool validateCommitValues(const std::string& daemon, const std::string& domain, 
     if (daemon == "engined" && domain == "site")
         return validateArray("sites", validSite) && validateArray("devices", validDevice);
 
-    if (daemon == "scand" && domain == "api")
+    if (daemon == "collectord" && domain == "api")
         return validateArray("api_credentials", validApiKey) && validateArray("endpoints", validApiEndpoint) &&
                validateArray("connectors", validApiConnector) && validateApiReferences(values, error);
 

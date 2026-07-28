@@ -17,7 +17,10 @@ void ApiCredentialService::handleEvent(EnginedServiceManager& serviceManager, co
 
     if (event.type() == ApiCredentialEventType::ReceiveStateRequest)
     {
-        return sendState(serviceManager, in ? in->getSeqNo() : 0);
+        // Both probed (credential lifecycle) and collectord (collection) request the issued keys, so
+        // the response goes back to whoever asked, not a hard-coded daemon.
+        const pz::ipc::IpcDaemon requester = in ? in->getSrc() : pz::ipc::IpcDaemon::Collectord;
+        return sendState(serviceManager, requester, in ? in->getSeqNo() : 0);
     }
 
     if (event.type() != ApiCredentialEventType::ReceiveStateUpdate)
@@ -55,7 +58,7 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
         return;
     }
 
-    // The credential and key arrive already encrypted: scand holds the plaintext only long enough
+    // The credential and key arrive already encrypted: collectord holds the plaintext only long enough
     // to seal them, so nothing crosses the IPC socket or reaches this process in the clear.
     const std::string idEnc = root.value("id_enc", "");
     const std::string pwEnc = root.value("pw_enc", "");
@@ -88,12 +91,13 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
         LOG_WARN("api_credential_state write failed (oid={})", oid);
 }
 
-void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, std::uint32_t seqNo)
+void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
+                                     std::uint32_t seqNo)
 {
     // secret_enc leaves as it was stored. engined has no credentials.key and could not open it
     // anyway; the requester does that, so a plaintext key exists in exactly one process.
     // secret_enc is the issued key/token; id_enc/pw_enc are the durable account credential that lets
-    // the requester (scand) re-issue on its own for auto-refresh. All stay sealed — engined has no
+    // the requester (collectord) re-issue on its own for auto-refresh. All stay sealed — engined has no
     // credentials.key. A row is worth sending if it holds either an issued key or a credential.
     const auto rows = pz::db::Database::instance().queryRows(
         "SELECT oid, COALESCE(secret_enc, ''), COALESCE(to_char(expires_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
@@ -116,7 +120,7 @@ void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, std:
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Engined);
-    msg->setDst(pz::ipc::IpcDaemon::Scand);
+    msg->setDst(requester);
     msg->setCmd(pz::ipc::IpcCmd::ApiCredentialStateResponse);
     msg->setSeqNo(seqNo);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response));

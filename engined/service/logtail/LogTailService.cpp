@@ -22,7 +22,7 @@ const std::string kLogDir = "/var/log/pretzel";
 
 // Every daemon writing under kLogDir. engined tails its own file too — its ingest lines just become
 // data like any other, bounded by retention.
-const std::vector<std::string> kDaemons = {"ipcd", "engined", "mgmtd", "authd", "icmpd", "scand", "topologyd", "apid"};
+const std::vector<std::string> kDaemons = {"ipcd", "engined", "mgmtd", "authd", "probed", "collectord", "topologyd", "apid"};
 
 constexpr auto kPollInterval = std::chrono::seconds(2);
 constexpr auto kPruneInterval = std::chrono::seconds(60);

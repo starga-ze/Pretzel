@@ -51,10 +51,10 @@ pz_add_test(test-api-refs           test_api_refs.cpp           GTest::gtest_mai
 # suite needs its own main() to point PRETZEL_CONFIG_DIR at a fixture before any test runs.
 pz_add_test(test-secret             test_secret.cpp)
 
-# buildCollectionSample lives in scand, not shared: pull in just that one translation unit and put
-# scand/ on the include path (it needs its own headers and ClientResponse from scand/http). Boost
+# buildCollectionSample lives in collectord, not shared: pull in just that one translation unit and put
+# collectord/ on the include path (it needs its own headers; ClientResponse comes from shared/http). Boost
 # and nlohmann come transitively from pz-shared, so no extra links are required.
 pz_add_test(test-collection-sample  test_collection_sample.cpp  GTest::gtest_main)
 target_sources(test-collection-sample PRIVATE
-    ${CMAKE_SOURCE_DIR}/scand/service/api/CollectionSample.cpp)
-target_include_directories(test-collection-sample PRIVATE ${CMAKE_SOURCE_DIR}/scand)
+    ${CMAKE_SOURCE_DIR}/collectord/service/api/CollectionSample.cpp)
+target_include_directories(test-collection-sample PRIVATE ${CMAKE_SOURCE_DIR}/collectord)

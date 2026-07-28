@@ -54,7 +54,7 @@ PZ_TABLES = [
     # retired
     "inventory",          # pre-rename device projection
     "probe_devices",      # mixed ICMP status + discovered SNMP data
-    "snmp_devices",       # pre-rename (snmpd -> scand)
+    "snmp_devices",       # pre-rename (snmpd -> collectord)
     "state_snapshot",     # heartbeat snapshot, written but never read
     "admin_user",         # pre-rename local_users
     "device_credentials", # abandoned credential store, never wired

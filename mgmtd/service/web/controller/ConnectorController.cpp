@@ -39,15 +39,15 @@ using json = nlohmann::json;
 // version), so a working credential and a working path are independent failures worth
 // distinguishing.
 //
-// Neither call happens here. scand owns the device exchange: it is the daemon that will poll
+// Neither call happens here. collectord owns the device exchange: it is the daemon that will poll
 // these connectors on a schedule, and a test exercising a different code path than the
 // collector would not be testing much. mgmtd validates the request, forwards the target — which
 // the operator may not have committed yet, so the whole thing travels in the payload — and
-// correlates scand's reply by seqNo, the same shape as the SAML ACS delegation to authd. The
+// correlates collectord's reply by seqNo, the same shape as the SAML ACS delegation to authd. The
 // browser still polls /api/connector/test-result.
 
 // The path the device is actually asked for: the endpoint plus its query parameters, encoded the
-// same way scand builds the request (ApiService::runEndpointCall). The endpoint-page test carries
+// same way collectord builds the request (ApiService::runEndpointCall). The endpoint-page test carries
 // its parameters as a separate array, so the bare `endpoint` field understates what was called —
 // this reunites them so the log shows the full request the operator entered. The connector test
 // already bakes its parameters into `endpoint` and sends an empty array, so both flows log the
@@ -69,14 +69,14 @@ std::string fullEndpoint(const json& input)
 }
 
 // Rejects what can be judged without touching the device, so a typo answers immediately
-// instead of costing an IPC round trip and a ticket poll. scand re-checks defensively.
+// instead of costing an IPC round trip and a ticket poll. collectord re-checks defensively.
 std::string connectorTestInputError(const json& input, bool endpointMode)
 {
     if (input.value("target", std::string()).empty())
         return "target is required";
 
-    // A password is only one of two ways in. scand may already hold the key issued for this
-    // profile, in which case it needs no credential at all — and only scand knows that, so the
+    // A password is only one of two ways in. collectord may already hold the key issued for this
+    // profile, in which case it needs no credential at all — and only collectord knows that, so the
     // check here is "is there ANY way to authenticate", not "is there a password".
     //
     // is_object() is checked rather than assumed: nlohmann's value() throws when called on a
@@ -122,7 +122,7 @@ void sendConnectorTest(MgmtdServiceManager& sm, std::uint32_t ticket, json input
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
-    msg->setDst(pz::ipc::IpcDaemon::Scand);
+    msg->setDst(pz::ipc::IpcDaemon::Probed);
     msg->setCmd(pz::ipc::IpcCmd::ApiConnectorTestRequest);
     msg->setSeqNo(ticket);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
@@ -155,7 +155,7 @@ void handleKeygenTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
     const std::string host = input.value("target", std::string());
     sendConnectorTest(sm, ticket, std::move(input), "keygen");
 
-    LOG_INFO("keygen test delegated to scand (ticket={}, host={})", ticket, host);
+    LOG_INFO("keygen test delegated to collectord (ticket={}, host={})", ticket, host);
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 
@@ -184,7 +184,7 @@ void handleEndpointTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& re
     const std::string endpoint = fullEndpoint(input);
     sendConnectorTest(sm, ticket, std::move(input), "endpoint");
 
-    LOG_INFO("endpoint test delegated to scand (ticket={}, host={}, endpoint={})", ticket, host, endpoint);
+    LOG_INFO("endpoint test delegated to collectord (ticket={}, host={}, endpoint={})", ticket, host, endpoint);
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 

@@ -37,7 +37,7 @@
   // Per-type starting points. PAN-OS serves the REST API under /restapi/<ver>/… with its arguments
   // as query parameters, and the XML API under /api/ where everything — including the command —
   // is a query parameter. The key is attached differently too (X-PAN-KEY header vs key= param),
-  // which scand does from the api_type the endpoint now carries.
+  // which collectord does from the api_type the endpoint now carries.
   const TYPE_DEFAULTS = {
     rest: { path: '/restapi/v10.2/Objects/Addresses',
             params: [{ name: 'location', value: 'vsys' }, { name: 'vsys', value: 'vsys1' }] },
@@ -128,7 +128,7 @@
       if (r.status === 401) { location.href = '/'; return; }
       const d = await r.json();
       window.NMS.draft.checkBase(d.version);
-      const api = ((d.daemons || {}).scand || {}).api || {};
+      const api = ((d.daemons || {}).collectord || {}).api || {};
       deployed = (Array.isArray(api.endpoints) ? api.endpoints : []).map(normalize);
     } catch (_) { deployed = []; }
     const staged = window.NMS.draft.get(DRAFT_KEY, null);
@@ -136,7 +136,7 @@
     refreshPending();
   }
 
-  const commitPayload = () => [{ daemon: 'scand', domain: 'api', values: { endpoints: state.endpoints } }];
+  const commitPayload = () => [{ daemon: 'collectord', domain: 'api', values: { endpoints: state.endpoints } }];
 
   window.NMS.staging.register({
     key: DRAFT_KEY,
@@ -429,8 +429,8 @@
 
   // ── Endpoint test ───────────────────────────────────────────────────────────
   // Runs from the row. The browser cannot reach a customer's firewall, so mgmtd hands the call
-  // to scand — the daemon that also polls these connectors on a schedule — and returns a ticket
-  // we poll. 40 × 700ms bounds the wait above scand's own per-step timeout.
+  // to collectord — the daemon that also polls these connectors on a schedule — and returns a ticket
+  // we poll. 40 × 700ms bounds the wait above collectord's own per-step timeout.
   const POLL_MS = 700;
   const POLL_LIMIT = 40;
 

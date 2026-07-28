@@ -21,6 +21,6 @@ with open(DST) as f: dst = json.load(f)
 if deep_merge(src, dst):
     with open(DST, "w") as f: json.dump(dst, f, indent=4)
     print("[OK] Merged new keys into", DST)
-    print("     icmpd.tuning.probe =", json.dumps(dst["icmpd"]["tuning"]["probe"], indent=4))
+    print("     probed.tuning.probe =", json.dumps(dst["probed"]["tuning"]["probe"], indent=4))
 else:
     print("[OK] Already up-to-date:", DST)

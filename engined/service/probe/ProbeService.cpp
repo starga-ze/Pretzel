@@ -86,7 +86,7 @@ void ProbeService::sendProbeRequest(EnginedServiceManager& serviceManager)
 {
     const auto flag = pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request);
 
-    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Engined, pz::ipc::IpcDaemon::Icmpd,
+    pz::ipc::IpcHeader header = pz::ipc::IpcHeader::build(pz::ipc::IpcDaemon::Engined, pz::ipc::IpcDaemon::Probed,
                                                           pz::ipc::IpcCmd::ProbeRequest, 0, flag);
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>(std::move(header));
@@ -94,7 +94,7 @@ void ProbeService::sendProbeRequest(EnginedServiceManager& serviceManager)
     m_pending = true;
     m_requestedAt = std::chrono::steady_clock::now();
 
-    LOG_TRACE("sending ProbeRequest to icmpd");
+    LOG_TRACE("sending ProbeRequest to probed");
 
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 }
