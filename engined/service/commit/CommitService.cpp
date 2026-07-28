@@ -260,8 +260,8 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager, const Co
         // Intentionally skips following daemon (i.e., engined, ipcd, mgmtd)
         static constexpr pz::ipc::IpcDaemon kServiceDaemons[] = {
             pz::ipc::IpcDaemon::Authd,
-            pz::ipc::IpcDaemon::Icmpd,
-            pz::ipc::IpcDaemon::Scand,
+            pz::ipc::IpcDaemon::Probed,
+            pz::ipc::IpcDaemon::Collectord,
             pz::ipc::IpcDaemon::Topologyd,
             pz::ipc::IpcDaemon::Apid
         };

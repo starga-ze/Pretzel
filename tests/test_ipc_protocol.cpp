@@ -91,7 +91,7 @@ IpcWireHeader sampleHeader()
     IpcWireHeader h{};
     h.version = IPC_PROTOCOL_VERSION;
     h.src = static_cast<std::uint8_t>(IpcDaemon::Mgmtd);
-    h.dst = static_cast<std::uint8_t>(IpcDaemon::Scand);
+    h.dst = static_cast<std::uint8_t>(IpcDaemon::Collectord);
     h.flags = IpcProtocol::toFlag(IpcFlag::Request);
     h.cmd = static_cast<std::uint16_t>(IpcCmd::ApiConnectorTestRequest);
     h.reserved = 0;
@@ -125,7 +125,7 @@ TEST(IpcProtocolByteOrder, SingleByteFieldsAreUntouched)
 
     EXPECT_EQ(IPC_PROTOCOL_VERSION, net.version);
     EXPECT_EQ(static_cast<std::uint8_t>(IpcDaemon::Mgmtd), net.src);
-    EXPECT_EQ(static_cast<std::uint8_t>(IpcDaemon::Scand), net.dst);
+    EXPECT_EQ(static_cast<std::uint8_t>(IpcDaemon::Collectord), net.dst);
 }
 
 TEST(IpcProtocolByteOrder, RoundTripSurvivesExtremeValues)
@@ -148,7 +148,7 @@ TEST(IpcProtocolByteOrder, RoundTripSurvivesExtremeValues)
 TEST(IpcProtocolNaming, DaemonRoundTripsThroughItsName)
 {
     const IpcDaemon daemons[] = {IpcDaemon::Ipcd,  IpcDaemon::Engined, IpcDaemon::Mgmtd,
-                                 IpcDaemon::Authd, IpcDaemon::Icmpd,   IpcDaemon::Scand,
+                                 IpcDaemon::Authd, IpcDaemon::Probed,   IpcDaemon::Collectord,
                                  IpcDaemon::Apid};
 
     for (IpcDaemon d : daemons)

@@ -56,9 +56,9 @@ DECLARE
     path TEXT[];
 BEGIN
     FOREACH tbl IN ARRAY ARRAY['running_config', 'startup_config'] LOOP
-        FOREACH spec IN ARRAY ARRAY['icmpd.service.probe.probe_targets',
-                                    'scand.service.api.auth_profiles',
-                                    'scand.service.api.connectors',
+        FOREACH spec IN ARRAY ARRAY['probed.service.probe.probe_targets',
+                                    'collectord.service.api.auth_profiles',
+                                    'collectord.service.api.connectors',
                                     'engined.service.site.sites'] LOOP
             path := string_to_array(spec, '.');
             EXECUTE format($fmt$
@@ -136,7 +136,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS devices_target_uniq ON devices (device_type, t
 -- readable by every reviewer, and would mint a configuration version each time it was re-issued.
 -- Same reasoning that keeps admin passwords in local_users.
 --
--- Written only by engined; the values arrive already sealed over IPC (scand seals them with
+-- Written only by engined; the values arrive already sealed over IPC (collectord seals them with
 -- /etc/pretzel/credentials.key, the one process that holds a plaintext credential). Keyed by the
 -- API Key oid. A single schema serves both device types: for ngfw the durable secret is the issued
 -- key; for sase it is the tenant OAuth credential (the bearer token stays ephemeral in memory).
@@ -171,7 +171,7 @@ ALTER TABLE api_credential_state ADD COLUMN IF NOT EXISTS id_enc TEXT;
 ALTER TABLE api_credential_state ADD COLUMN IF NOT EXISTS pw_enc TEXT;
 
 -- API collection samples: what each connector's scheduled endpoint poll returned. Pure state
--- (system-produced, never operator-declared), written only by engined from scand's IPC — the same
+-- (system-produced, never operator-declared), written only by engined from collectord's IPC — the same
 -- config-vs-state split that keeps issued keys out of running_config. Raw response + call metadata
 -- now; structured metric extraction is a later analytics layer that reads these rows back.
 --   connector_oid/endpoint_oid : which connector schedule, and which of its endpoints, this is from
@@ -226,14 +226,14 @@ CREATE TABLE IF NOT EXISTS system_log_offset (
 -- One-time config-json normalizations (idempotent; run by engined via Config::preflight).
 DO $migrate$
 BEGIN
-    -- Daemon rename (snmpd -> scand): move the top-level config section so the renamed
+    -- Daemon rename (snmpd -> collectord): move the top-level config section so the renamed
     -- daemon finds its settings across every running_config version and the startup_config
     -- baseline. Idempotent — once moved, the `? 'snmpd'` guard is false.
     UPDATE running_config SET config_json =
-        (config_json - 'snmpd') || jsonb_build_object('scand', config_json->'snmpd')
+        (config_json - 'snmpd') || jsonb_build_object('collectord', config_json->'snmpd')
         WHERE config_json ? 'snmpd';
     UPDATE startup_config SET config_json =
-        (config_json - 'snmpd') || jsonb_build_object('scand', config_json->'snmpd')
+        (config_json - 'snmpd') || jsonb_build_object('collectord', config_json->'snmpd')
         WHERE config_json ? 'snmpd';
     -- Drop the dead ipcd.service.daemon_map: routing uses the compiled IpcDaemon enum,
     -- never this config key. Strip the stale nested key from every persisted version.
@@ -263,16 +263,16 @@ BEGIN
                       WHERE e->>'device_type' = 'prisma_access');
     -- Projection table too, in case a reload has not rebuilt it yet.
     UPDATE devices SET device_type = 'sase' WHERE device_type = 'prisma_access';
-    -- API key -> credential rename: move scand.service.api.api_keys to .api_credentials in every
+    -- API key -> credential rename: move collectord.service.api.api_keys to .api_credentials in every
     -- persisted version and the baseline. Idempotent — once moved, the `? 'api_keys'` guard is false.
     UPDATE running_config SET config_json =
-        jsonb_set(config_json, '{scand,service,api,api_credentials}', config_json #> '{scand,service,api,api_keys}', true)
-            #- '{scand,service,api,api_keys}'
-        WHERE config_json #> '{scand,service,api}' ? 'api_keys';
+        jsonb_set(config_json, '{collectord,service,api,api_credentials}', config_json #> '{collectord,service,api,api_keys}', true)
+            #- '{collectord,service,api,api_keys}'
+        WHERE config_json #> '{collectord,service,api}' ? 'api_keys';
     UPDATE startup_config SET config_json =
-        jsonb_set(config_json, '{scand,service,api,api_credentials}', config_json #> '{scand,service,api,api_keys}', true)
-            #- '{scand,service,api,api_keys}'
-        WHERE config_json #> '{scand,service,api}' ? 'api_keys';
+        jsonb_set(config_json, '{collectord,service,api,api_credentials}', config_json #> '{collectord,service,api,api_keys}', true)
+            #- '{collectord,service,api,api_keys}'
+        WHERE config_json #> '{collectord,service,api}' ? 'api_keys';
 END $migrate$;
 )SQL";
 

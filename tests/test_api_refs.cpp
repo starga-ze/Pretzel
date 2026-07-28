@@ -1,4 +1,4 @@
-// Covers pz::config::checkApiReferences — referential integrity inside scand.service.api.
+// Covers pz::config::checkApiReferences — referential integrity inside collectord.service.api.
 //
 // A connector is almost entirely references: which object, which credential, which endpoint.
 // Endpoints are versioned by the vendor, so an estate accumulates several and connectors get
@@ -228,7 +228,7 @@ TEST(ApiRefs, RejectsWhenOnlyOneOfSeveralItemsDangles)
 
 TEST(ApiRefs, AcceptsAConnectorThatCollectsNothingYet)
 {
-    // An empty schedule is useless but not inconsistent; scand warns and collects nothing.
+    // An empty schedule is useless but not inconsistent; collectord warns and collects nothing.
     json api = apiSection();
     api["connectors"][0]["items"] = json::array();
 

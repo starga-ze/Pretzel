@@ -13,7 +13,7 @@ and two integration points below are still open.
 - `service/auth/AuthAction.{h,cpp}`     — response action (echoes src + seqNo)
 - `service/auth/AuthService.{h,cpp}`    — local verify + Okta orchestration + Tx
 - `service/auth/OktaClient.{h,cpp}`     — OIDC: authorize URL, code exchange, id_token verify
-- `io/HttpsClient.{h,cpp}`              — Boost.Beast/OpenSSL client (copy of scand's; dedupe later)
+- `io/HttpsClient.{h,cpp}`              — Boost.Beast/OpenSSL client (copy of collectord's; dedupe later)
 
 Wiring edits: `IpcProtocol.{h,cpp}` (new cmds), `AuthdEvent.h`/`AuthdAction.h` (Auth domain),
 `AuthdEventFactory.cpp` (cmd→event), `AuthdServiceManager.{h,cpp}` (register + configure),

@@ -130,7 +130,7 @@
       if (r.status === 401) { location.href = '/'; return; }
       const d = await r.json();
       window.NMS.draft.checkBase(d.version);
-      const api = ((d.daemons || {}).scand || {}).api || {};
+      const api = ((d.daemons || {}).collectord || {}).api || {};
       deployed = (Array.isArray(api.api_credentials) ? api.api_credentials : []).map(normalize);
     } catch (_) { deployed = []; }
     await loadKeyState();   // shared per-key runtime state (stored/expiry/last test)
@@ -139,7 +139,7 @@
     refreshPending();
   }
 
-  const commitPayload = () => [{ daemon: 'scand', domain: 'api', values: { api_credentials: state.keys } }];
+  const commitPayload = () => [{ daemon: 'collectord', domain: 'api', values: { api_credentials: state.keys } }];
 
   window.NMS.staging.register({
     key: DRAFT_KEY,
@@ -515,7 +515,7 @@
 
   // ── Key generation test ─────────────────────────────────────────────────────
   // Runs from the row: a key is something you keep and re-verify, so it is not buried in an
-  // editor. The browser cannot reach a customer's firewall, so mgmtd hands the call to scand and
+  // editor. The browser cannot reach a customer's firewall, so mgmtd hands the call to collectord and
   // returns a ticket we poll — neither daemon blocks its single loop on a slow device.
   const POLL_MS = 700;
   const POLL_LIMIT = 40;

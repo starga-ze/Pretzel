@@ -411,8 +411,8 @@ void BootstrapService::initProcessMap()
     m_processMap.clear();
 
     m_processMap[pz::ipc::IpcDaemon::Authd] = {false, 0, 0};
-    m_processMap[pz::ipc::IpcDaemon::Icmpd] = {false, 0, 0};
-    m_processMap[pz::ipc::IpcDaemon::Scand] = {false, 0, 0};
+    m_processMap[pz::ipc::IpcDaemon::Probed] = {false, 0, 0};
+    m_processMap[pz::ipc::IpcDaemon::Collectord] = {false, 0, 0};
     m_processMap[pz::ipc::IpcDaemon::Topologyd] = {false, 0, 0};
 
     m_targetVersion = pz::config::Config::runningConfigVersion();
@@ -533,8 +533,8 @@ void BootstrapService::dumpProcessMap() const
 {
     static const std::vector<pz::ipc::IpcDaemon> dumpOrder = {
         pz::ipc::IpcDaemon::Authd,
-        pz::ipc::IpcDaemon::Icmpd,
-        pz::ipc::IpcDaemon::Scand,
+        pz::ipc::IpcDaemon::Probed,
+        pz::ipc::IpcDaemon::Collectord,
         pz::ipc::IpcDaemon::Topologyd,
         pz::ipc::IpcDaemon::Apid
     };

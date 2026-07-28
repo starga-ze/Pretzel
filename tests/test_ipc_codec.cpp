@@ -29,7 +29,7 @@ std::unique_ptr<IpcMessage> makeMessage(const std::string& payload,
 {
     auto msg = std::make_unique<IpcMessage>();
     msg->setSrc(IpcDaemon::Mgmtd);
-    msg->setDst(IpcDaemon::Scand);
+    msg->setDst(IpcDaemon::Collectord);
     msg->setCmd(cmd);
     msg->setSeqNo(seqNo);
     msg->setFlags(IpcProtocol::toFlag(IpcFlag::Request));
@@ -63,7 +63,7 @@ TEST(IpcCodecRoundTrip, PreservesEveryHeaderField)
     ASSERT_NE(nullptr, out);
 
     EXPECT_EQ(IpcDaemon::Mgmtd, out->getSrc());
-    EXPECT_EQ(IpcDaemon::Scand, out->getDst());
+    EXPECT_EQ(IpcDaemon::Collectord, out->getDst());
     EXPECT_EQ(IpcCmd::ApiCredentialStateUpdate, out->getCmd());
     EXPECT_EQ(0xDEADBEEFu, out->getSeqNo());
     EXPECT_EQ(IPC_PROTOCOL_VERSION, out->getVersion());

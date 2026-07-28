@@ -50,10 +50,10 @@ const char* IpcProtocol::daemonToStr(IpcDaemon daemon) noexcept
         return "engined";
     case IpcDaemon::Authd:
         return "authd";
-    case IpcDaemon::Icmpd:
-        return "icmpd";
-    case IpcDaemon::Scand:
-        return "scand";
+    case IpcDaemon::Probed:
+        return "probed";
+    case IpcDaemon::Collectord:
+        return "collectord";
     case IpcDaemon::Topologyd:
         return "topologyd";
     case IpcDaemon::Mgmtd:
@@ -199,14 +199,14 @@ pz::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
         return IpcDaemon::Authd;
     }
 
-    if (daemon == "icmpd")
+    if (daemon == "probed")
     {
-        return IpcDaemon::Icmpd;
+        return IpcDaemon::Probed;
     }
 
-    if (daemon == "scand")
+    if (daemon == "collectord")
     {
-        return IpcDaemon::Scand;
+        return IpcDaemon::Collectord;
     }
 
     if (daemon == "topologyd")

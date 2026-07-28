@@ -1,4 +1,4 @@
-// Covers pz::scand::buildCollectionSample — the api_collection row scand builds from one device
+// Covers pz::collectord::buildCollectionSample — the api_collection row collectord builds from one device
 // call and ships to engined.
 //
 // The point of the function is to turn a low-level ClientResponse (which distinguishes a TLS
@@ -18,7 +18,7 @@
 
 using nlohmann::json;
 using pz::http::ClientResponse;
-using pz::scand::buildCollectionSample;
+using pz::collectord::buildCollectionSample;
 
 namespace
 {

@@ -57,7 +57,7 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    // scand ran the device call; seqNo is the ticket the browser is polling on.
+    // collectord ran the device call; seqNo is the ticket the browser is polling on.
     if (msg->getCmd() == pz::ipc::IpcCmd::ApiConnectorTestResponse)
     {
         const auto& pl = msg->getPayload();

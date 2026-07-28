@@ -7,7 +7,7 @@
   "//snmp": "web UI at runtime (stored in running_config, not here).",
   "//tiers": "This baseline carries only (a) infrastructure that cannot live in the DB",
   "//tiers2": "(ipc/logger/http/db/SAML) and (b) operator-facing config seeded for the UI",
-  "//tiers3": "(sites + devices, icmp excluded_ips/timeouts, snmp community, scand API keys",
+  "//tiers3": "(sites + devices, icmp excluded_ips/timeouts, snmp community, collectord API keys",
   "//tiers3b": "+ endpoints + connectors, racks). Internal",
   "//tiers4": "tuning (heartbeat/bootstrap/probe-batch/scan-timeouts) is NOT here — each",
   "//tiers5": "daemon reads it via config.value(key, <compiled default>), so it is owned",
@@ -73,12 +73,12 @@
       }
     }
   },
-  "icmpd": {
-    "daemon_name": "pz-icmpd",
+  "probed": {
+    "daemon_name": "pz-probed",
     "system": {
       "logger": {
-        "name": "pz-icmpd",
-        "file": "/var/log/pretzel/icmpd.log"
+        "name": "pz-probed",
+        "file": "/var/log/pretzel/probed.log"
       }
     },
     "service": {
@@ -128,12 +128,12 @@
       }
     }
   },
-  "scand": {
-    "daemon_name": "pz-scand",
+  "collectord": {
+    "daemon_name": "pz-collectord",
     "system": {
       "logger": {
-        "name": "pz-scand",
-        "file": "/var/log/pretzel/scand.log"
+        "name": "pz-collectord",
+        "file": "/var/log/pretzel/collectord.log"
       }
     },
     "service": {

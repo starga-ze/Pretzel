@@ -10,7 +10,7 @@
  * complete request, so two firewalls needing different arguments are two endpoints — which is
  * what makes a PAN-OS upgrade a re-point here rather than an edit everywhere.
  *
- * Committed under scand.service.api.connectors.
+ * Committed under collectord.service.api.connectors.
  */
 (function () {
   'use strict';
@@ -66,7 +66,7 @@
       if (r.status === 401) { location.href = '/'; return; }
       const d = await r.json();
       window.NMS.draft.checkBase(d.version);
-      const api = ((d.daemons || {}).scand || {}).api || {};
+      const api = ((d.daemons || {}).collectord || {}).api || {};
       deployed = (Array.isArray(api.connectors) ? api.connectors : []).map(normalize);
     } catch (_) { deployed = []; }
     const staged = window.NMS.draft.get(DRAFT_KEY, null);
@@ -74,7 +74,7 @@
     refreshPending();
   }
 
-  const commitPayload = () => [{ daemon: 'scand', domain: 'api', values: { connectors: state.connectors } }];
+  const commitPayload = () => [{ daemon: 'collectord', domain: 'api', values: { connectors: state.connectors } }];
 
   window.NMS.staging.register({
     key: DRAFT_KEY,
@@ -528,7 +528,7 @@
   }
 
   // ── API test ────────────────────────────────────────────────────────────────
-  // One button, one round trip: mgmtd hands the request to scand, which exchanges the
+  // One button, one round trip: mgmtd hands the request to collectord, which exchanges the
   // credential for a key and then calls the endpoint with it. The browser cannot reach a
   // customer's firewall, and neither daemon blocks its loop on a slow device — hence the ticket.
   const POLL_MS = 700;
@@ -566,7 +566,7 @@
       fingerprint: o ? o.fingerprint : '',
       username: p ? p.username : '',
       keygen_endpoint: p ? (p.endpoint || '') : '',
-      // Lets scand use the key already issued for this profile instead of asking for the
+      // Lets collectord use the key already issued for this profile instead of asking for the
       // password again — see ApiService::issuedKey.
       api_key_oid: c.auth_profile,
       secrets: window.NMS.apiKeySecrets ? window.NMS.apiKeySecrets.for(c.auth_profile) : {},
@@ -589,7 +589,7 @@
       return `API Key "${name}" has no username. Set it on the API Key page.`;
     }
 
-    // Nothing else is checked here. Whether a key was already issued is scand's to know — it
+    // Nothing else is checked here. Whether a key was already issued is collectord's to know — it
     // holds the ones it could open from api_key_state — and second-guessing that in the browser
     // is how this ended up blocking a test that would have worked. `stored` is only a hint from
     // the last generation in this tab; its absence proves nothing.
@@ -671,7 +671,7 @@
 
     let res;
     try {
-      // scand runs the test statelessly — the endpoint may not be committed yet, so the
+      // collectord runs the test statelessly — the endpoint may not be committed yet, so the
       // reference is resolved here and the finished path is sent.
       const payload = testPayload(c);
       payload.api_type = endpointApiType(endpointOid);
