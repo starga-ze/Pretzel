@@ -535,8 +535,15 @@
     const dev = window.NMS.devices ? window.NMS.devices.byOid(keyRecord.device) : null;
     if (!dev) { alert('The key references a device that no longer exists.'); return; }
 
+    // Name the API Key (api_key_oid) so probed rides on the key already issued for this profile
+    // instead of re-issuing one on every endpoint test. The password is only a fallback for the
+    // case where no key has been issued yet — with a stored key it is not needed at all.
+    const hasStored = window.NMS.apiKeys ? window.NMS.apiKeys.hasKey(keyOid) : false;
     const held = window.NMS.apiKeySecrets ? window.NMS.apiKeySecrets.for(keyOid) : {};
-    if (!held.password) { alert('That API Key has no password entered yet.'); return; }
+    if (!hasStored && !held.password) {
+      alert('That API Key has no key issued yet — enter its password on the API Key page and run the key generation once.');
+      return;
+    }
 
     const modal = window.NMS.modal;
     modal.open('API Endpoint Test',
@@ -544,15 +551,18 @@
 
     let res;
     try {
-      res = await runDeviceTest('/api/connector/endpoint-test', {
+      const payload = {
+        api_key_oid: keyOid,
         target: dev.target,
         fingerprint: dev.fingerprint,
         keygen_endpoint: keyRecord.endpoint,
         api_type: e.api_type,
         endpoint: e.path,
         params: e.params,
-        secrets: { username: keyRecord.username, password: held.password },
-      });
+      };
+      // Only carry the password when one is held; a stored key makes it unnecessary.
+      if (held.password) payload.secrets = { username: keyRecord.username, password: held.password };
+      res = await runDeviceTest('/api/connector/endpoint-test', payload);
     } catch (err) {
       testState.put(e.oid, { at: Date.now(), ok: false, detail: err.message, via: keyRecord.name });
       render();

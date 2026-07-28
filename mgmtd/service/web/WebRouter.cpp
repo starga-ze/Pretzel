@@ -70,9 +70,11 @@ bool WebRouter::dispatch(MgmtdServiceManager& sm, const pz::http::HttpRequest& r
         {
             if (!sm.authService().validateSession(sessionCookie(req)))
             {
+                // The code lets the frontend tell a session-expiry 401 (bounce to login) apart from
+                // a semantic 401 like a wrong current password on the change-password form.
                 resp.status = 401;
                 resp.contentType = "application/json; charset=utf-8";
-                resp.body = R"({"error":"unauthorized"})";
+                resp.body = R"({"error":"unauthorized","code":"UNAUTHENTICATED"})";
                 return true;
             }
 

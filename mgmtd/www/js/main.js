@@ -2,6 +2,57 @@
 (function () {
   'use strict';
 
+  // ── Session guard ─────────────────────────────────────────────────────────
+  // Any API call that comes back 401 with the UNAUTHENTICATED marker means the session expired
+  // (30-min TTL) or the server was restarted — mgmtd keeps sessions in memory, so a `./pretzel
+  // start` redeploy drops them all and the old cookie is dead. Whatever the operator was doing,
+  // bounce them to the login page. Installed here, at the top of the first script every
+  // authenticated page loads, so EVERY fetch is covered — not just the ones that remembered to
+  // check r.status. Semantic 401s (wrong password on the login/change-password forms) carry no
+  // such code and pass straight through to their own handlers. The login page does not load
+  // main.js, so this never causes a redirect loop.
+  (function installSessionGuard() {
+    const origFetch = window.fetch.bind(window);
+    let redirecting = false;
+    window.fetch = async function (...args) {
+      const res = await origFetch(...args);
+      if (res.status === 401 && !redirecting) {
+        try {
+          const data = await res.clone().json();
+          if (data && data.code === 'UNAUTHENTICATED') {
+            redirecting = true;
+            window.location.href = '/';
+          }
+        } catch (e) { /* non-JSON 401 — leave it to the caller */ }
+      }
+      return res;
+    };
+  })();
+
+  // ── Session heartbeat ─────────────────────────────────────────────────────
+  // The 401 guard above only fires when something calls the server, but in-app tab switches are
+  // client-side (history.pushState — no request), so after the session dies (30-min TTL, or a
+  // `./pretzel start` that wiped the in-memory sessions) clicking around would never notice until
+  // a full page reload. This pings a tiny authenticated endpoint on a timer, whenever the tab
+  // regains focus, and (throttled) on any click — so any interaction bounces to login within
+  // seconds. The redirect itself is still done by the 401 guard above; here we only make sure a
+  // request actually happens.
+  (function installSessionHeartbeat() {
+    let last = 0;
+    const ping = () => {
+      const now = Date.now();
+      if (now - last < 3000) return;   // throttle: at most one probe per 3s
+      last = now;
+      window.fetch('/api/whoami', { credentials: 'same-origin' }).catch(() => {});
+    };
+    setInterval(ping, 30000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') ping();
+    });
+    window.addEventListener('focus', ping);
+    document.addEventListener('click', ping, true);   // any action re-checks the session
+  })();
+
   // ── Configuration groups ─────────────────────────────────────────────────
   // One definition drives both navigation levels: the sidebar flyout lists the groups, and the
   // topbar shows the tabs of whichever group is open. Grouped by what the operator is working
