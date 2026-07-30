@@ -1,13 +1,21 @@
 #include "service/api/ApiService.h"
 
 #include "service/CollectordServiceManager.h"
+#include "service/api/ApiAction.h"
 #include "service/api/ApiEvent.h"
+#include "service/api/controller/ConnectorController.h"
+#include "service/api/controller/ConnectorTest.h"
+#include "service/api/controller/StatusController.h"
+#include "service/api/ApiUtil.h"
 
 #include "config/Config.h"
 #include "ipc/IpcMessage.h"
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 #include "util/Secret.h"
+
+#include <chrono>
+#include <memory>
 
 #include <nlohmann/json.hpp>
 
@@ -262,14 +270,116 @@ const std::vector<ApiConnector>& ApiService::connectors() const
 // re-issue and the connector test all moved to probed, which owns the credential lifecycle.
 void ApiService::handleEvent(CollectordServiceManager& serviceManager, const ApiEvent& event)
 {
-    (void)serviceManager;
-    const pz::ipc::IpcMessage* msg = event.message();
+    route(serviceManager, event);
+}
 
-    if (event.type() != ApiEventType::ReceiveKeyState)
+void ApiService::handleAction(CollectordServiceManager& serviceManager, const ApiAction& action)
+{
+    switch (action.type())
     {
-        return;
+    case ApiActionType::RequestKeys:
+        requestKeys(serviceManager);
+        break;
+
+    default:
+        LOG_DEBUG("unhandled api action (type={})", static_cast<std::uint32_t>(action.type()));
+        break;
+    }
+}
+
+void ApiService::route(CollectordServiceManager& sm, const ApiEvent& event)
+{
+    std::uint32_t seqNo = 0;
+    json input;
+
+    switch (event.type())
+    {
+    // Connector tests: decode the payload, then hand straight to the owning controller. The service
+    // stays out of the operation itself — no mode branch, no orchestration.
+    case ApiEventType::RunKeygenTest:
+        if (decodeTest(event, seqNo, input))
+            m_credentialController.runKeygenTest(*this, sm, seqNo, input);
+        break;
+
+    case ApiEventType::RunEndpointTest:
+        if (decodeTest(event, seqNo, input))
+            m_endpointController.runEndpointTest(*this, sm, seqNo, input);
+        break;
+
+    case ApiEventType::RunSaseTest:
+        if (decodeTest(event, seqNo, input))
+            sm.statusController().runSaseTest(sm, seqNo, input);
+        break;
+
+    // Repo + scheduling: these stay in the service (shared key cache; when-to-run timing).
+    case ApiEventType::ReceiveKeyState:
+        handleKeyState(sm, event);
+        break;
+
+    case ApiEventType::Setup:
+        handleSetup(sm, event);
+        break;
+
+    case ApiEventType::RunPeriodic:
+        handleRunPeriodic(sm, event);
+        break;
+
+    default:
+        LOG_DEBUG("unrouted api event (type={})", static_cast<std::uint32_t>(event.type()));
+        break;
+    }
+}
+
+std::unique_ptr<CollectordEvent> ApiService::schedule(std::chrono::steady_clock::time_point now)
+{
+    using namespace std::chrono;
+
+    // One-shot setup: fetch issued keys and arm periodic collection, once the IPC client is live.
+    if (!m_setupDone)
+    {
+        m_setupDone = true;
+        return std::make_unique<ApiEvent>(ApiEventType::Setup);
     }
 
+    // Recurring housekeeping. Coarsely gated here (>=1s); the probe and auto-refresh keep their own
+    // real intervals, so this only bounds how often the queue sees a RunPeriodic.
+    if (m_lastPeriodicAt.time_since_epoch().count() == 0 || now - m_lastPeriodicAt >= seconds(1))
+    {
+        m_lastPeriodicAt = now;
+        return std::make_unique<ApiEvent>(ApiEventType::RunPeriodic);
+    }
+
+    return nullptr;
+}
+
+// ── Event handlers ───────────────────────────────────────────────────────────────────────────
+
+bool ApiService::decodeTest(const ApiEvent& event, std::uint32_t& seqNo, json& input) const
+{
+    const pz::ipc::IpcMessage* msg = event.message();
+    if (!msg || msg->getPayload().empty())
+    {
+        LOG_WARN("empty connector-test request — dropping");
+        return false;
+    }
+    seqNo = msg->getSeqNo();
+    const auto& pl = msg->getPayload();
+    try
+    {
+        input = json::parse(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("failed to parse connector-test payload (error={})", e.what());
+        return false;
+    }
+}
+
+void ApiService::handleKeyState(CollectordServiceManager& sm, const ApiEvent& event)
+{
+    (void)sm;
+    const pz::ipc::IpcMessage* msg = event.message();
     if (!msg || msg->getPayload().empty())
     {
         LOG_WARN("empty ApiCredentialStateResponse — dropping");
@@ -284,6 +394,24 @@ void ApiService::handleEvent(CollectordServiceManager& serviceManager, const Api
     {
         LOG_WARN("failed to parse ApiCredentialStateResponse (error={})", e.what());
     }
+}
+
+void ApiService::handleSetup(CollectordServiceManager& sm, const ApiEvent& event)
+{
+    (void)event;
+    // Fetch the issued keys (outbound IPC returned as an action), then arm periodic collection: each
+    // item first fires after its interval, by when the keys have arrived; a poll with no key skips.
+    sm.postAction(std::make_unique<ApiAction>(ApiActionType::RequestKeys));
+    sm.connectorController().start(sm, *this);
+}
+
+void ApiService::handleRunPeriodic(CollectordServiceManager& sm, const ApiEvent& event)
+{
+    (void)event;
+    const auto now = std::chrono::steady_clock::now();
+    // SASE control-plane health probe + credential auto-refresh; each self-gates its real interval.
+    sm.statusController().tick(now, *this, sm);
+    autoRefreshTick(sm, now);
 }
 
 void ApiService::requestKeys(CollectordServiceManager& serviceManager)
@@ -305,6 +433,7 @@ void ApiService::cacheKeys(const json& payload)
         return;
 
     std::unordered_map<std::string, std::string> opened;
+    std::unordered_map<std::string, IssuedCredential> creds;
     std::size_t failed = 0;
 
     for (const auto& k : keys)
@@ -316,11 +445,10 @@ void ApiService::cacheKeys(const json& payload)
         if (oid.empty())
             continue;
 
-        // collectord needs only the issued key (to authenticate collection calls); the account
-        // credential (id_enc/pw_enc) is probed's concern for re-issue, so it is ignored here.
-        // A blob that will not open is a real condition, not a parse error: credentials.key was
+        // The issued key authenticates collection calls (and the SASE health probe, keyed by device
+        // oid). A blob that will not open is a real condition, not a parse error: credentials.key was
         // replaced or lost. Say how many rather than which, so no oid/key pairing reaches a log.
-        const std::string sealed = k.value("secret_enc", std::string());
+        const std::string sealed = k.value("key_enc", std::string());
         if (!sealed.empty())
         {
             if (auto plain = pz::util::secret::decrypt(sealed))
@@ -328,9 +456,22 @@ void ApiService::cacheKeys(const json& payload)
             else
                 ++failed;
         }
+
+        // The durable account credential, for auto-refresh re-issue (owned by collectord since the
+        // keygen/credential lifecycle moved here from probed).
+        const std::string idEnc = k.value("id_enc", std::string());
+        const std::string pwEnc = k.value("pw_enc", std::string());
+        if (!idEnc.empty() && !pwEnc.empty())
+        {
+            auto id = pz::util::secret::decrypt(idEnc);
+            auto pw = pz::util::secret::decrypt(pwEnc);
+            if (id && pw)
+                creds.emplace(oid, IssuedCredential{*id, *pw});
+        }
     }
 
     m_issuedKeys = std::move(opened);
+    m_credentials = std::move(creds);
 
     if (failed)
     {
@@ -349,6 +490,94 @@ const std::string& ApiService::issuedKey(const std::string& authProfileOid) cons
     static const std::string kNone;
     const auto it = m_issuedKeys.find(authProfileOid);
     return it == m_issuedKeys.end() ? kNone : it->second;
+}
+
+void ApiService::rememberIssuedKey(const std::string& authProfileOid, std::string key)
+{
+    m_issuedKeys[authProfileOid] = std::move(key);
+}
+
+const IssuedCredential* ApiService::credentialFor(const std::string& oid) const
+{
+    const auto it = m_credentials.find(oid);
+    return it == m_credentials.end() ? nullptr : &it->second;
+}
+
+// Re-issue key/token for auto-refresh credentials whose interval has elapsed. Reuses the exact
+// issuance path a manual keygen test takes (CredentialController::runKeygenTest) with a headless ticket (seqNo 0), so there is
+// one code path for both. The account credential is opened from the cache engined fed us, and the
+// bound device's target/type/fingerprint come from the running config.
+void ApiService::autoRefreshTick(CollectordServiceManager& sm, std::chrono::steady_clock::time_point now)
+{
+    using namespace std::chrono;
+
+    const auto& site = pz::config::Config::serviceSection("engined", "site");
+    // A profile's device may be either kind, so both arrays are searched below; tag device_type
+    // (dropped from config) back on so the keygen path can tell them apart.
+    json devices = json::array();
+    for (const char* key : {"ngfw_devices", "sase_devices"})
+    {
+        const std::string dt = std::string(key) == "sase_devices" ? "sase" : "ngfw";
+        for (auto d : site.value(key, json::array()))
+        {
+            if (d.is_object())
+                d["device_type"] = dt;
+            devices.push_back(std::move(d));
+        }
+    }
+
+    for (const auto& p : m_profiles)
+    {
+        if (p.refreshMode != "auto")
+            continue;
+
+        const auto interval = minutes(p.refreshIntervalMin > 0 ? p.refreshIntervalMin : 60);
+        const auto it = m_lastRefresh.find(p.oid);
+        if (it != m_lastRefresh.end() && now - it->second < interval)
+            continue;
+
+        // The re-issue needs the account credential; if it has not been cached yet (engined's
+        // response still in flight), leave the timer unset so the next tick retries promptly.
+        const IssuedCredential* cred = credentialFor(p.oid);
+        if (!cred)
+            continue;
+
+        std::string target, deviceType = "ngfw", fingerprint;
+        for (const auto& d : devices)
+        {
+            if (!d.is_object())
+                continue;
+            const std::string doid = d.value("oid", d.value("uuid", d.value("id", std::string())));
+            if (doid == p.device)
+            {
+                target = d.value("target", std::string());
+                deviceType = d.value("device_type", std::string()) == "sase" ? "sase" : "ngfw";
+                fingerprint = d.value("fingerprint", std::string());
+                break;
+            }
+        }
+        if (target.empty())
+        {
+            m_lastRefresh[p.oid] = now;   // misconfigured (no device/target) — retry next interval
+            continue;
+        }
+
+        m_lastRefresh[p.oid] = now;
+
+        const json input = {
+            {"oid", p.oid},
+            {"mode", "keygen"},
+            {"device_type", deviceType},
+            {"target", target},
+            {"fingerprint", fingerprint},
+            {"endpoint", p.endpoint},
+            {"secrets", {{"username", cred->id}, {"password", cred->pw}}},
+        };
+
+        LOG_INFO("auto-refresh re-issuing credential (oid={}, type={}, interval_min={})", p.oid, deviceType,
+                 p.refreshIntervalMin);
+        m_credentialController.runKeygenTest(*this, sm, 0, input);
+    }
 }
 
 }

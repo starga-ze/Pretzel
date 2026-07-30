@@ -1,4 +1,4 @@
-#include "service/icmp/IcmpService.h"
+#include "service/status/icmp/IcmpService.h"
 
 #include "action/ProbedActionFactory.h"
 #include "config/Config.h"
@@ -71,19 +71,12 @@ std::vector<std::string> probeExcludedIps()
 std::vector<std::string> probeExplicitTargets()
 {
     std::vector<std::string> result;
-    // Devices are declared once, next to the sites they belong to; probed reads that list rather
-    // than keeping its own copy.
+    // Only NGFW devices have an address to ping (SASE is reached through its tenant API), so read
+    // just the ngfw_devices array. Devices are declared once, next to the sites they belong to.
     const auto& cfg = pz::config::Config::serviceSection("engined", "site");
-    const auto it = cfg.find("devices");
-    if (it == cfg.end() || !it->is_array())
-        return result;
-
-    for (const auto& t : *it)
+    for (const auto& t : cfg.value("ngfw_devices", nlohmann::json::array()))
     {
         if (!t.is_object())
-            continue;
-        // Only an NGFW has an address to ping; sase is reached through its tenant.
-        if (t.value("device_type", std::string("ngfw")) != "ngfw")
             continue;
         const std::string target = t.value("target", std::string());
         if (!target.empty())
@@ -138,7 +131,7 @@ std::unique_ptr<ProbedEvent> IcmpService::schedule(std::chrono::steady_clock::ti
             m_lastReplyAt = now;
             m_state = State::WaitingReplies;
 
-            LOG_DEBUG("all probes sent, waiting replies (idle_timeout_ms={}, max_timeout_ms={})",
+            LOG_TRACE("all probes sent, waiting replies (idle_timeout_ms={}, max_timeout_ms={})",
                       std::chrono::duration_cast<std::chrono::milliseconds>(replyIdleTimeout()).count(),
                       std::chrono::duration_cast<std::chrono::milliseconds>(replyMaxWaitTimeout()).count());
         }
@@ -411,7 +404,7 @@ void IcmpService::completeProbeSession()
 
     m_lastAliveCount = static_cast<std::uint32_t>(aliveIps.size());
 
-    LOG_DEBUG("probe cycle complete (total={}, alive={}, dead={}, elapsed_ms={})", m_targets.size(), aliveIps.size(),
+    LOG_TRACE("probe cycle complete (total={}, alive={}, dead={}, elapsed_ms={})", m_targets.size(), aliveIps.size(),
              m_targets.size() - aliveIps.size(),
              std::chrono::duration_cast<std::chrono::milliseconds>(now - m_probeStartedAt).count());
 

@@ -2,8 +2,9 @@
 
 #include "service/ServiceManager.h"
 
-#include "service/api/ApiCollector.h"
+#include "service/api/controller/ConnectorController.h"
 #include "service/api/ApiService.h"
+#include "service/api/controller/StatusController.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
 #include "service/reload/ReloadService.h"
@@ -38,6 +39,8 @@ public:
     void execute() override;
 
     ApiService& apiService();
+    ConnectorController& connectorController();
+    StatusController& statusController();
     BootstrapService& bootstrapService();
     HeartbeatService& heartbeatService();
     ReloadService& reloadService();
@@ -54,13 +57,11 @@ private:
     boost::asio::io_context* m_ioContext;
 
     std::unique_ptr<ApiService> m_apiService;
-    std::unique_ptr<ApiCollector> m_apiCollector;
+    std::unique_ptr<ConnectorController> m_connectorController;
+    std::unique_ptr<StatusController> m_statusController;
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ReloadService> m_reloadService;
-
-    // One-shot: the issued keys are fetched after bootstrap completes, not at construction.
-    bool m_keysRequested{false};
 
     std::queue<std::unique_ptr<CollectordEvent>> m_eventQueue;
     std::queue<std::unique_ptr<CollectordAction>> m_actionQueue;

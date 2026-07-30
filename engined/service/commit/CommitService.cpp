@@ -46,7 +46,7 @@ void CommitService::sendQueueStatus(EnginedServiceManager& serviceManager) const
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Engined);
     msg->setDst(pz::ipc::IpcDaemon::Mgmtd);
-    msg->setCmd(pz::ipc::IpcCmd::CommitQueueStatus);
+    msg->setCmd(pz::ipc::IpcCmd::SettingsCommitStatus);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response));
     msg->setPayload(std::vector<uint8_t>(payload.begin(), payload.end()));
 
@@ -271,7 +271,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager, const Co
             auto cfgMsg = std::make_unique<pz::ipc::IpcMessage>();
             cfgMsg->setSrc(pz::ipc::IpcDaemon::Engined);
             cfgMsg->setDst(dst);
-            cfgMsg->setCmd(pz::ipc::IpcCmd::ConfigReload);
+            cfgMsg->setCmd(pz::ipc::IpcCmd::ConfigApply);
             cfgMsg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
             serviceManager.txRouter().handleIpcMessage(std::move(cfgMsg));
             LOG_DEBUG("ConfigReload sent (dst={})", pz::ipc::IpcProtocol::daemonToStr(dst));

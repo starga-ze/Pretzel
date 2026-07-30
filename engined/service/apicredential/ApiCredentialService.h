@@ -37,6 +37,9 @@ public:
 private:
     void storeState(const std::string& payloadJson);
 
+    // Stores a validated+sealed SASE device health api-key into sase_device.api_key_enc.
+    void storeSaseApiKey(const std::string& payloadJson);
+
     // Answers ApiCredentialStateRequest with every issued key, sealed, routed back to `requester`
     // (probed or collectord). seqNo is the requester's correlation value and is echoed back.
     void sendState(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester, std::uint32_t seqNo);

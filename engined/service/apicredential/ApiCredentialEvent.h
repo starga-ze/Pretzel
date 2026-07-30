@@ -14,6 +14,7 @@ enum class ApiCredentialEventType : std::uint32_t
     Unknown = 0,
     ReceiveStateUpdate = 1,
     ReceiveStateRequest = 2,
+    ReceiveSaseApiKey = 3,
 };
 
 class ApiCredentialEvent final : public EnginedEvent

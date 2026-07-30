@@ -54,7 +54,7 @@
       const legacyTenant = (d.platform || d.access) === 'tenant' || d.type === 'sase' || d.type === 'saas';
       deviceType = legacyTenant ? 'sase' : 'ngfw';
     }
-    return {
+    const out = {
       oid: (typeof d.oid === 'string' && d.oid) ? d.oid : (d.uuid || d.id || newUuid()),
       name: d.name || '',
       description: d.description || '',
@@ -64,6 +64,16 @@
       // Pinned certificate of this host — written by the API Key test, never typed.
       fingerprint: d.fingerprint || '',
     };
+    // SASE control-plane health probe (getPrismaAccessIP): url + body live in config, and the api-key
+    // rides alongside on the device. Only carried for SASE (or if set) so NGFW devices stay clean.
+    const health = (d.health && typeof d.health === 'object')
+      ? { url: d.health.url || '', body: d.health.body || '' } : { url: '', body: '' };
+    const apiKey = d.api_key || '';
+    if (deviceType === 'sase' || health.url || apiKey) {
+      out.health = health;
+      out.api_key = apiKey;
+    }
+    return out;
   }
 
   const blank = () => normalize({ device_type: 'ngfw' });
@@ -76,7 +86,13 @@
       const d = await r.json();
       window.NMS.draft.checkBase(d.version);
       const site = ((d.daemons || {}).engined || {}).site || {};
-      deployed = (Array.isArray(site.devices) ? site.devices : []).map(normalize);
+      // Config stores two type-specific arrays; the editor works on one merged list tagged with
+      // device_type, and splitForConfig() puts them back on commit.
+      const ngfw = (Array.isArray(site.ngfw_devices) ? site.ngfw_devices : [])
+        .map(x => normalize(Object.assign({}, x, { device_type: 'ngfw' })));
+      const sase = (Array.isArray(site.sase_devices) ? site.sase_devices : [])
+        .map(x => normalize(Object.assign({}, x, { device_type: 'sase' })));
+      deployed = ngfw.concat(sase);
     } catch (_) { deployed = []; }
     const staged = window.NMS.draft.get(DRAFT_KEY, null);
     state.devices = Array.isArray(staged) ? staged.map(normalize)
@@ -84,7 +100,19 @@
     refreshPending();
   }
 
-  const commitPayload = () => [{ daemon: 'engined', domain: 'site', values: { devices: state.devices } }];
+  // Split the merged editor list back into the two config arrays. device_type is the tag (dropped),
+  // and the SASE api-key never goes in config — it is persisted to the DB via its own endpoint.
+  function splitForConfig(list) {
+    const ngfw_devices = [], sase_devices = [];
+    list.forEach(function (d) {
+      const base = { oid: d.oid, name: d.name, description: d.description, site: d.site, target: d.target };
+      if (d.device_type === 'sase') sase_devices.push(Object.assign(base, { health: d.health || { url: '', body: '' } }));
+      else ngfw_devices.push(Object.assign(base, { fingerprint: d.fingerprint || '' }));
+    });
+    return { ngfw_devices: ngfw_devices, sase_devices: sase_devices };
+  }
+
+  const commitPayload = () => [{ daemon: 'engined', domain: 'site', values: splitForConfig(state.devices) }];
 
   // Site is a reference; show the site's name, and flag a dangling oid so a deleted site is
   // visible rather than silently blank.
@@ -198,7 +226,66 @@
         ? `<div class="fp-box"><div class="fp-label">Pinned certificate (SHA-256)</div>
              <code class="fp-val">${esc(d.fingerprint)}</code>
              <button class="btn-sm btn-danger" id="devUnpin" type="button">Clear pin</button></div>`
-        : ''}`;
+        : ''}
+      ${d.device_type === 'sase' ? healthSection(d.health || {}, d.api_key || '') : ''}`;
+  }
+
+  // SASE has no IP to ping, so its reachability is a control-plane API read (getPrismaAccessIP).
+  // The operator pastes the whole curl command; Parse pulls the URL, api-key and body into the
+  // fields below, which is what actually gets saved. probed runs this on a schedule and sets the
+  // device active/down from the outcome.
+  function healthSection(health, apiKey) {
+    return `
+      <div class="editor-sec">SASE HEALTH PROBE</div>
+      <p class="field-hint">SASE has no address to ping — reachability is a live
+        <code>getPrismaAccessIP</code> read against the tenant's control plane. The api-key is sealed
+        and stored on the appliance, never in the configuration.</p>
+      ${fieldRow('Probe URL', 'health_url', health.url || '', 'https://api.prodN.datapath.prismaaccess.com/getPrismaAccessIP/v2')}
+      <div class="field-row"><label>API key</label>
+        <input data-f="api_key" type="password" value="${esc(apiKey)}" autocomplete="off"
+               placeholder="${apiKey ? '•••••••• entered' : 'header-api-key value'}"/></div>
+      ${fieldRow('Request body', 'health_body', health.body || '', '{"serviceType":"all","addrType":"all","location":"all"}')}
+      <details class="dev-paste" style="margin:2px 0 4px">
+        <summary style="cursor:pointer;color:var(--text-accent,#2a6);font-size:13px;user-select:none">Paste a curl command to autofill</summary>
+        <textarea data-f="paste_cmd" rows="3"
+          style="width:100%;box-sizing:border-box;margin-top:8px;font-family:var(--font-mono,monospace);font-size:12px;resize:vertical"
+          placeholder="curl -X POST -d @option.txt -H &quot;header-api-key: ...&quot; https://api.prod8.datapath.prismaaccess.com/getPrismaAccessIP/v2"></textarea>
+        <button class="btn-sm" id="devParseCmd" type="button" style="margin-top:6px">Autofill from command</button>
+      </details>
+      <div class="field-row" style="margin-top:6px"><label></label>
+        <button class="btn-sm" id="devSaseTest" type="button">Test &amp; save api-key</button></div>
+      <div id="devSaseTestResult" class="field-hint" style="min-height:18px"></div>`;
+  }
+
+  // Validate the getPrismaAccessIP api-key against the tenant; on success probed seals + stores it in
+  // sase_device.api_key_enc. Same ticket/poll shape as the API Key tests.
+  async function runSaseTest(payload) {
+    const start = await fetch('/api/connector/sase-test', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (start.status === 401) { location.href = '/'; return { ok: false, message: 'session expired' }; }
+    const started = await start.json().catch(() => null);
+    if (!start.ok || !started || !started.ticket) throw new Error((started && started.error) || 'could not start the test');
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
+        { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const d = await r.json().catch(() => null);
+      if (d && d.status === 'done') return d;
+    }
+    throw new Error('the test timed out');
+  }
+
+  // Pull the URL, header-api-key and inline body out of a pasted curl command. A `-d @file` body
+  // (which we cannot read) falls back to the all/all/all default.
+  function parsePrismaCommand(cmd) {
+    const url = (cmd.match(/https:\/\/[^\s"']+/) || [''])[0];
+    const apiKey = (cmd.match(/header-api-key:\s*([^\s"']+)/i) || [, ''])[1];
+    let body = '';
+    const m = cmd.match(/-d\s+'([^']*)'/) || cmd.match(/-d\s+"([^"]*)"/) || cmd.match(/--data(?:-raw)?\s+'([^']*)'/);
+    if (m) body = m[1];
+    else if (/-d\s+@/.test(cmd)) body = '{"serviceType":"all","addrType":"all","location":"all"}';
+    return { url, apiKey, body };
   }
 
   // `oid` is carried out-of-band (draftOid) so it survives the device-type rebuild and stays
@@ -217,6 +304,10 @@
       device_type: g('device_type'),
       target: g('target'),
       fingerprint: prev ? prev.fingerprint : '',
+      // Present only on the SASE form; undefined on NGFW so normalize drops them.
+      health: (g('health_url') !== undefined || g('health_body') !== undefined)
+        ? { url: g('health_url') || '', body: g('health_body') || '' } : (prev ? prev.health : undefined),
+      api_key: g('api_key') !== undefined ? g('api_key') : (prev ? prev.api_key : undefined),
     });
   }
 
@@ -276,6 +367,38 @@
       stage();
     });
 
+    document.getElementById('devParseCmd')?.addEventListener('click', () => {
+      const d = collectForm(body);
+      const cmd = body.querySelector('[data-f="paste_cmd"]')?.value || '';
+      const p = parsePrismaCommand(cmd);
+      if (!p.url && !p.apiKey) { alert('Could not find a URL or api-key in that command.'); return; }
+      d.health = { url: p.url || (d.health && d.health.url) || '', body: p.body || (d.health && d.health.body) || '' };
+      d.api_key = p.apiKey || d.api_key || '';
+      body.innerHTML = editorForm(d);
+      wireEditor();
+    });
+
+    document.getElementById('devSaseTest')?.addEventListener('click', async () => {
+      const d = collectForm(body);
+      const out = document.getElementById('devSaseTestResult');
+      if (!(d.health && d.health.url) || !d.api_key) {
+        out.innerHTML = '<span style="color:var(--text-danger,#c33)">Enter the probe URL and api-key first.</span>'; return;
+      }
+      out.textContent = 'Testing… (this can take several seconds)';
+      const btn = document.getElementById('devSaseTest');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await runSaseTest({ oid: d.oid, url: d.health.url, body: d.health.body, api_key: d.api_key });
+        out.innerHTML = res.ok
+          ? '<span style="color:var(--text-success,#2a6)">✓ ' + esc(res.message || 'passed') + '</span>'
+          : '<span style="color:var(--text-danger,#c33)">✕ ' + esc(res.message || 'failed') + '</span>';
+      } catch (e) {
+        out.innerHTML = '<span style="color:var(--text-danger,#c33)">✕ ' + esc(e.message || 'test failed') + '</span>';
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
     document.getElementById('devCancel').onclick = closeEditor;
     document.getElementById('devClose').onclick = closeEditor;
     document.getElementById('devOverlay').onclick = closeEditor;
@@ -308,8 +431,8 @@
     key: DRAFT_KEY,
     dirty: () => JSON.stringify(state.devices) !== JSON.stringify(deployed),
     payload: commitPayload,
-    before: () => ({ devices: deployed }),
-    after: () => ({ devices: state.devices }),
+    before: () => splitForConfig(deployed),
+    after: () => splitForConfig(state.devices),
     onPublished() {
       deployed = JSON.parse(JSON.stringify(state.devices));
       window.NMS.draft.clear(DRAFT_KEY);

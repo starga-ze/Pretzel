@@ -46,12 +46,14 @@ PZ_TABLES = [
     "running_config",
     "startup_config",
     "local_users",
-    "devices",
+    "ngfw_device",        # device projection (ICMP-reached firewalls)
+    "sase_device",        # device projection (API-reached tenants) + sealed api-key + egress cache
     "api_credential_state",
     "api_collection",     # connector endpoint-poll samples
     "system_log",         # tailed daemon logs
     "system_log_offset",  # per-daemon tailer checkpoint
     # retired
+    "devices",            # pre-split mixed device projection
     "inventory",          # pre-rename device projection
     "probe_devices",      # mixed ICMP status + discovered SNMP data
     "snmp_devices",       # pre-rename (snmpd -> collectord)

@@ -14,6 +14,7 @@ enum class ProbeEventType : std::uint32_t
     Unknown = 0,
     TriggerProbe = 1,
     ReceiveProbeResult = 2,
+    ReceiveSaseHealthResult = 3,
 };
 
 class ProbeEvent final : public EnginedEvent

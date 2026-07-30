@@ -43,7 +43,8 @@
       },
       "site": {
         "sites": [],
-        "devices": []
+        "ngfw_devices": [],
+        "sase_devices": []
       }
     }
   },

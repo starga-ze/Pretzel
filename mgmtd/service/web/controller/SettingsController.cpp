@@ -2,7 +2,7 @@
 
 #include "service/MgmtdServiceManager.h"
 
-#include "service/web/WebResponse.h"
+#include "service/web/WebUtil.h"
 #include "service/web/WebRouter.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -55,24 +55,15 @@ constexpr const char* kHiddenDomains[] = {
 // creation and immutable for the object's lifetime. Cross-references (site, auth_profile,
 // object) carry the referent's oid.
 
-// engined.site.devices — Devices (www/js/config.js). `device_type` is the single axis:
-// ngfw is reached at its own address, sase through a tenant, so the access kind is
-// derived from it rather than stored twice. A device carries the TLS pin for its host but no
-// credential — an API Key references the device and holds the account.
-//   { oid, name, description?, site?, device_type: ngfw|sase, target, fingerprint? }
-// `fingerprint` is written by the API Key test once the operator confirms the certificate, not
-// typed — pinning is unconditional, so there is no TLS mode to choose.
+// engined.site.ngfw_devices / sase_devices — Devices (www/js/config.js). The array is the type,
+// so there is no device_type field. Both kinds need an oid and an access target:
+//   ngfw: { oid, name, description?, site?, target, fingerprint? }   fingerprint from the API Key test
+//   sase: { oid, name, description?, site?, target, health:{url,body}? }   api-key lives in the DB, not here
 bool validDevice(const json& d)
 {
     if (!d.is_object())
         return false;
-    if (d.value("oid", std::string()).empty() || d.value("target", std::string()).empty())
-        return false;
-
-    const std::string deviceType = d.value("device_type", std::string());
-    // "prisma_access" accepted as the pre-rename alias so a stale draft still commits; the frontend
-    // normalizes it to "sase" and the schema migration rewrites persisted rows.
-    return deviceType == "ngfw" || deviceType == "sase" || deviceType == "prisma_access";
+    return !d.value("oid", std::string()).empty() && !d.value("target", std::string()).empty();
 }
 
 // engined.site.sites — Sites, one per customer (www/js/sites.js).
@@ -251,7 +242,8 @@ bool validateCommitValues(const std::string& daemon, const std::string& domain, 
     };
 
     if (daemon == "engined" && domain == "site")
-        return validateArray("sites", validSite) && validateArray("devices", validDevice);
+        return validateArray("sites", validSite) && validateArray("ngfw_devices", validDevice) &&
+               validateArray("sase_devices", validDevice);
 
     if (daemon == "collectord" && domain == "api")
         return validateArray("api_credentials", validApiKey) && validateArray("endpoints", validApiEndpoint) &&

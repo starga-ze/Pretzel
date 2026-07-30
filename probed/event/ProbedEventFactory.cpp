@@ -1,9 +1,8 @@
 #include "event/ProbedEventFactory.h"
 
-#include "service/api/ApiEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
-#include "service/icmp/IcmpEvent.h"
+#include "service/status/icmp/IcmpEvent.h"
 #include "service/reload/ReloadEvent.h"
 
 #include "util/Logger.h"
@@ -28,9 +27,6 @@ std::unique_ptr<ProbedEvent> ProbedEventFactory::create(ProbedEventDomain domain
 
     case ProbedEventDomain::Reload:
         return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
-
-    case ProbedEventDomain::Api:
-        return std::make_unique<ApiEvent>(static_cast<ApiEventType>(type));
 
     default:
         LOG_WARN("unhandled event domain (domain={})", static_cast<std::uint32_t>(domain));
@@ -60,14 +56,8 @@ std::unique_ptr<ProbedEvent> ProbedEventFactory::create(std::unique_ptr<pz::ipc:
     case pz::ipc::IpcCmd::ProbeRequest:
         return std::make_unique<IcmpEvent>(IcmpEventType::StartProbe);
 
-    case pz::ipc::IpcCmd::ConfigReload:
+    case pz::ipc::IpcCmd::ConfigApply:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
-
-    case pz::ipc::IpcCmd::ApiConnectorTestRequest:
-        return std::make_unique<ApiEvent>(ApiEventType::ReceiveConnectorTestRequest, std::move(msg));
-
-    case pz::ipc::IpcCmd::ApiCredentialStateResponse:
-        return std::make_unique<ApiEvent>(ApiEventType::ReceiveKeyState, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

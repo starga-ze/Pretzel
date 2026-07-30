@@ -12,8 +12,15 @@ namespace pz::collectord
 enum class ApiEventType : std::uint32_t
 {
     Unknown = 0,
-    ReceiveConnectorTestRequest = 1,
-    ReceiveKeyState = 2,
+    // Inbound IPC — one per connector-test operation, so route() dispatches straight to the owning
+    // controller (no in-payload mode branch).
+    RunKeygenTest = 1,    // → CredentialController: issue/validate a credential
+    RunEndpointTest = 2,  // → EndpointController: call an endpoint (keygen first if no key)
+    RunSaseTest = 3,      // → StatusController: SASE device health + store api-key
+    ReceiveKeyState = 4,  // issued-key cache update (repo, stays in ApiService)
+    // Schedule-driven (injected by ApiService::schedule, not from the wire).
+    Setup = 5,        // one-shot after bootstrap: fetch issued keys + arm periodic collection
+    RunPeriodic = 6,  // recurring: SASE health probe + credential auto-refresh (each self-gated)
 };
 
 class ApiEvent final : public CollectordEvent

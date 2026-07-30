@@ -71,6 +71,9 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
     case pz::ipc::IpcCmd::ProbeResult:
         return std::make_unique<ProbeEvent>(ProbeEventType::ReceiveProbeResult, std::move(msg));
 
+    case pz::ipc::IpcCmd::SaseHealthResult:
+        return std::make_unique<ProbeEvent>(ProbeEventType::ReceiveSaseHealthResult, std::move(msg));
+
     case pz::ipc::IpcCmd::AdminPasswordUpdate:
         return std::make_unique<AdminEvent>(AdminEventType::ReceivePasswordUpdate, std::move(msg));
 
@@ -82,6 +85,9 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
 
     case pz::ipc::IpcCmd::ApiCollectionSample:
         return std::make_unique<CollectionEvent>(CollectionEventType::ReceiveSample, std::move(msg));
+
+    case pz::ipc::IpcCmd::SaseApiKeyUpdate:
+        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveSaseApiKey, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

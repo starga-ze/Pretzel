@@ -51,10 +51,14 @@ pz_add_test(test-api-refs           test_api_refs.cpp           GTest::gtest_mai
 # suite needs its own main() to point PRETZEL_CONFIG_DIR at a fixture before any test runs.
 pz_add_test(test-secret             test_secret.cpp)
 
-# buildCollectionSample lives in collectord, not shared: pull in just that one translation unit and put
-# collectord/ on the include path (it needs its own headers; ClientResponse comes from shared/http). Boost
-# and nlohmann come transitively from pz-shared, so no extra links are required.
+# buildCollectionSample lives in collectord's ApiUtil (with the connector-test helpers), not shared:
+# pull in that one translation unit and put collectord/ on the include path (it needs its own headers;
+# ClientResponse comes from shared/http). The test only calls buildCollectionSample — a pure function
+# of its inputs — so --gc-sections drops the sibling IPC helpers (sendApiCredentialState et al.) and
+# their collectord-service link dependencies. Boost/nlohmann come transitively from pz-shared.
 pz_add_test(test-collection-sample  test_collection_sample.cpp  GTest::gtest_main)
 target_sources(test-collection-sample PRIVATE
-    ${CMAKE_SOURCE_DIR}/collectord/service/api/CollectionSample.cpp)
+    ${CMAKE_SOURCE_DIR}/collectord/service/api/ApiUtil.cpp)
 target_include_directories(test-collection-sample PRIVATE ${CMAKE_SOURCE_DIR}/collectord)
+target_compile_options(test-collection-sample PRIVATE -ffunction-sections -fdata-sections)
+target_link_options(test-collection-sample PRIVATE -Wl,--gc-sections)

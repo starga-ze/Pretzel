@@ -23,6 +23,16 @@ void ApiCredentialService::handleEvent(EnginedServiceManager& serviceManager, co
         return sendState(serviceManager, requester, in ? in->getSeqNo() : 0);
     }
 
+    if (event.type() == ApiCredentialEventType::ReceiveSaseApiKey)
+    {
+        if (in && !in->getPayload().empty())
+        {
+            const auto& pl = in->getPayload();
+            storeSaseApiKey(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
+        }
+        return;
+    }
+
     if (event.type() != ApiCredentialEventType::ReceiveStateUpdate)
     {
         return;
@@ -36,6 +46,42 @@ void ApiCredentialService::handleEvent(EnginedServiceManager& serviceManager, co
 
     const auto& pl = in->getPayload();
     storeState(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
+}
+
+// probed validated a SASE device's health api-key (a getPrismaAccessIP read succeeded) and sealed it;
+// store it on the device. Kept out of running_config, exactly like api_credential_state.
+void ApiCredentialService::storeSaseApiKey(const std::string& payloadJson)
+{
+    nlohmann::json root;
+    try
+    {
+        root = nlohmann::json::parse(payloadJson);
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("failed to parse SaseApiKeyUpdate payload (error={})", e.what());
+        return;
+    }
+
+    const std::string oid = root.value("oid", "");
+    const std::string keyEnc = root.value("api_key_enc", "");
+    if (oid.empty() || keyEnc.empty())
+    {
+        LOG_WARN("SaseApiKeyUpdate without oid/api_key_enc — dropping");
+        return;
+    }
+
+    // Upsert so a Test can save the key before the device projection exists; projectInventory fills
+    // the config columns on the next reload and never touches api_key_enc, so both survive. A partial
+    // row for a device that is never committed is pruned by projectInventory's DELETE.
+    const bool wrote = pz::db::Database::instance().exec(
+        "INSERT INTO sase_device (oid, api_key_enc) VALUES ($1, $2) "
+        "ON CONFLICT (oid) DO UPDATE SET api_key_enc = EXCLUDED.api_key_enc, updated_at = now()",
+        {oid, keyEnc});
+    if (wrote)
+        LOG_INFO("sase device api-key stored (oid={})", oid);
+    else
+        LOG_WARN("sase device api-key write failed (oid={})", oid);
 }
 
 void ApiCredentialService::storeState(const std::string& payloadJson)
@@ -62,7 +108,7 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
     // to seal them, so nothing crosses the IPC socket or reaches this process in the clear.
     const std::string idEnc = root.value("id_enc", "");
     const std::string pwEnc = root.value("pw_enc", "");
-    const std::string secretEnc = root.value("secret_enc", "");
+    const std::string secretEnc = root.value("key_enc", "");
     const bool ok = root.value("ok", false);
     const std::string note = root.value("note", "");
     const std::string expiresAt = root.value("expires_at", "");
@@ -70,14 +116,14 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
     // A failed test must not erase a working key or credential, so each sealed column and the issue
     // time are only written when a new value actually arrived — hence COALESCE on the excluded value.
     const bool wrote = pz::db::Database::instance().exec(
-        "INSERT INTO api_credential_state (oid, id_enc, pw_enc, secret_enc, issued_at, expires_at, "
+        "INSERT INTO api_credential_state (oid, id_enc, pw_enc, key_enc, issued_at, expires_at, "
         "last_test_at, last_test_ok, last_test_note) "
         "VALUES ($1, NULLIF($2,''), NULLIF($3,''), NULLIF($4,''), CASE WHEN $4 <> '' THEN now() END, "
         "NULLIF($5,'')::timestamptz, now(), $6::boolean, $7) "
         "ON CONFLICT (oid) DO UPDATE SET "
         "id_enc = COALESCE(EXCLUDED.id_enc, api_credential_state.id_enc), "
         "pw_enc = COALESCE(EXCLUDED.pw_enc, api_credential_state.pw_enc), "
-        "secret_enc = COALESCE(EXCLUDED.secret_enc, api_credential_state.secret_enc), "
+        "key_enc = COALESCE(EXCLUDED.key_enc, api_credential_state.key_enc), "
         "issued_at = COALESCE(EXCLUDED.issued_at, api_credential_state.issued_at), "
         "expires_at = COALESCE(EXCLUDED.expires_at, api_credential_state.expires_at), "
         "last_test_at = EXCLUDED.last_test_at, last_test_ok = EXCLUDED.last_test_ok, "
@@ -94,15 +140,15 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
 void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
                                      std::uint32_t seqNo)
 {
-    // secret_enc leaves as it was stored. engined has no credentials.key and could not open it
+    // key_enc leaves as it was stored. engined has no credentials.key and could not open it
     // anyway; the requester does that, so a plaintext key exists in exactly one process.
-    // secret_enc is the issued key/token; id_enc/pw_enc are the durable account credential that lets
+    // key_enc is the issued key/token; id_enc/pw_enc are the durable account credential that lets
     // the requester (collectord) re-issue on its own for auto-refresh. All stay sealed — engined has no
     // credentials.key. A row is worth sending if it holds either an issued key or a credential.
     const auto rows = pz::db::Database::instance().queryRows(
-        "SELECT oid, COALESCE(secret_enc, ''), COALESCE(to_char(expires_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
+        "SELECT oid, COALESCE(key_enc, ''), COALESCE(to_char(expires_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
         "COALESCE(id_enc, ''), COALESCE(pw_enc, '') "
-        "FROM api_credential_state WHERE secret_enc IS NOT NULL OR (id_enc IS NOT NULL AND pw_enc IS NOT NULL)");
+        "FROM api_credential_state WHERE key_enc IS NOT NULL OR (id_enc IS NOT NULL AND pw_enc IS NOT NULL)");
 
     nlohmann::json keys = nlohmann::json::array();
     for (const auto& row : rows)
@@ -110,10 +156,20 @@ void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, pz::
         if (row.size() < 5 || row[0].empty())
             continue;
         keys.push_back({{"oid", row[0]},
-                        {"secret_enc", row[1]},
+                        {"key_enc", row[1]},
                         {"expires_at", row[2]},
                         {"id_enc", row[3]},
                         {"pw_enc", row[4]}});
+    }
+
+    // SASE device health api-keys ride the same response, keyed by device oid, so probed's SaseProbe
+    // can look one up by oid exactly like an issued key. They live in sase_device (not running_config).
+    for (const auto& row : pz::db::Database::instance().queryRows(
+             "SELECT oid, api_key_enc FROM sase_device WHERE api_key_enc IS NOT NULL"))
+    {
+        if (row.size() < 2 || row[0].empty() || row[1].empty())
+            continue;
+        keys.push_back({{"oid", row[0]}, {"key_enc", row[1]}});
     }
 
     const std::string payload = nlohmann::json{{"keys", keys}}.dump();

@@ -1,8 +1,8 @@
-#include "service/api/ApiCollector.h"
+#include "service/api/controller/ConnectorController.h"
 
 #include "service/CollectordServiceManager.h"
 #include "service/api/ApiService.h"
-#include "service/api/CollectionSample.h"
+#include "service/api/ApiUtil.h"
 
 #include "config/Config.h"
 #include "http/HttpClient.h"
@@ -66,9 +66,11 @@ bool resolveDevice(const std::string& objectOid, std::string& host, std::uint16_
                    std::string& fingerprint)
 {
     const auto& site = pz::config::Config::serviceSection("engined", "site");
-    const auto devices = site.value("devices", json::array());
-    if (!devices.is_array())
-        return false;
+    // A connector's object may name either device kind; both arrays are searched by oid.
+    json devices = json::array();
+    for (const char* key : {"ngfw_devices", "sase_devices"})
+        for (const auto& d : site.value(key, json::array()))
+            devices.push_back(d);
 
     for (const auto& d : devices)
     {
@@ -224,10 +226,10 @@ void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::ti
 
 }
 
-ApiCollector::ApiCollector() = default;
-ApiCollector::~ApiCollector() = default;
+ConnectorController::ConnectorController() = default;
+ConnectorController::~ConnectorController() = default;
 
-void ApiCollector::start(CollectordServiceManager& sm, ApiService& api)
+void ConnectorController::start(CollectordServiceManager& sm, ApiService& api)
 {
     int armed = 0;
     for (const auto& conn : api.connectors())

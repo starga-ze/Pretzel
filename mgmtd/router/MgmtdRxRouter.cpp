@@ -39,7 +39,7 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         return;
     }
 
-    if (msg->getCmd() == pz::ipc::IpcCmd::CommitQueueStatus)
+    if (msg->getCmd() == pz::ipc::IpcCmd::SettingsCommitStatus)
     {
         const auto& pl = msg->getPayload();
         if (!pl.empty())

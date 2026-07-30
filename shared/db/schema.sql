@@ -128,28 +128,72 @@ DROP TABLE IF EXISTS api_endpoint_state;
 -- version every time a key was re-issued or a probe answered, and would show machine noise in
 -- the operator's review diff. engined is the single writer for all of them.
 
--- Devices projected from running_config, plus live reachability. A pure projection (rebuilt
--- from config on every reload), so the DDL drops and recreates it to evolve the shape.
---   oid         : object identity — a UUID string, immutable
---   site        : oid of the site the device belongs to ('' = unassigned)
---   device_type : ngfw (reached at its own address) | sase (tenant-scoped)
---   target      : access identifier — ngfw: mgmt IP/FQDN · sase: tenant/TSG id
+-- Devices projected from running_config. NGFW and SASE are separate tables because they carry
+-- different access details and health mechanisms; the table (like the config array) IS the type,
+-- so there is no device_type discriminator. Each row is a hybrid — fields projected from config
+-- (site/target/name/description + the type-specific bits) plus live runtime state (status/last_seen).
 DROP TABLE IF EXISTS inventory;
-DROP TABLE IF EXISTS devices;
-CREATE TABLE IF NOT EXISTS devices (
+DROP TABLE IF EXISTS devices;   -- legacy mixed table, replaced by the two below
+--   oid    : object identity — a UUID string, immutable
+--   site   : oid of the site the device belongs to ('' = unassigned)
+--   target : mgmt IP / FQDN, reached directly; fingerprint pins its TLS cert (from the API Key test)
+CREATE TABLE IF NOT EXISTS ngfw_device (
     oid         TEXT PRIMARY KEY,
     site        TEXT,
-    device_type TEXT NOT NULL DEFAULT 'ngfw',
     target      TEXT,
     name        TEXT,
     description TEXT,
+    fingerprint TEXT,
     status      TEXT,
     last_seen   TIMESTAMPTZ,
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- One device per access identifier, per device type (dup-prevention).
-CREATE UNIQUE INDEX IF NOT EXISTS devices_target_uniq ON devices (device_type, target)
+CREATE UNIQUE INDEX IF NOT EXISTS ngfw_device_target_uniq ON ngfw_device (target)
     WHERE target IS NOT NULL AND target <> '';
+-- A cloud tenant, reached through its control-plane API. target is the tenant/TSG id. The
+-- getPrismaAccessIP api-key is a secret, so it lives here (api_key_enc, AES-256-GCM, DB-only,
+-- written by engined) and never in running_config; health_url/health_body are the operator-declared
+-- probe request; egress_result caches the last getPrismaAccessIP response (zones + egress IPs).
+CREATE TABLE IF NOT EXISTS sase_device (
+    oid           TEXT PRIMARY KEY,
+    site          TEXT,
+    target        TEXT,
+    name          TEXT,
+    description   TEXT,
+    health_url    TEXT,
+    health_body   TEXT,
+    api_key_enc   TEXT,
+    status        TEXT,
+    last_seen     TIMESTAMPTZ,
+    egress_result JSONB,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS sase_device_target_uniq ON sase_device (target)
+    WHERE target IS NOT NULL AND target <> '';
+
+-- Split the old mixed devices[] config array into type-specific arrays (the array now IS the type,
+-- so device_type is dropped). The SASE api-key that used to sit in config is dropped here too — it
+-- moves to sase_device.api_key_enc, re-entered via the UI (a SQL migration cannot seal it).
+DO $split_devices$
+DECLARE tbl TEXT;
+BEGIN
+    FOREACH tbl IN ARRAY ARRAY['running_config', 'startup_config'] LOOP
+        EXECUTE format($fmt$
+            UPDATE %I SET config_json = jsonb_set(
+                jsonb_set(
+                    config_json #- '{engined,service,site,devices}',
+                    '{engined,service,site,ngfw_devices}',
+                    COALESCE((SELECT jsonb_agg(e - 'device_type')
+                              FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') e
+                              WHERE e->>'device_type' IS DISTINCT FROM 'sase'), '[]'::jsonb)),
+                '{engined,service,site,sase_devices}',
+                COALESCE((SELECT jsonb_agg((e - 'device_type') - 'api_key')
+                          FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') e
+                          WHERE e->>'device_type' = 'sase'), '[]'::jsonb))
+            WHERE config_json #> '{engined,service,site}' ? 'devices'
+        $fmt$, tbl);
+    END LOOP;
+END $split_devices$;
 
 -- What pretzel learns about a device API key, as opposed to what the operator declared. The
 -- declaration (name, device, endpoint, account) lives in running_config; the issued secret and
@@ -164,7 +208,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS devices_target_uniq ON devices (device_type, t
 -- key; for sase it is the tenant OAuth credential (the bearer token stays ephemeral in memory).
 --   id_enc     : account identity  — ngfw username / sase client id     (AES-256-GCM, base64)
 --   pw_enc     : account secret    — ngfw password / sase client secret (AES-256-GCM, base64)
---   secret_enc : issued key/token  — AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext). A database copy
+--   key_enc : issued key/token  — AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext). A database copy
 --                without credentials.key is useless.
 --   expires_at : NULL means no expiry — PAN-OS keys are indefinite unless an API key lifetime is
 --                configured on the device.
@@ -180,7 +224,7 @@ CREATE TABLE IF NOT EXISTS api_credential_state (
     oid            TEXT PRIMARY KEY,
     id_enc         TEXT,
     pw_enc         TEXT,
-    secret_enc     TEXT,
+    key_enc     TEXT,
     issued_at      TIMESTAMPTZ,
     expires_at     TIMESTAMPTZ,
     last_test_at   TIMESTAMPTZ,
@@ -191,6 +235,16 @@ CREATE TABLE IF NOT EXISTS api_credential_state (
 -- Upgrade path for databases created before the credential columns existed.
 ALTER TABLE api_credential_state ADD COLUMN IF NOT EXISTS id_enc TEXT;
 ALTER TABLE api_credential_state ADD COLUMN IF NOT EXISTS pw_enc TEXT;
+-- secret_enc was renamed to key_enc (it holds an issued key/token, not a generic secret).
+DO $rename_keyenc$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'api_credential_state' AND column_name = 'secret_enc')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_name = 'api_credential_state' AND column_name = 'key_enc') THEN
+        ALTER TABLE api_credential_state RENAME COLUMN secret_enc TO key_enc;
+    END IF;
+END $rename_keyenc$;
 
 -- API collection samples: what each connector's scheduled endpoint poll returned. Pure state
 -- (system-produced, never operator-declared), written only by engined from collectord's IPC — the same
@@ -265,28 +319,6 @@ BEGIN
         WHERE config_json #> '{ipcd,service}' ? 'daemon_map';
     UPDATE startup_config SET config_json = config_json #- '{ipcd,service,daemon_map}'
         WHERE config_json #> '{ipcd,service}' ? 'daemon_map';
-    -- Device-type rename (prisma_access -> sase): rewrite device_type across the devices array of
-    -- every persisted version and the baseline. Idempotent — once renamed nothing matches the guard.
-    UPDATE running_config SET config_json = jsonb_set(config_json, '{engined,service,site,devices}', (
-        SELECT COALESCE(jsonb_agg(
-            CASE WHEN elem->>'device_type' = 'prisma_access'
-                 THEN jsonb_set(elem, '{device_type}', '"sase"')
-                 ELSE elem END), '[]'::jsonb)
-        FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') AS elem))
-        WHERE jsonb_typeof(config_json #> '{engined,service,site,devices}') = 'array'
-          AND EXISTS (SELECT 1 FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') AS e
-                      WHERE e->>'device_type' = 'prisma_access');
-    UPDATE startup_config SET config_json = jsonb_set(config_json, '{engined,service,site,devices}', (
-        SELECT COALESCE(jsonb_agg(
-            CASE WHEN elem->>'device_type' = 'prisma_access'
-                 THEN jsonb_set(elem, '{device_type}', '"sase"')
-                 ELSE elem END), '[]'::jsonb)
-        FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') AS elem))
-        WHERE jsonb_typeof(config_json #> '{engined,service,site,devices}') = 'array'
-          AND EXISTS (SELECT 1 FROM jsonb_array_elements(config_json #> '{engined,service,site,devices}') AS e
-                      WHERE e->>'device_type' = 'prisma_access');
-    -- Projection table too, in case a reload has not rebuilt it yet.
-    UPDATE devices SET device_type = 'sase' WHERE device_type = 'prisma_access';
     -- API key -> credential rename: move collectord.service.api.api_keys to .api_credentials in every
     -- persisted version and the baseline. Idempotent — once moved, the `? 'api_keys'` guard is false.
     UPDATE running_config SET config_json =

@@ -7,7 +7,7 @@
 // http_status appears only when the request was actually sent; and an oversized body is cut to the
 // cap with `truncated` set while `bytes` still reports the full size.
 
-#include "service/api/CollectionSample.h"
+#include "service/api/ApiUtil.h"
 
 #include "http/HttpClient.h"
 

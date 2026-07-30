@@ -26,6 +26,10 @@ private:
     void sendProbeRequest(EnginedServiceManager& serviceManager);
     void onProbeResult(EnginedServiceManager& serviceManager, const ProbeEvent& event);
 
+    // SASE control-plane health from collectord (SaseHealthResult): reflect alive/down + egress into
+    // sase_device. Separate message from ProbeResult because the SASE probe runs in collectord.
+    void onSaseHealthResult(EnginedServiceManager& serviceManager, const ProbeEvent& event);
+
     // Project the operator-declared objects (probed.probe.probe_targets) into the inventory
     // table (config is the source of truth); called each probe cycle before status is applied.
     void projectInventory();

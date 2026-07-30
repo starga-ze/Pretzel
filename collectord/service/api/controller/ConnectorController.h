@@ -9,7 +9,7 @@ namespace pz::collectord
 class ApiService;
 class CollectordServiceManager;
 
-// One in-flight schedule, defined in ApiCollector.cpp. Held by shared_ptr so it outlives each
+// One in-flight schedule, defined in ConnectorController.cpp. Held by shared_ptr so it outlives each
 // timer wait and async device call.
 struct CollectorJob;
 
@@ -22,11 +22,11 @@ struct CollectorJob;
 // Not the tester and not a router: the seam is one start() that arms a repeating steady_timer per
 // item. A config reload restarts the daemon, so there is no live re-arm — start() runs once against
 // the freshly loaded config.
-class ApiCollector
+class ConnectorController
 {
 public:
-    ApiCollector();
-    ~ApiCollector();
+    ConnectorController();
+    ~ConnectorController();
 
     void start(CollectordServiceManager& sm, ApiService& api);
 

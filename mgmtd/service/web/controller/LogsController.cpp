@@ -1,6 +1,6 @@
 #include "service/web/controller/LogsController.h"
 
-#include "service/web/WebResponse.h"
+#include "service/web/WebUtil.h"
 #include "service/web/WebRouter.h"
 
 #include "db/Database.h"

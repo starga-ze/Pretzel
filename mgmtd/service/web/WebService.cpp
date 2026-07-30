@@ -4,14 +4,14 @@
 
 #include "service/web/controller/AuthController.h"
 #include "service/web/controller/ConnectorController.h"
-#include "service/web/controller/InventoryController.h"
+#include "service/web/controller/StatusController.h"
 #include "service/web/controller/LogsController.h"
 #include "service/web/controller/SettingsController.h"
 #include "service/web/controller/SsoController.h"
 
 #include "service/web/WebAction.h"
 #include "service/web/WebEvent.h"
-#include "service/web/WebResponse.h"
+#include "service/web/WebUtil.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -79,7 +79,7 @@ void WebService::registerRoutes()
     AuthController::registerRoutes(m_router);
     SsoController::registerRoutes(m_router);
     SettingsController::registerRoutes(m_router);
-    InventoryController::registerRoutes(m_router);
+    StatusController::registerRoutes(m_router);
     ConnectorController::registerRoutes(m_router);
     LogsController::registerRoutes(m_router);
 }

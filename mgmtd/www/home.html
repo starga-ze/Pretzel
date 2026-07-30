@@ -24,14 +24,25 @@
     <header class="page-topbar" id="pageTopbar"><!-- populated by main.js --></header>
     <main class="content-body" id="contentBody">
 
-      <div class="home-cols">
-        <div class="info-card">
-          <div class="info-card-title">General Information <span class="info-hint" id="ovHint">&mdash;</span></div>
-          <div id="overviewBody">
-            <div class="home-empty">Loading&hellip;</div>
-          </div>
+      <!-- Row 1: General Information — full width. Statistics strip + per-site device health. -->
+      <div class="info-card" style="margin-bottom:14px">
+        <div class="info-card-title">
+          General Information <span class="info-hint" id="ovHint">&mdash;</span>
+          <span class="gi-live" title="live — refreshes every 5s"></span>
+          <span class="info-hint" style="margin-left:auto;display:flex;gap:12px;align-items:center">
+            <span><span class="gi-dot" style="background:var(--green)"></span> active</span>
+            <span><span class="gi-dot" style="background:var(--red)"></span> inactive</span>
+            <span><span class="gi-dot" style="background:var(--text-muted)"></span> not configured</span>
+          </span>
         </div>
+        <div id="statRow" class="stat-row" style="margin:12px 0 16px"></div>
+        <div id="overviewBody">
+          <div class="home-empty">Loading&hellip;</div>
+        </div>
+      </div>
 
+      <!-- Row 2: System Status (daemon health). -->
+      <div class="home-cols">
         <div class="info-card">
           <div class="info-card-title">System Status <span class="info-hint" id="daemonHint">&mdash;</span></div>
           <div id="daemonList">
@@ -45,69 +56,241 @@
 
 </div>
 <script src="js/main.js"></script>
+<style>
+  /* Home dot helpers (legend + inline layer/status dots). */
+  .gi-dot { display:inline-block; width:9px; height:9px; border-radius:50%; vertical-align:middle; margin-right:4px; }
+  .gi-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  .gi-tbl th { padding:6px 8px; color:var(--text-secondary,#666); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid var(--border,#eee); }
+  .gi-tbl td { padding:9px 8px; border-bottom:0.5px solid var(--border,#eee); }
+  .gi-site-head td { padding:11px 8px 5px; color:var(--text-secondary,#666); font-size:12px; font-weight:600; }
+  .gi-layer { display:inline-block; width:11px; height:11px; border-radius:50%; }
+  .gi-status { display:inline-flex; align-items:center; gap:7px; font-weight:600; }
+  /* Four donut stat cards: sites / device types / status / credential. Arcs animate on data change. */
+  #statRow { grid-template-columns:repeat(auto-fit,minmax(232px,1fr)); }
+  .gi-scard { display:flex; align-items:center; gap:14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:13px 15px; }
+  .gi-mini { flex:0 0 auto; }
+  .gi-arc { transition:stroke-dasharray .85s cubic-bezier(.4,0,.2,1); }
+  .gi-scard-body { min-width:0; display:flex; flex-direction:column; gap:6px; flex:1 1 auto; }
+  .gi-scard-title { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; }
+  .gi-scard-legend { display:flex; flex-direction:column; gap:4px; font-size:11.5px; }
+  .gi-lg-row { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  .gi-lg-dot { width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
+  .gi-lg-nm { color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .gi-lg-v { color:var(--text-muted); margin-left:auto; font-variant-numeric:tabular-nums; padding-left:8px; }
+  .gi-live { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--green); animation:giPulse 2s infinite; }
+  @keyframes giPulse { 0%{box-shadow:0 0 0 0 rgba(16,185,129,.5)} 70%{box-shadow:0 0 0 7px rgba(16,185,129,0)} 100%{box-shadow:0 0 0 0 rgba(16,185,129,0)} }
+</style>
 <script>
   // Home dashboard. One refresh cycle drives the whole page: every 5s (and on the topbar Refresh
-  // button) it re-pulls config, device reachability and daemon health, then re-renders both cards.
+  // button) it re-pulls config, device status and daemon health, then re-renders.
   (function () {
     var PAGE_REFRESH_MS = 5000;
 
-    function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     function oidOf(o) { return (o && (o.oid || o.uuid || o.id)) || ''; }
 
     var ovBody = document.getElementById('overviewBody');
     var ovHint = document.getElementById('ovHint');
+    var statRow = document.getElementById('statRow');
     var list = document.getElementById('daemonList');
     var hint = document.getElementById('daemonHint');
     var PIN = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
 
     // Latest snapshot, refreshed each cycle; kept so a single failed fetch shows last-known data.
-    var siteData = null;   // config { sites, devices } from /api/settings
-    var aliveSet = null;   // reachable targets from /api/inventory/status (null until first success)
+    var siteData = null;   // config { sites, ngfw_devices, sase_devices } from /api/settings
+    var statusMap = null;  // device oid -> { reachable, credential, api } (each ok/fail/unknown)
     var daemons = [];      // heartbeat roll-up from /health
     var healthOk = false;
 
-    // ── General Information render ──────────────────────────────────────────────────────
+    // ── Status model ────────────────────────────────────────────────────────────────────────
+    // Each device carries three dependency layers, each ok(active) / fail(inactive) / unknown(not
+    // configured). The layer names differ by device type; the checks are the same shape:
+    //   NGFW : Device (ICMP reachability) · Credential (API key) · API (collection call)
+    //   SASE : Infrastructure (Prisma egress-IP) · Credential (OAuth token) · API (collection call)
+    function layerInfo(type) {
+      return type === 'sase'
+        ? { reach: 'Infrastructure — Prisma egress-IP', cred: 'Credential — OAuth token', api: 'API — collection call' }
+        : { reach: 'Device — ICMP reachability',        cred: 'Credential — API key',    api: 'API — collection call' };
+    }
+
     function typeTag(t) {
       return t === 'sase'
         ? '<span class="type-badge badge-server">SASE</span>'
         : '<span class="type-badge badge-network">NGFW</span>';
     }
 
-    // Reachability dot after the type tag. Only NGFW (IP-probed) devices have an ICMP state; hold the
-    // dot back until reachability is known so nothing flashes red before we actually have data.
-    function statusDot(d) {
-      if (d.device_type === 'sase' || !aliveSet) return '';
-      var active = aliveSet.has(d.target);
-      return '<span class="dot ' + (active ? 'dot-green' : 'dot-red') + '" title="' + (active ? 'active' : 'inactive') + '"></span>';
+    function colorFor(state) {
+      return state === 'ok' ? 'var(--green)' : state === 'fail' ? 'var(--red)' : 'var(--text-muted)';
+    }
+    function wordFor(state) {
+      return state === 'ok' ? 'active' : state === 'fail' ? 'inactive' : 'not configured';
+    }
+    function layerDot(state, label) {
+      return '<span class="gi-layer" title="' + esc(label + ': ' + wordFor(state)) + '" style="background:' + colorFor(state) + '"></span>';
     }
 
+    // Common device Status. The API layer is still being built, so active is judged on the two
+    // implemented layers (reachable + credential); it joins here once collection status is wired.
+    //   active (green)         — reachable AND credential both active
+    //   inactive (red)         — either implemented layer is failing
+    //   not configured (gray)  — otherwise (nothing failing, but not fully set up yet)
+    function commonStatus(s) {
+      var r = s ? s.reachable : 'unknown';
+      var c = s ? s.credential : 'unknown';
+      if (r === 'ok' && c === 'ok') return { word: 'active', state: 'ok' };
+      if (r === 'fail' || c === 'fail') return { word: 'inactive', state: 'fail' };
+      return { word: 'not configured', state: 'unknown' };
+    }
+
+    // ── Four donut stat cards (sites / device types / status / credential) ───────────────────
+    // Distinct-enough hues so adjacent site slices never blur together.
+    var PALETTE = ['#6366f1', '#f59e0b', '#10b981', '#ec4899', '#0ea5e9', '#ef4444', '#a855f7', '#14b8a6'];
+    var C_GREEN = 'var(--green)', C_RED = 'var(--red)', C_GRAY = 'var(--text-muted)';
+
+    // A mini donut. Arcs start collapsed (dasharray "0 C") and expand to data-dash on the next frame,
+    // so a change animates the ring drawing in; the centre number counts up (see playAnim).
+    function miniDonut(segs, centerVal, unit) {
+      var R = 33, C = 2 * Math.PI * R, cx = 42, cy = 42, sw = 10, off = 0;
+      var total = segs.reduce(function (a, s) { return a + s.value; }, 0);
+      var track = '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="var(--border,#eee)" stroke-width="' + sw + '"/>';
+      var arcs = segs.filter(function (s) { return s.value > 0; }).map(function (s) {
+        var len = total ? (s.value / total) * C : 0;
+        var a = '<circle class="gi-arc" cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="' + s.color +
+                '" stroke-width="' + sw + '" stroke-dasharray="0 ' + C.toFixed(2) + '" data-dash="' + len.toFixed(2) + ' ' +
+                (C - len).toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>';
+        off += len;
+        return a;
+      }).join('');
+      return '<svg class="gi-mini" width="84" height="84" viewBox="0 0 84 84">' + track + arcs +
+        '<text class="gi-count" data-to="' + centerVal + '" x="42" y="45" text-anchor="middle" font-size="20" font-weight="700" fill="var(--text)">0</text>' +
+        '<text x="42" y="59" text-anchor="middle" font-size="9" fill="var(--text-muted)">' + esc(unit) + '</text></svg>';
+    }
+
+    function lgRow(color, name, val) {
+      return '<div class="gi-lg-row"><span class="gi-lg-dot" style="background:' + color + '"></span>' +
+             '<span class="gi-lg-nm">' + esc(name) + '</span><span class="gi-lg-v">' + val + '</span></div>';
+    }
+
+    function donutCard(title, segs, centerVal, unit, legend) {
+      return '<div class="gi-scard">' + miniDonut(segs, centerVal, unit) +
+             '<div class="gi-scard-body"><div class="gi-scard-title">' + esc(title) + '</div>' +
+             '<div class="gi-scard-legend">' + legend + '</div></div></div>';
+    }
+
+    // Count a <text data-to> up from 0, and expand every arc to its target — played only when the
+    // stat data actually changed (guarded below), so it reads as a live update, not a 5s flicker.
+    function playAnim(root) {
+      requestAnimationFrame(function () {
+        root.querySelectorAll('.gi-arc').forEach(function (a) { a.style.strokeDasharray = a.getAttribute('data-dash'); });
+        root.querySelectorAll('.gi-count').forEach(function (t) {
+          var to = +t.getAttribute('data-to') || 0, start = performance.now();
+          (function step(now) {
+            var p = Math.min(1, (now - start) / 700);
+            t.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
+            if (p < 1) requestAnimationFrame(step);
+          })(start);
+        });
+      });
+    }
+
+    var lastStatSig = '';
+    function renderStatCards(sites, devices) {
+      // Per-site groups (+ unassigned).
+      var groups = sites.map(function (s, i) {
+        return { name: s.name || 'unnamed', devs: devices.filter(function (d) { return (d.site || '') === oidOf(s); }),
+                 color: PALETTE[i % PALETTE.length] };
+      });
+      var orphan = devices.filter(function (d) { return !(d.site || ''); });
+      if (orphan.length) groups.push({ name: 'Unassigned', devs: orphan, color: C_GRAY });
+
+      var ngfw = devices.filter(function (d) { return d.device_type !== 'sase'; }).length;
+      var sase = devices.length - ngfw;
+
+      var active = 0, inactive = 0, notcfg = 0;   // common status roll-up
+      var credOk = 0, credBad = 0, credNone = 0;  // credential layer
+      devices.forEach(function (d) {
+        var s = statusMap ? statusMap[oidOf(d)] : null;
+        var st = commonStatus(s).state;
+        if (st === 'ok') active++; else if (st === 'fail') inactive++; else notcfg++;
+        var c = s ? s.credential : 'unknown';
+        if (c === 'ok') credOk++; else if (c === 'fail') credBad++; else credNone++;
+      });
+
+      // Skip the rebuild (and its animation) unless something actually moved.
+      var sig = JSON.stringify([groups.map(function (g) { return [g.name, g.devs.length,
+        g.devs.filter(function (d) { return d.device_type !== 'sase'; }).length]; }),
+        ngfw, sase, active, inactive, notcfg, credOk, credBad, credNone]);
+      if (sig === lastStatSig) return;
+      lastStatSig = sig;
+
+      var siteSegs = groups.filter(function (g) { return g.devs.length; })
+        .map(function (g) { return { value: g.devs.length, color: g.color }; });
+      var siteLegend = groups.map(function (g) {
+        var n = g.devs.filter(function (d) { return d.device_type !== 'sase'; }).length;
+        return lgRow(g.color, g.name, g.devs.length + ' &middot; ' + n + 'N/' + (g.devs.length - n) + 'S');
+      }).join('') || '<span class="gi-lg-nm" style="color:var(--text-muted)">no sites</span>';
+
+      statRow.innerHTML =
+        donutCard('Sites', siteSegs, sites.length, 'sites', siteLegend) +
+        donutCard('Device types', [{ value: ngfw, color: '#2563eb' }, { value: sase, color: '#7c3aed' }],
+                  devices.length, 'devices',
+                  lgRow('#2563eb', 'NGFW', ngfw) + lgRow('#7c3aed', 'SASE', sase)) +
+        donutCard('Status', [{ value: active, color: C_GREEN }, { value: inactive, color: C_RED }, { value: notcfg, color: C_GRAY }],
+                  active, 'active',
+                  lgRow(C_GREEN, 'active', active) + lgRow(C_RED, 'inactive', inactive) + lgRow(C_GRAY, 'not configured', notcfg)) +
+        donutCard('Credential', [{ value: credOk, color: C_GREEN }, { value: credBad, color: C_RED }, { value: credNone, color: C_GRAY }],
+                  credOk, 'valid',
+                  lgRow(C_GREEN, 'valid', credOk) + lgRow(C_RED, 'invalid', credBad) + lgRow(C_GRAY, 'none', credNone));
+
+      playAnim(statRow);
+    }
+
+    // ── Device table (grouped by site) ───────────────────────────────────────────────────────
     function devRow(d) {
-      return '<div class="ov-dev"><span class="ov-dev-nm">' + esc(d.name || 'unnamed') +
-             '</span><span class="ov-dev-meta">' + typeTag(d.device_type) + statusDot(d) + '</span></div>';
+      var s = statusMap ? statusMap[oidOf(d)] : null;
+      var li = layerInfo(d.device_type);
+      var cs = commonStatus(s);
+      return '<tr>' +
+        '<td style="text-align:left;font-weight:500">' + esc(d.name || 'unnamed') + ' ' + typeTag(d.device_type) + '</td>' +
+        '<td style="text-align:left"><span class="gi-status"><span class="gi-layer" style="background:' + colorFor(cs.state) + '"></span>' + cs.word + '</span></td>' +
+        '<td style="text-align:center">' + layerDot(s && s.reachable, li.reach) + '</td>' +
+        '<td style="text-align:center">' + layerDot(s && s.credential, li.cred) + '</td>' +
+        '<td style="text-align:center">' + layerDot(s && s.api, li.api) + '</td>' +
+      '</tr>';
     }
 
-    function block(name, devices, muted) {
-      var html = '<div class="ov-block"><div class="ov-head"><span class="ov-name' + (muted ? ' muted' : '') + '">' +
-                 (muted ? '' : PIN) + esc(name) + '</span><span class="ov-count">' + devices.length + ' device(s)</span></div>';
-      html += devices.length ? devices.map(devRow).join('') : '<div class="ov-empty">no devices</div>';
-      return html + '</div>';
+    function siteRows(name, devices, muted) {
+      var head = '<tr class="gi-site-head"><td colspan="5">' + (muted ? '' : PIN + ' ') + esc(name) +
+                 ' <span style="color:var(--text-muted,#999);font-weight:500">&middot; ' + devices.length + '</span></td></tr>';
+      return head + (devices.length ? devices.map(devRow).join('')
+        : '<tr><td colspan="5" style="color:var(--text-muted,#999)">no devices</td></tr>');
     }
 
     function renderOverview() {
       if (!siteData) { ovBody.innerHTML = '<div class="home-empty">Failed to load configuration.</div>'; return; }
       var sites = Array.isArray(siteData.sites) ? siteData.sites : [];
-      var devices = Array.isArray(siteData.devices) ? siteData.devices : [];
+      var devices = (Array.isArray(siteData.ngfw_devices) ? siteData.ngfw_devices : []).map(function (d) { return Object.assign({ device_type: 'ngfw' }, d); })
+        .concat((Array.isArray(siteData.sase_devices) ? siteData.sase_devices : []).map(function (d) { return Object.assign({ device_type: 'sase' }, d); }));
+      ovHint.textContent = sites.length + ' site(s) · ' + devices.length + ' device(s)';
 
-      ovHint.textContent = sites.length + ' site(s)';
-
-      var html = sites.map(function (s) {
-        return block(s.name || 'unnamed', devices.filter(function (d) { return (d.site || '') === oidOf(s); }), false);
-      }).join('');
+      renderStatCards(sites, devices);
 
       var orphan = devices.filter(function (d) { return !(d.site || ''); });
-      if (orphan.length) html += block('Unassigned', orphan, true);
+      if (!sites.length && !orphan.length) { ovBody.innerHTML = '<div class="home-empty">No sites configured yet.</div>'; return; }
 
-      ovBody.innerHTML = html || '<div class="home-empty">No sites configured yet.</div>';
+      var head = '<thead><tr>' +
+        '<th style="text-align:left">Device</th>' +
+        '<th style="text-align:left">Status</th>' +
+        '<th style="text-align:center">Device / Infrastructure</th>' +
+        '<th style="text-align:center">Credential</th>' +
+        '<th style="text-align:center">API</th></tr></thead>';
+
+      var body = sites.map(function (s) {
+        return siteRows(s.name || 'unnamed', devices.filter(function (d) { return (d.site || '') === oidOf(s); }), false);
+      }).join('');
+      if (orphan.length) body += siteRows('Unassigned', orphan, true);
+
+      ovBody.innerHTML = '<table class="gi-tbl">' + head + '<tbody>' + body + '</tbody></table>';
     }
 
     // ── System Status render (green active / red inactive) ──────────────────────────────
@@ -156,13 +339,13 @@
     function loadConfig() {
       return fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
         .then(function (r) { if (r.status === 401) { location.href = '/'; return null; } return r.ok ? r.json() : Promise.reject(r.status); })
-        .then(function (d) { if (d) siteData = ((d.daemons || {}).engined || {}).site || { sites: [], devices: [] }; })
+        .then(function (d) { if (d) siteData = ((d.daemons || {}).engined || {}).site || { sites: [], ngfw_devices: [], sase_devices: [] }; })
         .catch(function () {});
     }
     function loadAlive() {
-      return fetch('/api/inventory/status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      return fetch('/api/status/devices', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-        .then(function (d) { aliveSet = new Set((d && d.alive) || []); })
+        .then(function (d) { statusMap = d || {}; })
         .catch(function () {});
     }
     function loadHealth() {

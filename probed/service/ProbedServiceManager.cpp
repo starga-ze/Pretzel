@@ -1,11 +1,6 @@
 #include "service/ProbedServiceManager.h"
 
-#include "service/api/ApiConnectorTester.h"
-
-#include "config/Config.h"
 #include "util/Logger.h"
-
-#include <nlohmann/json.hpp>
 
 #include <chrono>
 
@@ -15,7 +10,6 @@ namespace pz::probed
 ProbedServiceManager::ProbedServiceManager(ProbedEventFactory* eventFactory, ProbedActionFactory* actionFactory,
                                          ProbedTxRouter* txRouter, boost::asio::io_context* ioContext)
     : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter), m_ioContext(ioContext),
-      m_apiService(std::make_unique<ApiService>()),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_icmpService(std::make_unique<IcmpService>(m_eventFactory, m_actionFactory)),
       m_heartbeatService(std::make_unique<HeartbeatService>()), m_reloadService(std::make_unique<ReloadService>())
@@ -26,7 +20,6 @@ void ProbedServiceManager::start()
 {
     m_bootstrapService->start();
     m_icmpService->start();
-    m_apiService->start();
 }
 
 void ProbedServiceManager::schedule()
@@ -39,86 +32,9 @@ void ProbedServiceManager::schedule()
         return;
     }
 
-    // The issued keys live in engined's api_credential_state; ask once bootstrap is through, so a
-    // test or an auto-refresh does not need the operator's password again. Not in start(): the IPC
-    // client has not registered yet there, and the request would be dropped on the floor. A config
-    // reload restarts the daemon, so this runs again with the new configuration.
-    if (!m_keysRequested)
-    {
-        m_keysRequested = true;
-        m_apiService->requestKeys(*this);
-    }
-
     if (auto event = m_icmpService->schedule(now))
     {
         postEvent(std::move(event));
-    }
-
-    autoRefreshTick(now);
-}
-
-// Re-issue key/token for auto-refresh credentials whose interval has elapsed. Reuses the exact
-// issuance path a manual Test takes (ApiConnectorTester::run) with a headless ticket (seqNo 0), so
-// there is one code path for both. The account credential is opened from the cache engined fed us,
-// and the bound device's target/type/fingerprint come from the running config.
-void ProbedServiceManager::autoRefreshTick(std::chrono::steady_clock::time_point now)
-{
-    using namespace std::chrono;
-
-    const auto& site = pz::config::Config::serviceSection("engined", "site");
-    const auto devices = site.value("devices", nlohmann::json::array());
-
-    for (const auto& p : m_apiService->profiles())
-    {
-        if (p.refreshMode != "auto")
-            continue;
-
-        const auto interval = minutes(p.refreshIntervalMin > 0 ? p.refreshIntervalMin : 60);
-        const auto it = m_lastRefresh.find(p.oid);
-        if (it != m_lastRefresh.end() && now - it->second < interval)
-            continue;
-
-        // The re-issue needs the account credential; if it has not been cached yet (engined's
-        // response still in flight), leave the timer unset so the next tick retries promptly.
-        const IssuedCredential* cred = m_apiService->credentialFor(p.oid);
-        if (!cred)
-            continue;
-
-        std::string target, deviceType = "ngfw", fingerprint;
-        for (const auto& d : devices)
-        {
-            if (!d.is_object())
-                continue;
-            const std::string doid = d.value("oid", d.value("uuid", d.value("id", std::string())));
-            if (doid == p.device)
-            {
-                target = d.value("target", std::string());
-                deviceType = d.value("device_type", std::string()) == "sase" ? "sase" : "ngfw";
-                fingerprint = d.value("fingerprint", std::string());
-                break;
-            }
-        }
-        if (target.empty())
-        {
-            m_lastRefresh[p.oid] = now;   // misconfigured (no device/target) — retry next interval
-            continue;
-        }
-
-        m_lastRefresh[p.oid] = now;
-
-        const nlohmann::json input = {
-            {"oid", p.oid},
-            {"mode", "keygen"},
-            {"device_type", deviceType},
-            {"target", target},
-            {"fingerprint", fingerprint},
-            {"endpoint", p.endpoint},
-            {"secrets", {{"username", cred->id}, {"password", cred->pw}}},
-        };
-
-        LOG_INFO("auto-refresh re-issuing credential (oid={}, type={}, interval_min={})", p.oid, deviceType,
-                 p.refreshIntervalMin);
-        ApiConnectorTester::run(*m_apiService, *this, 0, input);
     }
 }
 
@@ -159,11 +75,6 @@ void ProbedServiceManager::execute()
             action->dispatch(*this);
         }
     }
-}
-
-ApiService& ProbedServiceManager::apiService()
-{
-    return *m_apiService;
 }
 
 BootstrapService& ProbedServiceManager::bootstrapService()

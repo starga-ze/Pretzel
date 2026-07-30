@@ -76,6 +76,10 @@ void ProbeService::handleEvent(EnginedServiceManager& serviceManager, const Prob
         onProbeResult(serviceManager, event);
         break;
 
+    case ProbeEventType::ReceiveSaseHealthResult:
+        onSaseHealthResult(serviceManager, event);
+        break;
+
     default:
         LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
@@ -130,65 +134,127 @@ void ProbeService::onProbeResult(EnginedServiceManager& serviceManager, const Pr
 
     LOG_DEBUG("probe complete (alive={}, received_ips={})", aliveCount, ips.size());
 
-    // Keep the device projection in sync with config, then reflect ICMP reachability into status.
+    // Keep the device projections in sync with config, then reflect reachability into status.
     projectInventory();
 
     auto& db = pz::db::Database::instance();
     const std::string alive = nlohmann::json(ips).dump();   // JSON array of alive IPs
 
-    // Enabled direct (IP-based) objects that did not answer → down; answered → active.
-    db.exec("UPDATE devices SET status='down' "
-            "WHERE device_type='ngfw' "
-            "AND target <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+    // NGFW: ICMP answered → active, otherwise down.
+    db.exec("UPDATE ngfw_device SET status='down' "
+            "WHERE target <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
             {alive});
-    db.exec("UPDATE devices SET status='active', last_seen=now() "
-            "WHERE device_type='ngfw' "
-            "AND target = ANY(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+    db.exec("UPDATE ngfw_device SET status='active', last_seen=now() "
+            "WHERE target = ANY(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
             {alive});
 
     serviceManager.setAliveIps(std::move(ips));
 }
 
+void ProbeService::onSaseHealthResult(EnginedServiceManager& serviceManager, const ProbeEvent& event)
+{
+    (void)serviceManager;
+
+    const pz::ipc::IpcMessage* msg = event.message();
+    if (!msg || msg->getPayload().empty())
+    {
+        LOG_WARN("empty SaseHealthResult — keeping previous SASE snapshot");
+        return;
+    }
+
+    std::vector<std::string> saseAlive;
+    std::vector<std::string> saseDown;
+    nlohmann::json saseEgress = nlohmann::json::object();   // target -> last getPrismaAccessIP result
+
+    try
+    {
+        const auto& pl = msg->getPayload();
+        const auto root = nlohmann::json::parse(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
+        for (const auto& t : root.value("sase_alive", nlohmann::json::array()))
+            saseAlive.push_back(t.get<std::string>());
+        for (const auto& t : root.value("sase_down", nlohmann::json::array()))
+            saseDown.push_back(t.get<std::string>());
+        if (root.contains("sase_egress") && root["sase_egress"].is_object())
+            saseEgress = root["sase_egress"];
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("failed to parse SaseHealthResult (error={})", e.what());
+        return;
+    }
+
+    // Control-plane probe (getPrismaAccessIP) outcome. Only probed devices appear in these lists;
+    // an unconfigured SASE device is in neither and keeps its current (unknown) status. The rows
+    // themselves are projected by the ProbeResult path (projectInventory), so this only sets state.
+    auto& db = pz::db::Database::instance();
+    if (!saseAlive.empty())
+        db.exec("UPDATE sase_device SET status='active', last_seen=now() "
+                "WHERE target = ANY(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+                {nlohmann::json(saseAlive).dump()});
+    if (!saseDown.empty())
+        db.exec("UPDATE sase_device SET status='down' "
+                "WHERE target = ANY(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+                {nlohmann::json(saseDown).dump()});
+
+    // Cache the last egress-IP response per SASE device (inventory / allow-listing).
+    for (const auto& [target, result] : saseEgress.items())
+        db.exec("UPDATE sase_device SET egress_result = $2::jsonb WHERE target = $1",
+                {target, result.dump()});
+}
+
 void ProbeService::projectInventory()
 {
     const auto& site = pz::config::Config::serviceSection("engined", "site");
-    const auto targets = site.value("devices", nlohmann::json::array());
-
     auto& db = pz::db::Database::instance();
-    nlohmann::json ids = nlohmann::json::array();
 
-    for (const auto& t : targets)
+    // Upsert only the config-projected columns; runtime state (status/last_seen/api_key_enc/
+    // egress_result) is written elsewhere and must survive a reload, so ON CONFLICT never touches it.
+    nlohmann::json ngfwIds = nlohmann::json::array();
+    for (const auto& d : site.value("ngfw_devices", nlohmann::json::array()))
     {
-        if (!t.is_object())
+        if (!d.is_object())
             continue;
-
-        const std::string target = t.value("target", std::string());
-        // Object identity (a UUID string); tolerate the legacy `uuid`/`id` keys, then fall back
-        // to target for pre-identity configs so projection still works.
-        std::string oid = t.value("oid", t.value("uuid", t.value("id", std::string())));
-        if (oid.empty())
-            oid = target;
+        const std::string oid = d.value("oid", d.value("uuid", d.value("id", std::string())));
         if (oid.empty())
             continue;
-
-        const std::string dt = t.value("device_type", std::string());
-        // Tolerate the pre-rename "prisma_access" alias until the migration has rewritten every row.
-        const std::string deviceType = (dt == "sase" || dt == "prisma_access") ? "sase" : "ngfw";
-
-        db.exec("INSERT INTO devices (oid, site, device_type, target, name, description) "
+        db.exec("INSERT INTO ngfw_device (oid, site, target, name, description, fingerprint) "
                 "VALUES ($1,$2,$3,$4,$5,$6) "
-                "ON CONFLICT (oid) DO UPDATE SET site=EXCLUDED.site, device_type=EXCLUDED.device_type, "
-                "target=EXCLUDED.target, name=EXCLUDED.name, description=EXCLUDED.description, "
+                "ON CONFLICT (oid) DO UPDATE SET site=EXCLUDED.site, target=EXCLUDED.target, "
+                "name=EXCLUDED.name, description=EXCLUDED.description, fingerprint=EXCLUDED.fingerprint, "
                 "updated_at=now()",
-                {oid, t.value("site", std::string()), deviceType, target,
-                 t.value("name", std::string()), t.value("description", std::string())});
-
-        ids.push_back(oid);
+                {oid, d.value("site", std::string()), d.value("target", std::string()),
+                 d.value("name", std::string()), d.value("description", std::string()),
+                 d.value("fingerprint", std::string())});
+        ngfwIds.push_back(oid);
     }
+    db.exec("DELETE FROM ngfw_device WHERE oid <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+            {ngfwIds.dump()});
 
-    // Prune rows whose object is no longer in config (empty ids → clears the table).
-    db.exec("DELETE FROM devices WHERE oid <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
-            {ids.dump()});
+    nlohmann::json saseIds = nlohmann::json::array();
+    for (const auto& d : site.value("sase_devices", nlohmann::json::array()))
+    {
+        if (!d.is_object())
+            continue;
+        const std::string oid = d.value("oid", d.value("uuid", d.value("id", std::string())));
+        if (oid.empty())
+            continue;
+        const auto health = d.value("health", nlohmann::json::object());
+        const std::string body =
+            health.contains("body") ? (health["body"].is_string() ? health["body"].get<std::string>()
+                                                                   : health["body"].dump())
+                                     : std::string();
+        db.exec("INSERT INTO sase_device (oid, site, target, name, description, health_url, health_body) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7) "
+                "ON CONFLICT (oid) DO UPDATE SET site=EXCLUDED.site, target=EXCLUDED.target, "
+                "name=EXCLUDED.name, description=EXCLUDED.description, health_url=EXCLUDED.health_url, "
+                "health_body=EXCLUDED.health_body, updated_at=now()",
+                {oid, d.value("site", std::string()), d.value("target", std::string()),
+                 d.value("name", std::string()), d.value("description", std::string()),
+                 health.value("url", std::string()), body});
+        saseIds.push_back(oid);
+    }
+    db.exec("DELETE FROM sase_device WHERE oid <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+            {saseIds.dump()});
 }
 
 }

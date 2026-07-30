@@ -53,7 +53,7 @@ std::unique_ptr<AuthdEvent> AuthdEventFactory::create(std::unique_ptr<pz::ipc::I
     case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
-    case pz::ipc::IpcCmd::ConfigReload:
+    case pz::ipc::IpcCmd::ConfigApply:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 
     case pz::ipc::IpcCmd::AuthLoginRequest:

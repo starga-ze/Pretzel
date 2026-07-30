@@ -93,16 +93,16 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "HeartbeatResponse";
     case IpcCmd::HeartbeatResult:
         return "HeartbeatResult";
-    case IpcCmd::ConfigReload:
-        return "ConfigReload";
+    case IpcCmd::ConfigApply:
+        return "ConfigApply";
     case IpcCmd::ConfigReloadRequest:
         return "ConfigReloadRequest";
     case IpcCmd::ConfigReloadResponse:
         return "ConfigReloadResponse";
     case IpcCmd::SettingsCommitRequest:
         return "SettingsCommitRequest";
-    case IpcCmd::CommitQueueStatus:
-        return "CommitQueueStatus";
+    case IpcCmd::SettingsCommitStatus:
+        return "SettingsCommitStatus";
     case IpcCmd::ScanRequest:
         return "ScanRequest";
     case IpcCmd::ScanResult:
@@ -111,8 +111,12 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "AdminPasswordUpdate";
     case IpcCmd::ApiCredentialStateUpdate:
         return "ApiCredentialStateUpdate";
-    case IpcCmd::ApiConnectorTestRequest:
-        return "ApiConnectorTestRequest";
+    case IpcCmd::ApiKeygenRequest:
+        return "ApiKeygenRequest";
+    case IpcCmd::ApiEndpointTestRequest:
+        return "ApiEndpointTestRequest";
+    case IpcCmd::ApiSaseTestRequest:
+        return "ApiSaseTestRequest";
     case IpcCmd::ApiConnectorTestResponse:
         return "ApiConnectorTestResponse";
     case IpcCmd::ApiCredentialStateRequest:
@@ -121,6 +125,10 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "ApiCredentialStateResponse";
     case IpcCmd::ApiCollectionSample:
         return "ApiCollectionSample";
+    case IpcCmd::SaseApiKeyUpdate:
+        return "SaseApiKeyUpdate";
+    case IpcCmd::SaseHealthResult:
+        return "SaseHealthResult";
     case IpcCmd::ProbeRequest:
         return "ProbeRequest";
     case IpcCmd::AuthLoginRequest:
@@ -145,6 +153,94 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "AuthSamlAcsResponse";
     default:
         return "Unknown";
+    }
+}
+
+CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
+{
+    switch (cmd)
+    {
+    // Config distribution.
+    case IpcCmd::ConfigReloadRequest:
+    case IpcCmd::ConfigReloadResponse:
+    case IpcCmd::ConfigApply:
+        return CmdCategory::Config;
+
+    // mgmtd → authd delegated auth.
+    case IpcCmd::AuthLoginRequest:
+    case IpcCmd::AuthLoginResponse:
+    case IpcCmd::AuthOidcStartRequest:
+    case IpcCmd::AuthOidcStartResponse:
+    case IpcCmd::AuthOidcCallbackRequest:
+    case IpcCmd::AuthOidcCallbackResponse:
+    case IpcCmd::AuthSamlStartRequest:
+    case IpcCmd::AuthSamlStartResponse:
+    case IpcCmd::AuthSamlAcsRequest:
+    case IpcCmd::AuthSamlAcsResponse:
+        return CmdCategory::Auth;
+
+    // Ask a worker to act on a device.
+    case IpcCmd::ProbeRequest:
+    case IpcCmd::ScanRequest:
+    case IpcCmd::ApiKeygenRequest:
+    case IpcCmd::ApiEndpointTestRequest:
+    case IpcCmd::ApiSaseTestRequest:
+    case IpcCmd::ApiConnectorTestResponse:
+        return CmdCategory::DeviceOp;
+
+    // Mutate engined's store — dst must be Engined.
+    case IpcCmd::SettingsCommitRequest:
+    case IpcCmd::AdminPasswordUpdate:
+    case IpcCmd::ProbeResult:
+    case IpcCmd::ScanResult:
+    case IpcCmd::ApiCredentialStateUpdate:
+    case IpcCmd::ApiCollectionSample:
+    case IpcCmd::SaseApiKeyUpdate:
+    case IpcCmd::SaseHealthResult:
+        return CmdCategory::Write;
+
+    // Query engined's store.
+    case IpcCmd::ApiCredentialStateRequest:
+    case IpcCmd::ApiCredentialStateResponse:
+        return CmdCategory::Read;
+
+    // Handshake, sync, runtime, heartbeat, transport error, and status replies — infra, not a
+    // feature edge (SettingsCommitStatus is engined's reply on the commit flow, not a write to it).
+    case IpcCmd::ClientHello:
+    case IpcCmd::ServerHello:
+    case IpcCmd::SyncRequest:
+    case IpcCmd::SyncResponse:
+    case IpcCmd::RuntimeReady:
+    case IpcCmd::RuntimeStart:
+    case IpcCmd::Error:
+    case IpcCmd::HeartbeatRequest:
+    case IpcCmd::HeartbeatResponse:
+    case IpcCmd::HeartbeatResult:
+    case IpcCmd::SettingsCommitStatus:
+    case IpcCmd::Unknown:
+    default:
+        return CmdCategory::Lifecycle;
+    }
+}
+
+bool IpcProtocol::isRoutingAllowed(IpcDaemon /*src*/, IpcDaemon dst, IpcCmd cmd) noexcept
+{
+    switch (classify(cmd))
+    {
+    case CmdCategory::Write:
+        // Only engined persists state, so a Write addressed to any other daemon is a misroute. This
+        // is the one invariant that is complete and safe to enforce today.
+        return dst == IpcDaemon::Engined;
+
+    case CmdCategory::Lifecycle:
+    case CmdCategory::Config:
+    case CmdCategory::Auth:
+    case CmdCategory::DeviceOp:
+    case CmdCategory::Read:
+    default:
+        // Not yet constrained — a per-edge allowlist is a later tightening. Permissive so wiring
+        // this in warn-only mode cannot drop valid traffic.
+        return true;
     }
 }
 

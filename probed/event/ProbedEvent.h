@@ -16,8 +16,7 @@ enum class ProbedEventDomain : std::uint32_t
     Bootstrap = 1,
     Icmp = 2,
     Heartbeat = 3,
-    Reload = 4,
-    Api = 5
+    Reload = 4
 };
 
 class ProbedEvent : public pz::event::Event

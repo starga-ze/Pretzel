@@ -10,7 +10,8 @@ namespace pz::collectord
 CollectordServiceManager::CollectordServiceManager(CollectordEventFactory* eventFactory, CollectordActionFactory* actionFactory,
                                          CollectordTxRouter* txRouter, boost::asio::io_context* ioContext)
     : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter), m_ioContext(ioContext),
-      m_apiService(std::make_unique<ApiService>()), m_apiCollector(std::make_unique<ApiCollector>()),
+      m_apiService(std::make_unique<ApiService>()), m_connectorController(std::make_unique<ConnectorController>()),
+      m_statusController(std::make_unique<StatusController>(*ioContext)),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_heartbeatService(std::make_unique<HeartbeatService>()), m_reloadService(std::make_unique<ReloadService>())
 {
@@ -32,20 +33,10 @@ void CollectordServiceManager::schedule()
         return;
     }
 
-    // The issued keys live in engined's api_credential_state; ask once bootstrap is through, so a test
-    // or a collection does not need the operator's password again. Not in start(): the IPC
-    // client has not registered yet there, and the request would be dropped on the floor.
-    // A config reload restarts the daemon, so this runs again with the new configuration.
-    if (!m_keysRequested)
-    {
-        m_keysRequested = true;
-        m_apiService->requestKeys(*this);
-
-        // Arm the periodic collection now that the IPC client is live. Each item first fires after
-        // its interval, by when the issued keys have arrived; a poll that still finds no key just
-        // skips and waits for the next tick.
-        m_apiCollector->start(*this, *m_apiService);
-    }
+    // All Api periodic work — the one-shot key fetch + collection arming (Setup), the SASE health
+    // probe and credential auto-refresh (RunPeriodic) — flows through the event queue: the service
+    // decides what is due and returns an event to post, rather than the manager poking it directly.
+    postEvent(m_apiService->schedule(now));
 }
 
 void CollectordServiceManager::postEvent(std::unique_ptr<CollectordEvent> event)
@@ -90,6 +81,16 @@ void CollectordServiceManager::execute()
 ApiService& CollectordServiceManager::apiService()
 {
     return *m_apiService;
+}
+
+ConnectorController& CollectordServiceManager::connectorController()
+{
+    return *m_connectorController;
+}
+
+StatusController& CollectordServiceManager::statusController()
+{
+    return *m_statusController;
 }
 
 BootstrapService& CollectordServiceManager::bootstrapService()

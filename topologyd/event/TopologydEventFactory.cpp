@@ -52,7 +52,7 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(std::unique_ptr<pz
     case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
-    case pz::ipc::IpcCmd::ConfigReload:
+    case pz::ipc::IpcCmd::ConfigApply:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
 
     default:

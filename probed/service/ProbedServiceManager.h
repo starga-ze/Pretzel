@@ -2,10 +2,9 @@
 
 #include "service/ServiceManager.h"
 
-#include "service/api/ApiService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
-#include "service/icmp/IcmpService.h"
+#include "service/status/icmp/IcmpService.h"
 #include "service/reload/ReloadService.h"
 
 #include "router/ProbedTxRouter.h"
@@ -33,7 +32,6 @@ public:
     void postAction(std::unique_ptr<ProbedAction> action) override;
     void execute() override;
 
-    ApiService& apiService();
     BootstrapService& bootstrapService();
     IcmpService& icmpService();
     HeartbeatService& heartbeatService();
@@ -43,24 +41,15 @@ public:
     boost::asio::io_context& ioContext();
 
 private:
-    // Re-issue key/token for auto-refresh credentials whose interval has elapsed.
-    void autoRefreshTick(std::chrono::steady_clock::time_point now);
-
     ProbedEventFactory* m_eventFactory;
     ProbedActionFactory* m_actionFactory;
     ProbedTxRouter* m_txRouter;
     boost::asio::io_context* m_ioContext;
 
-    std::unique_ptr<ApiService> m_apiService;
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<IcmpService> m_icmpService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ReloadService> m_reloadService;
-
-    // Fetched once, after bootstrap, when the IPC client is live (not in start()).
-    bool m_keysRequested{false};
-    // authProfileOid -> when it was last re-issued, for the auto-refresh interval.
-    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_lastRefresh;
 
     std::queue<std::unique_ptr<ProbedEvent>> m_eventQueue;
     std::queue<std::unique_ptr<ProbedAction>> m_actionQueue;

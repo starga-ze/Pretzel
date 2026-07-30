@@ -1,7 +1,7 @@
-#include "service/icmp/IcmpAction.h"
+#include "service/status/icmp/IcmpAction.h"
 
 #include "service/ProbedServiceManager.h"
-#include "service/icmp/IcmpService.h"
+#include "service/status/icmp/IcmpService.h"
 
 namespace pz::probed
 {

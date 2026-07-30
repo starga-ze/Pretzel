@@ -2,7 +2,7 @@
 
 #include "service/MgmtdServiceManager.h"
 
-#include "service/web/WebResponse.h"
+#include "service/web/WebUtil.h"
 #include "service/web/WebRouter.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -115,15 +115,16 @@ std::string connectorTestInputError(const json& input, bool endpointMode)
     return {};
 }
 
-void sendConnectorTest(MgmtdServiceManager& sm, std::uint32_t ticket, json input, const char* mode)
+// One cmd per operation (keygen / endpoint / sase): collectord routes each straight to its owning
+// controller, so the operation no longer travels as a `mode` field in the payload.
+void sendConnectorTest(MgmtdServiceManager& sm, std::uint32_t ticket, json input, pz::ipc::IpcCmd cmd)
 {
-    input["mode"] = mode;
     const std::string payload = input.dump();
 
     auto msg = std::make_unique<pz::ipc::IpcMessage>();
     msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
-    msg->setDst(pz::ipc::IpcDaemon::Probed);
-    msg->setCmd(pz::ipc::IpcCmd::ApiConnectorTestRequest);
+    msg->setDst(pz::ipc::IpcDaemon::Collectord);
+    msg->setCmd(cmd);
     msg->setSeqNo(ticket);
     msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
     msg->setPayload(std::vector<std::uint8_t>(payload.begin(), payload.end()));
@@ -153,7 +154,7 @@ void handleKeygenTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
 
     const std::uint32_t ticket = sm.nextApiTestTicket();
     const std::string host = input.value("target", std::string());
-    sendConnectorTest(sm, ticket, std::move(input), "keygen");
+    sendConnectorTest(sm, ticket, std::move(input), pz::ipc::IpcCmd::ApiKeygenRequest);
 
     LOG_INFO("keygen test delegated to collectord (ticket={}, host={})", ticket, host);
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
@@ -182,9 +183,34 @@ void handleEndpointTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& re
     const std::string host = input.value("target", std::string());
     // The full request as entered on the frontend: path + query parameters, not just the bare path.
     const std::string endpoint = fullEndpoint(input);
-    sendConnectorTest(sm, ticket, std::move(input), "endpoint");
+    sendConnectorTest(sm, ticket, std::move(input), pz::ipc::IpcCmd::ApiEndpointTestRequest);
 
     LOG_INFO("endpoint test delegated to collectord (ticket={}, host={}, endpoint={})", ticket, host, endpoint);
+    fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
+}
+
+// SASE device health test: validate the getPrismaAccessIP api-key against the tenant and, on
+// success, persist it (probed seals it and hands it to engined). Same ticket/poll shape as the
+// connector tests — probed runs the slow call and answers on the seqNo.
+void handleSaseTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    json input;
+    try
+    {
+        input = json::parse(req.body);
+    }
+    catch (const std::exception&)
+    {
+        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    }
+
+    if (input.value("oid", std::string()).empty() || input.value("url", std::string()).empty() ||
+        input.value("api_key", std::string()).empty())
+        return fill(resp, 400, R"({"error":"the device, probe URL and api-key are all required"})");
+
+    const std::uint32_t ticket = sm.nextApiTestTicket();
+    sendConnectorTest(sm, ticket, std::move(input), pz::ipc::IpcCmd::ApiSaseTestRequest);
+    LOG_INFO("sase health test delegated to probed (ticket={})", ticket);
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 
@@ -212,7 +238,7 @@ void handleApiTestResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& r
 
 // The shared, session-independent view of every API key's runtime state: whether a key/credential
 // is held, expiry, and the last test outcome. Read straight from api_credential_state (engined is the
-// writer, mgmtd may read), keyed by the API Key oid. Sealed blobs (secret_enc/id_enc/pw_enc) are
+// writer, mgmtd may read), keyed by the API Key oid. Sealed blobs (key_enc/id_enc/pw_enc) are
 // NEVER returned — only whether they exist — so the plaintext stays in the one process that holds it.
 void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
@@ -223,7 +249,7 @@ void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, 
     try
     {
         const auto rows = pz::db::Database::instance().queryRows(
-            "SELECT oid, (secret_enc IS NOT NULL)::int, (id_enc IS NOT NULL AND pw_enc IS NOT NULL)::int, "
+            "SELECT oid, (key_enc IS NOT NULL)::int, (id_enc IS NOT NULL AND pw_enc IS NOT NULL)::int, "
             "COALESCE(to_char(expires_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
             "COALESCE(to_char(last_test_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
             "COALESCE(last_test_ok::int::text, ''), COALESCE(last_test_note, '') "
@@ -259,6 +285,7 @@ void ConnectorController::registerRoutes(WebRouter& router)
 
     router.post("/api/connector/keygen-test", Access::Authenticated, &handleKeygenTest);
     router.post("/api/connector/endpoint-test", Access::Authenticated, &handleEndpointTest);
+    router.post("/api/connector/sase-test", Access::Authenticated, &handleSaseTest);
     router.getPrefix("/api/connector/test-result", Access::Authenticated, &handleApiTestResult);
     router.get("/api/connector/keys-state", Access::Authenticated, &handleKeysState);
 }

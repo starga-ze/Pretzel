@@ -17,6 +17,7 @@ enum class CollectordActionDomain : std::uint32_t
     Bootstrap = 1,
     Heartbeat = 2,
     Scan = 3,
+    Api = 4,
 };
 
 class CollectordAction : public pz::action::Action

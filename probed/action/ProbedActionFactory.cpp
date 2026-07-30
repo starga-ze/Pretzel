@@ -1,7 +1,7 @@
 #include "action/ProbedActionFactory.h"
 
 #include "service/bootstrap/BootstrapAction.h"
-#include "service/icmp/IcmpAction.h"
+#include "service/status/icmp/IcmpAction.h"
 
 #include "util/Logger.h"
 

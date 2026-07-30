@@ -1,7 +1,7 @@
-#include "service/icmp/IcmpEvent.h"
+#include "service/status/icmp/IcmpEvent.h"
 
 #include "service/ProbedServiceManager.h"
-#include "service/icmp/IcmpService.h"
+#include "service/status/icmp/IcmpService.h"
 
 #include <utility>
 

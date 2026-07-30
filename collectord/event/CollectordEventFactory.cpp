@@ -56,8 +56,17 @@ std::unique_ptr<CollectordEvent> CollectordEventFactory::create(std::unique_ptr<
     case pz::ipc::IpcCmd::HeartbeatRequest:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatRequest, std::move(msg));
 
-    case pz::ipc::IpcCmd::ConfigReload:
+    case pz::ipc::IpcCmd::ConfigApply:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
+
+    case pz::ipc::IpcCmd::ApiKeygenRequest:
+        return std::make_unique<ApiEvent>(ApiEventType::RunKeygenTest, std::move(msg));
+
+    case pz::ipc::IpcCmd::ApiEndpointTestRequest:
+        return std::make_unique<ApiEvent>(ApiEventType::RunEndpointTest, std::move(msg));
+
+    case pz::ipc::IpcCmd::ApiSaseTestRequest:
+        return std::make_unique<ApiEvent>(ApiEventType::RunSaseTest, std::move(msg));
 
     case pz::ipc::IpcCmd::ApiCredentialStateResponse:
         return std::make_unique<ApiEvent>(ApiEventType::ReceiveKeyState, std::move(msg));

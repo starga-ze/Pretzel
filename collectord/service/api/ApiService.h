@@ -1,8 +1,13 @@
 #pragma once
 
+#include "service/api/controller/CredentialController.h"
+#include "service/api/controller/EndpointController.h"
+
 #include <nlohmann/json_fwd.hpp>
 
+#include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -11,7 +16,10 @@ namespace pz::collectord
 {
 
 class ApiEvent;
+class ApiAction;
+class CollectordEvent;
 class CollectordServiceManager;
+struct ConnectorTest;
 
 // One reusable set of vendor API credentials, published from the mgmtd UI into
 // collectord.service.api.auth_profiles (schema validated in mgmtd's WebService, seeded in
@@ -93,6 +101,14 @@ struct ApiConnector
     std::vector<ApiCollectionItem> items;
 };
 
+// The durable account credential (ngfw user/pass, sase client id/secret) opened from
+// api_credential_state so collectord can re-issue on its own for auto-refresh. Memory-only.
+struct IssuedCredential
+{
+    std::string id;
+    std::string pw;
+};
+
 class ApiService
 {
 public:
@@ -101,7 +117,13 @@ public:
 
     void start();
 
+    // Injected each main-loop tick (after bootstrap): returns the next due scheduled event — Setup
+    // once, then RunPeriodic — or nullptr. The manager posts it rather than poking the service
+    // directly, so all periodic work flows through the event/action queue.
+    std::unique_ptr<CollectordEvent> schedule(std::chrono::steady_clock::time_point now);
+
     void handleEvent(CollectordServiceManager& serviceManager, const ApiEvent& event);
+    void handleAction(CollectordServiceManager& serviceManager, const ApiAction& action);
 
     // Asks engined for the issued keys. Called after config load and whenever one is re-issued;
     // the answer arrives as a separate event, so this returns immediately.
@@ -110,6 +132,14 @@ public:
     // The key issued for an API Key profile, or empty when none is stored yet. Opened from the
     // sealed blob at cache time, so this is plaintext and must not be logged.
     const std::string& issuedKey(const std::string& authProfileOid) const;
+
+    // Caches a key the connector test just had issued, so the operator's next test does not have to
+    // re-enter the password before engined's persist round-trip returns.
+    void rememberIssuedKey(const std::string& authProfileOid, std::string key);
+
+    // The opened account credential for a profile, or nullptr when none is cached. Used by
+    // auto-refresh to re-issue without an operator typing the secret again.
+    const IssuedCredential* credentialFor(const std::string& oid) const;
 
     const std::vector<AuthProfile>& profiles() const;
     const AuthProfile* findProfile(const std::string& oid) const;
@@ -127,10 +157,38 @@ private:
     // Applies an ApiCredentialStateResponse: opens each sealed blob and replaces the cache.
     void cacheKeys(const nlohmann::json& payload);
 
+    // Dispatch one event to its handler — a direct switch (no router table, no function pointers),
+    // so the flow reads top to bottom. handleEvent delegates here, mirroring WebService::route. Each
+    // connector-test case decodes the payload then hands straight to the owning controller.
+    void route(CollectordServiceManager& sm, const ApiEvent& event);
+
+    // Decode a connector-test request into its seqNo + JSON payload; false (with a warning) if the
+    // message is missing or unparseable. The one shared step before the per-op controller call.
+    bool decodeTest(const ApiEvent& event, std::uint32_t& seqNo, nlohmann::json& input) const;
+
+    void handleKeyState(CollectordServiceManager& sm, const ApiEvent& event);
+    void handleSetup(CollectordServiceManager& sm, const ApiEvent& event);
+    void handleRunPeriodic(CollectordServiceManager& sm, const ApiEvent& event);
+
+    // Re-issue key/token for auto-refresh credentials whose interval has elapsed (RunPeriodic).
+    void autoRefreshTick(CollectordServiceManager& sm, std::chrono::steady_clock::time_point now);
+
+    bool m_setupDone{false};
+    std::chrono::steady_clock::time_point m_lastPeriodicAt{};
+    // authProfileOid -> when it was last re-issued, for the auto-refresh interval.
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_lastRefresh;
+
     std::vector<AuthProfile> m_profiles;
     // authProfileOid -> issued key, plaintext. Held in memory only: it is re-fetched from
     // engined on every start, so nothing here outlives the process.
     std::unordered_map<std::string, std::string> m_issuedKeys;
+    // authProfileOid -> opened account credential (id/pw), for auto-refresh. Same lifetime as m_issuedKeys.
+    std::unordered_map<std::string, IssuedCredential> m_credentials;
+    // The connector-test controllers, owned by this service (stateless — each run builds its own
+    // async context). Instances, not static entry points. StatusController (SASE) is owned by the
+    // manager (it also runs the periodic probe) and reached via the service manager.
+    CredentialController m_credentialController;
+    EndpointController m_endpointController;
     std::vector<ApiEndpoint> m_endpoints;
     std::vector<ApiConnector> m_connectors;
 };

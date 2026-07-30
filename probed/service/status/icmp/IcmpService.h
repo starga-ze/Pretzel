@@ -2,8 +2,8 @@
 
 #include "event/ProbedEvent.h"
 #include "icmp/IcmpPacket.h"
-#include "service/icmp/IcmpAction.h"
-#include "service/icmp/IcmpEvent.h"
+#include "service/status/icmp/IcmpAction.h"
+#include "service/status/icmp/IcmpEvent.h"
 
 #include <chrono>
 #include <cstdint>
