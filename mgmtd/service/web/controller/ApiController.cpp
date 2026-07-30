@@ -1,4 +1,4 @@
-#include "service/web/controller/ConnectorController.h"
+#include "service/web/controller/ApiController.h"
 
 #include "service/MgmtdServiceManager.h"
 
@@ -279,7 +279,7 @@ void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, 
 
 }
 
-void ConnectorController::registerRoutes(WebRouter& router)
+void ApiController::registerRoutes(WebRouter& router)
 {
     using Access = WebRouter::Access;
 

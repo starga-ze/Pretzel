@@ -10,7 +10,7 @@ class WebRouter;
 // exchange to collectord — the daemon that will actually poll the connector — and the browser polls the
 // result route by ticket. One domain, one file: the handlers and their helpers are private to the
 // .cpp; only route registration is exposed.
-class ConnectorController
+class ApiController
 {
 public:
     static void registerRoutes(WebRouter& router);

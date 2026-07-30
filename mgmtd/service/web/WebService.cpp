@@ -3,7 +3,7 @@
 #include "service/MgmtdServiceManager.h"
 
 #include "service/web/controller/AuthController.h"
-#include "service/web/controller/ConnectorController.h"
+#include "service/web/controller/ApiController.h"
 #include "service/web/controller/StatusController.h"
 #include "service/web/controller/LogsController.h"
 #include "service/web/controller/SettingsController.h"
@@ -80,7 +80,7 @@ void WebService::registerRoutes()
     SsoController::registerRoutes(m_router);
     SettingsController::registerRoutes(m_router);
     StatusController::registerRoutes(m_router);
-    ConnectorController::registerRoutes(m_router);
+    ApiController::registerRoutes(m_router);
     LogsController::registerRoutes(m_router);
 }
 
