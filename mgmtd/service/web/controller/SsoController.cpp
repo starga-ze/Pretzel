@@ -3,7 +3,6 @@
 #include "service/MgmtdServiceManager.h"
 
 #include "service/web/WebUtil.h"
-#include "service/web/WebRouter.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -26,10 +25,10 @@
 namespace pz::mgmtd
 {
 
+using json = nlohmann::json;
+
 namespace
 {
-
-using json = nlohmann::json;
 
 std::string ssoRandomHex(std::size_t nBytes)
 {
@@ -170,7 +169,9 @@ nlohmann::json ssoAuthConfig()
     return root.value("service", nlohmann::json::object()).value("auth", nlohmann::json::object());
 }
 
-void handleSsoInfo(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+}
+
+void SsoController::info(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)req;
     const auto auth = ssoAuthConfig();
@@ -191,7 +192,7 @@ void handleSsoInfo(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz
     fill(resp, 200, out.dump());
 }
 
-void handleSsoLogin(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SsoController::login(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)req;
     auto redirectErr = [&](const std::string& code)
@@ -247,7 +248,7 @@ void handleSsoLogin(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, p
     fill(resp, 200, html, "text/html; charset=utf-8");
 }
 
-void handleSamlAcs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SsoController::samlAcs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     auto redirectErr = [&](const std::string& code)
     {
@@ -292,7 +293,7 @@ void handleSamlAcs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz
     fill(resp, 200, html, "text/html; charset=utf-8");
 }
 
-void handleSamlResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SsoController::samlResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     auto jsonResp = [&](const json& j) { fill(resp, 200, j.dump()); };
 
@@ -330,18 +331,6 @@ void handleSamlResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
         LOG_WARN("sso result parse error: {}", e.what());
         return jsonResp({{"status", "error"}, {"error", "bad result"}});
     }
-}
-
-}
-
-void SsoController::registerRoutes(WebRouter& router)
-{
-    using Access = WebRouter::Access;
-
-    router.get("/api/auth/sso/info", Access::Public, &handleSsoInfo);
-    router.get("/api/auth/sso/login", Access::Public, &handleSsoLogin);
-    router.post("/api/auth/saml/acs", Access::Public, &handleSamlAcs);
-    router.getPrefix("/api/auth/saml/result", Access::Public, &handleSamlResult);
 }
 
 }

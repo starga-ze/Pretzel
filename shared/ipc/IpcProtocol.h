@@ -92,6 +92,14 @@ enum class IpcCmd : std::uint16_t
     ApiConnectorTestResponse = 128,// collectord → mgmtd: result of any of the three tests (by seqNo)
     ApiEndpointTestRequest = 134,  // mgmtd → collectord: call an endpoint with a key (keygen first if none)
     ApiSaseTestRequest = 135,      // mgmtd → collectord: SASE device health (getPrismaAccessIP) + store api-key
+    ApiTlsProbeRequest = 136,      // mgmtd → collectord: TLS-only handshake to a device, returns its cert
+                                   // fingerprint so an NGFW can be pinned at creation (no credentials)
+    ApiSaseKeyStoreRequest = 137,  // mgmtd → collectord: seal a SASE device's health api-key and hand it
+                                   // to engined. Storing is its own operation, not a side effect of a
+                                   // passing test, so the key survives a save that was never tested.
+    ApiCredentialStoreRequest = 138,  // mgmtd → collectord: seal an API Key's account credential
+                                      // (username/password) and hand it to engined. Same reason as
+                                      // above — the operator's password must not live in one browser.
     // collectord asks engined for the issued keys. engined answers with the SEALED blobs and
     // collectord opens them with credentials.key — the plaintext never crosses the socket. collectord
     // caches the result rather than asking per call, because periodic collection would otherwise hit

@@ -58,6 +58,12 @@
   };
   const credSpec = (deviceType) => CREDENTIALS[deviceType] || CREDENTIALS.ngfw;
 
+  // The password never comes back from the appliance — only whether one is sealed there. So a saved
+  // credential is rendered as bullets, the same way the SASE device editor renders its api-key: the
+  // field shows a mask and a line saying where the secret lives. The mask is a sentinel, not a value;
+  // collect() drops it so leaving the field untouched cannot overwrite the sealed password with dots.
+  const KEY_MASK = '••••••••••••••••';
+
   const state = { keys: [] };
   let deployed = [];
   let editIdx = null;
@@ -280,7 +286,7 @@
           <td class="col-refresh">${refreshCell(k)}</td>
           <td class="col-status">${statusCell(k)}</td>
           <td class="col-act">
-            <button class="btn-sm" data-test="${i}">Test</button>
+            <button class="btn-sm" data-test="${i}">Credential Test</button>
             <button class="icon-btn" data-edit="${i}" title="Edit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
             </button>
@@ -357,10 +363,21 @@
       sites().map(s => `<option value="${esc(s.oid)}" ${draftSite === s.oid ? 'selected' : ''}>${esc(s.name)}</option>`)
     ).join('');
 
+    // Three states, in the order they happen: typed but not yet saved → sealed on the appliance →
+    // nothing yet. Only the middle one survives a refresh, and it is server truth (has_credential),
+    // so another host or browser session sees the bullets too.
+    const pwState = held.password
+      ? { val: KEY_MASK, hint: 'entered — sealed on the appliance when you press Save' }
+      : held.has_credential
+        ? { val: KEY_MASK, hint: 'stored on the appliance (sealed) — type to replace it' }
+        : { val: '', hint: '' };
+
     const creds = spec.supported
-      ? spec.fields.map(([f, label, type, ph]) =>
-          fieldRow(label, f, type === 'password' ? '' : (k[f] || ''), type,
-                   type === 'password' ? (held[f] ? '•••••••• entered' : ph) : ph)).join('')
+      ? spec.fields.map(([f, label, type, ph]) => {
+          if (type !== 'password') return fieldRow(label, f, k[f] || '', type, ph);
+          return fieldRow(label, f, pwState.val, type, pwState.val ? '' : ph)
+               + (pwState.hint ? `<p class="field-hint" style="margin-top:-6px">${esc(pwState.hint)}</p>` : '');
+        }).join('')
       : `<p class="field-hint">${esc(spec.note || 'Not supported yet.')}</p>`;
 
     return `
@@ -411,9 +428,10 @@
       refresh_interval_min: g('refresh_interval_min'),
     });
 
-    // Typed passwords go straight to the browser-held store, never into the record.
+    // Typed passwords go straight to the browser-held store, never into the record. The mask is what
+    // an untouched field carries when a secret is already held, so it is not a password.
     const pw = g('password');
-    if (pw) secrets.put(draftOid, { password: pw });
+    if (pw && pw !== KEY_MASK) secrets.put(draftOid, { password: pw });
     return out;
   }
 
@@ -470,6 +488,15 @@
       wireEditor();
     });
 
+    // A masked field is showing that a secret exists, not its value — so the first keystroke replaces
+    // it wholesale rather than appending to the bullets.
+    const pwEl = body.querySelector('[data-f="password"]');
+    if (pwEl && pwEl.value === KEY_MASK) {
+      const clear = () => { if (pwEl.value === KEY_MASK) pwEl.value = ''; };
+      pwEl.addEventListener('focus', clear);
+      pwEl.addEventListener('beforeinput', clear);
+    }
+
     // Site and Device selects get the themed dropdown (consistent across OSes).
     window.NMS.utils.enhanceSelects(body);
 
@@ -480,7 +507,7 @@
     const del = document.getElementById('akDelete');
     if (del) del.onclick = () => { if (removeKey(editIdx)) { closeEditor(); render(); } };
 
-    document.getElementById('akSave').onclick = () => {
+    document.getElementById('akSave').onclick = async () => {
       const k = collect(body);
       const dv = (window.NMS.devices && window.NMS.devices.byOid(k.device)) || null;
       const sp = credSpec(dv ? dv.device_type : 'ngfw');
@@ -491,6 +518,28 @@
       } else if (!k.endpoint || k.endpoint[0] !== '/') {
         alert('Endpoint must be a path starting with /'); return;
       }
+
+      // A password typed here goes to the appliance now, sealed, rather than sitting in this
+      // browser's storage waiting for a test to pass — otherwise it is invisible from any other
+      // browser or machine. Once stored the local copy is dropped; the row shows ***** from the
+      // server's has_credential.
+      const typed = secrets.for(k.oid).password;
+      if (typed) {
+        const btn = document.getElementById('akSave');
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        try {
+          const res = await storeCredential(k.oid, k.username, typed);
+          if (!res.ok) { alert(res.message || 'The password could not be saved.'); return; }
+          secrets.drop(k.oid);
+          await loadKeyState();   // pick up has_credential so the row renders *****
+        } catch (e) {
+          alert(e.message || 'The password could not be saved.');
+          return;
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+        }
+      }
+
       if (editIdx == null) state.keys.push(k); else state.keys[editIdx] = k;
       stage();
       closeEditor(); render();
@@ -520,6 +569,29 @@
   const POLL_MS = 700;
   const POLL_LIMIT = 40;
 
+  // Seal + store this key's account credential on the appliance. Called on Save, so the password
+  // survives a refresh, a different browser and a different machine — it is the same ticket/poll
+  // shape as the tests, since collectord (which holds credentials.key) does the sealing.
+  async function storeCredential(oid, username, password) {
+    const start = await fetch('/api/connector/credential', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oid, secrets: { username, password } }),
+    });
+    if (start.status === 401) { location.href = '/'; return { ok: false, message: 'session expired' }; }
+    const started = await start.json().catch(() => null);
+    if (!start.ok || !started || !started.ticket)
+      throw new Error((started && started.error) || 'could not save the password');
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
+                            { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const d = await r.json().catch(() => null);
+      if (d && d.status === 'done') return d;
+    }
+    throw new Error('saving the password timed out');
+  }
+
   async function runDeviceTest(path, payload) {
     const start = await fetch(path, {
       method: 'POST', credentials: 'same-origin',
@@ -541,13 +613,23 @@
     throw new Error('timed out waiting for the device');
   }
 
-  function stepRow(label, st) {
-    const mark = !st ? '<span class="ts-idle">·</span>'
-               : st.ok ? '<span class="ts-ok">✓</span>'
-               : '<span class="ts-fail">✗</span>';
-    return `<div class="ts-row"><span class="ts-mark">${mark}</span>
-              <span class="ts-label">${label}</span>
-              <span class="ts-detail">${esc((st && st.detail) || '')}</span></div>`;
+  const stepRow = (label, st) => window.NMS.testPanel.step(label, st);
+
+  // The issued key/token, shown back in the moment it was generated. The device minted it from the
+  // operator's own account and a PAN-OS key is routinely copied out for other tooling, so hiding it
+  // would just mean generating it twice. It appears only here: the stored copy is sealed, the test
+  // ticket it rode in on is drained on read, and nothing about it is logged.
+  function keyBlock(res, isSase) {
+    if (!res.key) return '';
+    const label = isSase ? 'Access token' : 'API key';
+    return `<div class="secret-box">
+        <div class="secret-label">${esc(label)}
+          <button class="btn-sm" id="akCopyKey" type="button">Copy</button></div>
+        <code class="secret-val" id="akKeyVal">${esc(res.key)}</code>
+        <div class="secret-note">Shown only here — the appliance keeps it sealed.${
+          res.expires_at ? ` Expires ${esc(res.expires_at)}.` : ''}${
+          res.used_stored_key ? ' This is the key already issued for this credential.' : ''}</div>
+      </div>`;
   }
 
   async function runKeygenTest(idx) {
@@ -557,7 +639,9 @@
 
     const held = secrets.for(k.oid);
     const isSase = dev.device_type === 'sase';
-    if (!held.password) {
+    // A stored credential is enough: collectord opens its own sealed copy, so a test runs from a
+    // browser that never saw the password. Only a key with neither has nothing to try.
+    if (!held.password && !held.has_credential) {
       alert(isSase ? 'Enter the Client Secret first — edit the key and save it.'
                    : 'Enter the password first — edit the key and save it.');
       return;
@@ -567,8 +651,9 @@
     const body = (inner) => `<div class="test-panel-wrap">${inner}</div>`;
     const step1 = isSase ? 'Connect to auth server' : 'TLS connection';
     const step2 = isSase ? 'Token issuance' : 'API key generation';
-    modal.open('API Key Generation Test',
-      body(`<div class="test-panel running">${stepRow(step1, null)}${stepRow(step2, null)}</div>`));
+    const run = window.NMS.testPanel.start('API Key Generation Test', [step1, step2],
+      isSase ? 'Exchanging the client credentials for a token.'
+             : 'Contacting the device and requesting an API key.');
 
     let res;
     try {
@@ -578,16 +663,21 @@
         device_type: dev.device_type,
         fingerprint: dev.fingerprint,
         endpoint: k.endpoint,
-        secrets: { username: k.username, password: held.password },
+        // No password when the browser has none — collectord falls back to the sealed copy it holds,
+        // which stored_credential tells mgmtd's pre-flight to expect.
+        secrets: { username: k.username, password: held.password || '' },
+        stored_credential: !!held.has_credential,
       });
     } catch (e) {
       // The test never reached the appliance (client-side/network error), so there is no persisted
       // outcome to show; surface it in the modal and leave the shared row state untouched.
+      run.stop();
       render();
       modal.open('API Key Generation Test', body(`<div class="test-panel err"><div class="ts-note">${esc(e.message)}</div></div>`));
       return;
     }
 
+    const secs = run.stop();
     const steps = res.steps || {};
 
     // A first contact stops at the certificate — HttpClient will not transmit credentials to an
@@ -611,11 +701,20 @@
         ${stepRow(step1, steps.tls)}
         ${stepRow(step2, steps.auth)}
         ${trust}
+        <div class="ts-note">Completed in ${secs.toFixed(1)}s.</div>
+        ${keyBlock(res, isSase)}
       </div>`));
 
     document.getElementById('akTrustFp')?.addEventListener('click', (e) => {
       window.NMS.devices.pinFingerprint(dev.oid, res.fingerprint);
       e.currentTarget.outerHTML = '<span class="fp-trusted">Pinned to the device — run the test again.</span>';
+    });
+
+    document.getElementById('akCopyKey')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      navigator.clipboard?.writeText(res.key)
+        .then(() => { btn.textContent = 'Copied'; })
+        .catch(() => { btn.textContent = 'Copy failed'; });
     });
 
     render();

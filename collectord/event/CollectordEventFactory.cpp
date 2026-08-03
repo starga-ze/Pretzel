@@ -68,6 +68,15 @@ std::unique_ptr<CollectordEvent> CollectordEventFactory::create(std::unique_ptr<
     case pz::ipc::IpcCmd::ApiSaseTestRequest:
         return std::make_unique<ApiEvent>(ApiEventType::RunSaseTest, std::move(msg));
 
+    case pz::ipc::IpcCmd::ApiTlsProbeRequest:
+        return std::make_unique<ApiEvent>(ApiEventType::RunTlsProbe, std::move(msg));
+
+    case pz::ipc::IpcCmd::ApiSaseKeyStoreRequest:
+        return std::make_unique<ApiEvent>(ApiEventType::StoreSaseKey, std::move(msg));
+
+    case pz::ipc::IpcCmd::ApiCredentialStoreRequest:
+        return std::make_unique<ApiEvent>(ApiEventType::StoreCredential, std::move(msg));
+
     case pz::ipc::IpcCmd::ApiCredentialStateResponse:
         return std::make_unique<ApiEvent>(ApiEventType::ReceiveKeyState, std::move(msg));
 

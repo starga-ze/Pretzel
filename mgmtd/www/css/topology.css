@@ -1,0 +1,685 @@
+/* ============================================================
+   topology.css — Insight › Site Infrastructure
+   ------------------------------------------------------------
+   A deliberately different surface from the rest of the admin UI: the estate is drawn on a dark
+   canvas, the way an operations wall is, so the live flows read at a glance and the light
+   configuration pages stay clearly "where you change things" rather than "where you watch".
+   The canvas borrows the sidebar's ink (#1a1d27 family) so the two dark regions belong together.
+   ============================================================ */
+
+.topo-page {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-height: 0;
+}
+
+/* ── Control strip ──────────────────────────────────────────────────────────── */
+.topo-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 12px;
+}
+
+.topo-bar-group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.topo-bar-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
+.topo-bar-label {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); white-space: nowrap;
+}
+.topo-bar-spacer { flex: 1 1 auto; }
+
+.topo-select {
+  font-family: inherit; font-size: 11.5px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 4px 8px; max-width: 220px;
+}
+
+/* Region chips — the estate is read one region at a time as often as it is read whole. */
+.topo-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.topo-chip {
+  font: inherit; font-size: 10.5px; font-weight: 600; color: var(--text-muted);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
+  padding: 3px 9px; cursor: pointer; white-space: nowrap;
+  transition: background var(--tr), color var(--tr), border-color var(--tr);
+}
+.topo-chip:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.topo-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.topo-chip .topo-chip-n { opacity: .65; margin-left: 6px; font-variant-numeric: tabular-nums; }
+
+.topo-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 600; color: var(--text-muted); cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px;
+}
+.topo-toggle.on { color: var(--text); border-color: color-mix(in srgb, var(--green) 45%, var(--border)); }
+.topo-toggle .topo-live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted);
+}
+.topo-toggle.on .topo-live-dot { background: var(--green); animation: topoPulse 2s infinite; }
+@keyframes topoPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(22,163,74,.55); }
+  70%  { box-shadow: 0 0 0 7px rgba(22,163,74,0); }
+  100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); }
+}
+
+.topo-stamp { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.topo-stamp b { color: var(--text); font-weight: 600; }
+
+/* ── Canvas ─────────────────────────────────────────────────────────────────── */
+.topo-canvas {
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid #232838;
+  background:
+    radial-gradient(1100px 460px at 50% -10%, rgba(59,130,246,.10), transparent 65%),
+    radial-gradient(700px 420px at 100% 110%, rgba(249,115,22,.08), transparent 60%),
+    #12151f;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 460px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+
+  /* Every colour the drawing uses, in one place. */
+  --tc-ink:      #e8ecf7;
+  --tc-dim:      #8b93ab;
+  --tc-faint:    #5a6379;
+  --tc-line:     rgba(255,255,255,.10);
+  --tc-card:     rgba(255,255,255,.045);
+  --tc-card-hi:  rgba(255,255,255,.085);
+  --tc-gw:       #38bdf8;   /* GlobalProtect gateway — mobile-user tunnels  */
+  --tc-swg:      #a78bfa;   /* explicit proxy / Prisma Access Browser       */
+  --tc-portal:   #fbbf24;   /* portal — control plane, not user traffic     */
+  --tc-other:    #64748b;
+  --tc-lb:       #22d3ee;
+  --tc-ok:       #34d399;
+  --tc-warn:     #fb923c;
+  --tc-pending:  #94a3b8;   /* dormant, not broken — see the hatch below */
+  --tc-rn:        #f472b6;   /* branch IPsec — its own lane, like GP and the proxy */
+  --tc-chain:     #c084fc;
+  --tc-zone:      linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  --tc-zone-flat: rgba(255,255,255,.025);
+  --tc-well:      rgba(0,0,0,.16);
+}
+
+/* The canvas follows the app theme like every other surface. It keeps its own token set rather than
+   reusing the page tokens, because a diagram needs hues chosen for lines and dots on the given
+   backdrop — the dark set is tuned for glow, the light set for contrast on paper-white. */
+:root[data-theme="light"] .topo-canvas {
+  border-color: var(--border);
+  background:
+    radial-gradient(1100px 460px at 50% -10%, rgba(37,99,235,.07), transparent 65%),
+    radial-gradient(700px 420px at 100% 110%, rgba(249,115,22,.06), transparent 60%),
+    #fbfcfe;
+  box-shadow: inset 0 1px 0 rgba(15,23,42,.02);
+
+  --tc-ink:      #111827;
+  --tc-dim:      #566072;
+  --tc-faint:    #8a93a6;
+  --tc-line:     rgba(15,23,42,.12);
+  --tc-card:     rgba(15,23,42,.025);
+  --tc-card-hi:  rgba(15,23,42,.05);
+  --tc-gw:       #0284c7;
+  --tc-swg:      #7c3aed;
+  --tc-portal:   #b45309;
+  --tc-other:    #64748b;
+  --tc-lb:       #0891b2;
+  --tc-ok:       #059669;
+  --tc-warn:     #ea580c;
+  --tc-pending:  #94a3b8;
+  --tc-rn:        #db2777;
+  --tc-chain:     #9333ea;
+  --tc-zone:      linear-gradient(180deg, rgba(15,23,42,.035), rgba(15,23,42,.012));
+  --tc-zone-flat: rgba(15,23,42,.02);
+  --tc-well:      rgba(255,255,255,.72);
+}
+
+/* Lines need a touch more weight on a light backdrop to read at the same strength. */
+:root[data-theme="light"] .topo-link.kind-mu,
+:root[data-theme="light"] .topo-link.kind-swg,
+:root[data-theme="light"] .topo-link.kind-egress { opacity: .7; }
+:root[data-theme="light"] .topo-link.kind-internal { opacity: .5; }
+
+.topo-stage {
+  position: relative;
+  min-width: 980px;
+  padding: 8px 16px 44px;   /* bottom clears the third routed lane (last row + 34px) */
+}
+
+/* Wires run OVER the cards, not behind them: half of every link would otherwise disappear under a
+   zone card, and the packet crossing a node is exactly the moment worth seeing. Opacity keeps the
+   labels underneath readable. */
+.topo-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
+.topo-cols  { position: relative; z-index: 1; display: grid; grid-template-columns: 186px 1fr 232px; gap: 26px; align-items: start; }
+
+.topo-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+
+/* ── Endpoint / destination cards (the two outer columns) ───────────────────── */
+.topo-end {
+  background: var(--tc-card);
+  border: 1px solid var(--tc-line);
+  border-radius: 11px;
+  padding: 8px 10px;
+  color: var(--tc-ink);
+  position: relative;
+  transition: border-color var(--tr), background var(--tr);
+}
+.topo-end:hover { background: var(--tc-card-hi); }
+.topo-end.is-pending { border-style: dashed; opacity: .72; }
+.topo-end-h { display: flex; align-items: center; gap: 9px; }
+.topo-end-ic {
+  width: 24px; height: 24px; flex: 0 0 auto; border-radius: 7px;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 18%, transparent);
+  color: var(--topo-tone, var(--tc-gw));
+}
+.topo-end-ic svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.topo-end-nm { font-size: 11.5px; font-weight: 700; letter-spacing: -.01em; }
+.topo-end-sub { font-size: 9px; color: var(--tc-dim); margin-top: 1px; }
+.topo-end-body { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.topo-end-line { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--tc-dim); }
+.topo-end-line b { color: var(--tc-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.topo-mini-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--topo-tone, var(--tc-gw)); flex: 0 0 auto; }
+
+.topo-tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  border-radius: 999px; padding: 2px 8px;
+  background: color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 16%, transparent);
+  color: var(--topo-tone, var(--tc-gw));
+  border: 1px solid color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 30%, transparent);
+}
+.topo-tag.pending { --topo-tone: var(--tc-pending); }
+
+.topo-ips { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.topo-ip {
+  font-family: var(--font-mono); font-size: 9.5px; color: var(--tc-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Which region the address egresses from — read alongside the address, not instead of it. */
+.topo-ip em { font-family: var(--font-ui); font-style: normal; font-size: 8.5px; color: var(--tc-faint); }
+
+/* ── Zone lane (the middle column) ──────────────────────────────────────────── */
+.topo-zone {
+  border: 1px solid var(--tc-line);
+  border-radius: 12px;
+  background: var(--tc-zone);
+  padding: 6px 9px 8px 13px;   /* extra left: the channel incoming links cross */
+  transition: border-color var(--tr), opacity var(--tr), box-shadow var(--tr);
+}
+.topo-zone.is-global { background: var(--tc-zone-flat); }
+.topo-zone.is-dimmed { opacity: .28; filter: saturate(.4); }
+
+.topo-zone-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.topo-zone-nm { font-size: 11.5px; font-weight: 700; color: var(--tc-ink); letter-spacing: -.01em; }
+.topo-zone-kind {
+  font-size: 8.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--tc-faint); border: 1px solid var(--tc-line); border-radius: 999px; padding: 1px 6px;
+}
+.topo-zone-counts { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.topo-count { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; color: var(--tc-dim); }
+.topo-count b { color: var(--tc-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.topo-count .topo-mini-dot { --topo-tone: var(--tc-gw); }
+
+/* Scale delta since the previous poll — the whole point of watching a cloud fabric. */
+.topo-delta { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; }
+.topo-delta.up   { color: var(--tc-ok);   background: color-mix(in srgb, var(--tc-ok) 16%, transparent); }
+.topo-delta.down { color: var(--tc-warn); background: color-mix(in srgb, var(--tc-warn) 16%, transparent); }
+
+.topo-geo {
+  display: flex; align-items: center; gap: 5px; margin-top: 4px;
+  font-size: 9px; color: var(--tc-dim);
+}
+.topo-geo code { font-family: var(--font-mono); font-size: 9px; color: var(--tc-ink); opacity: .82; }
+
+.topo-zone-body { display: flex; flex-direction: column; gap: 11px; margin-top: 6px; }
+
+/* ── Service group: load balancer → nodes ───────────────────────────────────── */
+.topo-svc {
+  --topo-tone: var(--tc-other);
+  display: grid; grid-template-columns: 126px 116px 1fr; gap: 10px; align-items: center;
+  border: 1px solid var(--tc-line); border-left: 2px solid var(--topo-tone);
+  border-radius: 9px; padding: 5px 8px;
+  background: var(--tc-well);
+}
+.topo-svc.tone-gw     { --topo-tone: var(--tc-gw); }
+.topo-svc.tone-swg    { --topo-tone: var(--tc-swg); }
+.topo-svc.tone-portal { --topo-tone: var(--tc-portal); }
+.topo-svc.tone-rn     { --topo-tone: var(--tc-rn); }
+
+.topo-svc-h { min-width: 0; }
+.topo-svc-nm { font-size: 10px; font-weight: 700; color: var(--tc-ink); line-height: 1.25; }
+.topo-svc-note { font-size: 8.5px; color: var(--tc-faint); margin-top: 1px; line-height: 1.3; }
+
+.topo-slot { display: flex; flex-direction: column; gap: 4px; }
+.topo-slot-l {
+  font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--tc-faint);
+}
+.topo-nodes { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* A node card is one address the tenant answered with. */
+.topo-node {
+  font: inherit; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: 1px;
+  border: 1px solid color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 34%, transparent);
+  background: color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 12%, var(--tc-well));
+  color: var(--tc-ink); border-radius: 7px; padding: 2px 7px; min-width: 104px;
+  transition: transform var(--tr), border-color var(--tr), background var(--tr), box-shadow var(--tr);
+}
+.topo-node:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--topo-tone) 22%, var(--tc-well)); }
+.topo-node.selected { border-color: var(--topo-tone); box-shadow: 0 0 0 2px color-mix(in srgb, var(--topo-tone) 35%, transparent); }
+.topo-node-ip { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: -.02em; }
+.topo-node-sub { font-size: 8px; color: var(--tc-dim); display: flex; align-items: center; gap: 4px; }
+.topo-node.is-lb { --topo-tone: var(--tc-lb); border-style: solid; }
+/* Only an explicit `network_load_balancer_active: false` is drawn as idle. An absent flag is not a
+   negative answer, so it keeps the ordinary treatment. */
+.topo-node.is-standby { opacity: .62; border-style: dashed; }
+.topo-node.is-aux { --topo-tone: var(--tc-other); }
+
+/* Scale-out: a node that was not in the previous snapshot announces itself once. */
+.topo-node.is-new { animation: topoNodeIn .9s ease both, topoNodeGlow 2.4s ease-out 2; }
+@keyframes topoNodeIn   { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: none; } }
+@keyframes topoNodeGlow {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--tc-ok) 60%, transparent); }
+  100% { box-shadow: 0 0 0 12px transparent; }
+}
+/* Scale-in: the slot the departed node left, shown for one cycle so it is not just gone. */
+.topo-node.is-gone {
+  border-style: dashed; opacity: .4; color: var(--tc-faint);
+  --topo-tone: var(--tc-warn); text-decoration: line-through;
+}
+
+.topo-empty-slot { font-size: 8.5px; color: var(--tc-faint); font-style: italic; }
+
+/* ── Flow lines ─────────────────────────────────────────────────────────────── */
+.topo-link { fill: none; stroke-linecap: round; }
+.topo-link.kind-mu       { stroke: var(--tc-gw);    stroke-width: 1.6; opacity: .55; }
+.topo-link.kind-swg      { stroke: var(--tc-swg);   stroke-width: 1.6; opacity: .55; }
+.topo-link.kind-ctl      { stroke: var(--tc-portal); stroke-width: 1.2; opacity: .45; stroke-dasharray: 3 5; }
+.topo-link.kind-rn       { stroke: var(--tc-rn);     stroke-width: 1.6; opacity: .55; }
+.topo-link.kind-internal { stroke: var(--tc-lb);    stroke-width: 1.1; opacity: .38; }
+.topo-link.kind-egress   { stroke: var(--tc-ok);    stroke-width: 1.6; opacity: .5; }
+/* The L4→L7 hop a full-tunnel browser session takes inside the fabric. */
+.topo-link.kind-chain    { stroke: var(--tc-chain); stroke-width: 1.5; opacity: .65; stroke-dasharray: 7 3; }
+.topo-link.kind-pending  { stroke: var(--tc-pending); stroke-width: 1.4; opacity: .75; stroke-dasharray: 3 6; }
+.topo-link.is-dimmed     { opacity: .08; }
+
+/* The moving packet. Size and hue say which lane it belongs to; the motion says the path is live.
+   Its position comes from a motion path set per dot in JS: the animation only drives how far along
+   it is, which is what lets a link be re-routed under a packet without interrupting it. */
+.topo-dot {
+  r: 2.5;
+  offset-rotate: 0deg;
+  animation-name: topoFlow;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes topoFlow { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+.topo-dot.kind-mu       { fill: var(--tc-gw); }
+.topo-dot.kind-swg      { fill: var(--tc-swg); }
+.topo-dot.kind-ctl      { fill: var(--tc-portal); r: 1.9; }
+.topo-dot.kind-rn       { fill: var(--tc-rn); }
+.topo-dot.kind-internal { fill: var(--tc-lb); r: 1.9; }
+.topo-dot.kind-egress   { fill: var(--tc-ok); }
+.topo-dot.kind-chain    { fill: var(--tc-chain); }
+.topo-dot.is-dimmed     { opacity: .08; }
+
+.topo-link-label {
+  font-family: var(--font-ui); font-size: 9.5px; font-weight: 600; letter-spacing: .02em;
+  fill: var(--tc-faint);
+}
+
+/* Motion off: the picture must still be readable (and reviewable) without animation. */
+.topo-canvas.no-flow .topo-dot { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .topo-dot { display: none; }
+  .topo-node.is-new { animation: none; }
+}
+
+/* ── Legend + detail drawer ─────────────────────────────────────────────────── */
+.topo-legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); font-size: 10px; color: var(--text-muted);
+}
+.topo-lg { display: inline-flex; align-items: center; gap: 6px; }
+.topo-lg i { width: 14px; height: 2px; border-radius: 2px; display: inline-block; }
+.topo-lg-note { margin-left: auto; font-style: italic; }
+
+.topo-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 340px; z-index: 400;
+  background: var(--surface); border-left: 1px solid var(--border);
+  box-shadow: -12px 0 34px -18px rgba(15,23,42,.5);
+  transform: translateX(102%); transition: transform var(--tr);
+  display: flex; flex-direction: column;
+}
+.topo-drawer.open { transform: none; }
+.topo-drawer-h {
+  display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.topo-drawer-t { font-size: 14px; font-weight: 700; }
+.topo-drawer-x {
+  margin-left: auto; border: 0; background: none; font-size: 20px; line-height: 1;
+  color: var(--text-muted); cursor: pointer;
+}
+.topo-drawer-b { padding: 14px 16px; overflow-y: auto; }
+.topo-kv { display: grid; grid-template-columns: 108px 1fr; gap: 6px 10px; font-size: 12.5px; }
+.topo-kv dt { color: var(--text-muted); }
+.topo-kv dd { color: var(--text); word-break: break-all; }
+.topo-kv dd.mono { font-family: var(--font-mono); font-size: 11.5px; }
+.topo-drawer-sec {
+  font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted); margin: 16px 0 8px;
+}
+.topo-sub-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.topo-sub {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px;
+}
+
+/* ── States ─────────────────────────────────────────────────────────────────── */
+.topo-msg {
+  display: grid; place-items: center; min-height: 320px; text-align: center;
+  color: var(--tc-dim); font-size: 13px; padding: 40px;
+}
+.topo-msg b { display: block; color: var(--tc-ink); font-size: 15px; margin-bottom: 6px; }
+.topo-msg a { color: var(--accent); }
+
+@media (max-width: 1180px) {
+  .topo-cols { grid-template-columns: 190px 1fr 190px; gap: 20px; }
+}
+
+/* ── Endpoint lanes, notes, firewalls ─────────────────────────────────────────
+   The endpoint card lists its egress lanes as rows, because each row is where a link physically
+   leaves: the drawing then shows a choice made on the device, not one pipe splitting in the cloud. */
+.topo-lane {
+  display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--tc-dim);
+  border: 1px solid var(--tc-line); border-radius: 7px; padding: 3px 7px;
+  background: var(--tc-well);
+}
+.topo-lane-nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-lane b { color: var(--tc-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.topo-note { font-size: 8.5px; line-height: 1.4; color: var(--tc-faint); }
+
+.topo-fw-list { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.topo-fw {
+  font: inherit; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--tc-line); border-radius: 7px; padding: 3px 7px;
+  background: var(--tc-well); color: var(--tc-ink);
+  transition: border-color var(--tr), background var(--tr);
+}
+.topo-fw:hover { border-color: color-mix(in srgb, var(--tc-ok) 45%, var(--tc-line)); }
+.topo-fw-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--tc-faint); flex: 0 0 auto; }
+.topo-fw-dot.ok  { background: var(--tc-ok); }
+.topo-fw-dot.bad { background: var(--tc-warn); }
+.topo-fw-nm { font-size: 9.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topo-fw-t {
+  font-family: var(--font-mono); font-size: 8.5px; color: var(--tc-dim);
+  margin-left: auto; white-space: nowrap;
+}
+
+.topo-geo-note {
+  font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--tc-faint); border: 1px solid var(--tc-line); border-radius: 999px; padding: 0 5px;
+}
+
+/* ── Endpoint rows, control-plane strip, private split ───────────────────────── */
+.topo-lane-l {
+  font-size: 7.5px; font-weight: 800; letter-spacing: .06em; color: var(--tc-faint);
+  border: 1px solid var(--tc-line); border-radius: 4px; padding: 0 4px; flex: 0 0 auto;
+}
+
+.topo-svc-sub { font-size: 8.5px; color: var(--tc-dim); margin-top: 1px; }
+
+/* Portals and the auth cache: present, findable, and visibly not part of the traffic path. */
+.topo-ctl {
+  border: 1px dashed var(--tc-line); border-radius: 10px; padding: 5px 8px 6px;
+  background: var(--tc-zone-flat);
+}
+.topo-ctl-t {
+  font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--tc-faint);
+}
+.topo-ctl-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+.topo-ctl-chip {
+  font: inherit; cursor: default; display: flex; align-items: center; gap: 5px;
+  border: 1px solid var(--tc-line); border-radius: 999px; padding: 2px 8px;
+  background: var(--tc-well); color: var(--tc-ink); font-size: 9px;
+}
+.topo-ctl-nm { font-weight: 700; }
+.topo-ctl-z { color: var(--tc-dim); }
+.topo-ctl-chip b { font-variant-numeric: tabular-nums; }
+
+/* Two ways into the private estate, side by side because a tenant may run either or both. */
+/* The two ways into the private estate, at the foot of the fabric column, side by side because a
+   tenant may run either or both. Their links to the targets do not go straight across — see the
+   routed path in drawLinks, which leaves under the row rather than through the neighbouring card. */
+.topo-priv-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+
+/* Their targets, with the other target at the top of the destination column. The gap between the
+   firewall and what sits behind it is wider than the column's own rhythm — the link that runs
+   between them needs somewhere to be seen. */
+.topo-priv-group { display: flex; flex-direction: column; gap: 18px; }
+.topo-half {
+  border: 1px solid var(--tc-line); border-radius: 11px; padding: 7px 10px;
+  background: var(--tc-card); color: var(--tc-ink);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.topo-half-nm { font-size: 11px; display: flex; align-items: center; gap: 6px; }
+.topo-half-ic { width: 13px; height: 13px; flex: 0 0 auto; color: var(--topo-tone, var(--tc-dim)); }
+.topo-half.is-pending { border-style: dashed; }
+.topo-half-nm { font-size: 10px; font-weight: 700; line-height: 1.2; }
+.topo-half-sub { font-size: 8.5px; color: var(--tc-dim); }
+.topo-half .topo-tag { align-self: flex-start; margin-top: 3px; }
+
+/* The private side of the picture is short on words and long on meaning — give it presence rather
+   than letting it shrink-wrap next to a tall stack of regions. */
+
+/* ── Data-plane frame ─────────────────────────────────────────────────────────
+   The counterpart of the control-plane strip: everything inside carries user traffic. Framing it
+   also gives the coarse links (RN in, Service Connection out) one thing to attach to, instead of a
+   line per region having to travel down across every card below it. */
+.topo-plane {
+  border: 1px dashed color-mix(in srgb, var(--tc-gw) 40%, var(--tc-line));
+  border-radius: 13px; padding: 6px 8px 7px;
+  background: color-mix(in srgb, var(--tc-gw) 4%, transparent);
+}
+.topo-plane-h {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  background: none; border: 0; padding: 0; cursor: pointer; font: inherit; text-align: left;
+}
+.topo-plane-t {
+  font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--tc-gw) 70%, var(--tc-faint));
+}
+.topo-plane-sum {
+  margin-left: auto; font-size: 9px; color: var(--tc-dim); font-variant-numeric: tabular-nums;
+  opacity: 0; transition: opacity var(--tr);
+}
+.topo-plane.is-closed .topo-plane-sum { opacity: 1; }
+.topo-chev {
+  width: 11px; height: 11px; flex: 0 0 auto; color: var(--tc-faint);
+  transform: rotate(90deg); transition: transform var(--tr);
+}
+.topo-plane.is-closed .topo-chev { transform: none; }
+.topo-plane.is-closed { padding-bottom: 7px; }
+.topo-plane-b { display: flex; flex-direction: column; gap: 8px; margin-top: 5px; }
+
+/* The regions the collapsed frame is not showing. Clicking it is the same as opening the frame. */
+.topo-more {
+  font: inherit; cursor: pointer; width: 100%; margin-top: 5px;
+  border: 1px dashed var(--tc-line); border-radius: 8px; padding: 4px 8px;
+  background: none; color: var(--tc-dim); font-size: 9px; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color var(--tr), border-color var(--tr);
+}
+.topo-more:hover { color: var(--tc-ink); border-color: color-mix(in srgb, var(--tc-gw) 45%, var(--tc-line)); }
+
+/* ── "Nothing is flowing here" ────────────────────────────────────────────────
+   Colour alone could not carry this: a dim grey line reads as background on the dark canvas and as
+   a hairline on the light one. A hatch does read, identically in both themes, and it says dormant
+   rather than broken — which a red or amber treatment would not. Every lane that carries no traffic
+   yet gets the same hatch, so the eye learns it once. */
+.topo-end.is-pending,
+.topo-half.is-pending {
+  background-image: repeating-linear-gradient(-45deg,
+    color-mix(in srgb, var(--tc-pending) 16%, transparent) 0 5px,
+    transparent 5px 11px);
+  border-color: color-mix(in srgb, var(--tc-pending) 45%, var(--tc-line));
+  opacity: 1;
+}
+.topo-end.is-pending .topo-end-nm,
+.topo-half.is-pending .topo-half-nm { color: color-mix(in srgb, var(--tc-pending) 55%, var(--tc-ink)); }
+
+.topo-tag.pending {
+  --topo-tone: var(--tc-pending);
+  background: color-mix(in srgb, var(--tc-pending) 22%, transparent);
+  border-style: dashed;
+}
+
+/* The same idea one level down: an allocated address that is not carrying traffic. */
+.topo-node.is-standby {
+  opacity: 1;
+  background-image: repeating-linear-gradient(-45deg,
+    color-mix(in srgb, var(--tc-warn) 20%, transparent) 0 4px,
+    transparent 4px 9px);
+  border-color: color-mix(in srgb, var(--tc-warn) 50%, var(--tc-line));
+  color: color-mix(in srgb, var(--tc-warn) 40%, var(--tc-ink));
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TWO DECKS, ONE TOPOLOGY
+   The SASE fabric and the on-premise estate are not two pages — they are the same picture, one
+   floor apart. So both are laid out at all times, stacked, and the viewport slides between them
+   while the outgoing deck softens and the incoming one settles: the estate appears to reshape
+   rather than to be replaced. Height travels with the transform, which is what stops the page
+   below from jumping while the slide is in flight.
+══════════════════════════════════════════════════════════════════════════════ */
+.topo-viewport {
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+}
+.topo-decks {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition: transform .55s cubic-bezier(.4, 0, .2, 1);
+  will-change: transform;
+}
+/* One viewport per deck, and each scrolls its own content. This is what keeps the frame — and the
+   controls pinned to it — a fixed target no matter how tall a deck's contents grow. */
+.topo-deck {
+  flex: 0 0 100%;
+  height: 100%;
+  overflow: auto;
+  opacity: .3;
+  transform: scale(.985);
+  filter: blur(1.5px);
+  pointer-events: none;
+  transition: opacity .45s ease, transform .55s cubic-bezier(.4, 0, .2, 1), filter .45s ease;
+}
+.topo-deck.is-active {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  pointer-events: auto;
+}
+
+/* The move between them, named for where it goes and arrowed the way the screen will travel. */
+.topo-deck-btn {
+  position: absolute; right: 18px; bottom: 14px; z-index: 5;
+  box-shadow: 0 6px 18px -8px rgba(0,0,0,.65);
+  backdrop-filter: blur(6px);
+  display: inline-flex; align-items: center; gap: 7px;
+  font: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .01em;
+  color: var(--tc-ink); cursor: pointer;
+  background: color-mix(in srgb, var(--tc-gw) 14%, var(--tc-well));
+  border: 1px solid color-mix(in srgb, var(--tc-gw) 42%, var(--tc-line));
+  border-radius: 999px; padding: 6px 13px;
+  transition: background var(--tr), border-color var(--tr), transform var(--tr);
+}
+.topo-deck-btn:hover {
+  background: color-mix(in srgb, var(--tc-gw) 26%, var(--tc-well));
+  border-color: var(--tc-gw);
+  transform: translateY(-1px);
+}
+.topo-deck-btn svg { width: 13px; height: 13px; flex: 0 0 auto; }
+
+/* ── Deck 2: on-premise infrastructure ───────────────────────────────────────
+   A grid, not a diagram: at tens of firewalls, lines between them would draw a hairball and say
+   nothing. What an operator wants here is which site, which box, and which layer is failing. */
+.topo-stage-ngfw { padding-bottom: 56px; }
+
+/* Both decks are headed the same way — a name and a one-line census — so moving between them feels
+   like changing floors in one building rather than opening a different page. */
+.topo-deck-h {
+  position: relative; z-index: 1;
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.topo-deck-t {
+  font-size: 12px; font-weight: 800; letter-spacing: .04em; color: var(--tc-ink);
+}
+.topo-deck-sum { font-size: 10px; color: var(--tc-dim); font-variant-numeric: tabular-nums; }
+.topo-deck-sum b { color: var(--tc-ink); }
+.topo-deck-sum .ok { color: var(--tc-ok); }
+.topo-deck-sum .bad { color: var(--tc-warn); }
+.topo-deck-sum .muted { color: var(--tc-faint); }
+
+.topo-sites { display: flex; flex-direction: column; gap: 12px; }
+.topo-site {
+  border: 1px solid var(--tc-line); border-radius: 12px; padding: 8px 10px 10px;
+  background: var(--tc-zone);
+}
+.topo-site-h {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 700; color: var(--tc-ink); margin-bottom: 7px;
+}
+.topo-site-n {
+  font-size: 9px; font-weight: 700; color: var(--tc-dim);
+  border: 1px solid var(--tc-line); border-radius: 999px; padding: 0 6px;
+}
+
+.topo-fw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 7px; }
+.topo-fwc {
+  font: inherit; cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 3px;
+  border: 1px solid var(--tc-line); border-left: 2px solid var(--tc-other);
+  border-radius: 8px; padding: 6px 9px;
+  background: var(--tc-well); color: var(--tc-ink);
+  transition: border-color var(--tr), background var(--tr), transform var(--tr);
+}
+.topo-fwc.ok  { border-left-color: var(--tc-ok); }
+.topo-fwc.bad { border-left-color: var(--tc-warn); }
+.topo-fwc:hover { transform: translateY(-1px); background: var(--tc-card-hi); }
+.topo-fwc-h { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.topo-fwc-nm {
+  font-size: 10.5px; font-weight: 700; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.topo-fwc-t { font-family: var(--font-mono); font-size: 9px; color: var(--tc-dim); }
+.topo-fwc-l { display: flex; gap: 4px; margin-top: 2px; }
+
+/* device · credential · API, in the order they depend on each other. */
+.topo-lyr { width: 7px; height: 7px; border-radius: 50%; background: var(--tc-faint); }
+.topo-lyr.ok { background: var(--tc-ok); }
+.topo-lyr.fail { background: var(--tc-warn); }
+
+.topo-deck-note { font-size: 8.5px; color: var(--tc-faint); margin-top: 12px; line-height: 1.5; }
+
+/* Arriving on the deck, the estate resolves in rather than appearing all at once. */
+.topo-deck.is-entering .topo-fwc { animation: topoFwIn .4s cubic-bezier(.34, 1.1, .5, 1) both; animation-delay: calc(var(--i, 0) * 22ms); }
+@keyframes topoFwIn { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .topo-deck, .topo-decks, .topo-viewport { transition: none; }
+  .topo-deck.is-entering .topo-fwc { animation: none; }
+}

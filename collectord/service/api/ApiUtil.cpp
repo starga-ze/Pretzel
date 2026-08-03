@@ -223,6 +223,46 @@ void sendApiCredentialState(CollectordServiceManager& sm, const std::string& key
     sm.txRouter().handleIpcMessage(std::move(msg));
 }
 
+bool sendApiCredentialStore(CollectordServiceManager& sm, const std::string& keyOid, const std::string& id,
+                            const std::string& pw)
+{
+    json state;
+    state["oid"] = keyOid;
+    // Deliberately no "ok"/"note": engined reads their absence as "no test ran" and keeps the
+    // last_test_* columns as they were.
+
+    bool sealedAny = false;
+    const auto seal = [&](const char* field, const std::string& plain) {
+        if (plain.empty())
+            return true;   // nothing to store for this field is not a failure
+        if (auto sealed = pz::util::secret::encrypt(plain))
+        {
+            state[field] = *sealed;
+            sealedAny = true;
+            return true;
+        }
+        LOG_WARN("credential store unavailable — {} not persisted (oid={})", field, keyOid);
+        return false;
+    };
+
+    if (!seal("id_enc", id) || !seal("pw_enc", pw))
+        return false;
+    if (!sealedAny)
+        return false;   // caller asked to store nothing
+
+    const std::string payload = state.dump();
+
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Collectord);
+    msg->setDst(pz::ipc::IpcDaemon::Engined);
+    msg->setCmd(pz::ipc::IpcCmd::ApiCredentialStateUpdate);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+    msg->setPayload(std::vector<std::uint8_t>(payload.begin(), payload.end()));
+
+    sm.txRouter().handleIpcMessage(std::move(msg));
+    return true;
+}
+
 void rejectTest(const std::shared_ptr<ConnectorTest>& ctx, const std::string& message)
 {
     LOG_DEBUG("connector test rejected (seq={}, reason={})", ctx->seqNo, message);

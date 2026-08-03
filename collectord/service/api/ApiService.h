@@ -1,7 +1,11 @@
 #pragma once
 
+#include "service/api/controller/ConnectorController.h"
 #include "service/api/controller/CredentialController.h"
 #include "service/api/controller/EndpointController.h"
+#include "service/api/controller/StatusController.h"
+
+#include <boost/asio/io_context.hpp>
 
 #include <nlohmann/json_fwd.hpp>
 
@@ -112,7 +116,9 @@ struct IssuedCredential
 class ApiService
 {
 public:
-    ApiService() = default;
+    // The io_context is needed by the controllers this service owns (the collection timers and the
+    // SASE probe's async calls), so it is a construction dependency rather than passed per call.
+    explicit ApiService(boost::asio::io_context& ioc);
     ~ApiService() = default;
 
     void start();
@@ -140,6 +146,10 @@ public:
     // The opened account credential for a profile, or nullptr when none is cached. Used by
     // auto-refresh to re-issue without an operator typing the secret again.
     const IssuedCredential* credentialFor(const std::string& oid) const;
+
+    // Caches a credential the operator just saved, so the next test does not have to wait for
+    // engined's persist round-trip to come back. Same lifetime as the rest of the cache: memory only.
+    void rememberCredential(const std::string& oid, std::string id, std::string pw);
 
     const std::vector<AuthProfile>& profiles() const;
     const AuthProfile* findProfile(const std::string& oid) const;
@@ -184,11 +194,14 @@ private:
     std::unordered_map<std::string, std::string> m_issuedKeys;
     // authProfileOid -> opened account credential (id/pw), for auto-refresh. Same lifetime as m_issuedKeys.
     std::unordered_map<std::string, IssuedCredential> m_credentials;
-    // The connector-test controllers, owned by this service (stateless — each run builds its own
-    // async context). Instances, not static entry points. StatusController (SASE) is owned by the
-    // manager (it also runs the periodic probe) and reached via the service manager.
+    // Every controller in service/api/controller/ is a sub-unit of this service, so this service owns
+    // all of them — the manager owns services, not their internals. Credential/Endpoint are stateless
+    // (each run builds its own async context); Connector holds the collection schedule and Status the
+    // SASE probe's state, which is why those two take the io_context.
     CredentialController m_credentialController;
     EndpointController m_endpointController;
+    ConnectorController m_connectorController;
+    StatusController m_statusController;
     std::vector<ApiEndpoint> m_endpoints;
     std::vector<ApiConnector> m_connectors;
 };

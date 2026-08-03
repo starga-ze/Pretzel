@@ -18,6 +18,9 @@ enum class ApiEventType : std::uint32_t
     RunEndpointTest = 2,  // → EndpointController: call an endpoint (keygen first if no key)
     RunSaseTest = 3,      // → StatusController: SASE device health + store api-key
     ReceiveKeyState = 4,  // issued-key cache update (repo, stays in ApiService)
+    RunTlsProbe = 7,      // → CredentialController: TLS-only handshake, return the cert fingerprint
+    StoreSaseKey = 8,     // → StatusController: seal a SASE health api-key and hand it to engined
+    StoreCredential = 9,  // → CredentialController: seal an account credential and hand it to engined
     // Schedule-driven (injected by ApiService::schedule, not from the wire).
     Setup = 5,        // one-shot after bootstrap: fetch issued keys + arm periodic collection
     RunPeriodic = 6,  // recurring: SASE health probe + credential auto-refresh (each self-gated)

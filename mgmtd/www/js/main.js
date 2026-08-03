@@ -91,6 +91,15 @@
              <polyline points="9 22 9 12 15 12 15 22"/>`,
     },
 
+    { type: 'section', label: 'Insight' },
+    {
+      // The estate as a picture rather than a list: who connects, what they land on, where it exits.
+      type: 'link', id: 'site-topology', label: 'Site Infrastructure', href: 'topology',
+      icon: `<circle cx="5" cy="12" r="2.4"/><circle cx="12" cy="5.5" r="2.4"/>
+             <circle cx="12" cy="18.5" r="2.4"/><circle cx="19" cy="12" r="2.4"/>
+             <path d="M7 11l3-4M7 13l3 4M14 7l3 3.4M14 17l3-3.4"/>`,
+    },
+
     { type: 'section', label: 'Control' },
     {
       type: 'link', id: 'remote-access', label: 'Remote Access', href: '#', soon: true,
@@ -150,6 +159,7 @@
     // The group is chosen in the sidebar flyout (SETTINGS_GROUPS); the topbar shows that
     // group's name and one row of its tabs.
     'settings':        { title: 'Configuration', groups: SETTINGS_GROUPS },
+    'topology':        { title: 'Site Infrastructure' },
     'log-viewer':      { title: 'System Log' },
     'laboratory':      { title: 'Laboratory' },
   };
@@ -414,6 +424,12 @@
 
     html += `</nav>
       <div class="sidebar-footer">
+        <button type="button" class="nav-item nav-theme" id="navTheme" data-tooltip="Theme"
+                aria-pressed="false">
+          <span class="nav-theme-ic" id="navThemeIc"></span>
+          <span class="nav-label" id="navThemeLabel">Dark mode</span>
+          <span class="nav-sw" aria-hidden="true"><span class="nav-sw-knob"></span></span>
+        </button>
         <div class="nav-item nav-user" id="navUser" data-tooltip="Signed in">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -638,6 +654,69 @@
     window.addEventListener('scroll', hide, true);
   }
 
+  // ── Theme ─────────────────────────────────────────────────────────────────
+  // One attribute on <html> selects the palette; main.css does the rest (see the :root[data-theme]
+  // block there). The choice is stamped before first paint by the inline script in each page, so
+  // this module only has to keep the footer control in sync and write the preference down.
+  //
+  // A stored choice is always explicit ('dark' or 'light'), never "follow the system": an operator
+  // who picked light on a machine set to dark meant it, and should not have it undone at sunset.
+  // Only the absence of a choice follows the system.
+
+  const THEME_KEY = 'theme';
+
+  const MOON = `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <path d="M20.5 14.4A8.5 8.5 0 1 1 9.6 3.5a6.8 6.8 0 0 0 10.9 10.9z"/>
+    </svg>`;
+
+  const systemTheme = () =>
+    (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+
+  function storedTheme() {
+    try {
+      const v = localStorage.getItem(THEME_KEY);
+      return (v === 'dark' || v === 'light') ? v : null;
+    } catch (_) { return null; }
+  }
+
+  function applyTheme(theme, persist) {
+    const t = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+    if (persist) { try { localStorage.setItem(THEME_KEY, t); } catch (_) { /* private mode */ } }
+    syncThemeControl(t);
+  }
+
+  // One switch with a fixed name: "Dark mode", on or off. Swapping the label between Dark and Light
+  // made the row read as two different controls depending on when you looked at it.
+  function syncThemeControl(t) {
+    const btn = document.getElementById('navTheme');
+    const ic = document.getElementById('navThemeIc');
+    if (!btn || !ic) return;
+    const dark = t === 'dark';
+    btn.classList.toggle('on', dark);
+    btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+    btn.setAttribute('data-tooltip', dark ? 'Dark mode · on' : 'Dark mode · off');
+    if (!ic.firstChild) ic.innerHTML = MOON;
+  }
+
+  function initTheme() {
+    const stored = storedTheme();
+    applyTheme(stored || systemTheme(), false);
+
+    document.getElementById('navTheme')?.addEventListener('click', () => {
+      const now = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      applyTheme(now === 'dark' ? 'light' : 'dark', true);
+    });
+
+    // With no explicit choice on record, follow the machine when it changes.
+    const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq && mq.addEventListener) {
+      mq.addEventListener('change', (e) => {
+        if (!storedTheme()) applyTheme(e.matches ? 'dark' : 'light', false);
+      });
+    }
+  }
+
   // ── User footer (identity + logout) ───────────────────────────────────────
   // Fills the signed-in user's name (GET /api/whoami) and wires the logout button
   // (POST /api/logout, then back to the login page). Failures degrade quietly — the
@@ -672,6 +751,7 @@
     initSidebar();
     initFlyouts();
     initTooltips();
+    initTheme();
     initUserFooter();
   });
 

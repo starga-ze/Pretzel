@@ -43,7 +43,16 @@ public:
     // entered api-key and, on success, seal+persist it to sase_device.api_key_enc — the same call as
     // the periodic probe, but validating and storing a key the operator just typed. Answers the held
     // ticket. Routed to directly on ApiEventType::RunSaseTest.
-    void runSaseTest(CollectordServiceManager& sm, std::uint32_t seqNo, const nlohmann::json& input);
+    // `api` supplies the stored key when the request carries none — the browser only holds the
+    // plaintext right after it was pasted, and shows bullets from then on.
+    void runSaseTest(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
+                     const nlohmann::json& input);
+
+    // Seal a SASE device's health api-key and hand it to engined for sase_device.api_key_enc, with no
+    // device call. Storing is its own operation rather than a side effect of a passing test: the key
+    // must survive a device saved before it was ever tested, and the browser must be able to forget
+    // the plaintext (it renders the stored key as bullets). Routed to on ApiEventType::StoreSaseKey.
+    void storeApiKey(CollectordServiceManager& sm, std::uint32_t seqNo, const nlohmann::json& input);
 
     std::vector<std::string> aliveTargets() const;
     std::vector<std::string> downTargets() const;

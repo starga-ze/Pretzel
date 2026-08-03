@@ -3,7 +3,6 @@
 #include "service/MgmtdServiceManager.h"
 
 #include "service/web/WebUtil.h"
-#include "service/web/WebRouter.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -21,10 +20,10 @@
 namespace pz::mgmtd
 {
 
+using json = nlohmann::json;
+
 namespace
 {
-
-using json = nlohmann::json;
 
 // Hands a new local credential to engined, the only database writer. Shared by the explicit
 // password change and by the transparent upgrade a login performs when it meets an
@@ -45,7 +44,9 @@ void persistCredential(MgmtdServiceManager& sm, const std::string& username,
     sm.txRouter().handleIpcMessage(std::move(msg));
 }
 
-void handleLogin(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+}
+
+void AuthController::login(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     try
     {
@@ -88,7 +89,7 @@ void handleLogin(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::
     }
 }
 
-void handleLogout(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void AuthController::logout(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     sm.authService().logout(sessionCookie(req));
 
@@ -96,7 +97,7 @@ void handleLogout(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz:
     resp.setCookie = "session=; Path=/; Max-Age=0";
 }
 
-void handleChangePassword(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void AuthController::changePassword(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     try
     {
@@ -133,7 +134,7 @@ void handleChangePassword(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
     }
 }
 
-void handleWhoami(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void AuthController::whoami(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     std::string user = sm.authService().sessionUser(sessionCookie(req));
     if (user.empty())
@@ -141,21 +142,6 @@ void handleWhoami(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz:
 
     const json out = {{"username", user}};
     fill(resp, 200, out.dump());
-}
-
-}
-
-void AuthController::registerRoutes(WebRouter& router)
-{
-    using Access = WebRouter::Access;
-
-    router.post("/api/login", Access::Public, &handleLogin);
-    router.post("/api/logout", Access::Public, &handleLogout);
-
-    // change-password is Authenticated but exempt from the must-change lock — it is the escape from it.
-    router.add("POST", "/api/change-password", WebRouter::Match::Exact, Access::Authenticated,
-               /*mustChangeExempt=*/true, &handleChangePassword);
-    router.get("/api/whoami", Access::Authenticated, &handleWhoami);
 }
 
 }

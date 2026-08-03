@@ -117,6 +117,12 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "ApiEndpointTestRequest";
     case IpcCmd::ApiSaseTestRequest:
         return "ApiSaseTestRequest";
+    case IpcCmd::ApiTlsProbeRequest:
+        return "ApiTlsProbeRequest";
+    case IpcCmd::ApiSaseKeyStoreRequest:
+        return "ApiSaseKeyStoreRequest";
+    case IpcCmd::ApiCredentialStoreRequest:
+        return "ApiCredentialStoreRequest";
     case IpcCmd::ApiConnectorTestResponse:
         return "ApiConnectorTestResponse";
     case IpcCmd::ApiCredentialStateRequest:
@@ -185,6 +191,9 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiKeygenRequest:
     case IpcCmd::ApiEndpointTestRequest:
     case IpcCmd::ApiSaseTestRequest:
+    case IpcCmd::ApiTlsProbeRequest:
+    case IpcCmd::ApiSaseKeyStoreRequest:
+    case IpcCmd::ApiCredentialStoreRequest:
     case IpcCmd::ApiConnectorTestResponse:
         return CmdCategory::DeviceOp;
 

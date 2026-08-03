@@ -455,14 +455,7 @@
     throw new Error('timed out waiting for the device');
   }
 
-  function stepRow(label, st) {
-    const mark = !st ? '<span class="ts-idle">·</span>'
-               : st.ok ? '<span class="ts-ok">✓</span>'
-               : '<span class="ts-fail">✗</span>';
-    return `<div class="ts-row"><span class="ts-mark">${mark}</span>
-              <span class="ts-label">${label}</span>
-              <span class="ts-detail">${esc((st && st.detail) || '')}</span></div>`;
-  }
+  const stepRow = (label, st) => window.NMS.testPanel.step(label, st);
 
   function formatBody(raw) {
     const text = String(raw == null ? '' : raw).trim();
@@ -472,7 +465,7 @@
 
   // The endpoint is what is being debugged, so the outcome gets the whole window: the exact
   // request line on top, the full response below.
-  function detailView(res, steps) {
+  function detailView(res, steps, secs) {
     const req = res.request || {};
     const rsp = res.response || {};
     return `
@@ -481,6 +474,7 @@
           ${stepRow('TLS connection', steps.tls)}
           ${stepRow('API key generation', steps.auth)}
           ${stepRow('Endpoint response', steps.endpoint)}
+          ${secs == null ? '' : `<div class="ts-note">Completed in ${secs.toFixed(1)}s.</div>`}
         </div>
         ${req.url ? `<div class="ep-block">
           <div class="ep-block-h">Request</div>
@@ -546,8 +540,9 @@
     }
 
     const modal = window.NMS.modal;
-    modal.open('API Endpoint Test',
-      `<div class="test-panel running">${stepRow('TLS connection', null)}${stepRow('API key generation', null)}${stepRow('Endpoint response', null)}</div>`);
+    const run = window.NMS.testPanel.start('API Endpoint Test',
+      ['TLS connection', 'API key generation', 'Endpoint response'],
+      `Calling ${effectivePath(e)} on ${dev.name || dev.target}.`);
 
     let res;
     try {
@@ -564,12 +559,14 @@
       if (held.password) payload.secrets = { username: keyRecord.username, password: held.password };
       res = await runDeviceTest('/api/connector/endpoint-test', payload);
     } catch (err) {
+      run.stop();
       testState.put(e.oid, { at: Date.now(), ok: false, detail: err.message, via: keyRecord.name });
       render();
       modal.open('API Endpoint Test', `<div class="test-panel err"><div class="ts-note">${esc(err.message)}</div></div>`);
       return;
     }
 
+    const secs = run.stop();
     const steps = res.steps || {};
     testState.put(e.oid, {
       at: Date.now(), ok: !!res.ok,
@@ -587,7 +584,7 @@
          </div>`
       : '';
 
-    modal.open('API Endpoint Test', detailView(res, steps) + trust);
+    modal.open('API Endpoint Test', detailView(res, steps, secs) + trust);
 
     document.getElementById('epTrustFp')?.addEventListener('click', (ev) => {
       window.NMS.devices.pinFingerprint(dev.oid, res.fingerprint);

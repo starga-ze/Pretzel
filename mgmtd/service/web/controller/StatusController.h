@@ -1,17 +1,22 @@
 #pragma once
 
+#include "http/HttpMessage.h"
+
 namespace pz::mgmtd
 {
 
-class WebRouter;
+class MgmtdServiceManager;
 
-// GET /api/status/devices — the set of currently-active device targets (IPs), as engined marks
-// them from ICMP liveness. One domain, one file: the handler is private to the .cpp; only route
-// registration is exposed.
+// GET /api/status/devices — every managed device's three-layer health (reachable / credential / api),
+// joined from engined's projection and the operator's config. An instance owned by WebService,
+// reached from its dispatch switch by member call.
 class StatusController
 {
 public:
-    static void registerRoutes(WebRouter& router);
+    void deviceStatus(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // GET /api/topology — the SASE fabric plus the on-premise firewalls, in one answer.
+    void siteTopology(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 };
 
 }

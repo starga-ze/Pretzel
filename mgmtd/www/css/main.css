@@ -35,12 +35,70 @@
   --red:    #dc2626;
   --blue:   #2563eb;
 
+  /* A coloured chip is a tinted background plus an ink dark enough to read on it. The pair has to
+     move together when the theme flips, so both halves are tokens rather than literals. */
+  --tint-green:  #dcfce7;
+  --tint-red:    #fee2e2;
+  --tint-orange: #fff7ed;
+  --ink-green:   #15803d;
+  --ink-red:     #991b1b;
+  --ink-rose:    #b91c1c;
+  --ink-orange:  #c2410c;
+  --ink-amber:   #b45309;
+  --ink-violet:  #7c3aed;
+
+  --text-secondary: #4b5563;              /* between --text and --text-muted */
+  --surface-hover:  rgba(15,23,42,.04);   /* row / control hover wash */
+
   --radius: 12px;
   --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
   --tr: .22s cubic-bezier(.4,0,.2,1);
 
   --font-ui:   'Plus Jakarta Sans', sans-serif;
   --font-mono: 'DM Mono', monospace;
+
+  color-scheme: light;
+}
+
+/* ══════════════════════════════════════
+   THEME — dark
+   The sidebar was always dark, so only the content half flips: the same token names point at a
+   darker surface ramp and lighter ink. Rules elsewhere in this file read tokens and never a theme,
+   which is why the whole app switches from this one block. `data-theme` is stamped on <html> before
+   first paint by the inline script in each page, so there is no flash of the wrong theme.
+══════════════════════════════════════ */
+:root[data-theme="dark"] {
+  --bg:        #0e1117;
+  --surface:   #161a23;
+  --surface-2: #1c212c;
+  --topbar-bg: #12161f;
+  --border:    #272d3a;
+  --text:      #e7eaf3;
+  --text-muted:#9099ad;
+
+  --green:  #22c55e;
+  --orange: #fb923c;
+  --red:    #f87171;
+  --blue:   #60a5fa;
+
+  /* Tints become translucent so they sit on the dark surface instead of punching a hole in it, and
+     the inks lighten to stay legible on them. */
+  --tint-green:  rgba(34,197,94,.16);
+  --tint-red:    rgba(248,113,113,.16);
+  --tint-orange: rgba(251,146,60,.16);
+  --ink-green:   #4ade80;
+  --ink-red:     #fca5a5;
+  --ink-rose:    #fca5a5;
+  --ink-orange:  #fdba74;
+  --ink-amber:   #fcd34d;
+  --ink-violet:  #c4b5fd;
+
+  --text-secondary: #a8b0c2;
+  --surface-hover:  rgba(255,255,255,.06);
+
+  --shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 20px rgba(0,0,0,.4);
+
+  color-scheme: dark;
 }
 
 html, body {
@@ -365,6 +423,28 @@ html, body {
   padding: 8px 6px;
   flex-shrink: 0;
 }
+
+/* Theme switch — the one control in the footer that changes how everything else looks, so it reads
+   as a row like the others rather than as a stray widget. The sidebar is dark in both themes, so
+   this control is styled against the sidebar palette and does not flip with the page. */
+.nav-theme { width: 100%; background: none; border: none; font: inherit; text-align: left; }
+/* Smaller than a navigation row: this is a setting, not a destination. */
+.nav-theme .nav-label { font-size: 11.5px; font-weight: 500; opacity: .85; }
+.nav-theme .nav-icon { width: 15px; height: 15px; }
+.nav-theme-ic { display: inline-flex; flex: 0 0 auto; }
+.nav-theme .nav-sw {
+  margin-left: auto; position: relative; flex: 0 0 auto;
+  width: 28px; height: 15px; border-radius: 20px;
+  background: rgba(255,255,255,.14); transition: background var(--tr);
+}
+.nav-theme.on .nav-sw { background: var(--sb-active-cl); }
+.nav-sw-knob {
+  position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.35); transition: transform var(--tr);
+}
+.nav-theme.on .nav-sw-knob { transform: translateX(13px); }
+/* Collapsed to the icon rail there is no room for the switch — the icon alone carries it. */
+.sidebar.collapsed .nav-theme .nav-sw { display: none; }
 
 /* Signed-in user row: shows identity, not interactive. */
 .nav-user { cursor: default; opacity: .75; }
@@ -789,12 +869,12 @@ html, body {
   margin-top: 2px;
 }
 .daemon-card-badge.alive {
-  background: #dcfce7;
-  color: #15803d;
+  background: var(--tint-green);
+  color: var(--ink-green);
 }
 .daemon-card-badge.dead {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--tint-red);
+  color: var(--ink-red);
 }
 
 .daemon-card-latency {
@@ -827,9 +907,9 @@ html, body {
   font-family: var(--font-mono);
   padding: 2px 9px; border-radius: 6px; letter-spacing: .06em;
 }
-.status-pill.up   { background: #dcfce7; color: #15803d; }
-.status-pill.wait { background: #fff7ed; color: #c2410c; }
-.status-pill.down { background: #fee2e2; color: #991b1b; }
+.status-pill.up   { background: var(--tint-green); color: var(--ink-green); }
+.status-pill.wait { background: var(--tint-orange); color: var(--ink-orange); }
+.status-pill.down { background: var(--tint-red); color: var(--ink-red); }
 
 /* Loading placeholder (shown before API response) */
 .loading-row {
@@ -2171,7 +2251,7 @@ html, body {
   color: var(--text);
   vertical-align: middle;
 }
-.device-table tbody tr:hover { background: rgba(255,255,255,.03); }
+.device-table tbody tr:hover { background: var(--surface-hover); }
 .device-table tbody tr:last-child td { border-bottom: none; }
 .device-table code { font-family: var(--font-mono, monospace); font-size: 12px; }
 .col-status { width: 28px; }
@@ -2430,7 +2510,7 @@ html, body {
   color: var(--text-muted); font-size: 10px; padding: 2px 4px;
   border-radius: 4px;
 }
-.expand-btn:hover { color: var(--text); background: var(--surface-hover, rgba(255,255,255,.05)); }
+.expand-btn:hover { color: var(--text); background: var(--surface-hover); }
 .device-detail-row.hidden { display: none; }
 .device-detail-cell {
   padding: 12px 20px 16px 40px !important;
@@ -2461,7 +2541,7 @@ html, body {
 
 /* Category accent colors (Network=blue, Server=violet, Unknown=grey) */
 .cat-network { --cat: var(--blue); }
-.cat-server  { --cat: #7c3aed; }
+.cat-server  { --cat: var(--ink-violet); }
 .cat-unknown { --cat: var(--text-muted); }
 
 /* Summary category cards: left accent bar + colored value */
@@ -2479,7 +2559,7 @@ html, body {
   font-size: 11px; font-weight: 700; white-space: nowrap;
 }
 .type-badge.badge-network { background: rgba(37,99,235,.12);  color: var(--blue); }
-.type-badge.badge-server  { background: rgba(124,58,237,.14); color: #7c3aed; }
+.type-badge.badge-server  { background: rgba(124,58,237,.14); color: var(--ink-violet); }
 .type-badge.badge-unknown { background: rgba(107,114,128,.14); color: var(--text-muted); }
 
 /* "+N" grouped-IP indicator */
@@ -2623,9 +2703,9 @@ a.details-btn { display: inline-block; text-decoration: none; }
   padding: 2px 9px; border-radius: 20px; white-space: nowrap;
   border: 1px solid transparent;
 }
-.sd-badge-v2c { background: rgba(37,99,235,.10);  color: #2563eb; border-color: rgba(37,99,235,.20); }
-.sd-badge-v3  { background: rgba(22,163,74,.10);   color: #15803d; border-color: rgba(22,163,74,.20); }
-.sd-badge-api { background: rgba(249,115,22,.12);  color: #c2410c; border-color: rgba(249,115,22,.22); }
+.sd-badge-v2c { background: rgba(37,99,235,.10);  color: var(--blue); border-color: rgba(37,99,235,.20); }
+.sd-badge-v3  { background: rgba(22,163,74,.10);   color: var(--ink-green); border-color: rgba(22,163,74,.20); }
+.sd-badge-api { background: rgba(249,115,22,.12);  color: var(--ink-orange); border-color: rgba(249,115,22,.22); }
 
 /* ── Enable/disable toggle ── */
 .sd-toggle {
@@ -2920,7 +3000,7 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .op-btn:disabled { opacity: .5; cursor: default; }
 .op-btn svg { width: 14px; height: 14px; flex: 0 0 auto; }
 /* Load carries the reload, so it wears a soft warning tint to stand apart. */
-.op-btn-load { background: rgba(234, 88, 12, .10); border-color: rgba(234, 88, 12, .35); color: #c2410c; }
+.op-btn-load { background: rgba(234, 88, 12, .10); border-color: rgba(234, 88, 12, .35); color: var(--ink-orange); }
 .op-btn-load:hover { background: rgba(234, 88, 12, .16); border-color: rgba(234, 88, 12, .55); }
 .op-sep { width: 1px; background: var(--border); margin: 2px 3px; }
 .op-when { font-size: 11px; color: var(--text-muted); }
@@ -3054,6 +3134,24 @@ a.details-btn { display: inline-block; text-decoration: none; }
 }
 .field-row input:focus, .field-row select:focus { outline: none; border-color: var(--accent); }
 
+/* Paste box (e.g. the SASE infrastructure command) — an input in every respect but monospace and
+   multi-line, so a pasted command wraps instead of scrolling out of sight. */
+.field-row textarea {
+  width: 100%; padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 12px; background: var(--surface); color: var(--text);
+  font-family: var(--font-mono); line-height: 1.55; resize: vertical; box-sizing: border-box;
+}
+.field-row textarea:focus { outline: none; border-color: var(--accent); }
+
+/* A parsed value the operator cannot edit: it is derived from the pasted command, so it reads as a
+   result rather than a field. Still selectable, so the URL can be copied out. */
+.field-row input[readonly] {
+  background: var(--surface-2); color: var(--text-secondary, var(--text-muted));
+  border-style: dashed; cursor: default;
+}
+.field-row input[readonly]:focus { border-color: var(--border); }
+.field-row input.mono-val { font-family: var(--font-mono); font-size: 11.5px; }
+
 /* Segmented toggle (e.g. API type: REST | XML) — a themed replacement for a 2-option radio. */
 .seg { display: inline-flex; padding: 3px; gap: 3px; background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 9px; }
@@ -3117,7 +3215,7 @@ a.details-btn { display: inline-block; text-decoration: none; }
 
 /* fingerprint pin state — "not pinned" is a real gap, so it reads as a warning */
 .pin-ok    { color: var(--green); font-weight: 700; font-size: 10px; }
-.pin-none  { color: #b45309;      font-weight: 700; font-size: 10px; }
+.pin-none  { color: var(--ink-amber);      font-weight: 700; font-size: 10px; }
 .tst-ok    { color: var(--green); font-weight: 700; font-size: 10px; }
 .tst-fail  { color: var(--red);   font-weight: 700; font-size: 10px; }
 
@@ -3366,12 +3464,29 @@ a.details-btn { display: inline-block; text-decoration: none; }
   padding: 10px 12px; background: var(--surface-2); }
 .test-panel.ok  { border-color: rgba(22,163,74,.45); }
 .test-panel.err { border-color: rgba(220,38,38,.45); }
-.test-panel.running { opacity: .75; }
+/* While a test runs the panel stays fully legible — the spinner carries the "working" signal, so
+   there is no need to dim the labels the operator is reading. */
+.test-panel.running { opacity: 1; border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .ts-row { display: flex; align-items: baseline; gap: 8px; font-size: 11px; padding: 2px 0; }
 .ts-mark  { width: 12px; flex: none; text-align: center; font-weight: 700; }
 .ts-ok    { color: var(--green); }
 .ts-fail  { color: var(--red); }
 .ts-idle  { color: var(--text-muted); opacity: .5; }
+
+/* A step that is currently being attempted. The device exchange reports its steps only when it
+   finishes, so every pending step spins together: this says "this is what is being run", never
+   "this one already passed" — a fake sequence would be a lie about what the appliance is doing. */
+.ts-spin { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle;
+  border: 1.5px solid var(--border); border-top-color: var(--accent);
+  animation: spin .7s linear infinite; }
+/* The one genuinely live number: how long the call has been outstanding. */
+.ts-head { display: flex; align-items: center; gap: 7px; margin: -1px 0 7px; font-size: 11px;
+  color: var(--text-muted); }
+.ts-head-label { font-weight: 600; color: var(--text); }
+.ts-elapsed { margin-left: auto; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  .ts-spin { animation-duration: 0s; border-top-color: var(--accent); }
+}
 .ts-label { color: var(--text); min-width: 118px; }
 .ts-detail { color: var(--text-muted); font-size: 10.5px; }
 .ts-note { margin-top: 8px; font-size: 10.5px; color: var(--text-muted); line-height: 1.5; }
@@ -3379,9 +3494,20 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .ts-disc { margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 10.5px; color: var(--text-muted); }
 .ts-disc b { color: var(--text); font-weight: 600; margin-right: 3px; }
 
+/* An issued credential shown back to the operator in the moment it was generated. The stored copy is
+   sealed and never returned, so this is the one place the plaintext appears — hence the note. */
+.secret-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.secret-label { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 6px; }
+.secret-label .btn-sm { margin-left: auto; }
+.secret-val { display: block; font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
+  word-break: break-all; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; color: var(--text); }
+.secret-note { font-size: 10.5px; color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
+
 /* certificate trust-on-first-use prompt */
 .fp-prompt { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-.fp-warn { font-size: 11px; font-weight: 700; color: #b45309; margin-bottom: 6px; }
+.fp-warn { font-size: 11px; font-weight: 700; color: var(--ink-amber); margin-bottom: 6px; }
 .fp-val { display: block; font-family: var(--font-mono); font-size: 9.5px; word-break: break-all;
   color: var(--text); background: var(--surface); border: 1px solid var(--border);
   border-radius: 5px; padding: 5px 7px; margin-bottom: 6px; }
@@ -3461,8 +3587,8 @@ a.details-btn { display: inline-block; text-decoration: none; }
   font-family: var(--font-mono); font-size: 11px; line-height: 1.6; white-space: pre-wrap; word-break: break-all;
   padding: 0 12px;
 }
-.sd-line.sd-del { background: rgba(220,38,38,.10); color: #b91c1c; }
-.sd-line.sd-add { background: rgba(22,163,74,.10); color: #15803d; }
+.sd-line.sd-del { background: rgba(220,38,38,.10); color: var(--ink-rose); }
+.sd-line.sd-add { background: rgba(22,163,74,.10); color: var(--ink-green); }
 .sd-line.sd-empty { background: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,.02) 5px, rgba(0,0,0,.02) 10px); min-height: 17.6px; }
 
 /* publish progress bar */
@@ -3504,27 +3630,28 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .mix-item b { color: var(--text); font-size: 11.5px; }
 
 /* Devices: Name | Description | Site | Device Type | Access Type | Access Identifier */
-.cfg-table-device .col-name     { width: 17%; }
-.cfg-table-device .col-desc     { width: 20%; color: var(--text-muted); }
-.cfg-table-device .col-site     { width: 13%; }
-.cfg-table-device .col-type     { width: 12%; white-space: nowrap; }
-.cfg-table-device .col-access   { width: 13%; white-space: nowrap; }
+.cfg-table-device .col-name     { width: 16%; }
+.cfg-table-device .col-desc     { width: 14%; color: var(--text-muted); }
+.cfg-table-device .col-site     { width: 12%; }
+.cfg-table-device .col-type     { width: 11%; white-space: nowrap; }
+.cfg-table-device .col-access   { width: 12%; white-space: nowrap; }
 .cfg-table-device .col-endpoint { width: 17%; font-family: var(--font-mono); font-weight: 600; }
-.cfg-table-device .col-act      { width: 8%;  text-align: right; white-space: nowrap; }
+/* Wide enough for the SASE row's Infrastructure Test button beside the two icon buttons. */
+.cfg-table-device .col-act      { width: 18%; text-align: right; white-space: nowrap; }
 .cfg-table-device tr.row-off td { opacity: .5; }
 .cfg-table-device tr.row-off td.col-act { opacity: 1; }
 
 /* API Key: Name | Device | Endpoint | Credential | Key | Status */
 .cfg-table-apikey .col-name    { width: 10%; }
 .cfg-table-apikey .col-site    { width: 9%; }
-.cfg-table-apikey .col-device  { width: 15%; }
-.cfg-table-apikey .col-ep      { width: 13%; }
+.cfg-table-apikey .col-device  { width: 14%; }
+.cfg-table-apikey .col-ep      { width: 12%; }
 .cfg-table-apikey .col-cred    { width: 9%;  font-family: var(--font-mono); }
 .cfg-table-apikey .col-key     { width: 8%; }
 .cfg-table-apikey .col-expiry  { width: 8%;  white-space: nowrap; }
 .cfg-table-apikey .col-refresh { width: 9%;  white-space: nowrap; }
 .cfg-table-apikey .col-status  { width: 8%;  white-space: nowrap; }
-.cfg-table-apikey .col-act     { width: 13%; text-align: right; }
+.cfg-table-apikey .col-act     { width: 15%; text-align: right; }
 /* API Credential editor refresh controls. */
 .ak-refresh { display: flex; gap: 16px; align-items: center; }
 .ak-radio { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
@@ -3559,7 +3686,7 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .cm-warn-note { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
 
 /* Expiry approaching — not yet a failure, but worth noticing */
-.st-warn { color: #b45309; font-weight: 700; font-size: 10px; }
+.st-warn { color: var(--ink-amber); font-weight: 700; font-size: 10px; }
 
 /* ══════════════════════════════════════════════════════════════════════
    Monitor › System Log (log-viewer.js)
@@ -3650,7 +3777,7 @@ a.details-btn { display: inline-block; text-decoration: none; }
 }
 .syslog-col-grip:hover::after, .syslog-col-grip.dragging::after { background: var(--accent); width: 2px; }
 .syslog-table.resizing { cursor: col-resize; user-select: none; }
-.syslog-lv-trace { background: rgba(139,92,246,.12); color: #7c3aed; }
+.syslog-lv-trace { background: rgba(139,92,246,.12); color: var(--ink-violet); }
 .syslog-lv-debug { background: rgba(37,99,235,.12);  color: var(--blue); }
 .syslog-lv-info  { background: rgba(22,163,74,.12);  color: var(--green); }
 .syslog-lv-warn  { background: rgba(234,88,12,.14);  color: var(--orange); }
@@ -3662,3 +3789,28 @@ a.details-btn { display: inline-block; text-decoration: none; }
   padding: 12px 14px; font-size: 11.5px; color: var(--text-muted); text-align: center;
 }
 .syslog-status.syslog-err { color: var(--red); }
+
+/* ── Dark-theme repairs ────────────────────────────────────────────────────────
+   The handful of rules that paint a literal light surface instead of a token. Each is listed here
+   rather than tokenised in place, because in the light theme they are exactly right as written. */
+:root[data-theme="dark"] .btn-glass {
+  background: rgba(255,255,255,.08);
+  border: 1px solid var(--border);
+  box-shadow: none;
+}
+:root[data-theme="dark"] .btn-glass:hover { background: rgba(255,255,255,.14); }
+
+:root[data-theme="dark"] .daemon-card.alive {
+  background: linear-gradient(135deg, rgba(34,197,94,.16) 0%, var(--surface-2) 100%);
+}
+:root[data-theme="dark"] .daemon-card.dead {
+  background: linear-gradient(135deg, rgba(248,113,113,.16) 0%, var(--surface-2) 100%);
+}
+:root[data-theme="dark"] .daemon-card:hover { box-shadow: 0 4px 18px rgba(0,0,0,.5); }
+
+/* The login card's error box paints its own pastel pair. */
+:root[data-theme="dark"] .login-error {
+  background: rgba(248,113,113,.14);
+  border-color: rgba(248,113,113,.35);
+  color: var(--ink-red);
+}

@@ -3,7 +3,6 @@
 #include "service/MgmtdServiceManager.h"
 
 #include "service/web/WebUtil.h"
-#include "service/web/WebRouter.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -32,10 +31,10 @@
 namespace pz::mgmtd
 {
 
+using json = nlohmann::json;
+
 namespace
 {
-
-using json = nlohmann::json;
 
 constexpr const char* kSettingsDaemons[] = {
     "engined", "authd", "probed", "collectord", "topologyd",
@@ -252,7 +251,9 @@ bool validateCommitValues(const std::string& daemon, const std::string& domain, 
     return true;
 }
 
-void handleSettingsGet(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+}
+
+void SettingsController::get(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)sm;
     (void)req;
@@ -306,7 +307,7 @@ void handleSettingsGet(MgmtdServiceManager& sm, const pz::http::HttpRequest& req
 // hidden-domain-filtered projection for the editors; this is the raw document the operator sees
 // behind the topbar's View button. Secrets are already stripped on the way in (Config's
 // redactSecretsForPersist runs at persist time), so the stored copy is safe to return as-is.
-void handleRunningConfig(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SettingsController::runningConfig(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)sm;
     (void)req;
@@ -338,7 +339,7 @@ void handleRunningConfig(MgmtdServiceManager& sm, const pz::http::HttpRequest& r
     fill(resp, 200, body.dump());
 }
 
-void handleSettingsCommit(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     auto badRequest = [&](const char* error) { fill(resp, 400, json{{"error", error}}.dump()); };
 
@@ -438,7 +439,7 @@ void handleSettingsCommit(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
     fill(resp, status, body.dump());
 }
 
-void handleReloadStatus(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SettingsController::reloadStatus(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)req;
     json body;
@@ -457,11 +458,14 @@ void handleReloadStatus(MgmtdServiceManager& sm, const pz::http::HttpRequest& re
     fill(resp, 200, body.dump());
 }
 
-void handleCommitQueue(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SettingsController::commitQueue(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)req;
     fill(resp, 200, sm.commitQueueSnapshot());
 }
+
+namespace
+{
 
 // ── Saved configurations (named running-config snapshots on the appliance) ─────────────────
 // Plain files under <config-dir>/saved-configs. They survive `pretzel reset` (which only drops DB
@@ -498,7 +502,9 @@ std::string activeRunningConfigJson()
     return rows.front()[0];
 }
 
-void handleSaveConfig(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+}
+
+void SettingsController::saveConfig(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)sm;
     json input;
@@ -559,7 +565,7 @@ void handleSaveConfig(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
     fill(resp, 200, json{{"ok", true}}.dump());
 }
 
-void handleSavedConfigs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SettingsController::savedConfigs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)sm;
     (void)req;
@@ -590,7 +596,7 @@ void handleSavedConfigs(MgmtdServiceManager& sm, const pz::http::HttpRequest& re
 
 // Returns the raw saved document so the browser can apply it through the same commit path Import
 // uses. Selected from the list, so the name is already one of ours; still validated defensively.
-void handleSavedConfigContent(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void SettingsController::savedConfigContent(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)sm;
 
@@ -612,22 +618,6 @@ void handleSavedConfigContent(MgmtdServiceManager& sm, const pz::http::HttpReque
 
     std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     fill(resp, 200, content);   // already a JSON config document
-}
-
-}
-
-void SettingsController::registerRoutes(WebRouter& router)
-{
-    using Access = WebRouter::Access;
-
-    router.get("/api/settings", Access::Authenticated, &handleSettingsGet);
-    router.get("/api/settings/running-config", Access::Authenticated, &handleRunningConfig);
-    router.post("/api/settings/commit", Access::Authenticated, &handleSettingsCommit);
-    router.get("/api/settings/reload-status", Access::Authenticated, &handleReloadStatus);
-    router.get("/api/settings/commit-queue", Access::Authenticated, &handleCommitQueue);
-    router.post("/api/settings/save-config", Access::Authenticated, &handleSaveConfig);
-    router.get("/api/settings/saved-configs", Access::Authenticated, &handleSavedConfigs);
-    router.getPrefix("/api/settings/saved-config-content", Access::Authenticated, &handleSavedConfigContent);
 }
 
 }

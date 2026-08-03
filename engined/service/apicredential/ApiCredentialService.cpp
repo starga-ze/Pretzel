@@ -109,9 +109,13 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
     const std::string idEnc = root.value("id_enc", "");
     const std::string pwEnc = root.value("pw_enc", "");
     const std::string secretEnc = root.value("key_enc", "");
+    const std::string expiresAt = root.value("expires_at", "");
+    // A plain credential save carries no test outcome, so it must not stamp one: the `ok` field is
+    // what distinguishes "a test ran and this is its result" from "store these credentials". Without
+    // it the last_test_* columns keep whatever the last real test left.
+    const bool hasTest = root.contains("ok");
     const bool ok = root.value("ok", false);
     const std::string note = root.value("note", "");
-    const std::string expiresAt = root.value("expires_at", "");
 
     // A failed test must not erase a working key or credential, so each sealed column and the issue
     // time are only written when a new value actually arrived — hence COALESCE on the excluded value.
@@ -119,19 +123,22 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
         "INSERT INTO api_credential_state (oid, id_enc, pw_enc, key_enc, issued_at, expires_at, "
         "last_test_at, last_test_ok, last_test_note) "
         "VALUES ($1, NULLIF($2,''), NULLIF($3,''), NULLIF($4,''), CASE WHEN $4 <> '' THEN now() END, "
-        "NULLIF($5,'')::timestamptz, now(), $6::boolean, $7) "
+        "NULLIF($5,'')::timestamptz, CASE WHEN $8::boolean THEN now() END, "
+        "CASE WHEN $8::boolean THEN $6::boolean END, CASE WHEN $8::boolean THEN $7 END) "
         "ON CONFLICT (oid) DO UPDATE SET "
         "id_enc = COALESCE(EXCLUDED.id_enc, api_credential_state.id_enc), "
         "pw_enc = COALESCE(EXCLUDED.pw_enc, api_credential_state.pw_enc), "
         "key_enc = COALESCE(EXCLUDED.key_enc, api_credential_state.key_enc), "
         "issued_at = COALESCE(EXCLUDED.issued_at, api_credential_state.issued_at), "
         "expires_at = COALESCE(EXCLUDED.expires_at, api_credential_state.expires_at), "
-        "last_test_at = EXCLUDED.last_test_at, last_test_ok = EXCLUDED.last_test_ok, "
-        "last_test_note = EXCLUDED.last_test_note, updated_at = now()",
-        {oid, idEnc, pwEnc, secretEnc, expiresAt, ok ? "true" : "false", note});
+        "last_test_at = COALESCE(EXCLUDED.last_test_at, api_credential_state.last_test_at), "
+        "last_test_ok = COALESCE(EXCLUDED.last_test_ok, api_credential_state.last_test_ok), "
+        "last_test_note = COALESCE(EXCLUDED.last_test_note, api_credential_state.last_test_note), "
+        "updated_at = now()",
+        {oid, idEnc, pwEnc, secretEnc, expiresAt, ok ? "true" : "false", note, hasTest ? "true" : "false"});
 
     if (wrote)
-        LOG_INFO("api key state stored (oid={}, ok={}, key={}, cred={})", oid, ok,
+        LOG_INFO("api key state stored (oid={}, test={}, key={}, cred={})", oid, hasTest ? (ok ? "ok" : "failed") : "none",
                  secretEnc.empty() ? "unchanged" : "new", (idEnc.empty() && pwEnc.empty()) ? "unchanged" : "new");
     else
         LOG_WARN("api_credential_state write failed (oid={})", oid);

@@ -18,6 +18,18 @@ class CredentialController
 {
 public:
     void runKeygenTest(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo, const nlohmann::json& input);
+
+    // TLS-only handshake to a device: no credentials sent, just read back the peer certificate's
+    // fingerprint so an NGFW can be pinned at device-creation time (before any API Key exists). Routed
+    // to on ApiEventType::RunTlsProbe; answers the held ticket with { ok, fingerprint, cert_subject }.
+    void runTlsProbe(CollectordServiceManager& sm, std::uint32_t seqNo, const nlohmann::json& input);
+
+    // Seal an API Key's account credential (username/password) and hand it to engined, with no device
+    // call and no test outcome. The save path: a password typed in one browser has to be usable from
+    // any other, so it goes to the appliance immediately rather than waiting for a passing test.
+    // Also refreshes this daemon's credential cache. Routed to on ApiEventType::StoreCredential.
+    void storeCredential(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
+                         const nlohmann::json& input);
 };
 
 }

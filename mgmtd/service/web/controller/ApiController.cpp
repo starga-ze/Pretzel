@@ -3,7 +3,6 @@
 #include "service/MgmtdServiceManager.h"
 
 #include "service/web/WebUtil.h"
-#include "service/web/WebRouter.h"
 
 #include "router/MgmtdTxRouter.h"
 
@@ -25,10 +24,10 @@
 namespace pz::mgmtd
 {
 
+using json = nlohmann::json;
+
 namespace
 {
-
-using json = nlohmann::json;
 
 // ── API connector tests ──────────────────────────────────────────────────────
 // Two gated checks the operator runs while creating a connector:
@@ -86,9 +85,12 @@ std::string connectorTestInputError(const json& input, bool endpointMode)
                                 !secrets.value("password", std::string()).empty();
     const bool namesProfile = !input.value("api_key_oid", std::string()).empty();
 
-    // Generating a key is the one case a password is unavoidable — that exchange IS the
-    // password. Calling an endpoint can instead ride on a key already issued for the profile.
-    if (!endpointMode && !haveCredential)
+    // Generating a key needs a password somewhere, but not necessarily in this request: once saved,
+    // the credential is sealed on the appliance and collectord opens its own copy, so a browser that
+    // never typed it can still run the test. `stored_credential` says the caller knows of one; if it
+    // turns out to be missing, collectord answers with the same complaint.
+    const bool storedCredential = input.value("stored_credential", false);
+    if (!endpointMode && !haveCredential && !storedCredential)
         return "generating a key needs the username and password — enter them on the API Key page";
 
     if (endpointMode && !haveCredential && !namesProfile)
@@ -132,7 +134,9 @@ void sendConnectorTest(MgmtdServiceManager& sm, std::uint32_t ticket, json input
     sm.txRouter().handleIpcMessage(std::move(msg));
 }
 
-void handleKeygenTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+}
+
+void ApiController::keygenTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
     try
@@ -160,7 +164,7 @@ void handleKeygenTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 
-void handleEndpointTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void ApiController::endpointTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
     try
@@ -192,7 +196,7 @@ void handleEndpointTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& re
 // SASE device health test: validate the getPrismaAccessIP api-key against the tenant and, on
 // success, persist it (probed seals it and hands it to engined). Same ticket/poll shape as the
 // connector tests — probed runs the slow call and answers on the seqNo.
-void handleSaseTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void ApiController::saseTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
     try
@@ -204,9 +208,10 @@ void handleSaseTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, p
         return fill(resp, 400, R"({"error":"invalid JSON body"})");
     }
 
-    if (input.value("oid", std::string()).empty() || input.value("url", std::string()).empty() ||
-        input.value("api_key", std::string()).empty())
-        return fill(resp, 400, R"({"error":"the device, probe URL and api-key are all required"})");
+    // No api-key requirement: the browser only holds the plaintext right after it was pasted, and
+    // collectord falls back to the key stored for this device.
+    if (input.value("oid", std::string()).empty() || input.value("url", std::string()).empty())
+        return fill(resp, 400, R"({"error":"the device and probe URL are both required"})");
 
     const std::uint32_t ticket = sm.nextApiTestTicket();
     sendConnectorTest(sm, ticket, std::move(input), pz::ipc::IpcCmd::ApiSaseTestRequest);
@@ -214,7 +219,90 @@ void handleSaseTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, p
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 
-void handleApiTestResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+// Persist a SASE device's health api-key. Saving it is its own operation, not a side effect of a
+// passing test: the operator pastes the key while creating the device, and it must survive a save
+// that was never tested — and a browser refresh, which is why the key goes to the appliance rather
+// than living in the page. collectord seals it (it holds credentials.key; mgmtd never does) and
+// engined stores it in sase_device.api_key_enc. It never enters running_config.
+void ApiController::saseKeyStore(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    json input;
+    try
+    {
+        input = json::parse(req.body);
+    }
+    catch (const std::exception&)
+    {
+        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    }
+
+    if (input.value("oid", std::string()).empty() || input.value("api_key", std::string()).empty())
+        return fill(resp, 400, R"({"error":"the device and api-key are both required"})");
+
+    const std::uint32_t ticket = sm.nextApiTestTicket();
+    const std::string oid = input.value("oid", std::string());
+    sendConnectorTest(sm, ticket, std::move(input), pz::ipc::IpcCmd::ApiSaseKeyStoreRequest);
+
+    LOG_INFO("sase api-key store delegated to collectord (ticket={}, oid={})", ticket, oid);
+    fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
+}
+
+// Persist an API Key's account credential (username/password). Same reasoning as the SASE api-key:
+// a password typed in one browser is invisible to every other browser and machine, so it goes to the
+// appliance on save rather than living in localStorage until some test happens to pass. collectord
+// seals it; engined stores it in api_credential_state. It never enters running_config.
+void ApiController::credentialStore(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    json input;
+    try
+    {
+        input = json::parse(req.body);
+    }
+    catch (const std::exception&)
+    {
+        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    }
+
+    const auto secrets = input.value("secrets", json::object());
+    const bool havePassword = secrets.is_object() && !secrets.value("password", std::string()).empty();
+    if (input.value("oid", std::string()).empty() || !havePassword)
+        return fill(resp, 400, R"({"error":"the API Key and its password are both required"})");
+
+    const std::uint32_t ticket = sm.nextApiTestTicket();
+    const std::string oid = input.value("oid", std::string());
+    sendConnectorTest(sm, ticket, std::move(input), pz::ipc::IpcCmd::ApiCredentialStoreRequest);
+
+    LOG_INFO("api credential store delegated to collectord (ticket={}, oid={})", ticket, oid);
+    fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
+}
+
+// TLS-only fingerprint probe for an NGFW device: no credentials, just a handshake so the operator can
+// pin the certificate when the device is created (before any API Key exists). Same ticket/poll shape
+// as the other tests — collectord runs the handshake and answers on the seqNo.
+void ApiController::tlsProbe(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    json input;
+    try
+    {
+        input = json::parse(req.body);
+    }
+    catch (const std::exception&)
+    {
+        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    }
+
+    if (input.value("target", std::string()).empty())
+        return fill(resp, 400, R"({"error":"target is required"})");
+
+    const std::uint32_t ticket = sm.nextApiTestTicket();
+    const std::string host = input.value("target", std::string());
+    sendConnectorTest(sm, ticket, std::move(input), pz::ipc::IpcCmd::ApiTlsProbeRequest);
+
+    LOG_INFO("tls probe delegated to collectord (ticket={}, host={})", ticket, host);
+    fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
+}
+
+void ApiController::testResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     std::uint32_t ticket = 0;
     if (auto pos = req.target.find("ticket="); pos != std::string::npos)
@@ -240,7 +328,7 @@ void handleApiTestResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& r
 // is held, expiry, and the last test outcome. Read straight from api_credential_state (engined is the
 // writer, mgmtd may read), keyed by the API Key oid. Sealed blobs (key_enc/id_enc/pw_enc) are
 // NEVER returned — only whether they exist — so the plaintext stays in the one process that holds it.
-void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void ApiController::keysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)sm;
     (void)req;
@@ -266,7 +354,20 @@ void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, 
                 e["expires_at"] = r[3];
             if (!r[4].empty())   // a test has run
                 e["last_test"] = {{"at", r[4]}, {"ok", r[5] == "1"}, {"detail", r[6]}};
+            e["kind"] = "api_key";
             out[r[0]] = std::move(e);
+        }
+
+        // SASE devices carry their own health api-key (sase_device.api_key_enc) rather than an API Key
+        // record, so they are keyed here by DEVICE oid — distinguishable by `kind`. Only whether a key
+        // exists is reported: that is what lets the device editor render a saved key as bullets
+        // instead of asking for it again after a refresh.
+        for (const auto& r : pz::db::Database::instance().queryRows(
+                 "SELECT oid, (api_key_enc IS NOT NULL)::int FROM sase_device"))
+        {
+            if (r.size() < 2 || r[0].empty())
+                continue;
+            out[r[0]] = {{"stored", r[1] == "1"}, {"kind", "sase_device"}};
         }
     }
     catch (const std::exception& ex)
@@ -275,19 +376,6 @@ void handleKeysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, 
     }
 
     fill(resp, 200, out.dump());
-}
-
-}
-
-void ApiController::registerRoutes(WebRouter& router)
-{
-    using Access = WebRouter::Access;
-
-    router.post("/api/connector/keygen-test", Access::Authenticated, &handleKeygenTest);
-    router.post("/api/connector/endpoint-test", Access::Authenticated, &handleEndpointTest);
-    router.post("/api/connector/sase-test", Access::Authenticated, &handleSaseTest);
-    router.getPrefix("/api/connector/test-result", Access::Authenticated, &handleApiTestResult);
-    router.get("/api/connector/keys-state", Access::Authenticated, &handleKeysState);
 }
 
 }

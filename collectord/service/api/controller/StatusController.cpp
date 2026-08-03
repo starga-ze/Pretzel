@@ -68,13 +68,38 @@ ParsedUrl parseUrl(const std::string& url)
     return r;
 }
 
+// Seal an api-key with the credential store and hand it to engined for sase_device.api_key_enc.
+// Returns false when the store is unavailable, so the caller can say so rather than reporting a save
+// that did not happen. The plaintext never crosses the socket — only the sealed blob.
+bool sealAndStoreApiKey(CollectordServiceManager& sm, const std::string& oid, const std::string& apiKey)
+{
+    auto sealed = pz::util::secret::encrypt(apiKey);
+    if (!sealed)
+        return false;
+
+    json state;
+    state["oid"] = oid;
+    state["api_key_enc"] = *sealed;
+    const std::string payload = state.dump();
+
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Collectord);
+    msg->setDst(pz::ipc::IpcDaemon::Engined);
+    msg->setCmd(pz::ipc::IpcCmd::SaseApiKeyUpdate);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+    msg->setPayload(std::vector<std::uint8_t>(payload.begin(), payload.end()));
+    sm.txRouter().handleIpcMessage(std::move(msg));
+    return true;
+}
+
 }
 
 StatusController::StatusController(boost::asio::io_context& ioc) : m_ioc(ioc)
 {
 }
 
-void StatusController::tick(std::chrono::steady_clock::time_point now, const ApiService& api, CollectordServiceManager& sm)
+void StatusController::tick(std::chrono::steady_clock::time_point now, const ApiService& api, 
+        CollectordServiceManager& sm)
 {
     if (m_lastRun.time_since_epoch().count() != 0 && now - m_lastRun < kInterval)
         return;
@@ -197,9 +222,11 @@ const std::unordered_map<std::string, nlohmann::json>& StatusController::egressR
 // success seal the api-key and hand it to engined for sase_device.api_key_enc. This is both the
 // "does it work?" check and how the api-key gets persisted (it never touches running_config),
 // mirroring how a keygen test both validates and stores an NGFW key.
-void StatusController::runSaseTest(CollectordServiceManager& sm, std::uint32_t seqNo, const json& input)
+void StatusController::runSaseTest(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
+                                   const json& input)
 {
     auto ctx = std::make_shared<ConnectorTest>();
+    ctx->api = &api;
     ctx->sm = &sm;
     ctx->seqNo = seqNo;
     ctx->input = input;
@@ -209,14 +236,22 @@ void StatusController::runSaseTest(CollectordServiceManager& sm, std::uint32_t s
     {
     const std::string oid = input.value("oid", std::string());
     const std::string url = input.value("url", std::string());
-    const std::string apiKey = input.value("api_key", std::string());
+    // The browser carries the plaintext key only in the moment it was pasted; from then on it renders
+    // bullets and sends none, so fall back to the key already stored for this device. A key that came
+    // from the operator is (re-)sealed on success below; a stored one is already where it belongs.
+    std::string apiKey = input.value("api_key", std::string());
+    const bool keyFromOperator = !apiKey.empty();
+    if (apiKey.empty())
+        apiKey = api.issuedKey(oid);
     std::string body = input.value("body", std::string());
     if (body.empty())
         body = R"({"serviceType":"all","addrType":"all","location":"all"})";
 
     ctx->out["steps"] = json::object();
-    if (oid.empty() || url.empty() || apiKey.empty())
-        return rejectTest(ctx, "the device, probe URL and api-key are all required");
+    if (oid.empty() || url.empty())
+        return rejectTest(ctx, "the device and probe URL are both required");
+    if (apiKey.empty())
+        return rejectTest(ctx, "no api-key is stored for this device — paste the command again");
     if (url.rfind("https://", 0) != 0)
         return rejectTest(ctx, "the probe URL must be https");
 
@@ -248,12 +283,14 @@ void StatusController::runSaseTest(CollectordServiceManager& sm, std::uint32_t s
     req.verifyCa = true;   // Prisma Access serves a CA-signed cert
     req.timeout = std::chrono::seconds(25);
 
-    pz::http::requestAsync(ctx->sm->ioContext(), std::move(req), [ctx, oid, apiKey](pz::http::ClientResponse res) {
+    pz::http::requestAsync(ctx->sm->ioContext(), std::move(req),
+                           [ctx, oid, apiKey, keyFromOperator](pz::http::ClientResponse res) {
         bool ok = false;
         std::string note;
+        const auto parsed = json::parse(res.body, nullptr, false);
+
         if (res.status == 200)
         {
-            const auto parsed = json::parse(res.body, nullptr, false);
             ok = parsed.is_object() && parsed.value("status", std::string()) == "success";
             if (!ok)
                 note = "reached the API but the response was not a success";
@@ -268,28 +305,20 @@ void StatusController::runSaseTest(CollectordServiceManager& sm, std::uint32_t s
         ctx->out["ok"] = ok;
         ctx->out["message"] = ok ? "SASE health check passed — api-key saved" : note;
 
-        // Success both proves the key and persists it: seal it and hand it to engined.
-        if (ok)
-        {
-            if (auto sealed = pz::util::secret::encrypt(apiKey))
-            {
-                json state;
-                state["oid"] = oid;
-                state["api_key_enc"] = *sealed;
-                const std::string payload = state.dump();
-                auto msg = std::make_unique<pz::ipc::IpcMessage>();
-                msg->setSrc(pz::ipc::IpcDaemon::Collectord);
-                msg->setDst(pz::ipc::IpcDaemon::Engined);
-                msg->setCmd(pz::ipc::IpcCmd::SaseApiKeyUpdate);
-                msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
-                msg->setPayload(std::vector<std::uint8_t>(payload.begin(), payload.end()));
-                ctx->sm->txRouter().handleIpcMessage(std::move(msg));
-            }
-            else
-            {
-                ctx->out["message"] = "health check passed, but the credential store is unavailable to save the key";
-            }
-        }
+        // Hand back what the tenant actually answered — the same document the periodic probe caches
+        // in sase_device.egress_result (the egress IP list is the point of the call, so the operator
+        // wants to read it, not just see a green tick). A non-JSON body travels as raw text so an
+        // error page is still visible rather than silently dropped.
+        ctx->out["http_status"] = res.status;
+        if (!parsed.is_discarded())
+            ctx->out["egress"] = parsed;
+        else if (!res.body.empty())
+            ctx->out["egress_raw"] = res.body;
+
+        // A key the operator just entered is proven by this call, so persist it now. One that came
+        // from the store is already there.
+        if (ok && keyFromOperator && !sealAndStoreApiKey(*ctx->sm, oid, apiKey))
+            ctx->out["message"] = "health check passed, but the credential store is unavailable to save the key";
 
         sendTestResponse(*ctx->sm, ctx->seqNo, ctx->out);
     });
@@ -303,6 +332,49 @@ void StatusController::runSaseTest(CollectordServiceManager& sm, std::uint32_t s
         out["message"] = std::string("test could not be started: ") + e.what();
         sendTestResponse(sm, seqNo, out);
     }
+}
+
+// Store a SASE device's health api-key without calling the device. The operator pastes the api-key
+// while creating the device and saves; the key must not sit in the browser waiting for someone to
+// press Test, and it must never reach running_config (append-versioned and shown verbatim in the
+// review diff). So it is sealed here and stored in sase_device.api_key_enc, the same column a passing
+// test writes — engined upserts, so this works before the device projection exists.
+void StatusController::storeApiKey(CollectordServiceManager& sm, std::uint32_t seqNo, const json& input)
+{
+    json out;
+    out["steps"] = json::object();
+
+    try
+    {
+        const std::string oid = input.value("oid", std::string());
+        const std::string apiKey = input.value("api_key", std::string());
+
+        if (oid.empty() || apiKey.empty())
+        {
+            out["ok"] = false;
+            out["message"] = "the device and api-key are both required";
+        }
+        else if (!sealAndStoreApiKey(sm, oid, apiKey))
+        {
+            LOG_WARN("sase api-key not stored — credential store unavailable (oid={})", oid);
+            out["ok"] = false;
+            out["message"] = "the credential store is unavailable — the api-key was not saved";
+        }
+        else
+        {
+            LOG_INFO("sase api-key sealed and sent to engined (oid={})", oid);   // never log the key
+            out["ok"] = true;
+            out["message"] = "api-key saved";
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("sase api-key store failed (seq={}, error={})", seqNo, e.what());
+        out["ok"] = false;
+        out["message"] = std::string("the api-key could not be saved: ") + e.what();
+    }
+
+    sendTestResponse(sm, seqNo, out);
 }
 
 }

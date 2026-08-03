@@ -38,7 +38,15 @@
   const state = { devices: [] };
   let deployed = [];
   let editIdx = null;
-  let draftOid = null;   // survives the rebuild a device-type change performs
+  let draftOid = null;           // survives the rebuild a device-type change performs
+  let draftFingerprint = '';     // NGFW pinned cert, held across rebuilds like draftOid
+  // The SASE api-key in plaintext, held ONLY between a paste and the Save that ships it to the
+  // appliance. It is deliberately not part of state.devices: the staged draft goes to localStorage,
+  // and a secret has no business being there. Once saved it lives sealed in the database and the
+  // editor shows bullets, so this is empty on every later visit.
+  let draftApiKey = '';
+  // device oid -> true when the appliance holds a sealed api-key for it (/api/connector/keys-state).
+  let keyStored = {};
 
   // Staged edits are held in NMS.draft so they survive a full page reload.
   // Dirty state / publish / revert are owned by the cross-tab staging registry (js/commit.js).
@@ -64,22 +72,36 @@
       // Pinned certificate of this host — written by the API Key test, never typed.
       fingerprint: d.fingerprint || '',
     };
-    // SASE control-plane health probe (getPrismaAccessIP): url + body live in config, and the api-key
-    // rides alongside on the device. Only carried for SASE (or if set) so NGFW devices stay clean.
+    // SASE infrastructure check (getPrismaAccessIP): url + body live in config. The api-key does NOT
+    // — it is sealed on the appliance (sase_device.api_key_enc), so it is never carried on the device
+    // object, never staged, and never written to running_config.
     const health = (d.health && typeof d.health === 'object')
       ? { url: d.health.url || '', body: d.health.body || '' } : { url: '', body: '' };
-    const apiKey = d.api_key || '';
-    if (deviceType === 'sase' || health.url || apiKey) {
-      out.health = health;
-      out.api_key = apiKey;
-    }
+    if (deviceType === 'sase' || health.url) out.health = health;
     return out;
   }
 
   const blank = () => normalize({ device_type: 'ngfw' });
 
   // ── Data load ────────────────────────────────────────────────────────────────
+  // Which devices the appliance already holds a sealed api-key for. Only the fact is returned, never
+  // the key, which is what lets the editor render a saved key as bullets after a refresh.
+  async function loadKeyState() {
+    try {
+      const r = await fetch('/api/connector/keys-state',
+        { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!r.ok) return;
+      const d = await r.json();
+      const next = {};
+      Object.keys(d || {}).forEach((oid) => {
+        if (d[oid] && d[oid].kind === 'sase_device' && d[oid].stored) next[oid] = true;
+      });
+      keyStored = next;
+    } catch (_) { /* leave the previous snapshot in place */ }
+  }
+
   async function load() {
+    await loadKeyState();
     try {
       const r = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       if (r.status === 401) { location.href = '/'; return; }
@@ -139,6 +161,9 @@
           <td class="col-access"><span class="access-badge ${esc(accessKind(d.device_type))}">${esc(accessLabel(d.device_type))}</span></td>
           <td class="col-endpoint">${esc(d.target) || '<span class="muted">—</span>'}</td>
           <td class="col-act">
+            ${d.device_type === 'sase'
+              ? `<button class="btn-sm" data-satest="${i}" title="Run the infrastructure check">Infrastructure Test</button>`
+              : ''}
             <button class="icon-btn" data-edit="${i}" title="Edit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
             </button>
@@ -222,39 +247,70 @@
       <p class="field-hint">Access Type follows the device type — an NGFW is reached at its own
         address, SASE through its tenant.</p>
       ${fieldRow(accessLabel(d.device_type), 'target', d.target, accessPlaceholder(d.device_type))}
+      ${d.device_type === 'sase' ? healthSection(d, d.health || {}) : ngfwStatusSection(d)}`;
+  }
+
+  // NGFW status + certificate. Reachability is plain ICMP (no config to enter) — the note here keeps
+  // parity with the SASE infrastructure check. The certificate is pinned right at device creation via
+  // a credential-less TLS handshake, so the later API Key test finds the pin already in place.
+  function ngfwStatusSection(d) {
+    return `
+      <div class="editor-sec">STATUS &amp; CERTIFICATE</div>
+      <p class="field-hint">Reachability is checked by ICMP ping — nothing to configure. Pin the
+        device's TLS certificate now so its API key can be issued later without a trust prompt.</p>
       ${d.fingerprint
         ? `<div class="fp-box"><div class="fp-label">Pinned certificate (SHA-256)</div>
              <code class="fp-val">${esc(d.fingerprint)}</code>
              <button class="btn-sm btn-danger" id="devUnpin" type="button">Clear pin</button></div>`
         : ''}
-      ${d.device_type === 'sase' ? healthSection(d.health || {}, d.api_key || '') : ''}`;
+      <div class="field-row" style="margin-top:6px"><label></label>
+        <button class="btn-sm" id="devCertProbe" type="button">${d.fingerprint ? 'Re-test connection' : 'Test connection'}</button></div>
+      <div id="devCertResult" class="field-hint" style="min-height:18px"></div>`;
   }
 
-  // SASE has no IP to ping, so its reachability is a control-plane API read (getPrismaAccessIP).
-  // The operator pastes the whole curl command; Parse pulls the URL, api-key and body into the
-  // fields below, which is what actually gets saved. probed runs this on a schedule and sets the
-  // device active/down from the outcome.
-  function healthSection(health, apiKey) {
+  // SASE has no IP to ping, so its reachability is a live infrastructure-API read (getPrismaAccessIP).
+  // Prisma Access hands the operator a whole curl command, so that is what this takes: paste it and
+  // the URL, api-key and request body are read out of it. The three are shown read-only because they
+  // are derived from the command — editing one by hand would just drift from what was pasted.
+  //
+  // The api-key never appears here in plaintext once saved: it is sealed on the appliance
+  // (sase_device.api_key_enc) and this shows bullets. Run the check itself from the device list.
+  const KEY_MASK = '••••••••••••••••';
+
+  function readonlyRow(label, key, val, placeholder, mono) {
+    return `<div class="field-row"><label>${esc(label)}</label>
+      <input ${key ? `data-f="${esc(key)}"` : ''} class="${mono ? 'mono-val' : ''}" readonly
+             value="${esc(val)}" placeholder="${esc(placeholder || '')}"/></div>`;
+  }
+
+  function healthSection(d, health) {
+    // Three states, in the order they happen: just pasted (not yet saved) → saved on the appliance →
+    // nothing yet. Only the middle one survives a refresh, which is the whole point of storing it.
+    const keyState = draftApiKey
+      ? { val: KEY_MASK, hint: 'read from the command — saved when you press Save' }
+      : keyStored[d.oid]
+        ? { val: KEY_MASK, hint: 'stored on the appliance (sealed)' }
+        : { val: '', hint: 'paste the command above to set it' };
+
     return `
-      <div class="editor-sec">SASE HEALTH PROBE</div>
+      <div class="editor-sec">SASE INFRASTRUCTURE CHECK</div>
       <p class="field-hint">SASE has no address to ping — reachability is a live
-        <code>getPrismaAccessIP</code> read against the tenant's control plane. The api-key is sealed
-        and stored on the appliance, never in the configuration.</p>
-      ${fieldRow('Probe URL', 'health_url', health.url || '', 'https://api.prodN.datapath.prismaaccess.com/getPrismaAccessIP/v2')}
+        <code>getPrismaAccessIP</code> read against the tenant's infrastructure API. These three come
+        from the command Prisma Access gives you; paste it below to fill them in. The api-key is sealed
+        on the appliance and never written to the configuration. Run the check from the device list.</p>
+
+      ${readonlyRow('Infrastructure URL', 'health_url', health.url || '', 'read from the command', true)}
       <div class="field-row"><label>API key</label>
-        <input data-f="api_key" type="password" value="${esc(apiKey)}" autocomplete="off"
-               placeholder="${apiKey ? '•••••••• entered' : 'header-api-key value'}"/></div>
-      ${fieldRow('Request body', 'health_body', health.body || '', '{"serviceType":"all","addrType":"all","location":"all"}')}
-      <details class="dev-paste" style="margin:2px 0 4px">
-        <summary style="cursor:pointer;color:var(--text-accent,#2a6);font-size:13px;user-select:none">Paste a curl command to autofill</summary>
-        <textarea data-f="paste_cmd" rows="3"
-          style="width:100%;box-sizing:border-box;margin-top:8px;font-family:var(--font-mono,monospace);font-size:12px;resize:vertical"
-          placeholder="curl -X POST -d @option.txt -H &quot;header-api-key: ...&quot; https://api.prod8.datapath.prismaaccess.com/getPrismaAccessIP/v2"></textarea>
-        <button class="btn-sm" id="devParseCmd" type="button" style="margin-top:6px">Autofill from command</button>
-      </details>
-      <div class="field-row" style="margin-top:6px"><label></label>
-        <button class="btn-sm" id="devSaseTest" type="button">Test &amp; save api-key</button></div>
-      <div id="devSaseTestResult" class="field-hint" style="min-height:18px"></div>`;
+        <input class="mono-val" readonly value="${esc(keyState.val)}" placeholder="${esc(keyState.hint)}"/></div>
+      ${keyState.val ? `<p class="field-hint" style="margin-top:-6px">${esc(keyState.hint)}</p>` : ''}
+      ${readonlyRow('Request body', 'health_body', health.body || '', 'read from the command', true)}
+
+      <div class="field-row" style="margin-top:10px"><label>Command from Prisma Access</label>
+        <textarea data-f="paste_cmd" rows="3" spellcheck="false" autocomplete="off"
+          placeholder='curl -X POST -d @option.txt -H "header-api-key: ..." "https://api.prod8.datapath.prismaaccess.com/getPrismaAccessIP/v2"'></textarea></div>
+      <div class="field-row"><label></label>
+        <button class="btn-sm" id="devParseCmd" type="button">Read from command</button></div>
+      <div id="devParseResult" class="field-hint" style="min-height:16px"></div>`;
   }
 
   // Validate the getPrismaAccessIP api-key against the tenant; on success probed seals + stores it in
@@ -276,16 +332,60 @@
     throw new Error('the test timed out');
   }
 
-  // Pull the URL, header-api-key and inline body out of a pasted curl command. A `-d @file` body
-  // (which we cannot read) falls back to the all/all/all default.
+  // Pull the URL, header-api-key and request body out of the command Prisma Access hands out, e.g.
+  //   curl -X POST -d @option.txt -H "header-api-key: <key>" "https://api.prod8…/getPrismaAccessIP/v2"
+  // The body is commonly `-d @file`, which the browser cannot read; that is not a failure — the file
+  // is the documented all/all/all request, so that is what gets used.
+  const DEFAULT_PROBE_BODY = '{"serviceType":"all","addrType":"all","location":"all"}';
+
   function parsePrismaCommand(cmd) {
     const url = (cmd.match(/https:\/\/[^\s"']+/) || [''])[0];
     const apiKey = (cmd.match(/header-api-key:\s*([^\s"']+)/i) || [, ''])[1];
     let body = '';
-    const m = cmd.match(/-d\s+'([^']*)'/) || cmd.match(/-d\s+"([^"]*)"/) || cmd.match(/--data(?:-raw)?\s+'([^']*)'/);
+    const m = cmd.match(/-d\s+'([^']*)'/) || cmd.match(/-d\s+"([^"]*)"/) ||
+              cmd.match(/--data(?:-raw)?\s+'([^']*)'/) || cmd.match(/--data(?:-raw)?\s+"([^"]*)"/);
     if (m) body = m[1];
-    else if (/-d\s+@/.test(cmd)) body = '{"serviceType":"all","addrType":"all","location":"all"}';
+    else if (/(?:-d|--data(?:-raw)?)\s+@/.test(cmd)) body = DEFAULT_PROBE_BODY;
     return { url, apiKey, body };
+  }
+
+  // Seal + store a SASE device's api-key on the appliance. Called on Save, so the key survives a
+  // browser refresh (and a publish) without ever being staged to localStorage or running_config.
+  async function saveApiKey(oid, apiKey) {
+    const start = await fetch('/api/connector/sase-key', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oid, api_key: apiKey }) });
+    if (start.status === 401) { location.href = '/'; return { ok: false, message: 'session expired' }; }
+    const started = await start.json().catch(() => null);
+    if (!start.ok || !started || !started.ticket) throw new Error((started && started.error) || 'could not save the api-key');
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
+        { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const d = await r.json().catch(() => null);
+      if (d && d.status === 'done') return d;
+    }
+    throw new Error('saving the api-key timed out');
+  }
+
+  // Credential-less TLS handshake to an NGFW: returns { ok, fingerprint, cert_subject,
+  // fingerprint_trusted, message }. Same ticket/poll shape as the API Key tests — mgmtd hands the
+  // handshake to collectord, which is the daemon that will actually talk to this device.
+  async function runTlsProbe(payload) {
+    const start = await fetch('/api/connector/tls-probe', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (start.status === 401) { location.href = '/'; return { ok: false, message: 'session expired' }; }
+    const started = await start.json().catch(() => null);
+    if (!start.ok || !started || !started.ticket) throw new Error((started && started.error) || 'could not start the probe');
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
+        { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      const d = await r.json().catch(() => null);
+      if (d && d.status === 'done') return d;
+    }
+    throw new Error('the probe timed out');
   }
 
   // `oid` is carried out-of-band (draftOid) so it survives the device-type rebuild and stays
@@ -303,11 +403,12 @@
       site: g('site'),
       device_type: g('device_type'),
       target: g('target'),
-      fingerprint: prev ? prev.fingerprint : '',
-      // Present only on the SASE form; undefined on NGFW so normalize drops them.
+      // Carried out-of-band (like the oid) so a probe/trust survives the device-type rebuild.
+      fingerprint: draftFingerprint,
+      // Present only on the SASE form; undefined on NGFW so normalize drops them. The api-key is not
+      // collected here — it is never in the DOM in plaintext (see draftApiKey).
       health: (g('health_url') !== undefined || g('health_body') !== undefined)
         ? { url: g('health_url') || '', body: g('health_body') || '' } : (prev ? prev.health : undefined),
-      api_key: g('api_key') !== undefined ? g('api_key') : (prev ? prev.api_key : undefined),
     });
   }
 
@@ -315,6 +416,8 @@
     editIdx = idx;
     const d = idx == null ? blank() : normalize(JSON.parse(JSON.stringify(state.devices[idx])));
     draftOid = d.oid;
+    draftFingerprint = d.fingerprint || '';
+    draftApiKey = '';   // a stored key stays on the appliance; the editor opens showing bullets
     document.getElementById('devTitle').textContent = idx == null ? 'Add Device' : 'Edit Device';
     document.getElementById('devBody').innerHTML = editorForm(d);
     document.getElementById('devFoot').innerHTML = `
@@ -359,44 +462,85 @@
     });
 
     document.getElementById('devUnpin')?.addEventListener('click', () => {
+      draftFingerprint = '';
       const d = collectForm(body);
-      d.fingerprint = '';
-      if (editIdx != null) state.devices[editIdx].fingerprint = '';
+      if (editIdx != null) { state.devices[editIdx].fingerprint = ''; stage(); }
       body.innerHTML = editorForm(d);
       wireEditor();
-      stage();
     });
 
+    // SASE: read the URL, api-key and body out of the pasted command. The two config values land in
+    // the read-only fields; the key is held in draftApiKey until Save ships it to the appliance.
     document.getElementById('devParseCmd')?.addEventListener('click', () => {
-      const d = collectForm(body);
+      const out = document.getElementById('devParseResult');
       const cmd = body.querySelector('[data-f="paste_cmd"]')?.value || '';
+      if (!cmd.trim()) {
+        out.innerHTML = '<span style="color:var(--text-danger,#c33)">Paste the command first.</span>';
+        return;
+      }
       const p = parsePrismaCommand(cmd);
-      if (!p.url && !p.apiKey) { alert('Could not find a URL or api-key in that command.'); return; }
+      if (!p.url && !p.apiKey) {
+        out.innerHTML = '<span style="color:var(--text-danger,#c33)">No URL or api-key found in that command.</span>';
+        return;
+      }
+      const d = collectForm(body);
       d.health = { url: p.url || (d.health && d.health.url) || '', body: p.body || (d.health && d.health.body) || '' };
-      d.api_key = p.apiKey || d.api_key || '';
+      if (p.apiKey) draftApiKey = p.apiKey;
       body.innerHTML = editorForm(d);
       wireEditor();
+      const got = [p.url ? 'URL' : '', p.apiKey ? 'api-key' : '', p.body ? 'body' : ''].filter(Boolean).join(', ');
+      document.getElementById('devParseResult').innerHTML =
+        '<span style="color:var(--text-success,#2a6)">✓ Read ' + esc(got) + '.</span>';
     });
 
-    document.getElementById('devSaseTest')?.addEventListener('click', async () => {
+    // NGFW: TLS-only handshake to fetch and pin the device certificate at creation time (no
+    // credentials). On first contact the cert comes back untrusted; the operator confirms it here and
+    // the pin is carried in draftFingerprint through save.
+    document.getElementById('devCertProbe')?.addEventListener('click', async () => {
       const d = collectForm(body);
-      const out = document.getElementById('devSaseTestResult');
-      if (!(d.health && d.health.url) || !d.api_key) {
-        out.innerHTML = '<span style="color:var(--text-danger,#c33)">Enter the probe URL and api-key first.</span>'; return;
+      const out = document.getElementById('devCertResult');
+      if (!d.target) {
+        out.innerHTML = `<span style="color:var(--text-danger,#c33)">Enter the ${esc(accessLabel(d.device_type))} first.</span>`; return;
       }
-      out.textContent = 'Testing… (this can take several seconds)';
-      const btn = document.getElementById('devSaseTest');
+      out.textContent = 'Testing…';
+      const btn = document.getElementById('devCertProbe');
       if (btn) btn.disabled = true;
+      let res;
       try {
-        const res = await runSaseTest({ oid: d.oid, url: d.health.url, body: d.health.body, api_key: d.api_key });
-        out.innerHTML = res.ok
-          ? '<span style="color:var(--text-success,#2a6)">✓ ' + esc(res.message || 'passed') + '</span>'
-          : '<span style="color:var(--text-danger,#c33)">✕ ' + esc(res.message || 'failed') + '</span>';
+        res = await runTlsProbe({ target: d.target, fingerprint: d.fingerprint || '' });
       } catch (e) {
-        out.innerHTML = '<span style="color:var(--text-danger,#c33)">✕ ' + esc(e.message || 'test failed') + '</span>';
+        out.innerHTML = '<span style="color:var(--text-danger,#c33)">✕ ' + esc(e.message || 'probe failed') + '</span>';
+        return;
       } finally {
         if (btn) btn.disabled = false;
       }
+
+      if (res.fingerprint_trusted) {
+        out.innerHTML = '<span style="color:var(--text-success,#2a6)">✓ Certificate already trusted.</span>';
+        return;
+      }
+      if (!res.fingerprint) {
+        out.innerHTML = '<span style="color:var(--text-danger,#c33)">✕ ' + esc(res.message || 'could not reach the device') + '</span>';
+        return;
+      }
+      // A device that already had a pin, answering with a different certificate, is not a routine
+      // first contact — it may be interception. Say so, and make re-pinning the deliberate choice.
+      const mismatch = !!d.fingerprint;
+      out.innerHTML = `<div class="fp-prompt">
+          <div class="fp-warn">${mismatch
+            ? 'Certificate does NOT match the pinned one — possible interception'
+            : 'Certificate not trusted yet'}</div>
+          <code class="fp-val">${esc(res.fingerprint)}</code>
+          <div class="fp-sub">${esc(res.cert_subject || '')}</div>
+          <button class="btn-sm ${mismatch ? 'btn-danger' : 'btn-primary'}" id="devTrustFp" type="button">${
+            mismatch ? 'Replace the pin anyway' : 'Trust certificate'}</button>
+        </div>`;
+      document.getElementById('devTrustFp').addEventListener('click', () => {
+        draftFingerprint = res.fingerprint;
+        if (editIdx != null) { state.devices[editIdx].fingerprint = res.fingerprint; stage(); }
+        body.innerHTML = editorForm(collectForm(body));   // re-render so the pinned box shows
+        wireEditor();
+      });
     });
 
     document.getElementById('devCancel').onclick = closeEditor;
@@ -406,10 +550,30 @@
     const del = document.getElementById('devDelete');
     if (del) del.onclick = () => { if (removeDevice(editIdx)) { closeEditor(); render(); } };
 
-    document.getElementById('devSave').onclick = () => {
+    document.getElementById('devSave').onclick = async () => {
       const d = collectForm(body);
       if (!d.name) { alert('Device name is required.'); return; }
       if (!d.target) { alert(`${accessLabel(d.device_type)} is required.`); return; }
+
+      // A freshly pasted api-key goes to the appliance now, not into the staged draft: it is sealed
+      // there and must outlive both this page and the publish that clears the draft. Everything else
+      // about the device stages as usual and reaches the config on publish.
+      if (d.device_type === 'sase' && draftApiKey) {
+        const btn = document.getElementById('devSave');
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        try {
+          const res = await saveApiKey(d.oid, draftApiKey);
+          if (!res.ok) { alert(res.message || 'The api-key could not be saved.'); return; }
+          keyStored[d.oid] = true;
+          draftApiKey = '';
+        } catch (e) {
+          alert(e.message || 'The api-key could not be saved.');
+          return;
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+        }
+      }
+
       if (editIdx == null) state.devices.push(d); else state.devices[editIdx] = d;
       closeEditor(); stage(); render();
     };
@@ -424,6 +588,64 @@
     el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       if (removeDevice(+b.dataset.del)) render();
     }));
+    el.querySelectorAll('[data-satest]').forEach(b =>
+      b.addEventListener('click', () => runSaseRowTest(+b.dataset.satest)));
+  }
+
+  // SASE infrastructure check, run from the device row (like the API Credential / Endpoint tests) so
+  // it is not buried in the editor. Validates the getPrismaAccessIP api-key against the tenant and,
+  // on success, probed seals + stores it. The URL/api-key come from the saved device draft.
+  async function runSaseRowTest(idx) {
+    const d = state.devices[idx];
+    if (!d || d.device_type !== 'sase') return;
+    if (!(d.health && d.health.url)) { alert('Paste the command first — edit the device.'); return; }
+    if (!keyStored[d.oid] && !draftApiKey) {
+      alert('No api-key is stored for this device yet — edit it, paste the command and save.');
+      return;
+    }
+
+    const modal = window.NMS.modal;
+    const tp = window.NMS.testPanel;
+    const TITLE = 'SASE Infrastructure Check';
+
+    // A getPrismaAccessIP read routinely takes several seconds, so the elapsed counter is what tells
+    // the operator it is working rather than wedged.
+    const run = tp.start(TITLE, ['getPrismaAccessIP read'],
+                         'Reading the tenant’s infrastructure API — this usually takes a few seconds.');
+
+    let res;
+    try {
+      // No api_key sent: the appliance holds the sealed one and uses it.
+      res = await runSaseTest({ oid: d.oid, url: d.health.url, body: d.health.body });
+    } catch (e) {
+      run.stop();
+      modal.open(TITLE, `<div class="test-panel err">
+        ${tp.step('getPrismaAccessIP read', { ok: false, detail: e.message || 'test failed' })}</div>`);
+      return;
+    }
+
+    const secs = run.stop();
+    modal.open(TITLE, `<div class="ep-detail">
+        <div class="test-panel ${res.ok ? 'ok' : 'err'}">
+          ${tp.step('getPrismaAccessIP read', { ok: !!res.ok, detail: res.message || (res.ok ? 'passed' : 'failed') })}
+          <div class="ts-note">Completed in ${secs.toFixed(1)}s.</div>
+        </div>
+        ${egressBlock(res)}
+      </div>`);
+  }
+
+  // What the tenant actually answered — the same document the periodic probe caches in
+  // sase_device.egress_result. The egress IP list is the reason for the call, so it is shown in full
+  // rather than reduced to a pass/fail tick. Rendered on a failure too: an error body is usually
+  // what says why.
+  function egressBlock(res) {
+    const doc = (res.egress != null) ? JSON.stringify(res.egress, null, 2) : (res.egress_raw || '');
+    if (!doc) return '';
+    return `<div class="ep-block">
+        <div class="ep-block-h">Infrastructure response${res.http_status
+          ? ` <span class="ep-status ${res.ok ? 'ok' : 'err'}">HTTP ${esc(res.http_status)}</span>` : ''}</div>
+        <pre class="ep-rsp">${esc(doc)}</pre>
+      </div>`;
   }
 
   // ── Staging provider ────────────────────────────────────────────────────────

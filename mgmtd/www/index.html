@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pretzel</title>
   <link rel="stylesheet" href="css/main.css" />
+  <!-- Pre-paint theme, same as the signed-in pages. There is no toggle here — the sign-in page has
+       no sidebar — so it follows whatever the operator last chose, or the machine. -->
+  <script>try{var t=localStorage.getItem('theme');if(t!=='dark'&&t!=='light')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
   <style>
     /* ── Login page overrides ── */
     body {

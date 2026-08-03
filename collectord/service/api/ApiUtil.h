@@ -55,6 +55,13 @@ void sendApiCredentialState(CollectordServiceManager& sm, const std::string& key
                             const std::string& pw, const std::string& key, const std::string& expiresAt, bool ok,
                             const std::string& note);
 
+// Seal and store just the account credential, with no test outcome attached — the payload carries no
+// `ok`, so engined leaves the last_test_* columns alone. This is the save path: the operator's
+// password belongs on the appliance, not in whichever browser happened to type it. Returns false when
+// the credential store is unavailable (nothing was sent).
+bool sendApiCredentialStore(CollectordServiceManager& sm, const std::string& keyOid, const std::string& id,
+                            const std::string& pw);
+
 // Reject a test up front (validation) — a single response on the held ticket.
 void rejectTest(const std::shared_ptr<ConnectorTest>& ctx, const std::string& message);
 

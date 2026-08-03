@@ -1,7 +1,6 @@
 #include "service/web/controller/LogsController.h"
 
 #include "service/web/WebUtil.h"
-#include "service/web/WebRouter.h"
 
 #include "db/Database.h"
 #include "http/HttpMessage.h"
@@ -18,10 +17,10 @@
 namespace pz::mgmtd
 {
 
+using json = nlohmann::json;
+
 namespace
 {
-
-using json = nlohmann::json;
 
 std::string queryParam(const std::string& target, const std::string& key)
 {
@@ -116,6 +115,8 @@ const char* levelNumToName(int n)
     }
 }
 
+}
+
 // GET /api/logs?daemon=&level=&q=&before=<oid>&limit=
 //   daemon : restrict to one daemon (empty = all)
 //   level  : severity threshold — this level and worse (name or digit; empty = all)
@@ -124,7 +125,7 @@ const char* levelNumToName(int n)
 //   limit  : page size, 1..500 (default 100)
 // Rows come back newest-first with a next_cursor for the following page — all filtering and paging is
 // done in postgres, so the client just renders.
-void handleLogs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void LogsController::list(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)sm;
     const std::string& target = req.target;
@@ -198,13 +199,6 @@ void handleLogs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::h
         body["next_cursor"] = nullptr;
 
     fill(resp, 200, body.dump());
-}
-
-}
-
-void LogsController::registerRoutes(WebRouter& router)
-{
-    router.getPrefix("/api/logs", WebRouter::Access::Authenticated, &handleLogs);
 }
 
 }

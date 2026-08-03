@@ -1,18 +1,23 @@
 #pragma once
 
+#include "http/HttpMessage.h"
+
 namespace pz::mgmtd
 {
 
-class WebRouter;
+class MgmtdServiceManager;
 
 // Local session auth: POST /api/login, POST /api/logout, POST /api/change-password, GET /api/whoami.
-// The SSO/SAML sign-in flow lives in its own domain (SsoController); this is the password path. One
-// domain, one file: the handlers and their helpers are private to the .cpp; only route registration
-// is exposed.
+// The SSO/SAML sign-in flow lives in its own domain (SsoController); this is the password path. An
+// instance owned by WebService, reached from its dispatch switch by member call. Handlers are pure
+// request→response glue — the router applies the session and must-change gates before calling them.
 class AuthController
 {
 public:
-    static void registerRoutes(WebRouter& router);
+    void login(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+    void logout(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+    void changePassword(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+    void whoami(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 };
 
 }

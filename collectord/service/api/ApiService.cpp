@@ -34,6 +34,10 @@ const json& apiConfig()
 
 }
 
+ApiService::ApiService(boost::asio::io_context& ioc) : m_statusController(ioc)
+{
+}
+
 void ApiService::loadProfiles(const nlohmann::json& cfg)
 {
     const auto it = cfg.find("api_credentials");
@@ -308,7 +312,22 @@ void ApiService::route(CollectordServiceManager& sm, const ApiEvent& event)
 
     case ApiEventType::RunSaseTest:
         if (decodeTest(event, seqNo, input))
-            sm.statusController().runSaseTest(sm, seqNo, input);
+            m_statusController.runSaseTest(*this, sm, seqNo, input);
+        break;
+
+    case ApiEventType::RunTlsProbe:
+        if (decodeTest(event, seqNo, input))
+            m_credentialController.runTlsProbe(sm, seqNo, input);
+        break;
+
+    case ApiEventType::StoreSaseKey:
+        if (decodeTest(event, seqNo, input))
+            m_statusController.storeApiKey(sm, seqNo, input);
+        break;
+
+    case ApiEventType::StoreCredential:
+        if (decodeTest(event, seqNo, input))
+            m_credentialController.storeCredential(*this, sm, seqNo, input);
         break;
 
     // Repo + scheduling: these stay in the service (shared key cache; when-to-run timing).
@@ -402,7 +421,7 @@ void ApiService::handleSetup(CollectordServiceManager& sm, const ApiEvent& event
     // Fetch the issued keys (outbound IPC returned as an action), then arm periodic collection: each
     // item first fires after its interval, by when the keys have arrived; a poll with no key skips.
     sm.postAction(std::make_unique<ApiAction>(ApiActionType::RequestKeys));
-    sm.connectorController().start(sm, *this);
+    m_connectorController.start(sm, *this);
 }
 
 void ApiService::handleRunPeriodic(CollectordServiceManager& sm, const ApiEvent& event)
@@ -410,7 +429,7 @@ void ApiService::handleRunPeriodic(CollectordServiceManager& sm, const ApiEvent&
     (void)event;
     const auto now = std::chrono::steady_clock::now();
     // SASE control-plane health probe + credential auto-refresh; each self-gates its real interval.
-    sm.statusController().tick(now, *this, sm);
+    m_statusController.tick(now, *this, sm);
     autoRefreshTick(sm, now);
 }
 
@@ -501,6 +520,11 @@ const IssuedCredential* ApiService::credentialFor(const std::string& oid) const
 {
     const auto it = m_credentials.find(oid);
     return it == m_credentials.end() ? nullptr : &it->second;
+}
+
+void ApiService::rememberCredential(const std::string& oid, std::string id, std::string pw)
+{
+    m_credentials[oid] = IssuedCredential{std::move(id), std::move(pw)};
 }
 
 // Re-issue key/token for auto-refresh credentials whose interval has elapsed. Reuses the exact

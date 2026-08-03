@@ -248,7 +248,18 @@
     const el = document.getElementById('contentBody');
     if (!el || activeTab() !== 'api-connector') return;
 
-    const ready = objects().length && profiles().length && endpointList().length;
+    // A connector binds three things together, so all three have to exist before one can be added.
+    // Name the missing ones: the same reasoning as saveBlocker below — a greyed-out button with no
+    // stated reason just leaves the operator guessing, and the empty-table hint is invisible once
+    // there is at least one connector in the table.
+    const missingParts = [
+      objects().length ? '' : 'a device',
+      profiles().length ? '' : 'an API key',
+      endpointList().length ? '' : 'an API endpoint',
+    ].filter(Boolean);
+    const ready = !missingParts.length;
+    const addBlocker = ready ? '' : `Define ${missingParts.join(', ')} first — a connector binds them together.`;
+
     const emptyHint = ready
       ? 'click <b>Add Connector</b> to decide what a device is polled for.'
       : `define a <a href="settings?tab=devices">device</a>, an
@@ -282,10 +293,13 @@
         <div class="cfg-toolbar">
           <div class="cfg-toolbar-meta">
             <span class="cfg-h">API Connectors</span>
-            <span class="cfg-h-sub">${state.connectors.length} connector${state.connectors.length === 1 ? '' : 's'}
-              · ${objects().length} device${objects().length === 1 ? '' : 's'} available</span>
+            <span class="cfg-h-sub">${addBlocker
+              ? esc(addBlocker)
+              : `${state.connectors.length} connector${state.connectors.length === 1 ? '' : 's'}
+                 · ${objects().length} device${objects().length === 1 ? '' : 's'} available`}</span>
           </div>
-          <button class="btn-primary btn-sm" id="acAdd" ${ready ? '' : 'disabled'}>+ Add Connector</button>
+          <button class="btn-primary btn-sm" id="acAdd" ${ready ? '' : 'disabled'}
+                  title="${esc(addBlocker)}">+ Add Connector</button>
         </div>
 
         <table class="cfg-table cfg-table-conn">
@@ -596,14 +610,7 @@
     return '';
   }
 
-  function stepRow(label, st) {
-    const mark = !st ? '<span class="ts-idle">·</span>'
-               : st.ok ? '<span class="ts-ok">✓</span>'
-               : '<span class="ts-fail">✗</span>';
-    return `<div class="ts-row"><span class="ts-mark">${mark}</span>
-              <span class="ts-label">${label}</span>
-              <span class="ts-detail">${esc((st && st.detail) || '')}</span></div>`;
-  }
+  const stepRow = (label, st) => window.NMS.testPanel.step(label, st);
 
   // A device we have never pinned stops the test at the certificate: HttpClient will not put a
   // credential on the wire to an unverified peer. The operator confirms the fingerprint, it is
@@ -665,9 +672,9 @@
     }
 
     btn.disabled = true;
-    out.innerHTML = `<div class="test-panel running">
-        ${stepRow('TLS connection', null)}${stepRow('API key generation', null)}${stepRow('Endpoint response', null)}
-      </div>`;
+    const tp = window.NMS.testPanel;
+    out.innerHTML = tp.runningBody(['TLS connection', 'API key generation', 'Endpoint response']);
+    const run = tp.attachElapsed(out);
 
     let res;
     try {
@@ -679,17 +686,20 @@
       payload.params = [];   // an endpoint carries its own parameters
       res = await runDeviceTest('/api/connector/endpoint-test', payload);
     } catch (e) {
+      run.stop();
       btn.disabled = false;
       out.innerHTML = `<div class="test-panel err"><div class="ts-note">${esc(e.message)}</div></div>`;
       return;
     }
 
+    const secs = run.stop();
     btn.disabled = false;
     const steps = res.steps || {};
     out.innerHTML = `<div class="test-panel ${res.ok ? 'ok' : 'err'}">
         ${stepRow('TLS connection', steps.tls)}
         ${stepRow('API key generation', steps.auth)}
         ${stepRow('Endpoint response', steps.endpoint)}
+        <div class="ts-note">Completed in ${secs.toFixed(1)}s.</div>
         ${trustPrompt(res, c)}
         ${res.request ? `<div class="ts-more"><button class="btn-sm" data-detail type="button">View request / response</button></div>` : ''}
       </div>`;

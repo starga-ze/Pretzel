@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pretzel</title>
   <link rel="stylesheet" href="css/main.css" />
-  <script>try{if(localStorage.getItem('sidebarCollapsed')==='true')document.documentElement.classList.add('sb-init-collapsed')}catch(e){}</script>
+  <!-- Pre-paint: stamp the theme (and the collapsed rail) on <html> before the first frame, so the
+       page never flashes the wrong palette on its way to the right one. -->
+  <script>try{var t=localStorage.getItem('theme');if(t!=='dark'&&t!=='light')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);if(localStorage.getItem('sidebarCollapsed')==='true')document.documentElement.classList.add('sb-init-collapsed')}catch(e){}</script>
 </head>
 <body>
 <div class="app-shell" id="appShell">
@@ -66,17 +68,25 @@
   .gi-layer { display:inline-block; width:11px; height:11px; border-radius:50%; }
   .gi-status { display:inline-flex; align-items:center; gap:7px; font-weight:600; }
   /* Four donut stat cards: sites / device types / status / credential. Arcs animate on data change. */
-  #statRow { grid-template-columns:repeat(auto-fit,minmax(232px,1fr)); }
-  .gi-scard { display:flex; align-items:center; gap:14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:13px 15px; }
-  .gi-mini { flex:0 0 auto; }
-  .gi-arc { transition:stroke-dasharray .85s cubic-bezier(.4,0,.2,1); }
-  .gi-scard-body { min-width:0; display:flex; flex-direction:column; gap:6px; flex:1 1 auto; }
-  .gi-scard-title { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; }
-  .gi-scard-legend { display:flex; flex-direction:column; gap:4px; font-size:11.5px; }
-  .gi-lg-row { display:flex; align-items:center; gap:6px; white-space:nowrap; }
-  .gi-lg-dot { width:9px; height:9px; border-radius:3px; flex:0 0 auto; }
-  .gi-lg-nm { color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; }
-  .gi-lg-v { color:var(--text-muted); margin-left:auto; font-variant-numeric:tabular-nums; padding-left:8px; }
+  #statRow { grid-template-columns:repeat(auto-fit,minmax(236px,1fr)); gap:14px; }
+  .gi-scard { position:relative; display:flex; align-items:center; gap:16px; background:var(--surface);
+    border:1px solid var(--border); border-radius:16px; padding:16px 18px; overflow:hidden;
+    transition:border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+    box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .gi-scard::before { content:''; position:absolute; inset:0 auto 0 0; width:3px;
+    background:var(--gi-accent,var(--green)); opacity:.85; }
+  .gi-scard:hover { transform:translateY(-2px); border-color:color-mix(in srgb,var(--gi-accent,var(--green)) 45%,var(--border));
+    box-shadow:0 8px 24px -10px rgba(15,23,42,.22); }
+  .gi-mini { flex:0 0 auto; filter:drop-shadow(0 1px 1px rgba(15,23,42,.06)); }
+  .gi-arc { transition:stroke-dasharray .9s cubic-bezier(.34,1.2,.4,1); }
+  .gi-count { font-variant-numeric:tabular-nums; }
+  .gi-scard-body { min-width:0; display:flex; flex-direction:column; gap:8px; flex:1 1 auto; }
+  .gi-scard-title { font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.07em; }
+  .gi-scard-legend { display:flex; flex-direction:column; gap:5px; font-size:12px; }
+  .gi-lg-row { display:flex; align-items:center; gap:8px; white-space:nowrap; }
+  .gi-lg-dot { width:8px; height:8px; border-radius:50%; flex:0 0 auto; box-shadow:0 0 0 3px color-mix(in srgb,currentColor 14%,transparent); }
+  .gi-lg-nm { color:var(--text-secondary,var(--text)); min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .gi-lg-v { color:var(--text); font-weight:600; margin-left:auto; font-variant-numeric:tabular-nums; padding-left:8px; }
   .gi-live { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--green); animation:giPulse 2s infinite; }
   @keyframes giPulse { 0%{box-shadow:0 0 0 0 rgba(16,185,129,.5)} 70%{box-shadow:0 0 0 7px rgba(16,185,129,0)} 100%{box-shadow:0 0 0 0 rgba(16,185,129,0)} }
 </style>
@@ -148,31 +158,38 @@
     var C_GREEN = 'var(--green)', C_RED = 'var(--red)', C_GRAY = 'var(--text-muted)';
 
     // A mini donut. Arcs start collapsed (dasharray "0 C") and expand to data-dash on the next frame,
-    // so a change animates the ring drawing in; the centre number counts up (see playAnim).
+    // so a change animates the ring drawing in; the centre number counts up (see playAnim). Segments
+    // are drawn with rounded caps and a small gap between them for a cleaner, segmented look; a lone
+    // full segment gets no gap so it reads as one continuous ring.
     function miniDonut(segs, centerVal, unit) {
-      var R = 33, C = 2 * Math.PI * R, cx = 42, cy = 42, sw = 10, off = 0;
-      var total = segs.reduce(function (a, s) { return a + s.value; }, 0);
-      var track = '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="var(--border,#eee)" stroke-width="' + sw + '"/>';
-      var arcs = segs.filter(function (s) { return s.value > 0; }).map(function (s) {
-        var len = total ? (s.value / total) * C : 0;
+      var R = 36, C = 2 * Math.PI * R, cx = 48, cy = 48, sw = 9, off = 0;
+      var nz = segs.filter(function (s) { return s.value > 0; });
+      var total = nz.reduce(function (a, s) { return a + s.value; }, 0);
+      var gap = nz.length > 1 ? sw : 0;   // circumference px between segments (≈ one stroke width)
+      var track = '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="var(--border,#eee)" stroke-width="' + sw + '" opacity="0.55"/>';
+      var arcs = nz.map(function (s) {
+        var seg = total ? (s.value / total) * C : 0;
+        var len = Math.max(0.6, seg - gap);   // keep a rounded cap visible even for a tiny slice
         var a = '<circle class="gi-arc" cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="' + s.color +
-                '" stroke-width="' + sw + '" stroke-dasharray="0 ' + C.toFixed(2) + '" data-dash="' + len.toFixed(2) + ' ' +
-                (C - len).toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>';
-        off += len;
+                '" stroke-width="' + sw + '" stroke-linecap="round" stroke-dasharray="0 ' + C.toFixed(2) + '" data-dash="' +
+                len.toFixed(2) + ' ' + (C - len).toFixed(2) + '" stroke-dashoffset="' + (-(off + gap / 2)).toFixed(2) +
+                '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>';
+        off += seg;
         return a;
       }).join('');
-      return '<svg class="gi-mini" width="84" height="84" viewBox="0 0 84 84">' + track + arcs +
-        '<text class="gi-count" data-to="' + centerVal + '" x="42" y="45" text-anchor="middle" font-size="20" font-weight="700" fill="var(--text)">0</text>' +
-        '<text x="42" y="59" text-anchor="middle" font-size="9" fill="var(--text-muted)">' + esc(unit) + '</text></svg>';
+      return '<svg class="gi-mini" width="88" height="88" viewBox="0 0 96 96">' + track + arcs +
+        '<text class="gi-count" data-to="' + centerVal + '" x="48" y="50" text-anchor="middle" font-size="23" font-weight="700" fill="var(--text)">0</text>' +
+        '<text x="48" y="65" text-anchor="middle" font-size="9.5" font-weight="500" fill="var(--text-muted)" letter-spacing="0.3">' + esc(unit) + '</text></svg>';
     }
 
     function lgRow(color, name, val) {
-      return '<div class="gi-lg-row"><span class="gi-lg-dot" style="background:' + color + '"></span>' +
+      return '<div class="gi-lg-row"><span class="gi-lg-dot" style="background:' + color + ';color:' + color + '"></span>' +
              '<span class="gi-lg-nm">' + esc(name) + '</span><span class="gi-lg-v">' + val + '</span></div>';
     }
 
-    function donutCard(title, segs, centerVal, unit, legend) {
-      return '<div class="gi-scard">' + miniDonut(segs, centerVal, unit) +
+    // `accent` tints the card's left edge and hover glow — the card's headline hue.
+    function donutCard(title, segs, centerVal, unit, legend, accent) {
+      return '<div class="gi-scard" style="--gi-accent:' + (accent || C_GREEN) + '">' + miniDonut(segs, centerVal, unit) +
              '<div class="gi-scard-body"><div class="gi-scard-title">' + esc(title) + '</div>' +
              '<div class="gi-scard-legend">' + legend + '</div></div></div>';
     }
@@ -194,7 +211,7 @@
     }
 
     var lastStatSig = '';
-    function renderStatCards(sites, devices) {
+    function renderStatCards(sites, devices, force) {
       // Per-site groups (+ unassigned).
       var groups = sites.map(function (s, i) {
         return { name: s.name || 'unnamed', devs: devices.filter(function (d) { return (d.site || '') === oidOf(s); }),
@@ -216,11 +233,12 @@
         if (c === 'ok') credOk++; else if (c === 'fail') credBad++; else credNone++;
       });
 
-      // Skip the rebuild (and its animation) unless something actually moved.
+      // Skip the rebuild (and its animation) unless something actually moved — but an explicit
+      // Refresh (or a fresh page load) forces a rebuild so the animation replays on demand.
       var sig = JSON.stringify([groups.map(function (g) { return [g.name, g.devs.length,
         g.devs.filter(function (d) { return d.device_type !== 'sase'; }).length]; }),
         ngfw, sase, active, inactive, notcfg, credOk, credBad, credNone]);
-      if (sig === lastStatSig) return;
+      if (!force && sig === lastStatSig) return;
       lastStatSig = sig;
 
       var siteSegs = groups.filter(function (g) { return g.devs.length; })
@@ -231,16 +249,18 @@
       }).join('') || '<span class="gi-lg-nm" style="color:var(--text-muted)">no sites</span>';
 
       statRow.innerHTML =
-        donutCard('Sites', siteSegs, sites.length, 'sites', siteLegend) +
+        donutCard('Sites', siteSegs, sites.length, 'sites', siteLegend, PALETTE[0]) +
         donutCard('Device types', [{ value: ngfw, color: '#2563eb' }, { value: sase, color: '#7c3aed' }],
                   devices.length, 'devices',
-                  lgRow('#2563eb', 'NGFW', ngfw) + lgRow('#7c3aed', 'SASE', sase)) +
+                  lgRow('#2563eb', 'NGFW', ngfw) + lgRow('#7c3aed', 'SASE', sase), '#7c3aed') +
         donutCard('Status', [{ value: active, color: C_GREEN }, { value: inactive, color: C_RED }, { value: notcfg, color: C_GRAY }],
                   active, 'active',
-                  lgRow(C_GREEN, 'active', active) + lgRow(C_RED, 'inactive', inactive) + lgRow(C_GRAY, 'not configured', notcfg)) +
+                  lgRow(C_GREEN, 'active', active) + lgRow(C_RED, 'inactive', inactive) + lgRow(C_GRAY, 'not configured', notcfg),
+                  inactive ? C_RED : C_GREEN) +
         donutCard('Credential', [{ value: credOk, color: C_GREEN }, { value: credBad, color: C_RED }, { value: credNone, color: C_GRAY }],
                   credOk, 'valid',
-                  lgRow(C_GREEN, 'valid', credOk) + lgRow(C_RED, 'invalid', credBad) + lgRow(C_GRAY, 'none', credNone));
+                  lgRow(C_GREEN, 'valid', credOk) + lgRow(C_RED, 'invalid', credBad) + lgRow(C_GRAY, 'none', credNone),
+                  credBad ? C_RED : C_GREEN);
 
       playAnim(statRow);
     }
@@ -266,14 +286,14 @@
         : '<tr><td colspan="5" style="color:var(--text-muted,#999)">no devices</td></tr>');
     }
 
-    function renderOverview() {
+    function renderOverview(force) {
       if (!siteData) { ovBody.innerHTML = '<div class="home-empty">Failed to load configuration.</div>'; return; }
       var sites = Array.isArray(siteData.sites) ? siteData.sites : [];
       var devices = (Array.isArray(siteData.ngfw_devices) ? siteData.ngfw_devices : []).map(function (d) { return Object.assign({ device_type: 'ngfw' }, d); })
         .concat((Array.isArray(siteData.sase_devices) ? siteData.sase_devices : []).map(function (d) { return Object.assign({ device_type: 'sase' }, d); }));
       ovHint.textContent = sites.length + ' site(s) · ' + devices.length + ' device(s)';
 
-      renderStatCards(sites, devices);
+      renderStatCards(sites, devices, force);
 
       var orphan = devices.filter(function (d) { return !(d.site || ''); });
       if (!sites.length && !orphan.length) { ovBody.innerHTML = '<div class="home-empty">No sites configured yet.</div>'; return; }
@@ -358,20 +378,22 @@
     // One cycle: pull everything, then render once. The guard skips a tick if the previous is still
     // in flight (slow network), so overlapping cycles never stack up.
     var busy = false;
-    function refreshAll() {
+    function refreshAll(force) {
       if (busy) return;
       busy = true;
       Promise.all([loadConfig(), loadAlive(), loadHealth()]).then(function () {
-        renderOverview();
+        renderOverview(force);
         renderStatus();
         busy = false;
       });
     }
 
-    refreshAll();
-    setInterval(refreshAll, PAGE_REFRESH_MS);
-    // The topbar Refresh button (id=refreshBtn) triggers the same full refresh.
-    if (window.NMS && typeof window.NMS.onRefresh === 'function') window.NMS.onRefresh(refreshAll);
+    // First paint (and every browser reload) plays the animation; the 5s poll does not, so it reads
+    // as a live update rather than a flicker.
+    refreshAll(true);
+    setInterval(function () { refreshAll(false); }, PAGE_REFRESH_MS);
+    // The topbar Refresh button (id=refreshBtn) triggers a full refresh AND replays the animation.
+    if (window.NMS && typeof window.NMS.onRefresh === 'function') window.NMS.onRefresh(function () { refreshAll(true); });
   })();
 </script>
 </body>
