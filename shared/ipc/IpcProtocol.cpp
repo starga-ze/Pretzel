@@ -135,6 +135,10 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "SaseApiKeyUpdate";
     case IpcCmd::SaseHealthResult:
         return "SaseHealthResult";
+    case IpcCmd::TopologyRequest:
+        return "TopologyRequest";
+    case IpcCmd::TopologyResponse:
+        return "TopologyResponse";
     case IpcCmd::ProbeRequest:
         return "ProbeRequest";
     case IpcCmd::AuthLoginRequest:
@@ -208,9 +212,11 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::SaseHealthResult:
         return CmdCategory::Write;
 
-    // Query engined's store.
+    // Query another daemon's store or derived view.
     case IpcCmd::ApiCredentialStateRequest:
     case IpcCmd::ApiCredentialStateResponse:
+    case IpcCmd::TopologyRequest:
+    case IpcCmd::TopologyResponse:
         return CmdCategory::Read;
 
     // Handshake, sync, runtime, heartbeat, transport error, and status replies — infra, not a

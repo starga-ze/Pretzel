@@ -390,6 +390,9 @@
 }
 .topo-msg b { display: block; color: var(--tc-ink); font-size: 15px; margin-bottom: 6px; }
 .topo-msg a { color: var(--accent); }
+/* The scope prompt fills the deck rather than sitting in a 320px box, so it lands in the same place
+   and at the same size as Insight ▸ API Collection's — the two ask the same question. */
+.topo-msg.is-full { height: 100%; min-height: 460px; }
 
 @media (max-width: 1180px) {
   .topo-cols { grid-template-columns: 190px 1fr 190px; gap: 20px; }
@@ -682,4 +685,158 @@
 @media (prefers-reduced-motion: reduce) {
   .topo-deck, .topo-decks, .topo-viewport { transition: none; }
   .topo-deck.is-entering .topo-fwc { animation: none; }
+}
+
+/* ── Firewall card metrics ───────────────────────────────────────────────────
+   What the box IS, beside whether it answered: interfaces and tunnels, each with the one number an
+   operator scans for. A metric that was never collected shows a dash, never a zero — "none" and
+   "not looked at" are different findings and must not render the same. */
+.topo-fwc-m { display: flex; gap: 14px; margin-top: 7px; }
+.topo-fwm { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.topo-fwm b { font-size: 15px; font-weight: 700; color: var(--tc-ink); font-variant-numeric: tabular-nums; }
+.topo-fwm em {
+  font-style: normal; font-size: 8.5px; color: var(--tc-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.topo-fwm > b + em { margin-top: 1px; }
+.topo-fwm b + :not(em) { font-size: 9px; color: var(--tc-dim); }
+.topo-fwm.is-none b { color: var(--tc-faint); }
+
+/* ── ZTNA lane ───────────────────────────────────────────────────────────────
+   Connectors listed as their own endpoints. They are not attached to a firewall in the drawing
+   because they are not attached to one in reality — they dial out to the fabric themselves. */
+.topo-ztna-list { display: flex; flex-direction: column; gap: 3px; margin: 6px 0 4px; }
+.topo-ztna-row {
+  display: grid; grid-template-columns: 8px 1fr auto auto; align-items: center; gap: 7px;
+  font-size: 9.5px; min-width: 0;
+}
+.topo-ztna-nm { color: var(--tc-ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-ztna-sub { color: var(--tc-faint); font-size: 8.5px; }
+.topo-ztna-ip { font-family: var(--font-mono); font-size: 8.5px; color: var(--tc-dim); }
+
+.topo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tc-dim); flex: 0 0 auto; }
+.topo-dot.ok  { background: var(--tc-ok); }
+/* The palette has --tc-warn but no dedicated bad; warn is the alarm colour in this drawing. */
+.topo-dot.bad { background: var(--tc-warn); }
+.topo-dot.off { background: transparent; border: 1.5px solid var(--tc-faint); }
+
+/* ── Drawer tables (interfaces, tunnels) ─────────────────────────────────── */
+.topo-dsec {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); margin: 15px 0 6px;
+}
+.topo-dsec-age { margin-left: auto; font-size: 9px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.topo-dtable { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+.topo-dtable th {
+  text-align: left; font-size: 8.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-muted); padding: 3px 8px 3px 0; border-bottom: 1px solid var(--border);
+}
+.topo-dtable td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); color: var(--text); }
+.topo-dtable td:first-child { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.topo-dtable tr:last-child td { border-bottom: 0; }
+.topo-dtable .mono { font-family: var(--font-mono); font-size: 10px; }
+.topo-dtable .topo-sub { color: var(--text-muted); font-size: 9.5px; }
+.topo-none { color: var(--text-muted); opacity: .65; }
+.topo-none-block {
+  font-size: 10.5px; color: var(--text-muted); background: var(--surface-2);
+  border: 1px dashed var(--border); border-radius: 8px; padding: 9px 11px;
+}
+.topo-none-block a { color: var(--accent); }
+
+/* ── Composing ───────────────────────────────────────────────────────────────
+   Shown while topologyd builds the picture, and only when there is nothing else to draw.
+
+   Laid out in normal flow with its own height rather than absolutely positioned: .topo-stage is
+   sized by its content, so `inset: 0` over an empty stage collapses to the padding and pins this to
+   the top. Its own min-height is what makes "centre of the deck" mean anything. */
+.topo-composing {
+  /* The deck's full height, so "centre" means the centre of what the operator is looking at. Not
+     wrapped in .topo-stage: that carries min-width: 980px and 8px/44px asymmetric padding for the
+     drawing's columns, which pushes this off-centre horizontally on a narrow window and 18px up on
+     every one. */
+  height: 100%;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 2px; padding: 24px; text-align: center;
+}
+
+.topo-ring-wrap { position: relative; width: 128px; height: 128px; }
+.topo-ring { width: 100%; height: 100%; transform: rotate(-90deg); }   /* 0% starts at 12 o'clock */
+.topo-ring .tr-track { fill: none; stroke: var(--tc-line); stroke-width: 6; }
+.topo-ring .tr-fill {
+  fill: none; stroke: var(--tc-gw); stroke-width: 6; stroke-linecap: round;
+  transition: stroke-dashoffset .12s linear;
+}
+.topo-ring-pct {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 700; color: var(--tc-ink);
+  font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+}
+.topo-ring-pct small { font-size: 12px; font-weight: 600; color: var(--tc-dim); margin-left: 1px; }
+
+/* A slow sweep behind the ring, so the indicator still reads as alive at the moments the percentage
+   is not visibly moving. */
+.topo-ring-wrap::after {
+  content: ''; position: absolute; inset: -6px; border-radius: 50%;
+  border: 1px solid transparent; border-top-color: var(--tc-gw); opacity: .35;
+  animation: topoSweep 1.6s linear infinite;
+}
+@keyframes topoSweep { to { transform: rotate(360deg); } }
+
+.topo-compose-t { font-size: 13.5px; font-weight: 700; color: var(--tc-ink); margin-top: 16px; }
+.topo-compose-stage { font-size: 11px; color: var(--tc-gw); margin-top: 5px; min-height: 15px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .topo-ring .tr-fill { transition: none; }
+  .topo-ring-wrap::after { animation: none; opacity: 0; }
+}
+
+/* ── Overview ────────────────────────────────────────────────────────────────
+   The unscoped view, in the canvas palette. Same component as Insight ▸ API Collection's: the estate
+   totalled, then one row per site. Rows rather than a card grid — a grid holding a single card reads
+   as a layout that failed; a list holding one row reads as a list with one thing in it. */
+.topo-overview {
+  height: 100%; min-height: 460px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  padding: 40px 28px; text-align: center;
+}
+.topo-ov-h { font-size: 17px; font-weight: 700; color: var(--tc-ink); letter-spacing: -.02em; }
+
+.topo-ov-tiles { display: flex; flex-wrap: wrap; gap: 26px; margin: 20px 0 24px; justify-content: center; }
+.topo-ov-tile { display: flex; flex-direction: column; align-items: center; }
+.topo-ov-tile b {
+  font-size: 26px; font-weight: 700; color: var(--tc-ink); line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.topo-ov-tile span { font-size: 10px; color: var(--tc-dim); margin-top: 2px; }
+
+.topo-ov-list { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 760px; }
+.topo-ov-row {
+  display: grid; grid-template-columns: minmax(120px, 1fr) auto 14px;
+  align-items: center; gap: 18px;
+  font: inherit; text-align: left; cursor: pointer;
+  padding: 14px 16px; border-radius: 10px;
+  background: var(--tc-card); border: 1px solid var(--tc-line);
+  transition: background var(--tr), border-color var(--tr);
+}
+.topo-ov-row:hover { background: var(--tc-card-hi); border-color: var(--tc-gw); }
+.topo-ov-nm {
+  font-size: 13.5px; font-weight: 700; color: var(--tc-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.topo-ov-stats { display: flex; gap: 16px; }
+.topo-ov-stat { font-size: 10px; color: var(--tc-dim); white-space: nowrap; }
+.topo-ov-stat b {
+  display: block; font-size: 15px; font-weight: 700; color: var(--tc-ink);
+  font-variant-numeric: tabular-nums; line-height: 1.2;
+}
+.topo-ov-go { font-size: 19px; color: var(--tc-dim); line-height: 1; }
+.topo-ov-row:hover .topo-ov-go { color: var(--tc-gw); }
+.topo-ov-note { font-size: 10.5px; color: var(--tc-faint); margin-top: 20px; }
+
+@media (max-width: 820px) {
+  .topo-ov-row { grid-template-columns: 1fr auto; }
+  .topo-ov-stats { grid-column: 1 / -1; }
 }

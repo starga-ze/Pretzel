@@ -5,6 +5,8 @@
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
+#include <nlohmann/json.hpp>
+
 #include <memory>
 
 namespace pz::mgmtd
@@ -62,6 +64,27 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
     {
         const auto& pl = msg->getPayload();
         m_serviceManager->setApiTestResult(msg->getSeqNo(), std::string(pl.begin(), pl.end()));
+        return;
+    }
+
+    // topologyd composed a site. The model carries the site it was built for, so the answer files
+    // itself — no request/response correlation table for something that is simply the latest truth
+    // about a named site.
+    if (msg->getCmd() == pz::ipc::IpcCmd::TopologyResponse)
+    {
+        const auto& pl = msg->getPayload();
+        std::string body(pl.begin(), pl.end());
+        std::string site;
+        try
+        {
+            site = nlohmann::json::parse(body).value("site", std::string());
+        }
+        catch (const std::exception& e)
+        {
+            LOG_WARN("topology response was not JSON ({}) — dropping", e.what());
+            return;
+        }
+        m_serviceManager->setTopology(site, std::move(body));
         return;
     }
 

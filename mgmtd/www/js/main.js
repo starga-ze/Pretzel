@@ -826,6 +826,39 @@
       return isNaN(t.getTime()) ? null : t;
     },
 
+    // An absolute timestamp, always 24-hour and always the same shape: YYYY-MM-DD HH:MM:SS in the
+    // viewer's local time. Not toLocaleString(), which follows the browser's locale — on a Korean
+    // browser that renders "2026. 8. 4. 오후 3:39:35", so the same appliance reads differently to
+    // two operators and half the log lines it is compared against are 24-hour anyway.
+    // Accepts a Date, an epoch-milliseconds number, or a server timestamp string (see parseTs).
+    fmtTs(v) {
+      const t = (v instanceof Date) ? v : (typeof v === 'number' ? new Date(v) : this.parseTs(v));
+      if (!t || isNaN(t.getTime())) return '—';
+      const p = (n) => String(n).padStart(2, '0');
+      return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ` +
+             `${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`;
+    },
+
+    // The site the operator is working in, shared by every Insight page and remembered across
+    // visits. A scope is a property of the session, not of one page: picking a site on Infrastructure
+    // and being dropped back at Overview on API Collection is the same annoyance as a console that
+    // forgets your region. Datadog, Grafana and the AWS console all keep this.
+    //
+    // Reading it is deliberately forgiving — a site can be deleted between visits, so callers check
+    // the value against the sites they actually received and fall back to Overview.
+    siteScope: {
+      key: 'pz.site',
+      get() {
+        try { return localStorage.getItem(this.key) || ''; } catch (_) { return ''; }
+      },
+      set(oid) {
+        try {
+          if (oid) localStorage.setItem(this.key, oid);
+          else localStorage.removeItem(this.key);
+        } catch (_) { /* private mode — the scope just does not persist */ }
+      },
+    },
+
     // "just now" / "42s" / "7m" / "3h" / "2d" — the age of a timestamp, for a freshness stamp.
     relAge(s) {
       const t = this.parseTs(s);

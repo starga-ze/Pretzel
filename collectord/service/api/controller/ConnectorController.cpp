@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <strings.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -110,6 +112,7 @@ bool resolveDevice(const std::string& objectOid, std::string& host, std::uint16_
 // definitions read in run order.
 void armJob(std::shared_ptr<CollectorJob> job, std::chrono::seconds delay);
 void collectOnce(std::shared_ptr<CollectorJob> job);
+void collectSaseOnce(std::shared_ptr<CollectorJob> job, const ApiEndpoint& ep, const std::string& token);
 void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::time_point startedAt,
                 pz::http::ClientResponse res);
 
@@ -151,6 +154,23 @@ void collectOnce(std::shared_ptr<CollectorJob> job)
         return armJob(job, job->interval);
     }
 
+    // The call rides on a credential already issued for this profile — an NGFW key or a SASE bearer
+    // token, whichever this profile holds. There is no password to fall back on here, so a
+    // not-yet-issued one just defers this poll to the next interval.
+    const std::string key = api.issuedKey(job->authProfileOid);
+    if (key.empty())
+    {
+        LOG_WARN("collection skipped — no issued key yet (connector={}, profile={})", job->connectorOid,
+                 job->authProfileOid);
+        return armJob(job, job->interval);
+    }
+
+    // A SASE endpoint names its own host — the tenant is who you are, not where you connect — so
+    // there is no device address to resolve and no certificate to pin. The sample it produces is the
+    // same shape as any other, which is why both vendors land in one api_collection.
+    if (ep->vendor == ApiVendor::Sase)
+        return collectSaseOnce(std::move(job), *ep, key);
+
     std::string host;
     std::string fingerprint;
     std::uint16_t port = 443;
@@ -158,16 +178,6 @@ void collectOnce(std::shared_ptr<CollectorJob> job)
     {
         LOG_WARN("collection skipped — device not resolved (connector={}, object={})", job->connectorOid,
                  job->objectOid);
-        return armJob(job, job->interval);
-    }
-
-    // The call rides on a key already issued for this profile; there is no password to fall back
-    // on here, so a not-yet-issued key just defers this poll to the next interval.
-    const std::string key = api.issuedKey(job->authProfileOid);
-    if (key.empty())
-    {
-        LOG_WARN("collection skipped — no issued key yet (connector={}, profile={})", job->connectorOid,
-                 job->authProfileOid);
         return armJob(job, job->interval);
     }
 
@@ -188,7 +198,7 @@ void collectOnce(std::shared_ptr<CollectorJob> job)
     }
 
     // The two PAN-OS APIs carry the key differently: XML API as a query parameter, REST as a header.
-    if (ep->apiType == ApiType::Xml)
+    if (ep->subtype == ApiSubtype::Xml)
     {
         const char sep = (path.find('?') == std::string::npos) ? '?' : '&';
         path += sep + std::string("key=") + pz::http::urlEncode(key);
@@ -198,6 +208,44 @@ void collectOnce(std::shared_ptr<CollectorJob> job)
         req.headers.emplace_back("X-PAN-KEY", key);
     }
     req.target = path;
+
+    const auto startedAt = std::chrono::steady_clock::now();
+    pz::http::requestAsync(job->sm->ioContext(), std::move(req),
+                           [job, startedAt](pz::http::ClientResponse res)
+                           { onResponse(job, startedAt, std::move(res)); });
+}
+
+// One scheduled poll of a SASE endpoint. Deliberately converges on the same onResponse as the NGFW
+// path: what a sample records — did it answer, how fast, how big, what came back — is a fact about
+// the exchange, not about the vendor, so there is nothing here for the sample shape to branch on.
+void collectSaseOnce(std::shared_ptr<CollectorJob> job, const ApiEndpoint& ep, const std::string& token)
+{
+    std::string path = ep.path;
+    for (const auto& p : ep.params)
+    {
+        if (p.name.empty())
+            continue;
+        path += (path.find('?') == std::string::npos) ? '?' : '&';
+        path += pz::http::urlEncode(p.name) + "=" + pz::http::urlEncode(p.value);
+    }
+
+    pz::http::ClientRequest req;
+    req.host = ep.host;
+    req.port = 443;
+    req.verifyCa = true;   // Palo Alto's cloud — a CA chain, not a pinned self-signed device cert
+    req.target = path;
+    req.timeout = std::chrono::seconds(30);
+    req.headers.emplace_back("Authorization", "Bearer " + token);
+
+    for (const auto& h : ep.headers)
+    {
+        // The token is minted by the daemon; an endpoint must not be able to replace it.
+        if (h.name.empty() || ::strcasecmp(h.name.c_str(), "authorization") == 0)
+            continue;
+        req.headers.emplace_back(h.name, h.value);
+    }
+
+    LOG_TRACE("SASE collection request (connector={}, GET https://{}{})", job->connectorOid, ep.host, path);
 
     const auto startedAt = std::chrono::steady_clock::now();
     pz::http::requestAsync(job->sm->ioContext(), std::move(req),

@@ -42,7 +42,7 @@
       .then(r => (r.status === 401 ? (location.href = '/', null) : (r.ok ? r.json() : null)))
       .catch(() => null);
 
-  const fmtWhen = (ts) => (ts ? new Date(ts * 1000).toLocaleString() : '—');
+  const fmtWhen = (ts) => (ts ? window.NMS.utils.fmtTs(ts * 1000) : '—');
 
   async function load() {
     const rc = await getJson('/api/settings/running-config');

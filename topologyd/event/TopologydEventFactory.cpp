@@ -3,6 +3,7 @@
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/reload/ReloadEvent.h"
+#include "service/topology/TopologyEvent.h"
 
 #include "util/Logger.h"
 
@@ -26,6 +27,9 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(TopologydEventDoma
 
     case TopologydEventDomain::Reload:
         return std::make_unique<ReloadEvent>(static_cast<ReloadEventType>(type));
+
+    case TopologydEventDomain::Topology:
+        return std::make_unique<TopologyEvent>(static_cast<TopologyEventType>(type));
 
     default:
         LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
@@ -54,6 +58,9 @@ std::unique_ptr<TopologydEvent> TopologydEventFactory::create(std::unique_ptr<pz
 
     case pz::ipc::IpcCmd::ConfigApply:
         return std::make_unique<ReloadEvent>(ReloadEventType::ReceiveConfigReload);
+
+    case pz::ipc::IpcCmd::TopologyRequest:
+        return std::make_unique<TopologyEvent>(TopologyEventType::ReceiveRequest, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

@@ -106,9 +106,11 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
         {"GET",  "/api/status/devices",                 
             Match::Exact,  WebRoute::DeviceStatus,       Access::Authenticated, false},
 
-        // Topology.
-        {"GET",  "/api/topology",                       
-            Match::Exact,  WebRoute::SiteTopology,       Access::Authenticated, false},
+        // Topology. Prefix, not Exact: the scope travels as ?site=<oid>, and an Exact row stops
+        // matching the moment a query string is appended — which fails as a 404 with no handler ever
+        // called, not as a visible error.
+        {"GET",  "/api/topology",
+            Match::Prefix, WebRoute::SiteTopology,       Access::Authenticated, false},
 
         // Connector tests + credential state.
         {"POST", "/api/connector/keygen-test",          

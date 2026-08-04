@@ -1,4 +1,4 @@
-#include "service/api/controller/EndpointController.h"
+#include "service/api/controller/NgfwController.h"
 
 #include "service/CollectordServiceManager.h"
 #include "service/api/ApiService.h"
@@ -26,7 +26,7 @@ using json = nlohmann::json;
 
 void onEndpointResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResponse res)
 {
-    const std::string apiType = ctx->input.value("api_type", std::string("rest"));
+    const std::string apiType = ctx->input.value("subtype", ctx->input.value("api_type", std::string("rest")));
     const std::uint32_t seqNo = ctx->seqNo;
     json& out = ctx->out;
 
@@ -72,7 +72,7 @@ void callEndpoint(const std::shared_ptr<ConnectorTest>& ctx, const std::string& 
 
     auto call = baseRequest(target);
 
-    const std::string apiType = input.value("api_type", std::string("rest"));
+    const std::string apiType = input.value("subtype", input.value("api_type", std::string("rest")));
     const std::string endpoint = input.value("endpoint", std::string());
 
     // Path + operator-supplied parameters, percent-encoded here so the operator can type raw values.
@@ -132,7 +132,7 @@ void onKeygenForEndpoint(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientRes
 
 }
 
-void EndpointController::runEndpointTest(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
+void NgfwController::runEndpointTest(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
                                          const json& input)
 {
     auto ctx = std::make_shared<ConnectorTest>();
@@ -153,11 +153,11 @@ void EndpointController::runEndpointTest(ApiService& api, CollectordServiceManag
             return rejectTest(ctx, "target is required");
 
         const std::string endpoint = input.value("endpoint", std::string());
-        const std::string apiType = input.value("api_type", std::string("rest"));
+        const std::string apiType = input.value("subtype", input.value("api_type", std::string("rest")));
         if (endpoint.empty() || endpoint.front() != '/')
             return rejectTest(ctx, "endpoint must be a path starting with /");
         if (apiType != "xml" && apiType != "rest")
-            return rejectTest(ctx, "api_type must be xml or rest");
+            return rejectTest(ctx, "subtype must be xml or rest");
         if (!input.value("params", json::array()).is_array())
             return rejectTest(ctx, "params must be an array of {name, value}");
 

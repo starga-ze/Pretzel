@@ -10,6 +10,8 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -75,10 +77,18 @@ json numOrNull(const std::string& s)
 
 // The request line an endpoint stands for: its path with the operator's parameters appended. Shown
 // so a stream is identifiable without opening the API Endpoint page — two streams can share a name
-// and differ only in a query argument.
+// and differ only in a query argument. A SASE endpoint carries its own host, and there the whole URL
+// is the identifying thing: the same path on two products is two different calls.
 std::string endpointDisplayPath(const json& ep)
 {
     std::string path = ep.value("path", std::string());
+    if (ep.value("device_type", std::string("ngfw")) == "sase")
+    {
+        const std::string host = ep.value("host", std::string());
+        if (!host.empty())
+            path = "https://" + host + path;
+    }
+
     const auto params = ep.value("params", json::array());
     if (!params.is_array() || params.empty())
         return path;
@@ -97,6 +107,17 @@ std::string endpointDisplayPath(const json& ep)
     return path + qs;
 }
 
+// What the grid's type column says. NGFW endpoints are told apart by which PAN-OS API they speak;
+// SASE ones by which product they belong to, since they all speak the same JSON over the same OAuth.
+std::string endpointKind(const json& ep)
+{
+    const bool sase = ep.value("device_type", std::string("ngfw")) == "sase";
+    // `subtype` replaced api_type/product; both are read so a stream whose endpoint predates the
+    // merge still labels itself rather than showing a blank column.
+    return ep.value("subtype", sase ? ep.value("product", std::string("ztna"))
+                                    : ep.value("api_type", std::string()));
+}
+
 }
 
 void CollectionController::overview(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
@@ -107,8 +128,15 @@ void CollectionController::overview(MgmtdServiceManager& sm, const pz::http::Htt
     const int windowHours = intParam(req.target, "window", kDefaultWindowHours, 1, kMaxWindowHours);
     const std::string windowArg = std::to_string(windowHours);
 
+    // The site is a SCOPE, not a filter the browser applies afterwards: on a large estate the
+    // difference is whether the answer carries one site's streams or every site's. Empty means no
+    // site has been chosen yet — the page asks for one, so only the selector's contents are needed.
+    const std::string siteOid = queryParam(req.target, "site");
+
     json out;
     out["window_hours"] = windowHours;
+    out["site"] = siteOid;
+    out["scoped"] = !siteOid.empty();
     out["spark_points"] = kSparkPoints;
     out["sites"] = json::array();
     out["streams"] = json::array();
@@ -252,7 +280,7 @@ void CollectionController::overview(MgmtdServiceManager& sm, const pz::http::Htt
 
         // ── The join ──────────────────────────────────────────────────────────────────────────
         std::vector<std::string> declared;   // stream keys config knows about
-        for (const auto& c : api.value("connectors", json::array()))
+        for (const auto& c : (siteOid.empty() ? json::array() : api.value("connectors", json::array())))
         {
             if (!c.is_object())
                 continue;
@@ -263,6 +291,12 @@ void CollectionController::overview(MgmtdServiceManager& sm, const pz::http::Htt
             const std::string deviceOid = c.value("object", std::string());
             const std::string credOid = c.value("auth_profile", std::string());
             const auto dev = devices.find(deviceOid);
+
+            // A connector belongs to a device, and the device to a site — that chain is what scopes
+            // a table with no site column of its own. A connector whose device is gone has no site
+            // either, so it cannot belong to the one being asked for.
+            if (!siteOid.empty() && (dev == devices.end() || dev->second.site != siteOid))
+                continue;
 
             // The same conditions collectord refuses a connector on, reported rather than left to
             // present as a stream that mysteriously never produces a sample.
@@ -293,7 +327,10 @@ void CollectionController::overview(MgmtdServiceManager& sm, const pz::http::Htt
                 s["endpoint_oid"] = endpointOid;
                 s["endpoint_name"] = ep != endpoints.end() ? ep->second.value("name", std::string()) : std::string();
                 s["endpoint_path"] = ep != endpoints.end() ? endpointDisplayPath(ep->second) : std::string();
-                s["api_type"] = ep != endpoints.end() ? ep->second.value("api_type", std::string()) : std::string();
+                s["api_type"] = ep != endpoints.end() ? endpointKind(ep->second) : std::string();
+                s["device_type"] = ep != endpoints.end()
+                                       ? ep->second.value("device_type", std::string("ngfw"))
+                                       : std::string();
                 s["device_oid"] = deviceOid;
                 s["device_name"] = dev != devices.end() ? dev->second.name : std::string();
                 s["device_target"] = dev != devices.end() ? dev->second.target : std::string();
@@ -351,6 +388,55 @@ void CollectionController::overview(MgmtdServiceManager& sm, const pz::http::Htt
 
                 out["streams"].push_back(std::move(s));
             }
+        }
+
+        // ── Per-site census ───────────────────────────────────────────────────────────────────
+        // What the scope prompt shows on each site's card. Deliberately facts, not judgements: how
+        // many streams, how many devices, and when the site last collected anything. The health
+        // rules (live / stale / failing) live in one place — the grid — and are not restated here in
+        // another language where they could drift.
+        struct Census
+        {
+            std::set<std::string> ngfw;
+            std::set<std::string> sase;
+            std::set<std::string> endpoints;
+        };
+        std::map<std::string, Census> census;
+
+        for (const auto& c : api.value("connectors", json::array()))
+        {
+            if (!c.is_object())
+                continue;
+            const std::string connectorOid = c.value("oid", c.value("uuid", std::string()));
+            const std::string deviceOid = c.value("object", std::string());
+            const auto dev = devices.find(deviceOid);
+            if (connectorOid.empty() || dev == devices.end())
+                continue;
+
+            auto& cs = census[dev->second.site];
+            (dev->second.type == "sase" ? cs.sase : cs.ngfw).insert(deviceOid);
+
+            // Distinct endpoints, not streams: two devices in a site collecting the same endpoint are
+            // two streams but one endpoint, and the count is labelled "API Endpoints".
+            for (const auto& i : c.value("items", json::array()))
+            {
+                if (!i.is_object())
+                    continue;
+                const std::string endpointOid = i.value("endpoint", std::string());
+                if (!endpointOid.empty())
+                    cs.endpoints.insert(endpointOid);
+            }
+        }
+
+        for (auto& site : out["sites"])
+        {
+            const auto it = census.find(site.value("oid", std::string()));
+            const int ngfw = it == census.end() ? 0 : static_cast<int>(it->second.ngfw.size());
+            const int sase = it == census.end() ? 0 : static_cast<int>(it->second.sase.size());
+            site["ngfw"] = ngfw;
+            site["sase"] = sase;
+            site["devices"] = ngfw + sase;
+            site["endpoints"] = it == census.end() ? 0 : static_cast<int>(it->second.endpoints.size());
         }
 
         // Rows whose stream is no longer declared. They are not listed — an undeclared stream has no

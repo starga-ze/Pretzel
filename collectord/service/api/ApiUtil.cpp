@@ -19,6 +19,83 @@ namespace pz::collectord
 
 using json = nlohmann::json;
 
+// ── Palo Alto cloud ───────────────────────────────────────────────────────────────────────
+
+std::string base64(const std::string& in)
+{
+    static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    int val = 0, bits = -6;
+    for (unsigned char c : in)
+    {
+        val = (val << 8) + c;
+        bits += 8;
+        while (bits >= 0)
+        {
+            out.push_back(T[(val >> bits) & 0x3F]);
+            bits -= 6;
+        }
+    }
+    if (bits > -6)
+        out.push_back(T[((val << 8) >> (bits + 8)) & 0x3F]);
+    while (out.size() % 4)
+        out.push_back('=');
+    return out;
+}
+
+HostPath splitHostPath(const std::string& urlish, const std::string& defaultHost, const std::string& defaultPath)
+{
+    HostPath hp;
+    hp.host = defaultHost;
+    hp.path = defaultPath;
+
+    if (urlish.empty())
+        return hp;
+
+    std::string rest = urlish;
+    if (const auto s = rest.find("://"); s != std::string::npos)
+        rest.erase(0, s + 3);
+
+    const auto slash = rest.find('/');
+    std::string hostport = (slash == std::string::npos) ? rest : rest.substr(0, slash);
+    hp.path = (slash == std::string::npos) ? "/" : rest.substr(slash);
+
+    if (const auto colon = hostport.rfind(':'); colon != std::string::npos)
+    {
+        try
+        {
+            hp.port = static_cast<std::uint16_t>(std::stoi(hostport.substr(colon + 1)));
+            hostport.erase(colon);
+        }
+        catch (const std::exception&)
+        {
+            // Not a port — leave the host as typed and keep the default.
+        }
+    }
+
+    if (!hostport.empty())
+        hp.host = hostport;
+    return hp;
+}
+
+pz::http::ClientRequest buildOAuthTokenRequest(const HostPath& hp, const std::string& clientId,
+                                               const std::string& clientSecret, const std::string& tsgId)
+{
+    pz::http::ClientRequest req;
+    req.host = hp.host;
+    req.port = hp.port;
+    // A public CA endpoint, not a customer device: verify the chain and the hostname rather than
+    // pinning a self-signed certificate the way a device exchange does.
+    req.verifyCa = true;
+    req.method = "POST";
+    req.target = hp.path;
+    req.timeout = std::chrono::seconds(15);
+    req.headers.push_back({"Authorization", "Basic " + base64(clientId + ":" + clientSecret)});
+    req.headers.push_back({"Content-Type", "application/x-www-form-urlencoded"});
+    req.body = "grant_type=client_credentials&scope=tsg_id:" + pz::http::urlEncode(tsgId);
+    return req;
+}
+
 // ── Connector-test helpers ────────────────────────────────────────────────────────────────
 
 json stepJson(bool ok, std::string detail)

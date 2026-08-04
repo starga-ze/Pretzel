@@ -74,6 +74,20 @@ public:
     void setApiTestResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeApiTestResult(std::uint32_t ticket);
 
+    // The composed site topology, as topologyd last answered. mgmtd owns no topology logic — it asks
+    // and it serves. Kept rather than awaited because an HTTP response here is built synchronously:
+    // holding one open for a cross-daemon round trip would block the loop every other daemon's
+    // messages arrive on. The page polls on a timer, so "serve the last answer, ask for the next"
+    // costs one cycle of freshness and nothing else, and the answer states its own age.
+    // Filled by MgmtdRxRouter when topologyd answers; read by the web handler. `requested` marks a
+    // composition already in flight so a burst of polls does not fan out into a burst of requests —
+    // one outstanding request per site is all that can ever be useful.
+    void setTopology(const std::string& siteOid, std::string modelJson);
+    const std::string* topology(const std::string& siteOid) const;
+    bool topologyFresh(const std::string& siteOid, std::chrono::seconds within) const;
+    bool topologyRequested(const std::string& siteOid) const;
+    void markTopologyRequested(const std::string& siteOid);
+
     // Static file cache, set once at startup by MgmtdCore. The web handlers read it from here so
     // they can stay stateless (plain functions in the route table).
     void setStaticCache(std::shared_ptr<pz::http::StaticFileCache> cache);
@@ -106,6 +120,13 @@ private:
     std::unordered_map<std::uint32_t, std::string> m_ssoResults;
 
     std::unordered_map<std::uint32_t, std::string> m_apiTestResults;
+
+    // site oid ('' = every site) -> last composed model. One entry per site the operator has looked
+    // at; an estate has tens of sites, not thousands, so this never needs eviction.
+    std::unordered_map<std::string, std::string> m_topology;
+    // When each site's model arrived, and whether a request for it is outstanding.
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_topologyAt;
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_topologyAsked;
 
     std::shared_ptr<pz::http::StaticFileCache> m_staticCache;
     std::uint32_t m_ssoTicket{1};

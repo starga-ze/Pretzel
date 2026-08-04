@@ -16,6 +16,33 @@ namespace pz::collectord
 
 class CollectordServiceManager;
 
+// Palo Alto's fixed auth server — every cloud product mints its token here. Operator-overridable
+// (a different cloud or region), which is why callers pass their value through splitHostPath rather
+// than the request hard-coding it.
+inline constexpr const char* kSaseAuthHost = "auth.apps.paloaltonetworks.com";
+inline constexpr const char* kSaseTokenPath = "/oauth2/access_token";
+
+// A URL split into the pieces a ClientRequest needs. Accepts bare "host/path" as well as a full
+// URL, because the field this comes from has always taken either.
+struct HostPath
+{
+    std::string host;
+    std::uint16_t port{443};
+    std::string path{"/"};
+};
+
+HostPath splitHostPath(const std::string& urlish, const std::string& defaultHost, const std::string& defaultPath);
+
+// The OAuth2 client-credentials request every Palo Alto cloud API authenticates with: HTTP Basic
+// (client id / secret) plus `scope=tsg_id:<tenant>`. One builder rather than one per caller — the
+// credential test and the SASE endpoint call must mint tokens identically, or a credential that
+// passes its own test would still fail when an endpoint uses it.
+pz::http::ClientRequest buildOAuthTokenRequest(const HostPath& hp, const std::string& clientId,
+                                               const std::string& clientSecret, const std::string& tsgId);
+
+// Base64, for that Basic credential.
+std::string base64(const std::string& in);
+
 // Shared, side-effect-light helpers for the Api service — the plumbing the connector-test controllers
 // (Credential / Endpoint / Status) and the periodic collector all repeat, kept free so each owns only
 // its own device exchange. (Consolidates the former TestSupport + CollectionSample units.)

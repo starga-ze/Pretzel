@@ -256,7 +256,7 @@
     const when = parseTs(st.expires_at);
     if (!when) return `<span class="st-never" title="${esc(st.expires_at)}">unknown</span>`;
     const left = when.getTime() - Date.now();
-    const at = esc(when.toLocaleString());
+    const at = esc(window.NMS.utils.fmtTs(when));
     if (left <= 0) return `<span class="st-fail" title="${at}">expired</span>`;
 
     const tier = EXPIRY_TIERS.find(t => left <= t.ms);
@@ -281,7 +281,7 @@
     if (!st.stored) return `<span class="st-never">no token</span>`;
     const when = parseTs(st.expires_at);
     if (when && when.getTime() <= Date.now())
-      return `<span class="st-fail" title="${esc(when.toLocaleString())}">invalid (expired)</span>`;
+      return `<span class="st-fail" title="${esc(window.NMS.utils.fmtTs(when))}">invalid (expired)</span>`;
     return `<span class="st-ok">valid</span>`;
   }
 

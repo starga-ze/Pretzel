@@ -28,11 +28,59 @@
 
   const { esc, newUuid } = window.NMS.utils;
 
-  // The API type is now stored on the endpoint (chosen in the editor). Legacy records that predate
-  // the field fall back to reading it from the path, PAN-OS's two roots being unambiguous.
-  const apiTypeOf = (path) => (String(path || '').indexOf('/restapi/') === 0 ? 'rest' : 'xml');
-  const normType = (t, path) => (t === 'xml' || t === 'rest') ? t : apiTypeOf(path);
-  const API_LABEL = { rest: 'REST API', xml: 'XML API' };
+  // An endpoint belongs to a device type, and that is the first branch in everything below: an NGFW
+  // endpoint is a path on the operator's own firewall authenticated with a PAN-OS key; a SASE
+  // endpoint is an absolute URL on a Palo Alto cloud product authenticated with an OAuth bearer
+  // token. They share a name, a description and an oid, and nothing else.
+  const DEVICE_TYPES = [
+    { id: 'ngfw', label: 'NGFW', sub: 'PAN-OS firewall' },
+    { id: 'sase', label: 'SASE', sub: 'Prisma Access tenant' },
+  ];
+  const normDeviceType = (t) => (t === 'sase' ? 'sase' : 'ngfw');
+
+  // Device type has exactly one sub-choice under it, and it is the same slot on both sides even
+  // though it means different things: for NGFW which PAN-OS API the path speaks, for SASE which
+  // cloud product the URL belongs to. One stored field (`subtype`) rather than two mutually
+  // exclusive ones — `api_type` and `product` were never both meaningful, and having both meant
+  // every reader had to know which half of the record it was looking at first.
+  const SUBTYPES = {
+    // NGFW — the two PAN-OS APIs. They differ in how the key is attached, nothing else.
+    rest: { device: 'ngfw', label: 'REST API', enabled: true },
+    xml:  { device: 'ngfw', label: 'XML API',  enabled: true },
+
+    // SASE — the products. They all speak JSON over the same OAuth; what differs is the host, the
+    // path layout and the required headers, which is why the choice here seeds those.
+    ztna: {
+      device: 'sase', label: 'ZTNA Connector', enabled: true,
+      url: 'https://api.sase.paloaltonetworks.com/sse/connector/v2.0/api/connector-groups',
+      // x-panw-region is not optional and cannot be derived from the tenant: the wrong value answers
+      // 424 "tenant not found", which reads as a broken tenant rather than a wrong header. Seeded so
+      // the operator is asked the question at the moment they can answer it.
+      headers: [{ name: 'x-panw-region', value: '' }],
+      params: [],
+      hint: 'Region is required — americas, au, ca, de, europe, in, jp, sg or uk.',
+    },
+    // Listed but not selectable, so the menu is honest about what exists rather than implying the
+    // list is complete.
+    pab: { device: 'sase', label: 'Prisma Access Browser', enabled: false },
+    scm: { device: 'sase', label: 'Strata Cloud Manager',  enabled: false },
+  };
+
+  const subtypesFor = (deviceType) =>
+    Object.entries(SUBTYPES).filter(([, s]) => s.device === deviceType);
+  const subtypeSpec = (st) => SUBTYPES[st] || SUBTYPES.rest;
+  const defaultSubtype = (deviceType) => (deviceType === 'sase' ? 'ztna' : 'rest');
+
+  // Legacy records carry `api_type` (ngfw) or `product` (the first SASE cut) instead of `subtype`;
+  // one written before either falls back to reading the PAN-OS API off the path, whose two roots
+  // are unambiguous.
+  function normSubtype(e, deviceType) {
+    const raw = e.subtype || (deviceType === 'sase' ? e.product : e.api_type);
+    const spec = SUBTYPES[raw];
+    if (spec && spec.device === deviceType && spec.enabled) return raw;
+    if (deviceType === 'ngfw') return String(e.path || '').indexOf('/restapi/') === 0 ? 'rest' : 'xml';
+    return defaultSubtype(deviceType);
+  }
 
   // Per-type starting points. PAN-OS serves the REST API under /restapi/<ver>/… with its arguments
   // as query parameters, and the XML API under /api/ where everything — including the command —
@@ -65,26 +113,82 @@
   let deployed = [];
   let editIdx = null;
   let draftOid = null;
+  let draftDeviceType = 'ngfw';   // fixed for the life of an endpoint; drives collect() and the form
+
+  // Stored unencoded; percent-encoded when the URL is built, so raw values (an XML API cmd=<show>…
+  // included) can be typed as-is. Query parameters and request headers share this shape.
+  const normPairs = (list) => (Array.isArray(list) ? list : [])
+    .map(p => ({ name: String((p && p.name) || ''), value: String((p && p.value) || '') }))
+    .filter(p => p.name);
 
   function normalize(e) {
-    return {
+    const deviceType = normDeviceType(e.device_type);
+    const base = {
       oid: (typeof e.oid === 'string' && e.oid) ? e.oid : newUuid(),
       name: e.name || '',
       description: e.description || '',
-      api_type: normType(e.api_type, e.path),
+      device_type: deviceType,
+      subtype: normSubtype(e, deviceType),
       path: e.path || '',
-      // Stored unencoded; percent-encoded when the URL is built, so raw values (an XML API
-      // cmd=<show>… included) can be typed as-is.
-      params: (Array.isArray(e.params) ? e.params : [])
-        .map(p => ({ name: String((p && p.name) || ''), value: String((p && p.value) || '') }))
-        .filter(p => p.name),
+      params: normPairs(e.params),
     };
+
+    // Only the fields the chosen device type actually uses are carried. Keeping the other half
+    // around would put dead keys in the committed configuration and in every diff.
+    return deviceType === 'sase'
+      ? Object.assign(base, { host: e.host || '', headers: normPairs(e.headers) })
+      : base;
   }
 
-  const blank = () => normalize({ api_type: 'rest', path: TYPE_DEFAULTS.rest.path, params: TYPE_DEFAULTS.rest.params });
+  const isSase = (e) => e && e.device_type === 'sase';
 
-  // The full path this endpoint calls, percent-encoded — matches mgmtd's server-side build and is
-  // what actually goes on the wire.
+  // A SASE endpoint is entered as ONE absolute URL — the line a vendor's documentation prints and an
+  // operator pastes. Host, path and any query it carries are derived from it rather than asked for
+  // separately: they are not three decisions, they are one string the operator already has.
+  //
+  // Returns the parts; the query is handed back as parameter rows, which is where they stay editable
+  // (pagination is edited far more often than the path is).
+  function splitSaseUrl(raw) {
+    let s = String(raw || '').trim().replace(/^https?:\/\//i, '');
+    const q = s.indexOf('?');
+    const query = q === -1 ? '' : s.slice(q + 1);
+    if (q !== -1) s = s.slice(0, q);
+
+    const slash = s.indexOf('/');
+    const host = (slash === -1 ? s : s.slice(0, slash)).trim();
+    const path = slash === -1 ? '' : s.slice(slash);
+
+    const params = query.split('&').filter(Boolean).map(tok => {
+      const eq = tok.indexOf('=');
+      return eq === -1 ? { name: decodeURIComponent(tok), value: '' }
+                       : { name: decodeURIComponent(tok.slice(0, eq)),
+                           value: decodeURIComponent(tok.slice(eq + 1)) };
+    }).filter(p => p.name);
+
+    return { host, path, params };
+  }
+
+  const blankNgfw = (subtype) => normalize({
+    device_type: 'ngfw', subtype, path: TYPE_DEFAULTS[subtype].path, params: TYPE_DEFAULTS[subtype].params,
+  });
+
+  const blankSase = (subtype) => {
+    const spec = subtypeSpec(subtype);
+    const { host, path, params } = splitSaseUrl(spec.url || '');
+    return normalize({
+      device_type: 'sase', subtype, host, path,
+      params: (spec.params && spec.params.length ? spec.params : params).map(p => ({ ...p })),
+      headers: (spec.headers || []).map(h => ({ ...h })),
+    });
+  };
+
+  const blank = (deviceType, subtype) => {
+    const st = subtype || defaultSubtype(deviceType);
+    return deviceType === 'sase' ? blankSase(st) : blankNgfw(st);
+  };
+
+  // The path + query string this endpoint calls, percent-encoded — matches the server-side build and
+  // is what actually goes on the wire.
   function effectivePath(e) {
     let path = e.path || '';
     (e.params || []).forEach(p => {
@@ -94,6 +198,10 @@
     });
     return path;
   }
+
+  // What the row and the preview show. A SASE endpoint carries its own host, so the whole URL is the
+  // identifying thing; an NGFW endpoint is a path that only means something against a chosen device.
+  const effectiveUrl = (e) => (isSase(e) ? 'https://' + (e.host || '') + effectivePath(e) : effectivePath(e));
 
   // XML API endpoints are entered as one line — the whole URL the firewall's API browser prints,
   // e.g. /api?type=op&cmd=<show><system><info/></system></show>. It is stored the same way every
@@ -156,7 +264,8 @@
   // ── Cross-module surface ─────────────────────────────────────────────────────
   window.NMS.apiEndpoints = {
     list: () => state.endpoints.map(e => ({
-      oid: e.oid, name: e.name, api_type: e.api_type, path: effectivePath(e),
+      oid: e.oid, name: e.name, device_type: e.device_type, subtype: e.subtype,
+      path: effectivePath(e), url: effectiveUrl(e),
     })),
     byOid: (oid) => state.endpoints.find(e => e.oid === oid) || null,
     label: (oid) => {
@@ -166,10 +275,18 @@
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
+  // Two columns, not one badge stacked on another: device type decides which credentials can run the
+  // endpoint at all, subtype decides how the call is built. They answer different questions and are
+  // sorted and scanned separately.
+  const deviceBadge = (e) =>
+    `<span class="api-badge dev-${esc(e.device_type)}">${esc(e.device_type.toUpperCase())}</span>`;
+  const subtypeBadge = (e) =>
+    `<span class="api-badge ${esc(e.subtype)}">${esc(subtypeSpec(e.subtype).label)}</span>`;
+
   function statusCell(e) {
     const t = testState.for(e.oid);
     if (!t) return `<span class="st-never">never tested</span>`;
-    const when = new Date(t.at).toLocaleString();
+    const when = window.NMS.utils.fmtTs(t.at);
     // Which key it was proven against matters: the same path can pass on one release and 404 on
     // another, so the tooltip names it.
     const via = t.via ? ` via ${t.via}` : '';
@@ -187,9 +304,10 @@
         <tr>
           <td class="col-name"><div class="cell-name">${esc(e.name) || '<span class="muted">unnamed</span>'}</div></td>
           <td class="col-desc">${esc(e.description) || '<span class="muted">—</span>'}</td>
-          <td class="col-type"><span class="api-badge ${esc(e.api_type)}">${esc(API_LABEL[e.api_type])}</span></td>
+          <td class="col-dev">${deviceBadge(e)}</td>
+          <td class="col-type">${subtypeBadge(e)}</td>
           <td class="col-ep">
-            <span class="ep-path" title="${esc(effectivePath(e))}">${esc(effectivePath(e))}</span>
+            <span class="ep-path" title="${esc(effectiveUrl(e))}">${esc(effectiveUrl(e))}</span>
           </td>
           <td class="col-status">${statusCell(e)}</td>
           <td class="col-act">
@@ -202,7 +320,7 @@
             </button>
           </td>
         </tr>`).join('')
-      : `<tr><td colspan="6"><div class="cfg-empty">No API endpoints yet — click <b>Add Endpoint</b> to define one.
+      : `<tr><td colspan="7"><div class="cfg-empty">No API endpoints yet — click <b>Add Endpoint</b> to define one.
            An endpoint is device-independent; a test names the API Key to run it against.</div></td></tr>`;
 
     el.innerHTML = `
@@ -219,7 +337,8 @@
           <thead><tr>
             <th class="col-name">Name</th>
             <th class="col-desc">Description</th>
-            <th class="col-type">Type</th>
+            <th class="col-dev">Device Type</th>
+            <th class="col-type">SubType</th>
             <th class="col-ep">Endpoint</th>
             <th class="col-status">Status</th>
             <th class="col-act"></th>
@@ -256,27 +375,41 @@
       </div>`;
   }
 
+  // The device type is fixed for the life of an endpoint — it is chosen when the endpoint is created
+  // and shown read-only afterwards. Switching it would not be an edit but a different endpoint: the
+  // path, the host, the auth and the connectors that reference it would all have to change together,
+  // and any connector still pointing at it would silently start calling somewhere else.
   function editorForm(e) {
+    const head = `
+      <div class="field-row"><label>Device type</label>
+        <div class="ep-fixed">${esc(DEVICE_TYPES.find(d => d.id === e.device_type).label)}
+          <span class="lbl-sub">${esc(DEVICE_TYPES.find(d => d.id === e.device_type).sub)}</span></div></div>
+      <div class="field-row"><label>Name</label>
+        <input data-f="name" value="${esc(e.name)}" placeholder="${isSase(e) ? 'e.g. ZTNA connector groups' : 'e.g. address objects'}"/></div>
+      <div class="field-row"><label>Description</label>
+        <input data-f="description" value="${esc(e.description)}" placeholder="optional"/></div>`;
+
+    return head + (isSase(e) ? saseForm(e) : ngfwForm(e)) +
+      `<div class="ep-preview"><span class="ep-preview-h">Calls</span>
+        <code id="epPreview">${esc(effectiveUrl(e)) || '—'}</code></div>`;
+  }
+
+  function ngfwForm(e) {
     // Both call layouts are rendered and toggled by a class on #epCall (no rebuild, so edits in the
     // hidden one survive a switch). The inactive type is pre-seeded with its default so switching
     // lands on a usable starting point.
-    const restData = e.api_type === 'rest' ? e : { path: TYPE_DEFAULTS.rest.path, params: TYPE_DEFAULTS.rest.params };
-    const xmlData = e.api_type === 'xml' ? e : { path: TYPE_DEFAULTS.xml.path, params: TYPE_DEFAULTS.xml.params };
+    const restData = e.subtype === 'rest' ? e : { path: TYPE_DEFAULTS.rest.path, params: TYPE_DEFAULTS.rest.params };
+    const xmlData = e.subtype === 'xml' ? e : { path: TYPE_DEFAULTS.xml.path, params: TYPE_DEFAULTS.xml.params };
 
     return `
-      <div class="field-row"><label>Name</label>
-        <input data-f="name" value="${esc(e.name)}" placeholder="e.g. address objects"/></div>
-      <div class="field-row"><label>Description</label>
-        <input data-f="description" value="${esc(e.description)}" placeholder="optional"/></div>
-
       <div class="editor-sec">CALL</div>
-      <div class="field-row"><label>API type</label>
+      <div class="field-row"><label>SubType</label>
         <div class="seg" id="epTypeSeg">
-          <button type="button" class="seg-btn${e.api_type === 'rest' ? ' active' : ''}" data-seg="rest">REST API</button>
-          <button type="button" class="seg-btn${e.api_type === 'xml' ? ' active' : ''}" data-seg="xml">XML API</button>
+          <button type="button" class="seg-btn${e.subtype === 'rest' ? ' active' : ''}" data-seg="rest">REST API</button>
+          <button type="button" class="seg-btn${e.subtype === 'xml' ? ' active' : ''}" data-seg="xml">XML API</button>
         </div></div>
 
-      <div id="epCall" class="call-${e.api_type === 'xml' ? 'xml' : 'rest'}">
+      <div id="epCall" class="call-${e.subtype === 'xml' ? 'xml' : 'rest'}">
         <div class="call-block call-rest-block">
           <div class="field-row"><label>Endpoint</label>
             <input data-f="rest-path" value="${esc(restData.path)}" placeholder="${esc(TYPE_DEFAULTS.rest.path)}"/></div>
@@ -298,17 +431,96 @@
             is added automatically (<code>key=</code> parameter) and <code>&lt;&gt;</code> are
             percent-encoded for you — type them raw.</p>
         </div>
-      </div>
-
-      <div class="ep-preview"><span class="ep-preview-h">Calls</span>
-        <code id="epPreview">${esc(effectivePath(e)) || '—'}</code></div>`;
+      </div>`;
   }
+
+  // One URL in, everything else derived. The operator pastes the line the vendor's documentation
+  // prints; host and path are split out of it and shown read-only, because they are not separate
+  // decisions and letting them be edited apart from the URL gives three fields that can disagree.
+  // A pasted query string is moved into the parameter rows, where it stays editable — pagination is
+  // changed far more often than a path is.
+  //
+  // Authorization is deliberately not among the headers: the bearer token is minted per call from
+  // the API Credential and never lives in configuration.
+  function saseForm(e) {
+    const spec = subtypeSpec(e.subtype);
+    const headers = e.headers.length ? e.headers : [{ name: '', value: '' }];
+    const params = e.params.length ? e.params : [{ name: '', value: '' }];
+
+    return `
+      <div class="editor-sec">CALL</div>
+      ${subtypeRow(e)}
+
+      <div class="field-row"><label>Endpoint <span class="lbl-sub">— full URL</span></label>
+        <input data-f="sase-url" value="${esc(saseUrlOf(e))}"
+          placeholder="${esc(spec.url || 'https://api.sase.paloaltonetworks.com/…')}"/></div>
+      <div class="ep-derived">
+        <div><span class="ep-derived-k">Host</span><code id="epHostOut">${esc(e.host) || '—'}</code></div>
+        <div><span class="ep-derived-k">Path</span><code id="epPathOut">${esc(e.path) || '—'}</code></div>
+      </div>
+      <p class="field-hint">Paste the whole URL — host and path are split out of it. A query string
+        is moved into the parameters below.${spec.hint ? ' ' + esc(spec.hint) : ''}</p>
+
+      <div class="param-head">
+        <label>Headers</label>
+        <button class="btn-sm" id="epHeaderAdd" type="button">+ Header</button>
+      </div>
+      <div class="param-list" id="epHeaderList">${headers.map(paramRow).join('')}</div>
+      <p class="field-hint"><code>Authorization</code> is added for you from the API Credential's
+        token — do not set it here.</p>
+
+      <div class="param-head">
+        <label>Query parameters</label>
+        <button class="btn-sm" id="epParamAdd" type="button">+ Param</button>
+      </div>
+      <div class="param-list" id="epParamList">${params.map(paramRow).join('')}</div>
+      <p class="field-hint">Values are percent-encoded for you — type them raw.</p>`;
+  }
+
+  // The URL shown in the single input: host + path only. The query lives in the parameter rows, so
+  // putting it back here too would let the same argument be stated twice.
+  const saseUrlOf = (e) => (e.host ? 'https://' + e.host + (e.path || '') : (e.path || ''));
+
+  // SubType picker — the same slot on both sides, listing only what the device type offers.
+  function subtypeRow(e) {
+    const opts = subtypesFor(e.device_type).map(([id, s]) =>
+      `<option value="${esc(id)}" ${id === e.subtype ? 'selected' : ''} ${s.enabled ? '' : 'disabled'}>${
+        esc(s.label)}${s.enabled ? '' : ' — not supported yet'}</option>`).join('');
+    return `<div class="field-row"><label>SubType</label>
+        <select data-f="subtype">${opts}</select></div>`;
+  }
+
+  const rowsOf = (body, sel) => Array.from(body.querySelectorAll(sel + ' .param-row')).map(row => ({
+    name: (row.querySelector('[data-p="name"]').value || '').trim(),
+    value: (row.querySelector('[data-p="value"]').value || '').trim(),
+  }));
 
   function collect(body) {
     const g = (k) => {
       const el = body.querySelector(`[data-f="${k}"]`);
       return el ? el.value.trim() : '';
     };
+
+    if (draftDeviceType === 'sase') {
+      // The URL is the source of truth for host and path; a query the operator pasted is merged into
+      // the parameter rows rather than kept in two places.
+      const { host, path, params } = splitSaseUrl(g('sase-url'));
+      const rows = rowsOf(body, '#epParamList').filter(p => p.name);
+      const merged = rows.concat(params.filter(p => !rows.some(r => r.name === p.name)));
+
+      return normalize({
+        oid: draftOid,
+        device_type: 'sase',
+        name: g('name'),
+        description: g('description'),
+        subtype: g('subtype'),
+        host,
+        path,
+        headers: rowsOf(body, '#epHeaderList'),
+        params: merged,
+      });
+    }
+
     const type = body.querySelector('#epTypeSeg .seg-btn.active')?.dataset.seg || 'rest';
 
     // Read only the active layout: XML is one pasted URL (parsed back into path + params); REST is
@@ -318,17 +530,15 @@
       ({ path, params } = parseXmlUrl(g('xml-url')));
     } else {
       path = g('rest-path');
-      params = Array.from(body.querySelectorAll('.call-rest-block .param-row')).map(row => ({
-        name: (row.querySelector('[data-p="name"]').value || '').trim(),
-        value: (row.querySelector('[data-p="value"]').value || '').trim(),
-      }));
+      params = rowsOf(body, '.call-rest-block');
     }
 
     return normalize({
       oid: draftOid,
+      device_type: 'ngfw',
       name: g('name'),
       description: g('description'),
-      api_type: type,
+      subtype: type,
       path,
       params,
     });
@@ -339,7 +549,7 @@
   function refreshPreview() {
     const body = document.getElementById('epBody');
     const prev = document.getElementById('epPreview');
-    if (prev) prev.textContent = effectivePath(collect(body)) || '—';
+    if (prev) prev.textContent = effectiveUrl(collect(body)) || '—';
   }
 
   function wireParamRow(row) {
@@ -347,10 +557,35 @@
     row.querySelector('[data-prm-del]').addEventListener('click', () => { row.remove(); refreshPreview(); });
   }
 
-  function openEditor(idx) {
+  // Adding asks for the device type first, in its own small step, because it decides which form is
+  // shown rather than being a field within one. Editing skips it — the type is fixed once chosen.
+  function openAddPicker() {
+    const opts = DEVICE_TYPES.map(d =>
+      `<label class="ep-pick"><input type="radio" name="epDev" value="${esc(d.id)}" ${
+        d.id === 'ngfw' ? 'checked' : ''}/>
+        <span class="ep-pick-t">${esc(d.label)}</span>
+        <span class="ep-pick-s">${esc(d.sub)}</span></label>`).join('');
+
+    window.NMS.modal.open('Add Endpoint', `
+      <p class="cm-lead">What kind of device does this endpoint call? It decides the whole form —
+        and it cannot be changed afterwards.</p>
+      <div class="ep-picks">${opts}</div>`,
+      `<button class="btn-sm" id="cmDone">Cancel</button>
+       <span style="flex:1"></span>
+       <button class="btn-primary btn-sm" id="epPickGo">Continue</button>`);
+
+    document.getElementById('epPickGo').onclick = () => {
+      const chosen = document.querySelector('input[name="epDev"]:checked');
+      window.NMS.modal.close();
+      openEditor(null, chosen ? chosen.value : 'ngfw');
+    };
+  }
+
+  function openEditor(idx, deviceType, subtype) {
     editIdx = idx;
-    const e = idx == null ? blank() : normalize(JSON.parse(JSON.stringify(state.endpoints[idx])));
+    const e = idx == null ? blank(deviceType, subtype) : normalize(JSON.parse(JSON.stringify(state.endpoints[idx])));
     draftOid = e.oid;
+    draftDeviceType = e.device_type;
     document.getElementById('epTitle').textContent = idx == null ? 'Add Endpoint' : 'Edit Endpoint';
     document.getElementById('epBody').innerHTML = editorForm(e);
     document.getElementById('epFoot').innerHTML = `
@@ -390,7 +625,7 @@
       el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', refreshPreview));
     body.querySelectorAll('.param-row').forEach(wireParamRow);
 
-    // Switching type just shows the other layout (both are already in the DOM, pre-seeded).
+    // Switching type just shows the other layout (both are already in the DOM, pre-seeded). NGFW only.
     body.querySelectorAll('#epTypeSeg .seg-btn').forEach(btn => btn.addEventListener('click', () => {
       body.querySelectorAll('#epTypeSeg .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
       const call = document.getElementById('epCall');
@@ -399,12 +634,37 @@
       refreshPreview();
     }));
 
-    document.getElementById('epParamAdd').onclick = () => {
-      const list = document.getElementById('epParamList');
+    const addRowTo = (listId) => {
+      const list = document.getElementById(listId);
       list.insertAdjacentHTML('beforeend', paramRow({ name: '', value: '' }));
       wireParamRow(list.lastElementChild);
       list.lastElementChild.querySelector('[data-p="name"]').focus();
     };
+    document.getElementById('epParamAdd').onclick = () => addRowTo('epParamList');
+    document.getElementById('epHeaderAdd')?.addEventListener('click', () => addRowTo('epHeaderList'));
+
+    // Changing the SASE subtype re-seeds the URL and the headers — they belong to the product, not
+    // to the operator, until edited. Only ZTNA is selectable today, so this is the seam rather than a
+    // path anyone walks yet.
+    body.querySelector('[data-f="subtype"]')?.addEventListener('change', (ev) => {
+      const spec = subtypeSpec(ev.target.value);
+      body.querySelector('[data-f="sase-url"]').value = spec.url || '';
+      const list = document.getElementById('epHeaderList');
+      list.innerHTML = ((spec.headers && spec.headers.length) ? spec.headers : [{ name: '', value: '' }])
+        .map(paramRow).join('');
+      list.querySelectorAll('.param-row').forEach(wireParamRow);
+      refreshPreview();
+    });
+
+    // Host and path are read-only derivations of the URL, so they are recomputed as it is typed
+    // rather than after a save — an operator should see the split happen, not be told about it.
+    body.querySelector('[data-f="sase-url"]')?.addEventListener('input', (ev) => {
+      const { host, path } = splitSaseUrl(ev.target.value);
+      const h = document.getElementById('epHostOut');
+      const p = document.getElementById('epPathOut');
+      if (h) h.textContent = host || '—';
+      if (p) p.textContent = path || '—';
+    });
 
     document.getElementById('epCancel').onclick = closeEditor;
     document.getElementById('epClose').onclick = closeEditor;
@@ -416,10 +676,23 @@
     document.getElementById('epSave').onclick = () => {
       const e = collect(body);
       if (!e.name) { alert('Name is required.'); return; }
-      if (!e.path || e.path[0] !== '/') { alert('Endpoint must be a path starting with /'); return; }
-      // Every PAN-OS XML API request needs a type= (op, config, commit, …); without it the device
-      // answers "type is required", so catch it here rather than at test time.
-      if (e.api_type === 'xml' && !e.params.some(p => p.name === 'type')) {
+      if (!e.path || e.path[0] !== '/') { alert('Path must start with /'); return; }
+
+      if (isSase(e)) {
+        if (!e.host) { alert('Host is required, e.g. api.sase.paloaltonetworks.com'); return; }
+        if (e.host.indexOf('/') !== -1) { alert('Host is a hostname only — put the rest in Path.'); return; }
+        if (e.headers.some(h => h.name.toLowerCase() === 'authorization')) {
+          alert('Authorization is added for you from the API Credential — remove it here.'); return;
+        }
+        // Caught at save rather than at test time: a wrong or missing region answers 424
+        // "tenant not found", which does not read as a header problem at all.
+        if (e.subtype === 'ztna' && !e.headers.some(h => h.name.toLowerCase() === 'x-panw-region' && h.value)) {
+          alert('The ZTNA API needs an x-panw-region header with a value — americas, au, ca, de, europe, in, jp, sg or uk.');
+          return;
+        }
+      } else if (e.subtype === 'xml' && !e.params.some(p => p.name === 'type')) {
+        // Every PAN-OS XML API request needs a type= (op, config, commit, …); without it the device
+        // answers "type is required", so catch it here rather than at test time.
         alert('An XML API URL needs a type= parameter, e.g. /api?type=op&cmd=…'); return;
       }
       if (editIdx == null) state.endpoints.push(e); else state.endpoints[editIdx] = e;
@@ -499,9 +772,18 @@
   // endpoint can therefore be proven against several customers' boxes in turn.
   function openTestPicker(idx) {
     const e = state.endpoints[idx];
-    const keys = (window.NMS.apiKeys && window.NMS.apiKeys.list()) || [];
+
+    // Only credentials bound to a device of this endpoint's type can run it. Offering the others
+    // would let an operator pick a SASE credential for a PAN-OS path and get a meaningless failure
+    // to debug — the two authenticate differently and reach different hosts.
+    const keys = ((window.NMS.apiKeys && window.NMS.apiKeys.list()) || []).filter(k => {
+      const d = window.NMS.devices ? window.NMS.devices.byOid(k.device) : null;
+      return d && normDeviceType(d.device_type) === e.device_type;
+    });
+
     if (!keys.length) {
-      alert('No API Key defined yet — add one under API Profile ▸ API Key first.');
+      alert(`No API Credential is bound to a ${e.device_type.toUpperCase()} device yet — add one under ` +
+            'API Profile ▸ API Credential first.');
       return;
     }
 
@@ -512,9 +794,10 @@
     }).join('');
 
     window.NMS.modal.open('API Endpoint Test', `
-      <p class="cm-lead">Runs <code>${esc(effectivePath(e))}</code> against the device the chosen
-        key belongs to.</p>
-      <div class="field-row"><label>API Key</label>
+      <p class="cm-lead">Runs <code>${esc(effectiveUrl(e))}</code> ${isSase(e)
+        ? 'for the tenant the chosen credential belongs to.'
+        : 'against the device the chosen key belongs to.'}</p>
+      <div class="field-row"><label>API Credential</label>
         <select id="epTestKey">${opts}</select></div>`,
       `<button class="btn-sm" id="cmDone">Cancel</button>
        <span style="flex:1"></span>
@@ -544,20 +827,30 @@
 
     const modal = window.NMS.modal;
     const run = window.NMS.testPanel.start('API Endpoint Test',
-      ['TLS connection', 'API key generation', 'Endpoint response'],
-      `Calling ${effectivePath(e)} on ${dev.name || dev.target}.`);
+      isSase(e) ? ['TLS connection', 'Token', 'Endpoint response']
+                : ['TLS connection', 'API key generation', 'Endpoint response'],
+      isSase(e) ? `Calling ${effectiveUrl(e)} for ${dev.name || dev.target}.`
+                : `Calling ${effectivePath(e)} on ${dev.name || dev.target}.`);
 
     let res;
     try {
+      // `target` is the device's address for NGFW and the tenant (TSG) id for SASE — in both cases
+      // it is what the credential authenticates against, which is why one field carries both.
       const payload = {
         api_key_oid: keyOid,
         target: dev.target,
-        fingerprint: dev.fingerprint,
+        device_type: e.device_type,
         keygen_endpoint: keyRecord.endpoint,
-        api_type: e.api_type,
         endpoint: e.path,
         params: e.params,
       };
+      if (isSase(e)) {
+        payload.host = e.host;
+        payload.headers = e.headers;
+      } else {
+        payload.fingerprint = dev.fingerprint;
+        payload.subtype = e.subtype;
+      }
       // Only carry the password when one is held; a stored key makes it unnecessary.
       if (held.password) payload.secrets = { username: keyRecord.username, password: held.password };
       res = await runDeviceTest('/api/connector/endpoint-test', payload);
@@ -599,7 +892,7 @@
 
   function wire() {
     const el = document.getElementById('contentBody');
-    document.getElementById('epAdd')?.addEventListener('click', () => openEditor(null));
+    document.getElementById('epAdd')?.addEventListener('click', openAddPicker);
     el.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => openEditor(+b.dataset.edit)));
     el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {

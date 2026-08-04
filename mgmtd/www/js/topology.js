@@ -63,6 +63,18 @@
   // same answer; the interval is stated on the button rather than left to be guessed at.
   const REFRESH_MS = 60000;
   const REFRESH_LABEL = '1m';
+
+  // Composition is a daemon round trip, not a device call — it settles in tens of milliseconds. The
+  // retry is therefore fast and the ceiling low: if topologyd has not answered in a couple of
+  // seconds it is not busy, it is not answering, and the page should say that instead of spinning.
+  const PENDING_RETRY_MS = 400;
+
+  // How long the composing ring is shown once it appears. See finishComposing.
+  const MIN_COMPOSE_MS = 2000;
+
+  // How long to keep asking before calling it a failure. Must exceed MIN_COMPOSE_MS — giving up
+  // while the ring is still filling would abandon a composition that is merely slow.
+  const COMPOSE_TIMEOUT_MS = 15000;
   const PX_PER_SEC = 92;         // packet speed, so a long path is not also a slow one
   const NS = 'http://www.w3.org/2000/svg';
 
@@ -106,12 +118,18 @@
   };
 
   const state = {
-    site: '',           // '' = every site; otherwise a site oid
+    site: '',           // '' = Overview; otherwise the scope being drawn
+    booting: true,      // first load after a restored scope — draws nothing rather than a wrong empty
     tenants: [],
     ngfw: [],           // on-premise firewalls — the far end of a Service Connection
     region: 'all',      // kept for the per-region dimming; no longer exposed as a control
     live: true,
     flow: true,
+    pending: false,     // topologyd has been asked for this site but has not answered yet
+    composing: false,   // the ring is on screen and owns the deck until it finishes
+    answered: false,    // the composition arrived; the ring may complete
+    siteList: [],       // sites as topologyd knows them — the selector no longer infers them
+    sources: {},        // per-source counts, so the decks can say WHICH input is missing
     planeOpen: true,    // the data-plane frame — collapsed, the regions fold into one summary row
     egressOpen: false,  // the egress address list — the rest are one click away
     view: 'fabric',     // which deck is on screen: 'fabric' | 'ngfw'
@@ -123,10 +141,20 @@
 
   try { state.planeOpen = localStorage.getItem('topo.plane') !== 'closed'; } catch (_) { /* private mode */ }
 
+  // Come back where you left off. Restoring is NOT a scope change: no ring, because the operator did
+  // not ask for anything — they returned to a page they were already on, and a two-second ceremony
+  // for that reads as the app being slow rather than as it working.
+  state.site = window.NMS.utils.siteScope.get();
+
   // Everything on the page is scoped by site: the SASE tenant that serves it, and the firewalls that
   // sit in it. A site with no SASE tenant is a legitimate answer — the fabric deck says so.
   function siteList() {
+    // topologyd sends the declared sites; devices contribute any the config did not list. A site
+    // with nothing in it stays selectable — an empty deck under it is an answer.
     const seenSite = new Map();
+    state.siteList.forEach(x => {
+      if (x && x.oid) seenSite.set(x.oid, { oid: x.oid, name: x.name || x.oid, tenants: 0, fw: 0 });
+    });
     const add = (oid, name) => {
       if (!seenSite.has(oid)) seenSite.set(oid, { oid, name: name || 'Unassigned', tenants: 0, fw: 0 });
       return seenSite.get(oid);
@@ -144,6 +172,11 @@
   // address sets from the previous poll, per tenant oid — the basis for scale in/out marking.
   const seen = {};
   let timer = null;
+  let pendingTimer = null;
+  let ringTimer = null;      // drives the progress ring
+  let composeHold = null;    // enforces the minimum on-screen time
+  let composeStart = 0;
+  let pendingSince = 0;      // when the current run of pending answers began
   let model = null;
 
   // ── Model ───────────────────────────────────────────────────────────────────
@@ -255,7 +288,7 @@
   // ── Render: control strip ───────────────────────────────────────────────────
   function barHtml() {
     const sites = siteList();
-    const opts = [`<option value="" ${state.site ? '' : 'selected'}>All sites</option>`].concat(
+    const opts = [`<option value="" ${state.site ? '' : 'selected'}>Overview</option>`].concat(
       sites.filter(x => x.oid).map(x =>
         `<option value="${esc(x.oid)}" ${state.site === x.oid ? 'selected' : ''}>${esc(x.name)}</option>`)
     ).join('');
@@ -276,7 +309,7 @@
         <button class="topo-toggle ${state.live ? 'on' : ''}" id="topoLive" type="button"
                 title="Refreshes this page every ${REFRESH_LABEL} — the same refresh as the button in the title bar">
           <span class="topo-live-dot"></span>Live · ${REFRESH_LABEL}</button>
-        <span class="topo-stamp">${freshness(t[0])}</span>
+        <span class="topo-stamp">${freshness()}</span>
       </div>`;
   }
 
@@ -285,14 +318,43 @@
   // collectord probes on a 60s cycle and reports the previous cycle's outcome, so the fabric can be
   // a couple of minutes old while the poll is seconds old. sase_device.last_seen is the honest one.
   // (updated_at is not: config projection bumps it whether or not the tenant answered.)
-  function freshness(tenant) {
-    if (state.error) return `<b style="color:var(--red)">refresh failed</b> — last known`;
-    const seen = tenant && tenant.last_seen;
-    if (!seen) return `polled <b>${esc(state.generatedAt ? relStamp(state.generatedAt) : '—')}</b>`;
+  // The stamp both Insight pages share. It reports when the DATA was last collected from a device —
+  // not when the browser last fetched, which is what it used to say and which only ever measures the
+  // page's own poll interval ("just now", forever, however dead the estate is).
+  //
+  // The newest contributing timestamp across the scope: "we last learned something this long ago".
+  // Each lane and each stream states its own age separately, so this is the summary, not the detail.
+  function newestDataAt() {
+    let best = 0;
+    const consider = (iso) => {
+      if (!iso) return;
+      const t = Date.parse(String(iso).replace(/([+-]\d{2})$/, '$1:00'));
+      if (isFinite(t) && t > best) best = t;
+    };
+    tenantsForSite().forEach((t) => {
+      consider(t.last_seen);
+      consider(t.ztna && t.ztna.collected_at);
+    });
+    ngfwForSite().forEach((d) => {
+      consider(d.interfaces && d.interfaces.collected_at);
+      consider(d.tunnels && d.tunnels.collected_at);
+    });
+    return best;
+  }
 
-    const age = ageSeconds(seen);
-    const stale = age > 180;   // three probe cycles: something is not answering
-    return `tenant answered <b${stale ? ' style="color:var(--orange)"' : ''}>${esc(relStamp(seen))}</b>`;
+  function freshness() {
+    if (state.error) return `<b style="color:var(--red)">${esc(state.error)}</b> — showing last known`;
+
+    const at = newestDataAt();
+    if (!at) return `<span title="Nothing has been collected for this scope yet.">not collected yet</span>`;
+
+    // Deliberately generous. Collection intervals are the operator's to set and are routinely an
+    // hour, so a threshold tuned to the 60-second SASE probe would paint a healthy estate orange.
+    // This only shouts when nothing at all has arrived for far longer than any sane interval.
+    const age = (Date.now() - at) / 1000;
+    const stale = age > 7200;
+    return `<span title="When this scope's data was last collected from a device. The page itself refreshes every ${REFRESH_LABEL}.">polled <b${
+      stale ? ' style="color:var(--orange)"' : ''}>${esc(relStamp(new Date(at).toISOString()))}</b></span>`;
   }
 
   function ageSeconds(iso) {
@@ -307,7 +369,7 @@
     const s = Math.max(0, (Date.now() - t) / 1000);
     if (s < 60) return Math.round(s) + 's ago';
     if (s < 3600) return Math.round(s / 60) + 'm ago';
-    return new Date(t).toLocaleString();
+    return window.NMS.utils.fmtTs(new Date(t));
   }
 
   // ── Render: the two outer columns ───────────────────────────────────────────
@@ -496,7 +558,44 @@
   // The two ways into the customer's own estate — a tenant may run either or both. They belong at
   // the foot of the fabric column: the last thing inside Prisma Access before the picture crosses to
   // on-premise.
-  function privLanes() {
+  // The private-application hand-off. The Service Connection half is still unread — no API reports
+  // it yet — but the ZTNA half is now real: the connectors the tenant actually has, and whether each
+  // one's tunnel and control plane are up.
+  //
+  // A connector is drawn as its own endpoint, not as something hanging off a firewall. They run on
+  // hosts behind the customer's network and dial OUT to the fabric themselves; the firewall they sit
+  // behind is not a peer and there is no link to draw between them.
+  function privLanes(tenant) {
+    const z = (tenant && tenant.ztna) || {};
+    const groups = Array.isArray(z.groups) ? z.groups : [];
+    const conns = Array.isArray(z.connectors) ? z.connectors : [];
+    const names = z.group_names || {};
+
+    const healthy = conns.filter(c => (c.flags || {}).tunnel_up && (c.flags || {}).control_plane_up).length;
+    const have = groups.length || conns.length;
+
+    const connRows = conns.slice(0, 8).map(c => {
+      const f = c.flags || {};
+      const up = f.tunnel_up && f.control_plane_up;
+      const why = !f.tunnel_up ? 'tunnel down' : !f.control_plane_up ? 'control plane down' : 'up';
+      return `<div class="topo-ztna-row" title="${esc((c.cgnx_location || '') + ' · ' + why)}">
+          <span class="topo-dot ${up ? 'ok' : 'bad'}"></span>
+          <span class="topo-ztna-nm">${esc(c.name || c.oid || 'connector')}</span>
+          <span class="topo-ztna-sub">${esc(names[c.group] || '')}</span>
+          <span class="topo-ztna-ip">${esc(c.cgnx_vion_ip || '')}</span>
+        </div>`;
+    }).join('');
+
+    const ztnaBody = have
+      ? `<div class="topo-ztna-list">${connRows}</div>
+         ${conns.length > 8 ? `<div class="topo-note">+ ${conns.length - 8} more</div>` : ''}
+         <span class="topo-tag ${healthy === conns.length ? '' : 'pending'}">${
+           groups.length} group${groups.length === 1 ? '' : 's'} · ${healthy}/${conns.length} up</span>`
+      : `<div class="topo-note">connector VMs dial out to Zero Trust Tunnel termination points in the
+           region — no routing from your network, so overlapping app subnets are fine, and the app can
+           be reached without crossing the firewall</div>
+         <span class="topo-tag pending">not collected</span>`;
+
     return `<div class="topo-priv-split" id="priv-stack">
         <div class="topo-half is-pending" id="dst-sc">
           <div class="topo-half-nm">Service Connection</div>
@@ -504,15 +603,13 @@
           <div class="topo-note">user traffic reaches the data centre over the fabric and lands on a
             Corporate Access Node — which does no inspection of its own; that already happened on the
             SPN the session came from</div>
-          <span class="topo-tag pending">not configured</span>
+          <span class="topo-tag pending">API pending</span>
         </div>
-        <div class="topo-half is-pending" id="dst-ztna">
+        <div class="topo-half ${have ? '' : 'is-pending'}" id="dst-ztna">
           <div class="topo-half-nm">ZTNA Connector</div>
-          <div class="topo-half-sub">ZTT · data plane</div>
-          <div class="topo-note">connector VMs dial out to Zero Trust Tunnel termination points in the
-            region — no routing from your network, so overlapping app subnets are fine, and the app can
-            be reached without crossing the firewall</div>
-          <span class="topo-tag pending">not configured</span>
+          <div class="topo-half-sub">ZTT · data plane${
+            z.collected_at ? ` · read ${esc(relStamp(z.collected_at))}` : ''}</div>
+          ${ztnaBody}
         </div>
       </div>`;
   }
@@ -569,6 +666,63 @@
 
   // ── Render: page ────────────────────────────────────────────────────────────
   function canvasHtml(m) {
+    // The fabric deck draws ONE tenant — a Prisma fabric is per-tenant and two of them share no
+    // regions, no addresses and no lanes, so there is nothing coherent to overlay. Under "All sites"
+    // it was quietly drawing whichever tenant sorted first while the header said "all", which reads
+    // as "this is your estate" when it is one site of several. Ask instead.
+    //
+    // Exactly one <b>: in .topo-msg it is the title style (display:block), so a second one becomes a
+    // stray heading mid-sentence rather than emphasis.
+    if (!state.site) {
+      // Not a blocked page — the estate at rest. Unscoped, topologyd answers with every site's
+      // tenants and firewalls, so this can total them up and let each site be entered from its own
+      // row. Rows, not a card grid: one card in a grid reads as a layout that failed, one row reads
+      // as a list with one thing in it, and rows go on working at forty.
+      //
+      // Not wrapped in .topo-stage: that class carries the drawing's min-width and asymmetric
+      // padding, which push this off-centre.
+      const seen = new Map();
+      (state.siteList || []).forEach(x => {
+        if (x && x.oid) seen.set(x.oid, { oid: x.oid, name: x.name || x.oid, tenants: 0, fw: 0 });
+      });
+      const ensure = (oid, name) => {
+        if (!oid) return null;
+        if (!seen.has(oid)) seen.set(oid, { oid, name: name || oid, tenants: 0, fw: 0 });
+        return seen.get(oid);
+      };
+      state.tenants.forEach(t => { const e = ensure(t.site, t.site_name); if (e) e.tenants++; });
+      state.ngfw.forEach(d => { const e = ensure(d.site, d.site_name); if (e) e.fw++; });
+
+      const sites = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+      if (!sites.length) {
+        return `<div class="topo-msg is-full"><div><b>No site configured</b>
+          Add one in <a href="settings?tab=sites">Configuration › Sites</a>.</div></div>`;
+      }
+
+      const tile = (v, label) => `<div class="topo-ov-tile"><b>${v}</b><span>${esc(label)}</span></div>`;
+      const stat = (v, label) => `<span class="topo-ov-stat"><b>${v}</b>${esc(label)}</span>`;
+
+      const rows = sites.map(x => `<button class="topo-ov-row" type="button" data-site="${esc(x.oid)}">
+          <span class="topo-ov-nm">${esc(x.name)}</span>
+          <span class="topo-ov-stats">
+            ${stat(x.tenants, 'SASE')}
+            ${stat(x.fw, 'NGFW')}
+          </span>
+          <span class="topo-ov-go">&rsaquo;</span>
+        </button>`).join('');
+
+      return `<div class="topo-overview">
+          <div class="topo-ov-h">Overview</div>
+          <div class="topo-ov-tiles">
+            ${tile(sites.length, sites.length === 1 ? 'site' : 'sites')}
+          </div>
+          <div class="topo-ov-list">${rows}</div>
+          <div class="topo-ov-note">Open a site to draw its fabric and its firewalls.</div>
+        </div>`;
+    }
+
+    if (state.booting && state.site) return `<div class="topo-msg is-full"></div>`;
+
     if (!m || !m.zones.length) {
       const t = m && m.tenant;
       return `<div class="topo-stage"><div class="topo-msg">
@@ -599,7 +753,7 @@
           <div class="topo-col">
             ${ctlStrip(m)}
             ${planeFrame(m)}
-            ${privLanes()}
+            ${privLanes(m.tenant)}
           </div>
           ${destColumn(m)}
         </div>
@@ -624,18 +778,71 @@
 
   let fwIndex = 0;   // stagger counter, reset each render
 
+  // A firewall card now carries what the box actually IS, not only whether it answered: how many
+  // interfaces are configured and how many carry an address, and how many tunnels are defined and
+  // how many are switched on. Both come from collected configuration, so both say when they were
+  // last read — and a card whose data has never been collected says that instead of showing zeros,
+  // because "no interfaces" and "we have not looked" are completely different findings.
   function fwCard(d) {
     const l = state.layers[d.oid] || {};
     const st = (l.reachable === 'ok' && l.credential === 'ok') ? 'ok'
              : (l.reachable === 'fail' || l.credential === 'fail') ? 'bad' : '';
+
+    const ifc = d.interfaces || {};
+    const tun = d.tunnels || {};
+
+    const metric = (collected, value, unit, sub) => collected
+      ? `<span class="topo-fwm"><b>${value}</b>${esc(unit)}<em>${esc(sub)}</em></span>`
+      : `<span class="topo-fwm is-none"><b>—</b><em>${esc(unit)} not collected</em></span>`;
+
     return `<button class="topo-fwc ${st}" type="button" data-fw="${esc(d.oid)}" style="--i:${fwIndex++}">
         <span class="topo-fwc-h">
           <span class="topo-fw-dot ${d.status === 'active' ? 'ok' : d.status === 'down' ? 'bad' : ''}"></span>
           <span class="topo-fwc-nm">${esc(d.name || d.target || 'unnamed')}</span>
         </span>
         <span class="topo-fwc-t">${esc(d.target || '—')}</span>
+        <span class="topo-fwc-m">
+          ${metric(ifc.collected, ifc.total || 0, 'interfaces',
+                   `${ifc.with_ip || 0} addressed${ifc.down ? ` · ${ifc.down} shut` : ''}`)}
+          ${metric(tun.collected, tun.total || 0, 'tunnels',
+                   `${tun.enabled || 0} enabled${tun.disabled ? ` · ${tun.disabled} off` : ''}`)}
+        </span>
         <span class="topo-fwc-l">${layerDots(d.oid)}</span>
       </button>`;
+  }
+
+  // The drawer's firewall view: the interface and tunnel lists themselves.
+  function fwDetail(d) {
+    const ifc = d.interfaces || {};
+    const tun = d.tunnels || {};
+
+    const ifRows = (ifc.list || []).map(i => `<tr>
+        <td><span class="topo-dot ${i.admin_state === 'down' ? 'bad' : 'ok'}"></span>${esc(i.name)}</td>
+        <td class="mono">${esc(i.ip) || '<span class="topo-none">no address</span>'}</td>
+        <td class="topo-sub">${esc(i.mode || '')}</td>
+      </tr>`).join('');
+
+    const tunRows = (tun.list || []).map(t => `<tr>
+        <td><span class="topo-dot ${t.enabled ? 'ok' : 'off'}"></span>${esc(t.name)}</td>
+        <td class="mono">${esc(t.interface) || '—'}</td>
+        <td class="topo-sub">${esc(t.gateway) || '—'}</td>
+      </tr>`).join('');
+
+    const block = (title, collected, at, cols, rows, empty) => `
+      <div class="topo-dsec">${title}
+        ${collected ? `<span class="topo-dsec-age">read ${esc(relStamp(at))}</span>` : ''}</div>
+      ${!collected
+        ? `<div class="topo-none-block">Not collected. Add this endpoint to the firewall's
+             <a href="settings?tab=api-connector">API Connector</a> and it appears here on the next cycle.</div>`
+        : rows
+          ? `<table class="topo-dtable"><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+             <tbody>${rows}</tbody></table>`
+          : `<div class="topo-none-block">${empty}</div>`}`;
+
+    return block('Ethernet interfaces', ifc.collected, ifc.collected_at,
+                 ['Interface', 'Address', 'Mode'], ifRows, 'The firewall reports no ethernet interfaces.') +
+           block('IPSec tunnels', tun.collected, tun.collected_at,
+                 ['Tunnel', 'Interface', 'IKE gateway'], tunRows, 'No IPSec tunnels are defined.');
   }
 
   function ngfwDeck() {
@@ -712,11 +919,114 @@
       </div>`;
   }
 
+  // Shown while topologyd is composing. The stages are the real pipeline — mgmtd asks, topologyd
+  // reads the collected samples, correlates them, and answers — and they light in order as the
+  // retries go by. The bar is honest about what it measures: it tracks attempts made, not work
+  // completed, because this side cannot see inside the composer. It never reaches 100% on its own;
+  // arriving data is what ends it.
+  // The phase named beside the ring. The composition really does run in this order, and the ring
+  // reaches each quarter as the corresponding stage is the one that would be running.
+  const COMPOSE_STAGES = [
+    'Requesting composition',
+    'Reading collected samples',
+    'Correlating tenants and firewalls',
+    'Rendering\u2026',
+  ];
+
+  const RING_R = 52;
+  const RING_C = 2 * Math.PI * RING_R;
+
+  function composingHtml() {
+    return `<div class="topo-composing">
+        <div class="topo-ring-wrap">
+          <svg class="topo-ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="tr-track" cx="60" cy="60" r="${RING_R}"/>
+            <circle class="tr-fill" cx="60" cy="60" r="${RING_R}"
+                    stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}"/>
+          </svg>
+          <div class="topo-ring-pct">0<small>%</small></div>
+        </div>
+        <div class="topo-compose-t">Composing this site&rsquo;s infrastructure</div>
+        <div class="topo-compose-stage">${esc(COMPOSE_STAGES[0])}</div>
+      </div>`;
+  }
+
+  // Drives the ring. The percentage is elapsed time against the hold below, so it is a real
+  // countdown to the moment the picture appears — not a guess at the daemon's internal progress,
+  // which this side cannot see. It reaches 100% exactly when the drawing does.
+  function tickRing() {
+    // Every ring on the page, not the first: both decks are laid out at all times, so a composing
+    // page has two of them and an id would only ever drive one.
+    const fills = document.querySelectorAll('.topo-ring .tr-fill');
+    if (!fills.length) return;
+
+    // The ring only reaches 100% once the composition is actually in hand. While still waiting it
+    // stops short — a full ring over an unfinished job is the one thing a progress indicator must
+    // never show, because it turns "working" into "done, but nothing happened".
+    const elapsed = Date.now() - composeStart;
+    const ceiling = state.answered ? 1 : 0.9;
+    const pct = Math.min(ceiling, elapsed / MIN_COMPOSE_MS);
+    const offset = (RING_C * (1 - pct)).toFixed(1);
+    fills.forEach(f => f.setAttribute('stroke-dashoffset', offset));
+
+    const pctHtml = Math.round(pct * 100) + '<small>%</small>';
+    document.querySelectorAll('.topo-ring-pct').forEach(p => { p.innerHTML = pctHtml; });
+
+    document.querySelectorAll('.topo-compose-stage').forEach((s) => {
+      // Past the expected time with no answer, say so rather than naming a stage that finished long
+      // ago — the operator is now waiting on something slow, and that is the useful fact.
+      const label = (!state.answered && elapsed > MIN_COMPOSE_MS)
+        ? 'Still waiting for topologyd\u2026'
+        : COMPOSE_STAGES[Math.min(COMPOSE_STAGES.length - 1, Math.floor(pct * COMPOSE_STAGES.length))];
+      if (s.textContent !== label) s.textContent = label;
+    });
+  }
+
+  function startComposing() {
+    if (state.composing) return;
+    state.composing = true;
+    state.answered = false;
+    composeStart = Date.now();
+    clearInterval(ringTimer);
+    ringTimer = setInterval(tickRing, 40);
+  }
+
+  // The composition itself settles in tens of milliseconds — far too fast to read. The hold is
+  // deliberate: an indicator that appears and vanishes within one frame tells the operator nothing,
+  // and on the runs that DO take time (a busy or unreachable topologyd) the same indicator is the
+  // only thing that explains the wait. So it always runs for its full length once shown.
+  function finishComposing(then) {
+    if (!state.composing) return then();
+    const remaining = Math.max(0, MIN_COMPOSE_MS - (Date.now() - composeStart));
+    clearTimeout(composeHold);
+    composeHold = setTimeout(() => {
+      clearInterval(ringTimer);
+      ringTimer = null;
+      state.composing = false;
+      then();
+    }, remaining);
+  }
+
   function render() {
     const root = document.getElementById('contentBody');
     if (!root) return;
     const scoped = tenantsForSite();
-    model = scoped.length ? buildModel(scoped[0]) : null;
+
+    // Both decks are per-site: a fabric belongs to one tenant, and a firewall sits in one site. So
+    // "All sites" is not a wider view of this page, it is a view this page cannot draw — and rather
+    // than half-answering it with an arbitrary tenant and an undifferentiated pile of firewalls, the
+    // whole apparatus stands down. One screen, one instruction, no deck switch and no legend for
+    // edges that are not on screen.
+    const scopeChosen = !!state.site;
+
+    // The ring is only for a deck that has nothing to show. Once a picture is up, a refresh happens
+    // underneath it — replacing a drawn estate with an animation for the 20ms a round trip takes
+    // would read as the page breaking, not as it working.
+    const composing = state.composing && scopeChosen;
+    // Not built when no site is chosen. buildModel is not a pure function — it records each tenant's
+    // address set to diff the NEXT poll against, which is how a node that appeared gets its pulse.
+    // Running it for a tenant nobody is looking at would consume that diff silently.
+    model = (scopeChosen && scoped.length) ? buildModel(scoped[0]) : null;
 
     root.className = 'content-body topo-page';
     root.innerHTML = barHtml() +
@@ -724,14 +1034,14 @@
         <div class="topo-viewport" id="topoViewport">
           <div class="topo-decks" id="topoDecks">
             <section class="topo-deck ${state.view === 'fabric' ? 'is-active' : ''}"
-                     id="deck-fabric">${canvasHtml(model)}</section>
+                     id="deck-fabric">${composing ? composingHtml() : canvasHtml(model)}</section>
             <section class="topo-deck ${state.view === 'ngfw' ? 'is-active' : ''}"
-                     id="deck-ngfw">${ngfwDeck()}</section>
+                     id="deck-ngfw">${scopeChosen ? (composing ? composingHtml() : ngfwDeck()) : ''}</section>
           </div>
         </div>
-        ${deckBtn(state.view === 'fabric' ? 'ngfw' : 'fabric')}
+        ${scopeChosen && !composing ? deckBtn(state.view === 'fabric' ? 'ngfw' : 'fabric') : ''}
       </div>` +
-      legendHtml() +
+      (scopeChosen && !composing ? legendHtml() : '') +
       `<aside class="topo-drawer" id="topoDrawer"><div class="topo-drawer-h">
           <span class="topo-drawer-t" id="topoDrawerT">Node</span>
           <button class="topo-drawer-x" id="topoDrawerX" type="button">&times;</button>
@@ -1043,7 +1353,7 @@
         ${row('Service', g.spec.label)}
         ${row('Role', ADDR_LABEL[n.addressType] || n.addressType)}
         ${row('Address', n.address, true)}
-        ${row('Created', n.created ? new Date(n.created * 1000).toLocaleString() + ' (' + relAge(n.age) + ' ago)' : '')}
+        ${row('Created', n.created ? window.NMS.utils.fmtTs(n.created * 1000) + ' (' + relAge(n.age) + ' ago)' : '')}
         ${n.allowListed === undefined ? '' : row('Allow-listed', n.allowListed ? 'yes' : 'no')}
         ${n.addressType !== 'network_load_balancer' ? '' : row('NLB active', n.lbActive === undefined
             ? 'not reported by the tenant' + (n.regionalFqdn ? ' — published as a regional entry point' : '')
@@ -1081,10 +1391,12 @@
         ${row('Address', d.target, true)}
         ${row('Status', word)}
       </dl>
+      ${fwDetail(d)}
       <div class="topo-drawer-sec">Why it is in this picture</div>
       <p class="field-hint">A Service Connection terminates on an SC-CAN, which performs no
         inspection — private-app policy is enforced here. Which Service Connection reaches this
-        firewall is not readable yet, so no link is drawn to it.</p>`;
+        firewall is not readable yet, so no link is drawn to it. ZTNA connectors are not peers of
+        this firewall either: they run on hosts behind it and tunnel to the fabric themselves.</p>`;
     document.getElementById('topoDrawer').classList.add('open');
     document.querySelectorAll('.topo-node.selected').forEach(el => el.classList.remove('selected'));
   }
@@ -1103,7 +1415,30 @@
     // store, so this listener is unaffected by the swap.
     const siteSel = document.getElementById('topoSite');
     if (siteSel) {
-      siteSel.addEventListener('change', (e) => { state.site = e.target.value; render(); });
+      // The scope now travels to topologyd, so changing it is a re-fetch rather than a re-filter.
+      // The drawn estate belongs to the site being left, so it is cleared first — otherwise it
+      // counts as "data we already have", the composing ring never starts, and the old site's
+      // picture sits on screen until the new one happens to arrive.
+      siteSel.addEventListener('change', (e) => {
+        state.site = e.target.value;
+        window.NMS.utils.siteScope.set(state.site);
+        // Both decks stand down under "All sites" and the deck switch goes with them, so a viewer
+        // left on the NGFW deck would be stranded on an empty one with no way back.
+        if (!state.site) state.view = 'fabric';
+        state.tenants = [];
+        state.ngfw = [];
+        state.sources = {};
+        state.generatedAt = '';
+        // The retry budget and any error belong to the site being left — a previous site that ran
+        // out of tries must not make the next one give up on its first answer.
+        pendingSince = 0;
+        state.error = '';
+        clearTimeout(pendingTimer);
+        // Nothing on the "All sites" screen waits for data, so nothing should appear to.
+        if (state.site) startComposing();
+        render();
+        load();
+      });
       window.NMS.utils.enhanceSelect?.(siteSel);
     }
 
@@ -1139,9 +1474,18 @@
 
     const canvas = document.getElementById('topoCanvas');
     if (canvas) canvas.addEventListener('click', (e) => {
+      const card = e.target.closest('[data-site]');
+      if (card) {
+        const sel = document.getElementById('topoSite');
+        if (sel) { sel.value = card.dataset.site; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+        return;
+      }
+
       const n = e.target.closest('.topo-node[data-node]');
       if (n) { openDrawer(n.dataset.node); return; }
-      const f = e.target.closest('.topo-fw[data-fw]');
+      // Both the fabric deck's compact row (.topo-fw) and the NGFW deck's card (.topo-fwc) open
+      // the same drawer.
+      const f = e.target.closest('[data-fw]');
       if (f) openFwDrawer(f.dataset.fw);
     });
 
@@ -1151,12 +1495,75 @@
 
   // ── Data ────────────────────────────────────────────────────────────────────
   async function load() {
+    let settled = false;   // an answer arrived and the ring, if any, may run out
+
     try {
-      const r = await fetch('/api/topology', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      // The site is asked for on the wire now, not filtered here: topologyd composes one site, so
+      // sending the scope is what makes the answer small on a large estate. `site=` (empty) means
+      // every site, which is the same contract the page had before.
+      const r = await fetch('/api/topology?site=' + encodeURIComponent(state.site),
+                            { credentials: 'same-origin', headers: { Accept: 'application/json' } });
       if (r.status === 401) { location.href = '/'; return; }
       const d = await r.json();
-      state.tenants = Array.isArray(d.tenants) ? d.tenants : [];
-      state.ngfw = Array.isArray(d.ngfw) ? d.ngfw : [];
+
+      // Whatever came back is drawn — it is the newest thing that exists. `pending` says a fresher
+      // composition is on its way, which is a reason to come back in a moment, NOT a reason to throw
+      // away the picture: a round trip is ~20ms and blanking the page for it would be a flicker.
+      if (d.sase || d.ngfw) {
+        state.tenants = (d.sase && Array.isArray(d.sase.tenants)) ? d.sase.tenants : [];
+        state.ngfw = (d.ngfw && Array.isArray(d.ngfw.devices)) ? d.ngfw.devices : [];
+        state.siteList = Array.isArray(d.sites) ? d.sites : [];
+        state.sources = d.sources || {};
+      }
+      state.generatedAt = d.generated_at || '';
+      state.pending = !!d.pending;
+      state.error = '';
+
+      // A remembered site can have been deleted between visits, and a first visit to a one-site
+      // estate has exactly one sensible answer. Both settled here, on the first real answer only —
+      // `pending` is not an answer, it is mgmtd saying it is still asking.
+      if (state.booting && !d.pending) {
+        state.booting = false;
+        const known = (state.siteList || []).map(x => x.oid);
+        if (state.site && known.indexOf(state.site) === -1) {
+          state.site = '';
+          window.NMS.utils.siteScope.set('');
+          return load();
+        }
+        if (!state.site && known.length === 1 && !window.NMS.utils.siteScope.get()) {
+          state.site = known[0];
+          window.NMS.utils.siteScope.set(state.site);
+          return load();
+        }
+      }
+
+      const haveData = !!(state.tenants.length || state.ngfw.length);
+
+      if (state.pending) {
+        // Nothing to draw yet, so the ring takes the deck until an answer lands. mgmtd answers
+        // `pending` while topologyd composes; the retry is at conversation speed rather than the
+        // next Live tick, because waiting a minute for 20ms of work looks like a broken page.
+        if (!haveData && state.site && !state.booting) startComposing();
+
+        if (!pendingSince) pendingSince = Date.now();
+
+        if (Date.now() - pendingSince < COMPOSE_TIMEOUT_MS) {
+          clearTimeout(pendingTimer);
+          pendingTimer = setTimeout(load, PENDING_RETRY_MS);
+        } else {
+          // topologyd is not answering. Say so rather than spinning forever — and keep drawing what
+          // we last knew, because a last-known picture still beats an empty one. `answered` stays
+          // false, so the ring never completed and did not claim otherwise.
+          state.pending = false;
+          state.error = 'topologyd did not answer';
+          pendingSince = 0;
+          settled = true;
+        }
+      } else {
+        pendingSince = 0;
+        state.answered = true;   // lets the ring run to 100% on its way out
+        settled = true;
+      }
 
       // The on-premise deck judges a firewall the way the Home page does — three dependency layers,
       // not just "did it answer a ping".
@@ -1164,13 +1571,25 @@
         const lr = await fetch('/api/status/devices', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
         if (lr.ok) state.layers = (await lr.json()) || {};
       } catch (_) { /* keep the last snapshot */ }
-      state.generatedAt = d.generated_at || '';
-      state.error = '';
     } catch (e) {
       state.error = e.message || 'load failed';
+      state.booting = false;
+      settled = true;
     }
-    render();
-    if (state.selected) openDrawer(state.selected);
+
+    // A ring that is up owns the deck until it runs out, so the draw waits for it.
+    const draw = () => { render(); if (state.selected) openDrawer(state.selected); };
+
+    if (settled && state.composing) {
+      finishComposing(draw);
+    } else if (state.composing) {
+      // Still waiting. Draw once to put the ring on screen, then leave it alone — the retries fire
+      // every 400ms and re-rendering would rebuild the ring's markup underneath it, snapping the
+      // arc back to zero several times a second.
+      if (!document.querySelector('.topo-ring .tr-fill')) draw();
+    } else {
+      draw();
+    }
   }
 
   function schedule() {

@@ -2,7 +2,8 @@
 
 #include "service/api/controller/ConnectorController.h"
 #include "service/api/controller/CredentialController.h"
-#include "service/api/controller/EndpointController.h"
+#include "service/api/controller/NgfwController.h"
+#include "service/api/controller/SaseController.h"
 #include "service/api/controller/StatusController.h"
 
 #include <boost/asio/io_context.hpp>
@@ -46,12 +47,29 @@ struct AuthProfile
     int refreshIntervalMin{60};          // auto: minutes between re-issues
 };
 
-// PAN-OS serves two APIs behind one credential. Which one a call speaks is a property of the
-// path, not of the device, so it travels with the endpoint.
-enum class ApiType
+// Which vendor an endpoint speaks to. This is the first branch in every code path that builds a
+// call, because nothing below it is shared: an NGFW endpoint is a path on the operator's own box
+// authenticated with a PAN-OS key, a SASE endpoint is an absolute URL on Palo Alto's cloud
+// authenticated with an OAuth bearer token. Same struct, two disjoint halves.
+enum class ApiVendor
 {
-    Xml,
+    Ngfw,
+    Sase,
+};
+
+// The one sub-choice under a device type. Same slot on both sides, different meaning: for NGFW which
+// PAN-OS API the path speaks (it decides how the key is attached), for SASE which cloud product the
+// URL belongs to. One field rather than two mutually exclusive ones — they were never both
+// meaningful, and having both meant every reader had to know which half of the record it held first.
+enum class ApiSubtype
+{
+    // NGFW.
     Rest,
+    Xml,
+    // SASE. Only Ztna is served today; the others exist so the seam is named before it is needed.
+    Ztna,
+    Pab,
+    Scm,
 };
 
 // One query parameter, stored unencoded exactly as the operator typed it; percent-encoding
@@ -78,8 +96,20 @@ struct ApiEndpoint
     std::string oid;
     std::string name;
     std::string path;               // e.g. /restapi/v10.2/Objects/Addresses
-    ApiType apiType{ApiType::Rest};
-    std::vector<ApiParam> params;   // e.g. location=vsys, vsys=vsys1
+    std::vector<ApiParam> params;   // query string — e.g. location=vsys, vsys=vsys1
+
+    ApiVendor vendor{ApiVendor::Ngfw};
+    ApiSubtype subtype{ApiSubtype::Rest};
+
+    // SASE only.
+    // The cloud host this call goes to. Part of the endpoint rather than the device because a SASE
+    // "device" is a tenant, not an address — the tenant is WHO you are (the tsg_id in the token),
+    // and the host is WHAT you are calling. One tenant is read through several product hosts.
+    std::string host;
+    // Operator-editable request headers. The bearer token is NOT one of them — it is minted per call
+    // and never stored in configuration. These are the vendor's own routing headers, above all
+    // x-panw-region, which cannot be derived and answers 424 rather than an error when wrong.
+    std::vector<ApiParam> headers;
 };
 
 // One endpoint this connector collects, and how often.
@@ -199,7 +229,8 @@ private:
     // (each run builds its own async context); Connector holds the collection schedule and Status the
     // SASE probe's state, which is why those two take the io_context.
     CredentialController m_credentialController;
-    EndpointController m_endpointController;
+    NgfwController m_ngfwController;
+    SaseController m_saseController;
     ConnectorController m_connectorController;
     StatusController m_statusController;
     std::vector<ApiEndpoint> m_endpoints;

@@ -26,30 +26,6 @@ namespace
 
 using json = nlohmann::json;
 
-// Standard base64 (for the SASE token request's HTTP Basic credential). Small enough to keep local
-// rather than widen the Secret module's surface.
-std::string base64(const std::string& in)
-{
-    static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    int val = 0, bits = -6;
-    for (unsigned char c : in)
-    {
-        val = (val << 8) + c;
-        bits += 8;
-        while (bits >= 0)
-        {
-            out.push_back(T[(val >> bits) & 0x3F]);
-            bits -= 6;
-        }
-    }
-    if (bits > -6)
-        out.push_back(T[((val << 8) >> (bits + 8)) & 0x3F]);
-    while (out.size() % 4)
-        out.push_back('=');
-    return out;
-}
-
 // The keygen-test outcome: persist the issued credential to engined (the only DB writer) and answer
 // the browser. Only the outcome — not the key — goes back. Runs for both NGFW keys and SASE tokens.
 void finishKeygen(const std::shared_ptr<ConnectorTest>& ctx, const std::string& key)
@@ -163,42 +139,8 @@ void runSaseToken(const std::shared_ptr<ConnectorTest>& ctx)
 {
     const TestTarget& t = ctx->target;
 
-    std::string host = "auth.apps.paloaltonetworks.com";
-    std::string path = "/oauth2/access_token";
-    std::uint16_t port = 443;
-    if (!t.keygenEndpoint.empty())
-    {
-        std::string rest = t.keygenEndpoint;
-        if (const auto s = rest.find("://"); s != std::string::npos)
-            rest.erase(0, s + 3);
-        const auto slash = rest.find('/');
-        std::string hostport = (slash == std::string::npos) ? rest : rest.substr(0, slash);
-        path = (slash == std::string::npos) ? "/" : rest.substr(slash);
-        if (const auto colon = hostport.rfind(':'); colon != std::string::npos)
-        {
-            try
-            {
-                port = static_cast<std::uint16_t>(std::stoi(hostport.substr(colon + 1)));
-                hostport.erase(colon);
-            }
-            catch (const std::exception&)
-            {
-            }
-        }
-        if (!hostport.empty())
-            host = hostport;
-    }
-
-    pz::http::ClientRequest req;
-    req.host = host;
-    req.port = port;
-    req.verifyCa = true;
-    req.method = "POST";
-    req.target = path;
-    req.timeout = std::chrono::seconds(15);
-    req.headers.push_back({"Authorization", "Basic " + base64(t.username + ":" + t.password)});
-    req.headers.push_back({"Content-Type", "application/x-www-form-urlencoded"});
-    req.body = "grant_type=client_credentials&scope=tsg_id:" + pz::http::urlEncode(t.host);
+    const HostPath hp = splitHostPath(t.keygenEndpoint, kSaseAuthHost, kSaseTokenPath);
+    auto req = buildOAuthTokenRequest(hp, t.username, t.password, t.host);
 
     LOG_DEBUG("SASE token request (seq={}, tsg={})", ctx->seqNo, t.host);
     pz::http::requestAsync(ctx->sm->ioContext(), std::move(req),

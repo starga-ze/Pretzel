@@ -1,16 +1,25 @@
 #include "service/web/controller/StatusController.h"
 
+#include "service/MgmtdServiceManager.h"
 #include "service/web/WebUtil.h"
+
+#include "router/MgmtdTxRouter.h"
 
 #include "config/Config.h"
 #include "db/Database.h"
 #include "http/HttpMessage.h"
+#include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
 
+#include <chrono>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace pz::mgmtd
 {
@@ -134,102 +143,68 @@ void StatusController::deviceStatus(MgmtdServiceManager& sm, const pz::http::Htt
 
     fill(resp, 200, out.dump());
 }
-
-// The material the Site Topology page draws, in one fetch for one picture:
+// GET /api/topology?site=<oid>
 //
-//   tenants[]  each SASE tenant plus the last getPrismaAccessIP document engined cached for it
-//              (sase_device.egress_result — zones, MU-SPN / portal node addresses, proxy FQDNs)
-//   ngfw[]     the on-premise firewalls we manage
+// mgmtd owns no topology logic: it asks topologyd to compose the site and serves what came back.
+// The HTTP response is never held open for that round trip — responses here are built synchronously
+// on the loop every other daemon's messages arrive on, so waiting for one browser would stall every
+// other daemon's traffic behind it.
 //
-// The NGFW inventory belongs in the same answer because of where Prisma Access ends: a Service
-// Connection terminates on an SC-CAN, and an SC-CAN performs no inspection — the enforcement point
-// for private-app traffic is the customer's own firewall at the far end. Drawing the fabric without
-// it stops the picture one hop short of where policy actually applies.
+// Instead the answer carries `pending`: "a fresher composition is on its way". The page re-asks in a
+// moment and draws that. A round trip is 10-30ms (the database reads measure ~4ms; the rest is two
+// IPC hops), so the picture is never meaningfully behind.
 //
-// The tenant document is passed through whole rather than reduced to a graph here: the shape of the
-// drawing is still being worked out, and the page is the part that reloads without a rebuild. When
-// the IPsec / routing / ZTNA-connector reads land they join this response as further sibling keys.
-void StatusController::siteTopology(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+// What is deliberately NOT done: blanking the picture while refreshing. A composition that lands in
+// 20ms would turn every periodic refresh into a flicker. `pending` and "there is nothing to draw"
+// are therefore separate facts, and the page shows its composing state only when it has neither.
+void StatusController::siteTopology(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
+                                    pz::http::HttpResponse& resp)
 {
-    (void)sm;
-    (void)req;
+    const std::string siteOid = queryParam(req.target, "site");
 
+    // Ask only when the answer would be new: nothing cached, or what is cached has aged past the
+    // page's own refresh interval. One outstanding request per site — a burst of polls (several tabs,
+    // a held-down refresh) must not become a burst of compositions.
+    constexpr auto kFreshFor = std::chrono::seconds(50);
+    const bool haveFresh = sm.topologyFresh(siteOid, kFreshFor);
+
+    if (!haveFresh && !sm.topologyRequested(siteOid))
+    {
+        json ask;
+        ask["site"] = siteOid;
+        const std::string body = ask.dump();
+
+        auto msg = std::make_unique<pz::ipc::IpcMessage>();
+        msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
+        msg->setDst(pz::ipc::IpcDaemon::Topologyd);
+        msg->setCmd(pz::ipc::IpcCmd::TopologyRequest);
+        msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+        msg->setPayload(std::vector<std::uint8_t>(body.begin(), body.end()));
+
+        sm.txRouter().handleIpcMessage(std::move(msg));
+        sm.markTopologyRequested(siteOid);
+    }
+
+    if (const std::string* model = sm.topology(siteOid))
+    {
+        // Spliced in rather than re-serialising: the model is already a JSON string and can be tens
+        // of kilobytes, and this runs on the request path.
+        std::string out = *model;
+        const auto brace = out.find('{');
+        if (brace != std::string::npos)
+            out.insert(brace + 1, haveFresh ? "\"pending\":false," : "\"pending\":true,");
+        return fill(resp, 200, out);
+    }
+
+    // Nothing composed for this site yet. A well-formed empty model rather than an error: the page
+    // renders its composing state from `pending` and never has to special-case a 503.
     json out;
-    out["tenants"] = json::array();
-    out["ngfw"] = json::array();
-
-    try
-    {
-        auto& db = pz::db::Database::instance();
-
-        // Site names come from config, not the database: a site is operator-declared and the device
-        // row carries only its oid.
-        std::unordered_map<std::string, std::string> siteName;
-        const auto& site = pz::config::Config::serviceSection("engined", "site");
-        for (const auto& s : site.value("sites", json::array()))
-        {
-            if (!s.is_object())
-                continue;
-            const std::string oid = s.value("oid", std::string());
-            if (!oid.empty())
-                siteName[oid] = s.value("name", std::string());
-        }
-
-        constexpr const char* kTs = "YYYY-MM-DD\"T\"HH24:MI:SSOF";
-        const std::string sql =
-            std::string("SELECT oid, COALESCE(name,''), COALESCE(site,''), COALESCE(target,''), ")
-            + "COALESCE(status,''), COALESCE(to_char(last_seen, '" + kTs + "'), ''), "
-            + "COALESCE(to_char(updated_at, '" + kTs + "'), ''), COALESCE(egress_result::text, '') "
-            + "FROM sase_device ORDER BY name";
-
-        for (const auto& r : db.queryRows(sql))
-        {
-            if (r.size() < 8 || r[0].empty())
-                continue;
-
-            json t;
-            t["oid"] = r[0];
-            t["name"] = r[1];
-            t["site"] = r[2];
-            t["site_name"] = siteName.count(r[2]) ? siteName[r[2]] : std::string();
-            t["target"] = r[3];
-            t["status"] = r[4];
-            t["last_seen"] = r[5];
-            t["updated_at"] = r[6];
-
-            // A tenant that has never answered has no document yet; say so with null rather than an
-            // empty object, so the page can tell "not probed" from "answered with nothing".
-            auto doc = json::parse(r[7], nullptr, false);
-            t["egress"] = doc.is_discarded() ? json(nullptr) : std::move(doc);
-
-            out["tenants"].push_back(std::move(t));
-        }
-
-        // The private side of the picture. Only what the operator declared and engined probes — no
-        // attempt to guess which firewall sits behind which Service Connection, because nothing in
-        // the estate knows that yet.
-        for (const auto& r : db.queryRows(
-                 "SELECT oid, COALESCE(name,''), COALESCE(site,''), COALESCE(target,''), "
-                 "COALESCE(status,'') FROM ngfw_device ORDER BY name"))
-        {
-            if (r.size() < 5 || r[0].empty())
-                continue;
-            out["ngfw"].push_back({{"oid", r[0]},
-                                   {"name", r[1]},
-                                   {"site", r[2]},
-                                   {"site_name", siteName.count(r[2]) ? siteName[r[2]] : std::string()},
-                                   {"target", r[3]},
-                                   {"status", r[4]}});
-        }
-
-        const auto now = db.queryRows("SELECT to_char(now(), '" + std::string(kTs) + "')");
-        out["generated_at"] = (!now.empty() && !now[0].empty()) ? now[0][0] : std::string();
-    }
-    catch (const std::exception& e)
-    {
-        LOG_WARN("site topology query failed: {}", e.what());
-    }
-
+    out["site"] = siteOid;
+    out["pending"] = true;
+    out["sites"] = json::array();
+    out["sase"] = {{"tenants", json::array()}};
+    out["ngfw"] = {{"devices", json::array()}};
+    out["sources"] = json::object();
     fill(resp, 200, out.dump());
 }
 

@@ -83,30 +83,65 @@ void ApiService::loadEndpoints(const nlohmann::json& cfg)
         if (!e.is_object())
             continue;
 
+        // name/value pair lists — query parameters and (SASE) request headers share the shape.
+        auto readPairs = [&e](const char* key, std::vector<ApiParam>& out) {
+            const auto it2 = e.find(key);
+            if (it2 == e.end() || !it2->is_array())
+                return;
+            for (const auto& p : *it2)
+            {
+                if (!p.is_object())
+                    continue;
+                ApiParam pair;
+                pair.name = p.value("name", std::string());
+                pair.value = p.value("value", std::string());
+                if (!pair.name.empty())
+                    out.push_back(std::move(pair));
+            }
+        };
+
         ApiEndpoint endpoint;
         endpoint.oid = e.value("oid", e.value("uuid", std::string()));   // `uuid` = legacy key
         endpoint.name = e.value("name", std::string());
         endpoint.path = e.value("path", std::string());
+        readPairs("params", endpoint.params);
 
-        // The REST path is the one that carries a version, so it is also the one that says
-        // which API this is. Stated explicitly when present, derived otherwise.
-        const std::string apiType =
-            e.value("api_type", endpoint.path.rfind("/restapi/", 0) == 0 ? std::string("rest") : std::string("xml"));
-        endpoint.apiType = (apiType == "xml") ? ApiType::Xml : ApiType::Rest;
+        // Absent on every endpoint written before SASE support, which were all NGFW.
+        endpoint.vendor = (e.value("device_type", std::string("ngfw")) == "sase") ? ApiVendor::Sase : ApiVendor::Ngfw;
 
-        const auto params = e.find("params");
-        if (params != e.end() && params->is_array())
+        // `subtype` replaced the old `api_type` (ngfw) / `product` (first SASE cut) pair; both are
+        // still read so an endpoint committed before the merge keeps working without a migration.
+        const std::string subtype = e.value(
+            "subtype", endpoint.vendor == ApiVendor::Sase ? e.value("product", std::string("ztna"))
+                                                          : e.value("api_type", std::string()));
+
+        if (endpoint.vendor == ApiVendor::Sase)
         {
-            for (const auto& p : *params)
+            if (subtype != "ztna")
             {
-                if (!p.is_object())
-                    continue;
-                ApiParam param;
-                param.name = p.value("name", std::string());
-                param.value = p.value("value", std::string());
-                if (!param.name.empty())
-                    endpoint.params.push_back(std::move(param));
+                // Refused rather than defaulted: silently collecting a Prisma Access Browser endpoint
+                // as though it were ZTNA would send a request nobody asked for.
+                LOG_WARN("skipping SASE endpoint for a subtype that is not implemented yet (name={}, subtype={})",
+                         endpoint.name, subtype);
+                continue;
             }
+            endpoint.subtype = ApiSubtype::Ztna;
+
+            endpoint.host = e.value("host", std::string());
+            readPairs("headers", endpoint.headers);
+
+            if (endpoint.host.empty())
+            {
+                LOG_WARN("skipping SASE endpoint without a host (name={})", endpoint.name);
+                continue;
+            }
+        }
+        else
+        {
+            // The REST path is the one that carries a version, so it is also the one that says
+            // which API this is. Stated explicitly when present, derived otherwise.
+            const bool xml = subtype.empty() ? endpoint.path.rfind("/restapi/", 0) != 0 : subtype == "xml";
+            endpoint.subtype = xml ? ApiSubtype::Xml : ApiSubtype::Rest;
         }
 
         if (endpoint.oid.empty())
@@ -306,8 +341,17 @@ void ApiService::route(CollectordServiceManager& sm, const ApiEvent& event)
         break;
 
     case ApiEventType::RunEndpointTest:
+        // The one branch that decides everything downstream. An endpoint carries the device type it
+        // was written for, and the two vendors share no part of building a call — host, trust model,
+        // auth header and error vocabulary all differ — so they are two controllers rather than one
+        // with a switch inside every step.
         if (decodeTest(event, seqNo, input))
-            m_endpointController.runEndpointTest(*this, sm, seqNo, input);
+        {
+            if (input.value("device_type", std::string("ngfw")) == "sase")
+                m_saseController.runEndpointTest(*this, sm, seqNo, input);
+            else
+                m_ngfwController.runEndpointTest(*this, sm, seqNo, input);
+        }
         break;
 
     case ApiEventType::RunSaseTest:

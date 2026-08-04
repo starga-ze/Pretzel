@@ -121,23 +121,67 @@ bool validApiEndpoint(const json& e)
     if (path.empty() || path.front() != '/')
         return false;
 
-    if (e.contains("api_type"))
-    {
-        const std::string apiType = e.value("api_type", std::string());
-        if (apiType != "xml" && apiType != "rest")
+    // name/value lists — query parameters and (SASE) request headers share the shape.
+    auto validPairs = [&e](const char* key) {
+        if (!e.contains(key))
+            return true;
+        if (!e[key].is_array())
             return false;
-    }
-
-    if (e.contains("params"))
-    {
-        if (!e["params"].is_array())
-            return false;
-        for (const auto& p : e["params"])
+        for (const auto& p : e[key])
         {
             if (!p.is_object() || p.value("name", std::string()).empty())
                 return false;
         }
+        return true;
+    };
+
+    if (!validPairs("params"))
+        return false;
+
+    // The device type an endpoint was written for. Everything below it is disjoint: an NGFW endpoint
+    // is a path on the operator's own firewall, a SASE endpoint is an absolute URL on a Palo Alto
+    // cloud product. Absent means ngfw — every endpoint written before SASE support was one.
+    const std::string deviceType = e.value("device_type", std::string("ngfw"));
+    if (deviceType != "ngfw" && deviceType != "sase")
+        return false;
+
+    // `subtype` is the one sub-choice under the device type — the PAN-OS API for ngfw, the cloud
+    // product for sase. It replaced the old api_type/product pair; both are still accepted so an
+    // endpoint committed before the merge stays valid.
+    const std::string subtype = e.value(
+        "subtype", deviceType == "sase" ? e.value("product", std::string("ztna"))
+                                        : e.value("api_type", std::string()));
+
+    if (deviceType == "sase")
+    {
+        // Only ZTNA is served today. The other products are refused rather than accepted-and-ignored
+        // so a commit cannot leave an endpoint that looks configured and never collects.
+        if (subtype != "ztna")
+            return false;
+
+        // The host belongs to the endpoint, not the device: a SASE "device" is a tenant (the tsg_id
+        // the token is scoped to), and one tenant is read through several product hosts.
+        const std::string host = e.value("host", std::string());
+        if (host.empty() || host.find('/') != std::string::npos)
+            return false;
+
+        if (!validPairs("headers"))
+            return false;
+
+        // The bearer token is minted per call and must never be configuration.
+        for (const auto& h : e.value("headers", json::array()))
+        {
+            std::string name = h.value("name", std::string());
+            std::transform(name.begin(), name.end(), name.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (name == "authorization")
+                return false;
+        }
+        return true;
     }
+
+    if (!subtype.empty() && subtype != "xml" && subtype != "rest")
+        return false;
     return true;
 }
 

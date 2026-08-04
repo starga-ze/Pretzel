@@ -316,8 +316,8 @@
       this.meta = null;
       this.W = 440; this.H = 236;
       this.btns = {
-        download: { x: this.W - 132, y: this.H - 54, w: 104, h: 36, label: '다운로드' },
-        cancel:   { x: this.W - 244, y: this.H - 54, w: 100, h: 36, label: '취소' },
+        download: { x: this.W - 132, y: this.H - 54, w: 104, h: 36, label: 'Download' },
+        cancel:   { x: this.W - 244, y: this.H - 54, w: 100, h: 36, label: 'Cancel' },
       };
       this._build();
     }
@@ -371,14 +371,14 @@
       ctx.fillStyle = '#ffffff'; this._rr(ctx, 0, 0, this.W, this.H, 14); ctx.fill();
 
       ctx.fillStyle = '#111827'; ctx.font = '700 16px -apple-system, system-ui, sans-serif';
-      ctx.fillText('CI/DI 다운로드', 22, 34);
+      ctx.fillText('CI/DI download', 22, 34);
       ctx.fillStyle = '#6b7280'; ctx.font = '12px -apple-system, system-ui, sans-serif';
-      ctx.fillText('선택한 레코드를 PDF로 만듭니다.', 22, 56);
+      ctx.fillText('Builds a PDF from the selected records.', 22, 56);
 
       ctx.fillStyle = '#f7f8fc'; this._rr(ctx, 22, 72, this.W - 44, 54, 9); ctx.fill();
       ctx.strokeStyle = '#e4e7f0'; this._rr(ctx, 22, 72, this.W - 44, 54, 9); ctx.stroke();
       ctx.fillStyle = '#111827'; ctx.font = '600 13px -apple-system, system-ui, sans-serif';
-      ctx.fillText('계정 본인인증 · ' + (this.meta ? this.meta.name : ''), 34, 96);
+      ctx.fillText('Identity verification · ' + (this.meta ? this.meta.name : ''), 34, 96);
       ctx.fillStyle = '#6b7280'; ctx.font = '11px ui-monospace, monospace';
       ctx.fillText((this.meta ? this.meta.count.toLocaleString() : '0') + ' records · PDF', 34, 114);
 
@@ -466,12 +466,12 @@
       ctx.fillStyle = '#f0f2f8'; ctx.fillRect(0, 0, W, H);
 
       ctx.fillStyle = '#111827'; ctx.font = '700 18px -apple-system, system-ui, sans-serif';
-      ctx.fillText('Laboratory — canvas app (전체 페이지가 canvas)', 28, 42);
+      ctx.fillText('Laboratory — canvas app (the whole page is a canvas)', 28, 42);
 
       this.exitBtn = { x: W - 96, y: 24, w: 68, h: 30 };
       ctx.fillStyle = '#f7f8fc'; this._rr(ctx, this.exitBtn.x, this.exitBtn.y, this.exitBtn.w, this.exitBtn.h, 8); ctx.fill();
       ctx.strokeStyle = '#e4e7f0'; ctx.stroke();
-      this._label(ctx, '닫기', this.exitBtn, '#111827');
+      this._label(ctx, 'Close', this.exitBtn, '#111827');
 
       const cardX = 28, cardY = 72, cardW = Math.min(920, W - 56), cardH = H - 104;
       ctx.fillStyle = '#ffffff'; this._rr(ctx, cardX, cardY, cardW, cardH, 12); ctx.fill();

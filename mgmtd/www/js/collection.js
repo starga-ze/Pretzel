@@ -67,12 +67,30 @@
   const MAX_TABLE_ROWS = 300;    // beyond this the drawer is a scroll test, not a reading
   const MAX_TREE_NODES = 4000;
 
+  // The site is a scope, not a filter: it travels to mgmtd, which enumerates only that site's
+  // streams. So switching sites is a re-fetch, and the page has a real waiting state — held for a
+  // minimum so it is legible, since the read itself settles far faster than the eye does.
+  const MIN_FETCH_MS = 2000;
+  // What is actually happening, in order. mgmtd reads the database directly here — there is no
+  // second daemon in the path and nothing is composed, so these say "fetch", not "render".
+  const FETCH_STAGES = [
+    'Requesting collection state',
+    'Reading collection samples',
+    'Measuring stream health',
+    'Fetching records\u2026',
+  ];
+  const RING_R = 52;
+  const RING_C = 2 * Math.PI * RING_R;
+
   const esc = (s) => window.NMS.utils.esc(s);
   const parseTs = (s) => window.NMS.utils.parseTs(s);
   const relAge = (s) => window.NMS.utils.relAge(s);
 
   const state = {
-    site: '',            // '' = every site
+    site: '',            // '' = Overview; otherwise the scope being listed
+    booting: true,       // first load after a restored scope
+    fetching: false,     // the ring owns the page until it finishes
+    answered: false,     // the response is in; the ring may complete
     health: 'all',       // chip filter
     q: '',
     live: true,
@@ -80,7 +98,6 @@
     sites: [],
     orphans: 0,
     windowHours: 24,
-    generatedAt: '',
     error: '',
     closed: {},          // group key → collapsed
     // Drawer
@@ -94,7 +111,14 @@
     list: { rows: [], cursor: null, status: '', loading: false },
   };
 
+  // Come back where you left off. Restoring is NOT a scope change: no ring, because the operator did
+  // not ask for anything — they returned to a page they were already on.
+  state.site = window.NMS.utils.siteScope.get();
+
   let timer = null;
+  let ringTimer = null;
+  let fetchHold = null;
+  let fetchStart = 0;
 
   // ── Stream judgement ────────────────────────────────────────────────────────
   // One stream's interval decides how late is late. Three ticks, never less than 90 seconds: a
@@ -168,21 +192,107 @@
     return [...seen.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1])));
   }
 
+  // ── Waiting ─────────────────────────────────────────────────────────────────
+  // The same indicator Insight ▸ Infrastructure uses. The two pages fetch differently — that one
+  // asks a daemon to compose, this one reads the database — but from the operator's side both are
+  // "the scope changed, the page is getting it", and one waiting state for both is one thing to
+  // learn rather than two.
+  function ringHtml() {
+    return `<div class="col-panel col-fetching">
+        <div class="col-ring-wrap">
+          <svg class="col-ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="cr-track" cx="60" cy="60" r="${RING_R}"/>
+            <circle class="cr-fill" cx="60" cy="60" r="${RING_R}"
+                    stroke-dasharray="${RING_C.toFixed(1)}" stroke-dashoffset="${RING_C.toFixed(1)}"/>
+          </svg>
+          <div class="col-ring-pct">0<small>%</small></div>
+        </div>
+        <div class="col-fetch-t">Fetching this site&rsquo;s collection state</div>
+        <div class="col-fetch-stage">${esc(FETCH_STAGES[0])}</div>
+      </div>`;
+  }
+
+  function tickRing() {
+    const fill = document.querySelector('.col-ring .cr-fill');
+    if (!fill) return;
+
+    // 100% only once the answer is in hand: a full ring over an unfinished fetch turns "working"
+    // into "done, and nothing happened".
+    const elapsed = Date.now() - fetchStart;
+    const pct = Math.min(state.answered ? 1 : 0.9, elapsed / MIN_FETCH_MS);
+    fill.setAttribute('stroke-dashoffset', (RING_C * (1 - pct)).toFixed(1));
+
+    const p = document.querySelector('.col-ring-pct');
+    if (p) p.innerHTML = Math.round(pct * 100) + '<small>%</small>';
+
+    const s = document.querySelector('.col-fetch-stage');
+    if (s) {
+      const label = (!state.answered && elapsed > MIN_FETCH_MS)
+        ? 'Still waiting\u2026'
+        : FETCH_STAGES[Math.min(FETCH_STAGES.length - 1, Math.floor(pct * FETCH_STAGES.length))];
+      if (s.textContent !== label) s.textContent = label;
+    }
+  }
+
+  function startFetching() {
+    if (state.fetching) return;
+    state.fetching = true;
+    state.answered = false;
+    fetchStart = Date.now();
+    clearInterval(ringTimer);
+    ringTimer = setInterval(tickRing, 40);
+  }
+
+  function finishFetching(then) {
+    if (!state.fetching) return then();
+    clearTimeout(fetchHold);
+    fetchHold = setTimeout(() => {
+      clearInterval(ringTimer);
+      ringTimer = null;
+      state.fetching = false;
+      then();
+    }, Math.max(0, MIN_FETCH_MS - (Date.now() - fetchStart)));
+  }
+
   // ── Load ────────────────────────────────────────────────────────────────────
   async function load() {
     try {
-      const d = await window.NMS.utils.fetchJSON('/api/collection/overview?window=' + state.windowHours);
+      // The scope travels with the request; with none chosen mgmtd answers with the site list alone,
+      // which is exactly what the page needs to ask the question.
+      const d = await window.NMS.utils.fetchJSON(
+        '/api/collection/overview?window=' + state.windowHours + '&site=' + encodeURIComponent(state.site));
       if (!d) return;
       state.streams = Array.isArray(d.streams) ? d.streams : [];
       state.sites = Array.isArray(d.sites) ? d.sites : [];
       state.orphans = d.orphan_streams || 0;
       state.windowHours = d.window_hours || state.windowHours;
-      state.generatedAt = new Date().toISOString();
       state.error = '';
+
+      // A remembered site can have been deleted between visits, and a first visit to a one-site
+      // estate has exactly one sensible answer. Both settled here, on the first answer only.
+      if (state.booting) {
+        state.booting = false;
+        const known = (state.sites || []).map(x => x.oid);
+        if (state.site && known.indexOf(state.site) === -1) {
+          state.site = '';
+          window.NMS.utils.siteScope.set('');
+          return load();
+        }
+        if (!state.site && known.length === 1 && !window.NMS.utils.siteScope.get()) {
+          state.site = known[0];
+          window.NMS.utils.siteScope.set(state.site);
+          return load();
+        }
+      }
     } catch (e) {
       state.error = 'refresh failed';
+      state.booting = false;
     }
-    paint();
+
+    state.answered = true;
+    // A ring that is up runs out its length before the page appears; everything else paints now.
+    if (state.fetching) finishFetching(paint);
+    else paint();
   }
 
   // ── Shell ───────────────────────────────────────────────────────────────────
@@ -238,7 +348,14 @@
     sel.addEventListener('change', (e) => {
       if (e.target.value === state.site) return;
       state.site = e.target.value;
+      window.NMS.utils.siteScope.set(state.site);
+      // The streams on screen belong to the site being left. Clearing them first is what makes the
+      // ring appear — otherwise they count as data already in hand.
+      state.streams = [];
+      state.sel = null;
+      if (state.site) startFetching();
       paint();
+      load();
     });
 
     document.getElementById('colChips').addEventListener('click', (e) => {
@@ -270,6 +387,13 @@
     });
 
     document.getElementById('colGroups').addEventListener('click', (e) => {
+      const card = e.target.closest('[data-site]');
+      if (card) {
+        const sel = document.getElementById('colSite');
+        if (sel) { sel.value = card.dataset.site; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+        return;
+      }
+
       const head = e.target.closest('.col-group-h');
       if (head) {
         const key = head.parentElement.dataset.key;
@@ -306,11 +430,16 @@
     paintDrawer(true);
   }
 
+  // Both Insight pages are per-site now. Here the scope decides which streams are enumerated at all
+  // — mgmtd returns one site's, not the estate's — so with none chosen there is nothing to draw and
+  // the page says so rather than showing an empty grid that looks like an empty estate.
+  const scopeChosen = () => !!state.site;
+
   function paintBar() {
     const sel = document.getElementById('colSite');
     if (sel) {
       const opts = siteOptions();
-      const want = `<option value="">All sites</option>` + opts.map(([oid, name]) =>
+      const want = `<option value="">Overview</option>` + opts.map(([oid, name]) =>
         `<option value="${esc(oid)}">${esc(name)}</option>`).join('');
       // The themed dropdown reads select.options fresh each time it opens, so replacing them is
       // safe; only its collapsed label is cached, and a change event is what resyncs it. Guarded by
@@ -342,15 +471,31 @@
 
     const stamp = document.getElementById('colStamp');
     if (stamp) {
+      // The same stamp Insight ▸ Infrastructure shows, measuring the same thing: when the DATA was
+      // last collected from a device. It used to report when the browser last fetched, which reads
+      // "just now" forever — true, useless, and indistinguishable from a healthy estate on a dead
+      // one. The newest sample across the scope is the honest summary; each row states its own age.
+      let newest = 0;
+      rows.forEach(s => {
+        const t = s.last && parseTs(s.last.at);
+        if (t && t.getTime() > newest) newest = t.getTime();
+      });
+
       stamp.innerHTML = state.error
         ? `<b style="color:var(--red)">refresh failed</b> — showing last known`
-        : `polled <b>${esc(state.generatedAt ? relAge(state.generatedAt) : '—')}</b> · ${state.windowHours}h window`;
+        : `<span title="When this scope's data was last collected from a device. The page itself refreshes every ${REFRESH_LABEL}.">polled <b>${
+            newest ? esc(relAge(new Date(newest).toISOString())) : 'never'}</b></span>`;
     }
   }
 
   function paintTiles() {
     const el = document.getElementById('colTiles');
     if (!el) return;
+
+    // Nothing to summarise before a scope is chosen, and nothing worth summarising while it is being
+    // fetched — a row of dashes under a spinning ring is noise.
+    if (!scopeChosen() || state.fetching) { el.innerHTML = ''; return; }
+
     const rows = scoped();
 
     let live = 0, attention = 0, total = 0, ok = 0, latencies = [];
@@ -421,6 +566,56 @@
     const el = document.getElementById('colGroups');
     const note = document.getElementById('colNote');
     if (!el) return;
+
+    if (note) note.innerHTML = '';
+
+    if (state.fetching) { el.innerHTML = ringHtml(); return; }
+    if (state.booting && state.site) { el.innerHTML = ''; return; }
+
+    if (!scopeChosen()) {
+      // The estate at rest, not a blocked page. Rows rather than a card grid: one card in a grid
+      // reads as a layout that failed, one row reads as a list with one thing in it, and rows keep
+      // working at forty sites.
+      const sites = (state.sites || []).slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+
+      if (!sites.length) {
+        el.innerHTML = `<div class="col-panel">
+          <div class="col-panel-t">No site configured</div>
+          <div class="col-panel-s">Add one in <a href="settings?tab=sites">Configuration ▸ Sites</a>.</div>
+        </div>`;
+        return;
+      }
+
+      const tile = (v, label) => `<div class="col-ov-tile"><b>${v}</b><span>${esc(label)}</span></div>`;
+      // `sub` carries the breakdown under the headline number, so "2 devices" can say what those two
+      // are without becoming two more columns.
+      const stat = (v, label, sub) => `<span class="col-ov-stat"><b>${v}</b>${esc(label)}${
+        sub ? `<i>${esc(sub)}</i>` : ''}</span>`;
+
+      const rows = sites.map(x => {
+        const ngfw = x.ngfw || 0;
+        const sase = x.sase || 0;
+        return `<button class="col-ov-row" type="button" data-site="${esc(x.oid)}">
+          <span class="col-ov-nm">${esc(x.name || x.oid)}</span>
+          <span class="col-ov-stats">
+            ${stat(ngfw + sase, (ngfw + sase) === 1 ? 'device' : 'devices', `${sase} SASE · ${ngfw} NGFW`)}
+            ${stat(x.endpoints || 0, (x.endpoints === 1 ? 'API endpoint' : 'API endpoints'))}
+          </span>
+          <span class="col-ov-go">&rsaquo;</span>
+        </button>`;
+      }).join('');
+
+      el.innerHTML = `<div class="col-panel col-overview">
+          <div class="col-ov-h">Overview</div>
+          <div class="col-ov-tiles">
+            ${tile(sites.length, sites.length === 1 ? 'site' : 'sites')}
+          </div>
+          <div class="col-ov-list">${rows}</div>
+          <div class="col-ov-note">Open a site to see what each of its APIs is returning.</div>
+        </div>`;
+      return;
+    }
 
     const rows = visible();
     if (!rows.length) {
@@ -708,10 +903,10 @@
     const filters = [['', 'All'], ['ok', 'Succeeded'], ['fail', 'Failed']].map(([v, label]) =>
       `<button class="col-chip ${l.status === v ? 'active' : ''}" data-sf="${v}" type="button">${label}</button>`).join('');
 
-    if (l.loading && !l.rows.length) return `<div class="col-actions">${filters}</div>
+    if (l.loading && !l.rows.length) return `<div class="col-toolrow">${filters}</div>
       <div class="col-loading">Loading samples…</div>`;
 
-    if (!l.rows.length) return `<div class="col-actions">${filters}</div>
+    if (!l.rows.length) return `<div class="col-toolrow">${filters}</div>
       <div class="col-loading">No samples${l.status ? ' matching this filter' : ' recorded for this stream yet'}.</div>`;
 
     const rows = l.rows.map(r => `
@@ -727,7 +922,7 @@
         <span class="col-num">${r.bytes != null ? fmtBytes(r.bytes) : (r.body_aged ? '<small>aged</small>' : '—')}</span>
       </button>`).join('');
 
-    return `<div class="col-actions">${filters}</div>
+    return `<div class="col-toolrow">${filters}</div>
       <div class="col-samples">${rows}</div>
       <button class="col-more" id="colMore" type="button" ${l.cursor ? '' : 'disabled'}>${
         l.loading ? 'Loading…' : l.cursor ? 'Load older samples' : 'No older samples in retention'}</button>`;
@@ -814,7 +1009,7 @@
       : '';
 
     return payloadHeader(s) +
-      `<div class="col-actions">
+      `<div class="col-toolrow">
          ${toggle}
          <button class="col-btn" id="colCopy" type="button">Copy</button>
          <button class="col-btn" id="colDownload" type="button">Download</button>
@@ -1173,10 +1368,7 @@
   }
 
   // ── Formatting ──────────────────────────────────────────────────────────────
-  function fmtTs(s) {
-    const t = parseTs(s);
-    return t ? t.toLocaleString() : (s || '—');
-  }
+  const fmtTs = (s) => window.NMS.utils.fmtTs(s) === '—' ? (s || '—') : window.NMS.utils.fmtTs(s);
 
   function fmtBytes(n) {
     const v = Number(n);

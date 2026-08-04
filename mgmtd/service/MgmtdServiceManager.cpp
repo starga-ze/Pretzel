@@ -142,6 +142,39 @@ std::string MgmtdServiceManager::commitQueueSnapshot() const
     return m_commitQueueSnapshot;
 }
 
+void MgmtdServiceManager::setTopology(const std::string& siteOid, std::string modelJson)
+{
+    m_topology[siteOid] = std::move(modelJson);
+    m_topologyAt[siteOid] = std::chrono::steady_clock::now();
+    m_topologyAsked.erase(siteOid);
+}
+
+bool MgmtdServiceManager::topologyFresh(const std::string& siteOid, std::chrono::seconds within) const
+{
+    const auto it = m_topologyAt.find(siteOid);
+    return it != m_topologyAt.end() && (std::chrono::steady_clock::now() - it->second) < within;
+}
+
+// An outstanding request expires: topologyd may have died mid-compose, and a site stuck "in flight"
+// forever would never be asked again.
+bool MgmtdServiceManager::topologyRequested(const std::string& siteOid) const
+{
+    const auto it = m_topologyAsked.find(siteOid);
+    return it != m_topologyAsked.end() &&
+           (std::chrono::steady_clock::now() - it->second) < std::chrono::seconds(10);
+}
+
+void MgmtdServiceManager::markTopologyRequested(const std::string& siteOid)
+{
+    m_topologyAsked[siteOid] = std::chrono::steady_clock::now();
+}
+
+const std::string* MgmtdServiceManager::topology(const std::string& siteOid) const
+{
+    const auto it = m_topology.find(siteOid);
+    return it == m_topology.end() ? nullptr : &it->second;
+}
+
 void MgmtdServiceManager::setApiTestResult(std::uint32_t ticket, std::string resultJson)
 {
     if (m_apiTestResults.size() > 256)

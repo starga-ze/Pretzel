@@ -114,6 +114,14 @@ enum class IpcCmd : std::uint16_t
     // persisted to sase_device.status/egress_result. The SASE counterpart of ProbeResult, which stays
     // ICMP/NGFW-only now that the SASE probe runs in collectord rather than riding probed's message.
     SaseHealthResult = 133,
+
+    // ── Topology (mgmtd ↔ topologyd) ──
+    // mgmtd owns no topology logic: it asks topologyd for one site's composed picture and serves
+    // whatever it last received. topologyd reads the collected samples, correlates them and answers.
+    // A request/response pair rather than a Write, because the composition is derived and lives in
+    // memory — it is cheap to rebuild and never worth a table.
+    TopologyRequest = 139,    // mgmtd → topologyd: compose this site (payload {site})
+    TopologyResponse = 140,   // topologyd → mgmtd: the composed model
 };
 
 // Coarse role of a command, orthogonal to its domain. Feeds IpcProtocol::isRoutingAllowed, which

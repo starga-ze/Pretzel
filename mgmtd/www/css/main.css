@@ -1140,7 +1140,7 @@ html, body {
   align-items: flex-start;
   gap: 12px;
   padding: 6px 0;
-  border-bottom: 1px solid rgba(228,231,240,.6);
+  border-bottom: 1px solid var(--border);
   min-height: 34px;
 }
 .st-view-row:last-child { border-bottom: none; }
@@ -1249,7 +1249,7 @@ html, body {
 }
 .st-table tbody td {
   padding: 10px 16px;
-  border-bottom: 1px solid rgba(228,231,240,.6);
+  border-bottom: 1px solid var(--border);
   vertical-align: top;
   font-size: 13px;
   color: var(--text);
@@ -3260,6 +3260,51 @@ a.details-btn { display: inline-block; text-decoration: none; }
   letter-spacing: .03em; }
 .api-badge.rest { background: rgba(37,99,235,.12); color: var(--blue); }
 .api-badge.xml  { background: rgba(147,51,234,.12); color: #7e22ce; }
+/* Device type — its own column, because it decides which credentials can run the endpoint at all. */
+.api-badge.dev-ngfw { background: rgba(147,51,234,.12); color: #7e22ce; }
+.api-badge.dev-sase { background: rgba(22,163,74,.14); color: var(--ink-green); }
+/* SASE subtypes (the cloud products). */
+.api-badge.ztna { background: rgba(22,163,74,.14); color: var(--ink-green); }
+.api-badge.pab,
+.api-badge.scm  { background: var(--surface-2); color: var(--text-muted); }
+
+/* Values derived from another field and shown read-only beside it — host and path, split out of the
+   pasted URL. Presented as output, not as inputs an operator might try to correct. */
+.ep-derived {
+  display: flex; flex-wrap: wrap; gap: 6px 22px;
+  margin: -4px 0 8px; padding: 8px 11px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+}
+.ep-derived > div { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ep-derived-k {
+  font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); flex: 0 0 auto;
+}
+.ep-derived code {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* A field the operator cannot change, shown where the input would be so the row still reads as part
+   of the form. Device type is the one such field: it is chosen once, at creation. */
+.ep-fixed { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.ep-fixed .lbl-sub { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
+
+/* Device-type chooser, shown before the Add Endpoint form. */
+.ep-picks { display: flex; flex-direction: column; gap: 8px; }
+.ep-pick {
+  display: grid; grid-template-columns: 18px 1fr; grid-template-rows: auto auto; gap: 0 8px;
+  align-items: center; padding: 10px 12px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
+  transition: border-color var(--tr), background var(--tr);
+}
+.ep-pick:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.ep-pick:has(input:checked) {
+  border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+}
+.ep-pick input { grid-row: 1 / 3; margin: 0; accent-color: var(--accent); }
+.ep-pick-t { font-size: 13px; font-weight: 700; color: var(--text); }
+.ep-pick-s { font-size: 11px; color: var(--text-muted); }
 .ep-path { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
   display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   vertical-align: bottom; }
@@ -3657,13 +3702,14 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .ak-radio { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
 .ak-radio input { margin: 0; }
 
-/* API Endpoint: Name | Description | Device | Endpoint | Status */
-.cfg-table-endpoint .col-name   { width: 17%; }
-.cfg-table-endpoint .col-desc   { width: 19%; color: var(--text-muted); }
-.cfg-table-endpoint .col-type   { width: 9%;  white-space: nowrap; }
-.cfg-table-endpoint .col-ep     { width: 32%; }
+/* API Endpoint: Name | Description | Device Type | SubType | Endpoint | Status */
+.cfg-table-endpoint .col-name   { width: 15%; }
+.cfg-table-endpoint .col-desc   { width: 15%; color: var(--text-muted); }
+.cfg-table-endpoint .col-dev    { width: 8%;  white-space: nowrap; }
+.cfg-table-endpoint .col-type   { width: 11%; white-space: nowrap; }
+.cfg-table-endpoint .col-ep     { width: 30%; }
 .cfg-table-endpoint .col-status { width: 8%;  white-space: nowrap; }
-.cfg-table-endpoint .col-act    { width: 15%; text-align: right; }
+.cfg-table-endpoint .col-act    { width: 13%; text-align: right; }
 
 /* Enough of the issued key to recognise it, not enough to use it. */
 .key-mask { font-family: var(--font-mono); font-size: 10px; color: var(--text);
@@ -3743,7 +3789,9 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .syslog-table tbody td.syslog-td-daemon { text-align: center; }
 
 .syslog-table tbody td {
-  padding: 4px 12px; border-bottom: 1px solid rgba(228,231,240,.6);
+  /* var(--border), not a hardcoded rgba(228,231,240,…): that is the LIGHT theme's border colour, so
+     in dark mode every row was separated by a near-white line on a near-black background. */
+  padding: 4px 12px; border-bottom: 1px solid var(--border);
   vertical-align: top; font-size: 10px; color: var(--text);
   overflow: hidden;
 }

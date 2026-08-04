@@ -333,11 +333,44 @@
   // end-to-end (credential exchanged, then the endpoint called) whenever the operator wants to
   // check. Saving a schedule that has not been tested is allowed — an untested connector simply
   // reports its failures at collection time, which is where they would surface anyway.
-  function itemRow(i) {
-    const opts = ['<option value="">— select an endpoint —</option>'].concat(
-      endpointList().map(e =>
-        `<option value="${esc(e.oid)}" ${i.endpoint === e.oid ? 'selected' : ''}>${esc(e.name)}</option>`)
+  // Only endpoints written for this connector's device type are offered. An endpoint carries its
+  // own vendor — a SASE one names a cloud host and authenticates with a bearer token — so pairing
+  // one with a firewall would schedule a call that cannot work, and the failure would only surface
+  // at collection time as an unexplained sample.
+  function endpointOptsFor(deviceType, selected) {
+    const usable = endpointList().filter(e => (e.device_type || 'ngfw') === (deviceType || 'ngfw'));
+    if (!usable.length) {
+      return `<option value="">— no ${esc((deviceType || 'ngfw').toUpperCase())} endpoint defined —</option>`;
+    }
+    return ['<option value="">— select an endpoint —</option>'].concat(
+      usable.map(e => `<option value="${esc(e.oid)}" ${selected === e.oid ? 'selected' : ''}>${esc(e.name)}</option>`)
     ).join('');
+  }
+
+  // The device type currently chosen in the open editor — what the endpoint list is filtered by.
+  const selectedDeviceType = (body) =>
+    (objectByOid(body.querySelector('[data-devsel]')?.value) || {}).device_type || 'ngfw';
+
+  // Re-offer every item's endpoints after the device changes. A selection that is still valid for
+  // the new device is kept; one that is not is cleared rather than silently left pointing at an
+  // endpoint this device cannot call.
+  function refreshItemEndpoints(body) {
+    const deviceType = selectedDeviceType(body);
+    body.querySelectorAll('#acItemList .item-row').forEach(row => {
+      const sel = row.querySelector('[data-i="endpoint"]');
+      if (!sel) return;
+      const keep = endpointList().some(e => e.oid === sel.value && (e.device_type || 'ngfw') === deviceType)
+        ? sel.value : '';
+      const wrap = sel.closest('.cs');
+      sel.innerHTML = endpointOptsFor(deviceType, keep);
+      sel.value = keep;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));   // resync the themed label + path
+      if (!wrap) window.NMS.utils.enhanceSelect(sel);
+    });
+  }
+
+  function itemRow(i, deviceType) {
+    const opts = endpointOptsFor(deviceType, i.endpoint);
 
     return `<div class="item-row">
         <div class="item-top">
@@ -401,7 +434,7 @@
         <button class="btn-sm" id="acItemAdd" type="button">+ Endpoint</button>
       </div>
       <div class="item-list" id="acItemList">${(c.items.length ? c.items : [normalizeItem({})])
-        .map(itemRow).join('')}</div>`;
+        .map(i => itemRow(i, (objectByOid(c.object) || {}).device_type)).join('')}</div>`;
   }
 
   function collect(body) {
@@ -498,6 +531,11 @@
     });
     body.querySelectorAll('.item-row').forEach(wireItemRow);
 
+    // Changing the device changes which endpoints can be collected from it, so the item rows are
+    // re-offered. Bound on the select itself rather than delegated, because the site handler below
+    // re-dispatches 'change' on it and this must run for that too.
+    body.querySelector('[data-devsel]')?.addEventListener('change', () => refreshItemEndpoints(body));
+
     // Picking a site re-scopes the device list to that site and clears any prior device.
     body.querySelector('[data-sitesel]')?.addEventListener('change', (e) => {
       const dev = body.querySelector('[data-devsel]');
@@ -511,7 +549,7 @@
 
     document.getElementById('acItemAdd').onclick = () => {
       const list = document.getElementById('acItemList');
-      list.insertAdjacentHTML('beforeend', itemRow(normalizeItem({})));
+      list.insertAdjacentHTML('beforeend', itemRow(normalizeItem({}), selectedDeviceType(body)));
       const row = list.lastElementChild;
       wireItemRow(row);
       window.NMS.utils.enhanceSelect(row.querySelector('[data-i="endpoint"]'));
