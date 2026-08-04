@@ -22,50 +22,6 @@ using json = nlohmann::json;
 namespace
 {
 
-std::string queryParam(const std::string& target, const std::string& key)
-{
-    const auto q = target.find('?');
-    if (q == std::string::npos)
-        return {};
-    std::string qs = target.substr(q + 1);
-    std::istringstream ss(qs);
-    std::string token;
-    while (std::getline(ss, token, '&'))
-    {
-        const auto eq = token.find('=');
-        if (eq == std::string::npos)
-            continue;
-        if (token.substr(0, eq) == key)
-            return token.substr(eq + 1);
-    }
-    return {};
-}
-
-// Percent-decode a query value ('+' is a space) so a search term can carry spaces and punctuation.
-std::string urlDecode(const std::string& in)
-{
-    std::string out;
-    out.reserve(in.size());
-    for (std::size_t i = 0; i < in.size(); ++i)
-    {
-        if (in[i] == '+')
-        {
-            out.push_back(' ');
-        }
-        else if (in[i] == '%' && i + 2 < in.size() && std::isxdigit((unsigned char)in[i + 1]) &&
-                 std::isxdigit((unsigned char)in[i + 2]))
-        {
-            out.push_back(static_cast<char>(std::stoi(in.substr(i + 1, 2), nullptr, 16)));
-            i += 2;
-        }
-        else
-        {
-            out.push_back(in[i]);
-        }
-    }
-    return out;
-}
-
 const std::array<const char*, 7> kKnownDaemons = {"ipcd", "engined", "mgmtd", "authd", "probed", "collectord", "topologyd"};
 
 // Severity threshold: a level filter of "warn" returns warn and worse. Accepts a name or a raw digit;
@@ -136,7 +92,7 @@ void LogsController::list(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
         return fill(resp, 400, json{{"error", "unknown daemon"}}.dump());
 
     const int levelNum = levelNameToNum(queryParam(target, "level"));
-    const std::string q = urlDecode(queryParam(target, "q"));
+    const std::string q = queryParam(target, "q");   // queryParam decodes
     const std::string before = queryParam(target, "before");
 
     int limit = 100;

@@ -2,6 +2,7 @@
 
 #include "service/web/controller/ApiController.h"
 #include "service/web/controller/AuthController.h"
+#include "service/web/controller/CollectionController.h"
 #include "service/web/controller/LogsController.h"
 #include "service/web/controller/SettingsController.h"
 #include "service/web/controller/SsoController.h"
@@ -64,6 +65,11 @@ enum class WebRoute
     TlsProbe,          // POST /api/connector/tls-probe
     ApiTestResult,     // GET  /api/connector/test-result?ticket=
     KeysState,         // GET  /api/connector/keys-state
+
+    // CollectionController — the API collection pipeline's read side.
+    CollectionOverview,   // GET  /api/collection/overview?window=
+    CollectionSamples,    // GET  /api/collection/samples?connector=&endpoint=&status=&before=&limit=
+    CollectionSample,     // GET  /api/collection/sample?oid=
 
     // LogsController.
     Logs,   // GET  /api/logs?…
@@ -138,6 +144,7 @@ private:
     SettingsController m_settingsController;
     StatusController m_statusController;
     ApiController m_apiController;
+    CollectionController m_collectionController;
     LogsController m_logsController;
 };
 

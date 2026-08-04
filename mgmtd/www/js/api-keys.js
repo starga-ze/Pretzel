@@ -234,6 +234,18 @@
     return `<code class="key-mask" title="Encrypted on the appliance; never sent to the browser">stored</code>`;
   }
 
+  const parseTs = (s) => window.NMS.utils.parseTs(s);
+
+  // SASE tokens live ~15 minutes, so a day-granularity "today" says nothing useful. Remaining life
+  // is bucketed into the tiers an operator acts on — 15m / 10m / 5m / 1m / expired — rounding up to
+  // the tier that still holds, so "5m" means "no more than five minutes left, not yet under one".
+  const EXPIRY_TIERS = [
+    { ms:  1 * 60000, label: '1m',  cls: 'st-fail' },
+    { ms:  5 * 60000, label: '5m',  cls: 'st-warn' },
+    { ms: 10 * 60000, label: '10m', cls: 'st-warn' },
+    { ms: 15 * 60000, label: '15m', cls: 'st-ok'   },
+  ];
+
   function expiryCell(k) {
     const st = secrets.for(k.oid);
     if (!st.stored) return `<span class="muted">—</span>`;
@@ -241,12 +253,19 @@
       // PAN-OS keys do not expire unless an API key lifetime is configured on the device.
       return `<span class="st-never" title="No API key lifetime set on the device">no expiry</span>`;
     }
-    const when = new Date(st.expires_at);
+    const when = parseTs(st.expires_at);
+    if (!when) return `<span class="st-never" title="${esc(st.expires_at)}">unknown</span>`;
     const left = when.getTime() - Date.now();
-    if (left <= 0) return `<span class="st-fail" title="${esc(when.toLocaleString())}">expired</span>`;
+    const at = esc(when.toLocaleString());
+    if (left <= 0) return `<span class="st-fail" title="${at}">expired</span>`;
+
+    const tier = EXPIRY_TIERS.find(t => left <= t.ms);
+    if (tier) return `<span class="${tier.cls}" title="Expires ${at}">${tier.label}</span>`;
+
+    // Longer-lived keys (an NGFW lifetime configured on the device) keep the coarse view.
     const days = Math.floor(left / 86400000);
-    return `<span class="${days <= 7 ? 'st-warn' : 'st-ok'}" title="${esc(when.toLocaleString())}">${
-      days > 0 ? days + 'd left' : 'today'}</span>`;
+    return `<span class="${days <= 7 ? 'st-warn' : 'st-ok'}" title="Expires ${at}">${
+      days > 0 ? days + 'd left' : Math.floor(left / 3600000) + 'h left'}</span>`;
   }
 
   // Refresh policy at a glance.
@@ -260,16 +279,50 @@
   function statusCell(k) {
     const st = secrets.for(k.oid);
     if (!st.stored) return `<span class="st-never">no token</span>`;
-    if (st.expires_at) {
-      const left = new Date(st.expires_at).getTime() - Date.now();
-      if (left <= 0) return `<span class="st-fail" title="${esc(new Date(st.expires_at).toLocaleString())}">invalid (expired)</span>`;
-    }
+    const when = parseTs(st.expires_at);
+    if (when && when.getTime() <= Date.now())
+      return `<span class="st-fail" title="${esc(when.toLocaleString())}">invalid (expired)</span>`;
     return `<span class="st-ok">valid</span>`;
+  }
+
+  // ── Expiry ticker ────────────────────────────────────────────────────────────
+  // A 15-minute token walks down a tier while the page sits open, so the Expiry column is repainted
+  // once a minute — the finest tier the display distinguishes. Only those cells are touched: a full
+  // render() would fight an open editor or a running test. The remaining time is recomputed from the
+  // expires_at already held, except once a key reads expired — then the state is re-fetched first,
+  // since an auto-refresh key has likely been re-issued on the appliance and the row is stale.
+  const EXPIRY_TICK_MS = 60000;
+  let expiryTimer = null;
+
+  function paintExpiry() {
+    document.querySelectorAll('#contentBody td[data-expiry-oid]').forEach(td => {
+      const k = state.keys.find(x => x.oid === td.dataset.expiryOid);
+      if (k) td.innerHTML = expiryCell(k);
+    });
+  }
+
+  function stopExpiryTicker() {
+    if (expiryTimer) clearInterval(expiryTimer);
+    expiryTimer = null;
+  }
+
+  function startExpiryTicker() {
+    stopExpiryTicker();
+    expiryTimer = setInterval(async () => {
+      const cells = document.querySelectorAll('#contentBody td[data-expiry-oid]');
+      if (activeTab() !== 'api-key' || !cells.length) { stopExpiryTicker(); return; }
+      const anyExpired = Array.from(cells).some(td => {
+        const when = parseTs(secrets.for(td.dataset.expiryOid).expires_at);
+        return when && when.getTime() <= Date.now();
+      });
+      if (anyExpired) await loadKeyState();
+      paintExpiry();
+    }, EXPIRY_TICK_MS);
   }
 
   function render() {
     const el = document.getElementById('contentBody');
-    if (!el || activeTab() !== 'api-key') return;
+    if (!el || activeTab() !== 'api-key') { stopExpiryTicker(); return; }
 
     const devices = (window.NMS.devices && window.NMS.devices.list()) || [];
 
@@ -282,7 +335,7 @@
           <td class="col-ep">${endpointCell(k)}</td>
           <td class="col-cred">${credCell(k)}</td>
           <td class="col-key">${keyCell(k)}</td>
-          <td class="col-expiry">${expiryCell(k)}</td>
+          <td class="col-expiry" data-expiry-oid="${esc(k.oid)}">${expiryCell(k)}</td>
           <td class="col-refresh">${refreshCell(k)}</td>
           <td class="col-status">${statusCell(k)}</td>
           <td class="col-act">
@@ -344,6 +397,7 @@
       <div class="test-result" id="akTestResult"></div>`;
 
     wire();
+    startExpiryTicker();
   }
 
   // ── Editor ───────────────────────────────────────────────────────────────────

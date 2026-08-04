@@ -218,6 +218,9 @@ END $rename_keyenc$;
 --   connector_oid/endpoint_oid : which connector schedule, and which of its endpoints, this is from
 --   ok        : the poll produced a usable response (HTTP 200)
 --   body      : the response, capped; oversized replies are cut and `truncated` is set
+--   body_aged : the row is past the body-retention window and its payload has been released. Says
+--               "there WAS a body, it is gone" — which a bare NULL cannot, since a failed poll
+--               legitimately has no body at all. See CollectionService::prune.
 CREATE TABLE IF NOT EXISTS api_collection (
     oid           BIGSERIAL   PRIMARY KEY,
     connector_oid TEXT        NOT NULL,
@@ -229,11 +232,18 @@ CREATE TABLE IF NOT EXISTS api_collection (
     bytes         INT,
     truncated     BOOLEAN     NOT NULL DEFAULT false,
     body          TEXT,
-    error         TEXT
+    error         TEXT,
+    body_aged     BOOLEAN     NOT NULL DEFAULT false
 );
+ALTER TABLE api_collection ADD COLUMN IF NOT EXISTS body_aged BOOLEAN NOT NULL DEFAULT false;
 -- Time-series read paths: latest samples for a connector, and one endpoint's history.
 CREATE INDEX IF NOT EXISTS api_collection_conn_time ON api_collection (connector_oid, collected_at DESC);
 CREATE INDEX IF NOT EXISTS api_collection_endpoint_time ON api_collection (endpoint_oid, collected_at DESC);
+-- The Insight ▸ API Collection read path and the body-retention sweep both address ONE stream
+-- (connector + endpoint) newest-first; neither single-column index above serves that without a
+-- filter-and-sort over the whole connector's history.
+CREATE INDEX IF NOT EXISTS api_collection_stream_time
+    ON api_collection (connector_oid, endpoint_oid, collected_at DESC);
 
 -- System logs: a structured, queryable copy of each daemon's spdlog file. engined tails the rotating
 -- log files from a checkpoint (system_log_offset) and batch-inserts parsed rows here — the files stay

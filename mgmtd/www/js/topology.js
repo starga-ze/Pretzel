@@ -58,7 +58,11 @@
 (function () {
   'use strict';
 
-  const REFRESH_MS = 30000;      // the tenant probe itself runs on a 60s cycle
+  // Live re-runs exactly what the topbar's refresh button runs (NMS.onRefresh → load), on a timer.
+  // One minute matches the tenant probe's own cycle, so a faster poll could only ever redraw the
+  // same answer; the interval is stated on the button rather than left to be guessed at.
+  const REFRESH_MS = 60000;
+  const REFRESH_LABEL = '1m';
   const PX_PER_SEC = 92;         // packet speed, so a long path is not also a slow one
   const NS = 'http://www.w3.org/2000/svg';
 
@@ -269,8 +273,9 @@
         <span class="topo-bar-spacer"></span>
         <button class="topo-toggle ${state.flow ? 'on' : ''}" id="topoFlow" type="button">
           <span class="topo-live-dot"></span>Flow</button>
-        <button class="topo-toggle ${state.live ? 'on' : ''}" id="topoLive" type="button">
-          <span class="topo-live-dot"></span>Live</button>
+        <button class="topo-toggle ${state.live ? 'on' : ''}" id="topoLive" type="button"
+                title="Refreshes this page every ${REFRESH_LABEL} — the same refresh as the button in the title bar">
+          <span class="topo-live-dot"></span>Live · ${REFRESH_LABEL}</button>
         <span class="topo-stamp">${freshness(t[0])}</span>
       </div>`;
   }

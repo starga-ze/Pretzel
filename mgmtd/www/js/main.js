@@ -94,10 +94,18 @@
     { type: 'section', label: 'Insight' },
     {
       // The estate as a picture rather than a list: who connects, what they land on, where it exits.
-      type: 'link', id: 'site-topology', label: 'Site Infrastructure', href: 'topology',
+      type: 'link', id: 'site-topology', label: 'Infrastructure', href: 'topology',
       icon: `<circle cx="5" cy="12" r="2.4"/><circle cx="12" cy="5.5" r="2.4"/>
              <circle cx="12" cy="18.5" r="2.4"/><circle cx="19" cy="12" r="2.4"/>
              <path d="M7 11l3-4M7 13l3 4M14 7l3 3.4M14 17l3-3.4"/>`,
+    },
+    {
+      // The other half of the same estate: not its shape, but what its APIs are actually returning
+      // and whether the collection cycle is still turning.
+      type: 'link', id: 'api-collection', label: 'API Collection', href: 'collection',
+      icon: `<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/>
+             <path d="M4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/>
+             <path d="M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"/>`,
     },
 
     { type: 'section', label: 'Control' },
@@ -159,7 +167,8 @@
     // The group is chosen in the sidebar flyout (SETTINGS_GROUPS); the topbar shows that
     // group's name and one row of its tabs.
     'settings':        { title: 'Configuration', groups: SETTINGS_GROUPS },
-    'topology':        { title: 'Site Infrastructure' },
+    'topology':        { title: 'Infrastructure' },
+    'collection':      { title: 'API Collection' },
     'log-viewer':      { title: 'System Log' },
     'laboratory':      { title: 'Laboratory' },
   };
@@ -805,6 +814,28 @@
       if (r.status === 401) { window.location.href = '/'; return null; }
       if (!r.ok) throw new Error(r.status);
       return r.json();
+    },
+
+    // Every timestamp mgmtd emits is formatted by Postgres `OF`, which prints a whole-hour zone as
+    // `+09` — not the `+09:00` ISO 8601 requires, so `new Date()` rejects it outright and every
+    // arithmetic on the result silently becomes NaN. Pad the offset back to two fields before
+    // parsing. Returns null (never an Invalid Date) when the value cannot be used.
+    parseTs(s) {
+      if (!s) return null;
+      const t = new Date(String(s).replace(/([+-]\d{2})$/, '$1:00'));
+      return isNaN(t.getTime()) ? null : t;
+    },
+
+    // "just now" / "42s" / "7m" / "3h" / "2d" — the age of a timestamp, for a freshness stamp.
+    relAge(s) {
+      const t = this.parseTs(s);
+      if (!t) return '—';
+      const sec = Math.max(0, (Date.now() - t.getTime()) / 1000);
+      if (sec < 5) return 'just now';
+      if (sec < 90) return Math.round(sec) + 's ago';
+      if (sec < 5400) return Math.round(sec / 60) + 'm ago';
+      if (sec < 172800) return Math.round(sec / 3600) + 'h ago';
+      return Math.round(sec / 86400) + 'd ago';
     },
 
     // Enhance every <select> in a container with the custom dropdown below.

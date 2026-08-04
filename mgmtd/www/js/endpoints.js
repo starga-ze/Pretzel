@@ -38,9 +38,12 @@
   // as query parameters, and the XML API under /api/ where everything — including the command —
   // is a query parameter. The key is attached differently too (X-PAN-KEY header vs key= param),
   // which collectord does from the api_type the endpoint now carries.
+  // The path is a worked example — it shows the shape of a REST route and is meant to be edited.
+  // The query parameters are NOT: `location=vsys&vsys=vsys1` is right for one endpoint on one
+  // release and wrong for the next, and a pre-filled argument is one an operator has to notice and
+  // delete rather than one they chose. A new endpoint therefore starts with none.
   const TYPE_DEFAULTS = {
-    rest: { path: '/restapi/v10.2/Objects/Addresses',
-            params: [{ name: 'location', value: 'vsys' }, { name: 'vsys', value: 'vsys1' }] },
+    rest: { path: '/restapi/v10.2/Objects/Addresses', params: [] },
     xml:  { path: '/api',
             params: [{ name: 'type', value: 'op' },
                      { name: 'cmd', value: '<show><system><info></info></system></show>' }] },

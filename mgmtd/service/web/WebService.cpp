@@ -107,7 +107,8 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
             Match::Exact,  WebRoute::DeviceStatus,       Access::Authenticated, false},
 
         // Topology.
-        {"GET",  "/api/topology",                       Match::Exact,  WebRoute::SiteTopology,       Access::Authenticated, false},
+        {"GET",  "/api/topology",                       
+            Match::Exact,  WebRoute::SiteTopology,       Access::Authenticated, false},
 
         // Connector tests + credential state.
         {"POST", "/api/connector/keygen-test",          
@@ -127,8 +128,18 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
         {"GET",  "/api/connector/keys-state",           
             Match::Exact,  WebRoute::KeysState,          Access::Authenticated, false},
 
+        // API collection — the read side of the collector's output.
+        {"GET",  "/api/collection/overview",
+            Match::Prefix, WebRoute::CollectionOverview, Access::Authenticated, false},
+        // `samples` must precede `sample`: Prefix matching would otherwise let the shorter path
+        // claim the longer one's target.
+        {"GET",  "/api/collection/samples",
+            Match::Prefix, WebRoute::CollectionSamples,  Access::Authenticated, false},
+        {"GET",  "/api/collection/sample",
+            Match::Prefix, WebRoute::CollectionSample,   Access::Authenticated, false},
+
         // Logs.
-        {"GET",  "/api/logs",                           
+        {"GET",  "/api/logs",
             Match::Prefix, WebRoute::Logs,               Access::Authenticated, false},
     };
     // clang-format on
@@ -213,6 +224,10 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
     case WebRoute::TlsProbe:           return m_apiController.tlsProbe(sm, req, resp);
     case WebRoute::ApiTestResult:      return m_apiController.testResult(sm, req, resp);
     case WebRoute::KeysState:          return m_apiController.keysState(sm, req, resp);
+
+    case WebRoute::CollectionOverview: return m_collectionController.overview(sm, req, resp);
+    case WebRoute::CollectionSamples:  return m_collectionController.samples(sm, req, resp);
+    case WebRoute::CollectionSample:   return m_collectionController.sample(sm, req, resp);
 
     case WebRoute::Logs:               return m_logsController.list(sm, req, resp);
 
