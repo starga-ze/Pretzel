@@ -49,7 +49,7 @@
   let keyStored = {};
 
   // Staged edits are held in NMS.draft so they survive a full page reload.
-  // Dirty state / publish / revert are owned by the cross-tab staging registry (js/commit.js).
+  // Dirty state and publish are owned by the cross-tab staging registry (js/commit.js).
   const stage = () => { window.NMS.draft.set(DRAFT_KEY, state.devices); refreshPending(); };
   const refreshPending = () => window.NMS.staging.refresh();
 

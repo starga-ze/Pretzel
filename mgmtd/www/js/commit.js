@@ -56,6 +56,8 @@
             .filter(k => k.indexOf(DRAFT_PREFIX) === 0 && k !== BASE_KEY)
             .forEach(k => sessionStorage.removeItem(k));
         } catch (_) { /* ignore */ }
+        // Nothing is staged any more, and the flag is what every other page reads.
+        window.NMS.setPendingChanges(0);
         staleBase = { from: base, to: version };
       }
 
@@ -69,11 +71,10 @@
   // ── Staging registry ─────────────────────────────────────────────────────────
   // Every tab's module is loaded on the settings page and registers a provider describing its
   // own domain. The registry then owns the cross-domain view: whether anything is dirty (drives
-  // the Publish/Revert buttons), what a single publish sends, and what a revert discards —
-  // regardless of which tab is showing.
+  // the Publish button) and what a single publish sends — regardless of which tab is showing.
   //
   //   provider = {
-  //     key,                         sessionStorage draft key (for revert)
+  //     key,                         sessionStorage draft key
   //     dirty:   () => boolean,      staged differs from the committed copy
   //     payload: () => [changes],    /api/settings/commit entries for this domain
   //     before:  () => object,       committed view, for the diff
@@ -81,6 +82,10 @@
   //     onPublished: () => void,     clear the draft, adopt staged as committed
   //     problems?: () => [string],   optional: references that would publish broken
   //   }
+  //
+  // Only this page loads the registry, but the Publish button is on every page and its enabled
+  // state is mirrored through sessionStorage by NMS.setPendingChanges (js/main.js) — so refresh()
+  // below is what keeps that flag true wherever the operator walks next.
   const providers = [];
 
   const anyDirty = () => providers.some(p => p.dirty());
@@ -90,7 +95,11 @@
   }
 
   window.NMS.staging = {
-    register(provider) { providers.push(provider); refresh(); return provider; },
+    // No refresh() here: providers register before their fetch lands, so at this point every one
+    // of them reports clean. Publishing that answer would clear the pending flag — and with it
+    // the button state the other pages read — for as long as the load takes. Each module calls
+    // refresh() itself once it has data.
+    register(provider) { providers.push(provider); return provider; },
     refresh,
     anyDirty,
 
@@ -110,20 +119,22 @@
         onPublished: () => { dirty.forEach(p => p.onPublished()); refresh(); },
       });
     },
-
-    // Discard every staged draft and reload from the server copy. A reload keeps this simple and
-    // guarantees every tab's module re-reads the committed state rather than trying to unwind
-    // in-memory edits piecemeal.
-    revert() {
-      if (!anyDirty()) return;
-      if (!confirm('Discard all staged changes and reload the committed configuration?')) return;
-      providers.forEach(p => window.NMS.draft.clear(p.key));
-      location.reload();
-    },
   };
 
   window.NMS.onCommit(() => window.NMS.staging.publish());
-  window.NMS.onRevert(() => window.NMS.staging.revert());
+
+  // Publish pressed on a page that has no registry (Insight, Monitor, …) navigates here with a
+  // handoff flag; open the same flow on arrival so the click means one thing everywhere.
+  // Providers register at script load but only learn their dirty state once each module's fetch
+  // lands, so wait for that rather than firing into a registry that still looks clean.
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.NMS.pending.takeHandoff()) return;
+    const began = Date.now();
+    (function waitForData() {
+      if (anyDirty()) { window.NMS.staging.publish(); return; }
+      if (Date.now() - began < 5000) setTimeout(waitForData, 100);
+    })();
+  });
 
   // Report a discard once, after the tab has painted — an alert during module load would fire
   // before the operator can see what changed.
@@ -444,8 +455,8 @@
         <div class="cm-warn-h">${problems.length} broken reference${problems.length > 1 ? 's' : ''}</div>
         <ul>${problems.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
         <div class="cm-warn-note">Publishing anyway is allowed, but these will show as
-          <b>missing</b> until the target exists. If the staged edits predate a reset, discard
-          them with Revert instead.</div>
+          <b>missing</b> until the target exists. If the staged edits predate a reset, cancel and
+          recreate what they point at — or close this browser tab, which discards them.</div>
       </div>`;
   }
 

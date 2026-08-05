@@ -605,54 +605,12 @@ html, body {
   box-shadow: 0 2px 8px rgba(249,115,22,.35);
 }
 /* Disabled keeps the orange identity but muted so it reads as the deploy button with
-   nothing pending — clearly distinct from the solid active state. */
+   nothing pending — clearly distinct from the solid active state. Every page shows it, so
+   this muted state is what most pages wear most of the time. */
 .topbar-commit:disabled {
   background: rgba(249,115,22,.11);
   color: #bd6a2d;
   border-color: rgba(249,115,22,.22);
-  cursor: default;
-}
-/* View reads the committed config, so unlike Revert/Publish it is never disabled. Quietest of
-   the three: text-only until hovered, since it is the non-mutating action. */
-.topbar-view {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 14px;
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 700;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background var(--tr), color var(--tr), border-color var(--tr);
-}
-.topbar-view:hover { color: var(--text); border-color: var(--border); background: var(--surface-2); }
-
-/* Revert sits next to Publish and follows its enabled state, but stays visually quiet —
-   an outline button that only turns red on hover, so the destructive action is deliberate. */
-.topbar-revert {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 16px;
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 700;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background var(--tr), color var(--tr), border-color var(--tr);
-}
-.topbar-revert:not(:disabled):hover {
-  color: #dc2626;
-  border-color: rgba(220,38,38,.45);
-  background: rgba(220,38,38,.06);
-}
-.topbar-revert:disabled {
-  opacity: .4;
   cursor: default;
 }
 .topbar-commit .commit-dot {

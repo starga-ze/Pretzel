@@ -32,7 +32,7 @@
 <!-- Configuration is one page with two levels of tabs (see PAGES.settings in main.js). Every tab
      module loads here: each renders into #contentBody only when its own tab is active, but keeps
      its data + staged state resident so cross-references (site names, profile labels, endpoint
-     and object pickers) resolve from any tab and the Publish/Revert pending state spans all
+     and object pickers) resolve from any tab and the Publish pending state spans all
      domains — commit.js owns that registry, so it loads first. users/operation are read-only
      tabs with no staging provider. Splitting these across pages would break the shared registry. -->
 <script src="js/commit.js"></script>

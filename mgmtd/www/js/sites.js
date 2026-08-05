@@ -35,7 +35,7 @@
   const blank = () => normalize({});
 
   // ── Staging ──────────────────────────────────────────────────────────────────
-  // Dirty state / publish / revert are owned by the cross-tab staging registry (js/commit.js).
+  // Dirty state and publish are owned by the cross-tab staging registry (js/commit.js).
   const stage = () => { window.NMS.draft.set(DRAFT_KEY, state.sites); refreshPending(); };
   const refreshPending = () => window.NMS.staging.refresh();
 

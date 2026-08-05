@@ -212,8 +212,6 @@
       <div class="topbar-main">
         <h1 class="topbar-title">${heading}</h1>
         <div class="topbar-actions">
-          <button class="topbar-view" id="viewBtn" type="button">View</button>
-          <button class="topbar-revert" id="revertBtn" type="button" disabled>Revert</button>
           <button class="topbar-commit" id="commitBtn" type="button" disabled>
             <span id="commitLabel">Publish</span>
           </button>
@@ -245,7 +243,7 @@
     el.innerHTML = html;
 
     // Settings navigation is client-side: every tab module stays loaded with its in-memory and
-    // staged state, so the topbar — and the Publish/Revert pending state — survives the switch
+    // staged state, so the topbar — and the Publish pending state — survives the switch
     // instead of being rebuilt disabled and re-enabled once the data refetch lands. Modules
     // repaint on 'nms:tab-change'. Other tabbed pages (audit) keep plain navigation.
     if (cfg.groups && page === 'settings') {
@@ -297,7 +295,7 @@
 
       // The sidebar flyout navigates between groups. While already on this page that should be
       // the same in-place switch as a tab click — a full load would rebuild the topbar and make
-      // the Publish/Revert state flicker back through disabled.
+      // the Publish state flicker back through disabled.
       window.NMS = window.NMS || {};
       window.NMS.gotoSettingsTab = (tabId) => {
         if (!allTabs.some(t => t.id === tabId) || tabId === currentTab()) return false;
@@ -306,18 +304,18 @@
       };
     }
 
+    // Staged changes belong to the browser tab, not to a page, so the button reflects them on
+    // every page. Painted from the stored flag here and corrected by setPendingChanges once the
+    // staging registry (js/commit.js, Configuration only) has its data.
+    applyPending(window.NMS.pending.get());
+
     document.getElementById('commitBtn')?.addEventListener('click', () => {
-      if (typeof window.NMS._onCommit === 'function') window.NMS._onCommit();
-    });
-
-    document.getElementById('revertBtn')?.addEventListener('click', () => {
-      if (typeof window.NMS._onRevert === 'function') window.NMS._onRevert();
-    });
-
-    // View is always available — it reads the committed configuration, so it does not depend on
-    // anything being staged (see NMS.viewRunningConfig in js/commit.js).
-    document.getElementById('viewBtn')?.addEventListener('click', () => {
-      if (typeof window.NMS.viewRunningConfig === 'function') window.NMS.viewRunningConfig();
+      if (typeof window.NMS._onCommit === 'function') { window.NMS._onCommit(); return; }
+      // Only Configuration loads the staging registry, and the review diff needs every tab
+      // module's committed baseline — so a publish started elsewhere is handed to that page,
+      // which opens the same flow on arrival (see js/commit.js).
+      try { sessionStorage.setItem(PUBLISH_ON_LOAD_KEY, '1'); } catch (_) { /* ignore */ }
+      location.href = 'settings';
     });
 
     document.getElementById('refreshBtn')?.addEventListener('click', (e) => {
@@ -577,7 +575,7 @@
         }).join('');
 
       // Already on the target page: switch in place rather than reloading, so the topbar and
-      // the staged Publish/Revert state survive (see NMS.gotoSettingsTab).
+      // the staged Publish state survive (see NMS.gotoSettingsTab).
       flyout.querySelectorAll('[data-goto-tab]').forEach(a => {
         a.addEventListener('click', (e) => {
           if (typeof window.NMS.gotoSettingsTab !== 'function') return;
@@ -767,18 +765,49 @@
   /* ── Shared utils ── */
   window.NMS = window.NMS || {};
 
-  // Top-right Publish/Revert button control. setPendingChanges(n) is called whenever the staged
-  // change count changes (0 => both disabled/muted, >0 => both active); register the deploy and
-  // discard actions with onCommit(fn) / onRevert(fn).
+  // Top-right Publish button control. setPendingChanges(n) is called whenever the staged change
+  // count changes (0 => disabled/muted, >0 => active); register the deploy action with
+  // onCommit(fn).
+  //
+  // The pending state is mirrored into sessionStorage next to the drafts themselves, because the
+  // drafts outlive the page: they are per browser tab (js/commit.js), while the staging registry
+  // that can compute dirtiness is only loaded on Configuration. Without this, walking to Insight
+  // with changes staged showed a dead Publish button — the changes were still there, nothing on
+  // that page knew it.
+  const PENDING_KEY = 'pz.pending';
+  const PUBLISH_ON_LOAD_KEY = 'pz.publishOnLoad';
+
+  function applyPending(dirty) {
+    const commit = document.getElementById('commitBtn');
+    if (commit) commit.disabled = !dirty;   // label stays "Publish"; only enabled state changes
+  }
+
+  window.NMS.pending = {
+    get() {
+      try { return sessionStorage.getItem(PENDING_KEY) === '1'; } catch (_) { return false; }
+    },
+    set(dirty) {
+      try {
+        if (dirty) sessionStorage.setItem(PENDING_KEY, '1');
+        else sessionStorage.removeItem(PENDING_KEY);
+      } catch (_) { /* quota/private mode */ }
+    },
+    // Consumed once by the page that owns the publish flow.
+    takeHandoff() {
+      try {
+        const v = sessionStorage.getItem(PUBLISH_ON_LOAD_KEY);
+        sessionStorage.removeItem(PUBLISH_ON_LOAD_KEY);
+        return v === '1';
+      } catch (_) { return false; }
+    },
+  };
+
   window.NMS.setPendingChanges = function (n) {
     const dirty = (n | 0) > 0;
-    const commit = document.getElementById('commitBtn');
-    const revert = document.getElementById('revertBtn');
-    if (commit) commit.disabled = !dirty;   // label stays "Publish"; only enabled state changes
-    if (revert) revert.disabled = !dirty;
+    window.NMS.pending.set(dirty);
+    applyPending(dirty);
   };
   window.NMS.onCommit = function (fn) { window.NMS._onCommit = fn; };
-  window.NMS.onRevert = function (fn) { window.NMS._onRevert = fn; };
 
   // Register how the current page re-renders itself when the topbar Refresh is clicked.
   // Unregistered pages fall back to a full reload.
