@@ -244,8 +244,7 @@
         <select data-f="device_type" data-typesel>${typeOpts}</select></div>
       <div class="field-row"><label>Access Type</label>
         <input value="${esc(accessLabel(d.device_type))}" disabled/></div>
-      <p class="field-hint">Access Type follows the device type — an NGFW is reached at its own
-        address, SASE through its tenant.</p>
+      <p class="field-hint">Follows the device type.</p>
       ${fieldRow(accessLabel(d.device_type), 'target', d.target, accessPlaceholder(d.device_type))}
       ${d.device_type === 'sase' ? healthSection(d, d.health || {}) : ngfwStatusSection(d)}`;
   }
@@ -256,8 +255,7 @@
   function ngfwStatusSection(d) {
     return `
       <div class="editor-sec">STATUS &amp; CERTIFICATE</div>
-      <p class="field-hint">Reachability is checked by ICMP ping — nothing to configure. Pin the
-        device's TLS certificate now so its API key can be issued later without a trust prompt.</p>
+      <p class="field-hint">Pin the TLS certificate now so an API key can be issued later.</p>
       ${d.fingerprint
         ? `<div class="fp-box"><div class="fp-label">Pinned certificate (SHA-256)</div>
              <code class="fp-val">${esc(d.fingerprint)}</code>

@@ -425,10 +425,8 @@
         <select data-f="auth_profile">${profOpts}</select></div>
 
       <div class="editor-sec">ENDPOINT CONTROL</div>
-      <p class="field-hint">Each endpoint is a complete request defined on the
-        <a href="settings?tab=api-endpoint">API Endpoint</a> page. This decides which of them this
-        device is polled for, and how often. <b>API TEST</b> issues a key and calls that one
-        endpoint against this device.</p>
+      <p class="field-hint">Which <a href="settings?tab=api-endpoint">endpoints</a> this device is
+        polled for, and how often.</p>
       <div class="item-head">
         <label>Endpoints</label>
         <button class="btn-sm" id="acItemAdd" type="button">+ Endpoint</button>

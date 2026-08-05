@@ -3492,6 +3492,10 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .q-failed  { color: var(--red);        font-weight: 700; font-size: 10px; }
 
 .cfg-foot-note { font-size: 10.5px; color: var(--text-muted); margin: 12px 0 0; line-height: 1.5; }
+/* Anything offered as guidance rather than as data reads as guidance: one muted colour for every
+   placeholder in the app, so a suggested value is never mistaken for a typed one. */
+input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1; }
+
 .field-hint { font-size: 10.5px; color: var(--text-muted); margin: -2px 0 10px; line-height: 1.5; }
 .field-hint a { color: var(--accent); }
 

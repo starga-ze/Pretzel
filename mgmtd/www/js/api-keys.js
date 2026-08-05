@@ -378,10 +378,8 @@
           <tbody>${rows}</tbody>
         </table>
 
-        <p class="cfg-foot-note">The issued key is encrypted with the appliance key
-          (<code>/etc/pretzel/credentials.key</code>) and stored outside the configuration, so it
-          survives a restart and never appears in a config diff or export. The password you type
-          is only used to obtain it and is not persisted.</p>
+        <p class="cfg-foot-note">Issued keys are encrypted on the appliance and kept out of the
+          configuration. The password you type is not stored.</p>
       </div>
 
       <div class="slideover-overlay" id="akOverlay"></div>
@@ -444,9 +442,9 @@
                  — reached at <code>${esc(dev.target)}</code>.</p>` : ''}
 
       <div class="editor-sec">KEY GENERATION</div>
-      ${fieldRow(spec.hostEndpoint ? 'Token endpoint' : 'Endpoint', 'endpoint', k.endpoint || spec.keygenHint || '', 'text', spec.keygenHint)}
+      ${fieldRow(spec.hostEndpoint ? 'Token endpoint' : 'Endpoint', 'endpoint', k.endpoint, 'text', spec.keygenHint)}
       <p class="field-hint">${spec.hostEndpoint
-        ? 'OAuth token host and path — change only for a different region or cloud.'
+        ? 'Token host and path.'
         : 'Path only — the host comes from the device.'}</p>
 
       <div class="editor-sec">CREDENTIAL</div>
@@ -462,8 +460,8 @@
         <label>Interval (min)</label>
         <input type="number" min="1" data-f="refresh_interval_min" value="${esc(k.refresh_interval_min || 60)}"/></div>
       <p class="field-hint">${spec.hostEndpoint
-        ? 'SASE tokens expire (~15 min). Auto re-issues on the interval; Manual re-issues when you press Test.'
-        : 'NGFW keys do not expire, so auto refresh is not required. Enable Auto only to re-issue the key periodically for freshness.'}</p>`;
+        ? 'SASE tokens expire in ~15 minutes. Auto re-issues on the interval.'
+        : 'NGFW keys do not expire; Auto is optional.'}</p>`;
   }
 
   function collect(body) {

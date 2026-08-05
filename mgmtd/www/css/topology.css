@@ -70,6 +70,9 @@
 
 .topo-stamp { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
 .topo-stamp b { color: var(--text); font-weight: 600; }
+/* The trailing stamp now carries only a failed refresh, so it is empty most of the time. A flex item
+   with no text still spends a gap, which reads as crooked padding at the end of the bar. */
+.topo-stamp:empty { display: none; }
 
 /* ── Canvas ─────────────────────────────────────────────────────────────────── */
 .topo-canvas {

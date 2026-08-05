@@ -43,8 +43,8 @@
           <div class="cfg-card">
             <div class="cfg-card-h">Signed in as</div>
             <div class="cfg-card-big">${esc(username)}</div>
-            <p class="field-hint">Local credentials are stored hashed in the database, outside the
-              versioned configuration. SSO (Okta) accounts have no local password.</p>
+            <p class="field-hint">Passwords are hashed and kept out of the configuration.
+              SSO accounts have none.</p>
           </div>
 
           <div class="cfg-card">

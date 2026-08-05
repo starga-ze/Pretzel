@@ -58,7 +58,7 @@
       // the operator is asked the question at the moment they can answer it.
       headers: [{ name: 'x-panw-region', value: '' }],
       params: [],
-      hint: 'Region is required — americas, au, ca, de, europe, in, jp, sg or uk.',
+      hint: 'Region required: americas, au, ca, de, europe, in, jp, sg, uk.',
     },
     // Listed but not selectable, so the menu is honest about what exists rather than implying the
     // list is complete.
@@ -168,19 +168,16 @@
     return { host, path, params };
   }
 
-  const blankNgfw = (subtype) => normalize({
-    device_type: 'ngfw', subtype, path: TYPE_DEFAULTS[subtype].path, params: TYPE_DEFAULTS[subtype].params,
-  });
+  // Nothing is seeded: TYPE_DEFAULTS and the product specs are placeholder text, shown grey, never
+  // a value the operator has to notice and delete.
+  const blankNgfw = (subtype) => normalize({ device_type: 'ngfw', subtype });
 
-  const blankSase = (subtype) => {
-    const spec = subtypeSpec(subtype);
-    const { host, path, params } = splitSaseUrl(spec.url || '');
-    return normalize({
-      device_type: 'sase', subtype, host, path,
-      params: (spec.params && spec.params.length ? spec.params : params).map(p => ({ ...p })),
-      headers: (spec.headers || []).map(h => ({ ...h })),
-    });
-  };
+  const blankSase = (subtype) => normalize({
+    device_type: 'sase', subtype,
+    // The one exception: a required header the operator must supply a value for. The NAME is
+    // structure, not a suggestion — leaving it out would just make them look it up.
+    headers: ((subtypeSpec(subtype).headers) || []).map(h => ({ ...h })),
+  });
 
   const blank = (deviceType, subtype) => {
     const st = subtype || defaultSubtype(deviceType);
@@ -346,9 +343,8 @@
           <tbody>${rows}</tbody>
         </table>
 
-        <p class="cfg-foot-note">Endpoints are reusable across devices. The release is part of the
-          path and is entered as written (<code>/restapi/v10.2/…</code>), so an endpoint only fits
-          the releases that serve it — say so in the name.</p>
+        <p class="cfg-foot-note">Reusable across devices. The PAN-OS release is part of the path,
+          so name endpoints accordingly.</p>
       </div>
 
       <div class="slideover-overlay" id="epOverlay"></div>
@@ -398,8 +394,8 @@
     // Both call layouts are rendered and toggled by a class on #epCall (no rebuild, so edits in the
     // hidden one survive a switch). The inactive type is pre-seeded with its default so switching
     // lands on a usable starting point.
-    const restData = e.subtype === 'rest' ? e : { path: TYPE_DEFAULTS.rest.path, params: TYPE_DEFAULTS.rest.params };
-    const xmlData = e.subtype === 'xml' ? e : { path: TYPE_DEFAULTS.xml.path, params: TYPE_DEFAULTS.xml.params };
+    const restData = e.subtype === 'rest' ? e : { path: '', params: [] };
+    const xmlData = e.subtype === 'xml' ? e : { path: '', params: [] };
 
     return `
       <div class="editor-sec">CALL</div>
@@ -427,9 +423,7 @@
           <div class="field-row"><label>Endpoint <span class="lbl-sub">— full XML API URL</span></label>
             <input data-f="xml-url" value="${esc(rawXmlUrl(xmlData))}"
               placeholder="/api?type=op&amp;cmd=&lt;show&gt;&lt;system&gt;&lt;info/&gt;&lt;/system&gt;&lt;/show&gt;"/></div>
-          <p class="field-hint">Paste the URL straight from the firewall's <b>API browser</b>. The key
-            is added automatically (<code>key=</code> parameter) and <code>&lt;&gt;</code> are
-            percent-encoded for you — type them raw.</p>
+          <p class="field-hint">Paste from the firewall's API browser. The key is added for you.</p>
         </div>
       </div>`;
   }
@@ -458,16 +452,15 @@
         <div><span class="ep-derived-k">Host</span><code id="epHostOut">${esc(e.host) || '—'}</code></div>
         <div><span class="ep-derived-k">Path</span><code id="epPathOut">${esc(e.path) || '—'}</code></div>
       </div>
-      <p class="field-hint">Paste the whole URL — host and path are split out of it. A query string
-        is moved into the parameters below.${spec.hint ? ' ' + esc(spec.hint) : ''}</p>
+      <p class="field-hint">Host and path are split out of the URL; a query string moves into the
+        parameters below.${spec.hint ? ' ' + esc(spec.hint) : ''}</p>
 
       <div class="param-head">
         <label>Headers</label>
         <button class="btn-sm" id="epHeaderAdd" type="button">+ Header</button>
       </div>
       <div class="param-list" id="epHeaderList">${headers.map(paramRow).join('')}</div>
-      <p class="field-hint"><code>Authorization</code> is added for you from the API Credential's
-        token — do not set it here.</p>
+      <p class="field-hint"><code>Authorization</code> is added for you — do not set it here.</p>
 
       <div class="param-head">
         <label>Query parameters</label>
@@ -567,8 +560,7 @@
         <span class="ep-pick-s">${esc(d.sub)}</span></label>`).join('');
 
     window.NMS.modal.open('Add Endpoint', `
-      <p class="cm-lead">What kind of device does this endpoint call? It decides the whole form —
-        and it cannot be changed afterwards.</p>
+      <p class="cm-lead">What does this endpoint call? This cannot be changed later.</p>
       <div class="ep-picks">${opts}</div>`,
       `<button class="btn-sm" id="cmDone">Cancel</button>
        <span style="flex:1"></span>
@@ -648,7 +640,9 @@
     // path anyone walks yet.
     body.querySelector('[data-f="subtype"]')?.addEventListener('change', (ev) => {
       const spec = subtypeSpec(ev.target.value);
-      body.querySelector('[data-f="sase-url"]').value = spec.url || '';
+      const url = body.querySelector('[data-f="sase-url"]');
+      url.value = '';
+      url.placeholder = spec.url || '';
       const list = document.getElementById('epHeaderList');
       list.innerHTML = ((spec.headers && spec.headers.length) ? spec.headers : [{ name: '', value: '' }])
         .map(paramRow).join('');

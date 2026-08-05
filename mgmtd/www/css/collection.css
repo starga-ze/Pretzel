@@ -43,6 +43,8 @@
 .col-search:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
 .col-stamp { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
 .col-stamp b { color: var(--text); font-weight: 600; }
+/* Empty unless a refresh failed — see .topo-stamp:empty for why this must not hold a flex gap. */
+.col-stamp:empty { display: none; }
 
 .col-chip {
   font: inherit; font-size: 10.5px; font-weight: 600; color: var(--text-muted);

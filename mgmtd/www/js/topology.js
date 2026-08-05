@@ -313,48 +313,14 @@
       </div>`;
   }
 
-  // Two different ages hide behind one word here, and conflating them would flatter the page: the
-  // browser polls mgmtd every 30s, but the drawing is only as current as the tenant's last answer —
-  // collectord probes on a 60s cycle and reports the previous cycle's outcome, so the fabric can be
-  // a couple of minutes old while the poll is seconds old. sase_device.last_seen is the honest one.
-  // (updated_at is not: config projection bumps it whether or not the tenant answered.)
-  // The stamp both Insight pages share. It reports when the DATA was last collected from a device —
-  // not when the browser last fetched, which is what it used to say and which only ever measures the
-  // page's own poll interval ("just now", forever, however dead the estate is).
-  //
-  // The newest contributing timestamp across the scope: "we last learned something this long ago".
-  // Each lane and each stream states its own age separately, so this is the summary, not the detail.
-  function newestDataAt() {
-    let best = 0;
-    const consider = (iso) => {
-      if (!iso) return;
-      const t = Date.parse(String(iso).replace(/([+-]\d{2})$/, '$1:00'));
-      if (isFinite(t) && t > best) best = t;
-    };
-    tenantsForSite().forEach((t) => {
-      consider(t.last_seen);
-      consider(t.ztna && t.ztna.collected_at);
-    });
-    ngfwForSite().forEach((d) => {
-      consider(d.interfaces && d.interfaces.collected_at);
-      consider(d.tunnels && d.tunnels.collected_at);
-    });
-    return best;
-  }
-
+  // There is no scope-wide "last polled" summary. One number over a whole site could only ever be
+  // the newest contributing timestamp, and that is three unsynchronised cycles deep — the collectord
+  // probe, mgmtd's topology cache, and this page's own refresh — so it reads as a couple of minutes
+  // behind even when nothing is wrong. Each lane and each node states its own age instead, which is
+  // the number an operator can actually act on. Only a failed refresh still speaks here.
   function freshness() {
     if (state.error) return `<b style="color:var(--red)">${esc(state.error)}</b> — showing last known`;
-
-    const at = newestDataAt();
-    if (!at) return `<span title="Nothing has been collected for this scope yet.">not collected yet</span>`;
-
-    // Deliberately generous. Collection intervals are the operator's to set and are routinely an
-    // hour, so a threshold tuned to the 60-second SASE probe would paint a healthy estate orange.
-    // This only shouts when nothing at all has arrived for far longer than any sane interval.
-    const age = (Date.now() - at) / 1000;
-    const stale = age > 7200;
-    return `<span title="When this scope's data was last collected from a device. The page itself refreshes every ${REFRESH_LABEL}.">polled <b${
-      stale ? ' style="color:var(--orange)"' : ''}>${esc(relStamp(new Date(at).toISOString()))}</b></span>`;
+    return '';
   }
 
   function ageSeconds(iso) {
@@ -1393,10 +1359,8 @@
       </dl>
       ${fwDetail(d)}
       <div class="topo-drawer-sec">Why it is in this picture</div>
-      <p class="field-hint">A Service Connection terminates on an SC-CAN, which performs no
-        inspection — private-app policy is enforced here. Which Service Connection reaches this
-        firewall is not readable yet, so no link is drawn to it. ZTNA connectors are not peers of
-        this firewall either: they run on hosts behind it and tunnel to the fabric themselves.</p>`;
+      <p class="field-hint">No Service Connection or ZTNA link is drawn — neither is reported by an
+        API yet, and connectors are not peers of this firewall.</p>`;
     document.getElementById('topoDrawer').classList.add('open');
     document.querySelectorAll('.topo-node.selected').forEach(el => el.classList.remove('selected'));
   }

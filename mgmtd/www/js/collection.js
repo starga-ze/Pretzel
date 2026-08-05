@@ -469,22 +469,16 @@
 
     document.getElementById('colLive')?.classList.toggle('on', state.live);
 
+    // No scope-wide "last polled" summary. Streams run on per-endpoint intervals the operator sets,
+    // so the newest sample across a scope says nothing about the slowest one, and it is read through
+    // this page's own 1m refresh on top of that — the number looked wrong whenever it wasn't. Each
+    // row carries its own age and its own health dot, which is what the filter chips act on. The
+    // stamp is kept for one thing only: saying that a refresh failed and the screen is not current.
     const stamp = document.getElementById('colStamp');
     if (stamp) {
-      // The same stamp Insight ▸ Infrastructure shows, measuring the same thing: when the DATA was
-      // last collected from a device. It used to report when the browser last fetched, which reads
-      // "just now" forever — true, useless, and indistinguishable from a healthy estate on a dead
-      // one. The newest sample across the scope is the honest summary; each row states its own age.
-      let newest = 0;
-      rows.forEach(s => {
-        const t = s.last && parseTs(s.last.at);
-        if (t && t.getTime() > newest) newest = t.getTime();
-      });
-
       stamp.innerHTML = state.error
         ? `<b style="color:var(--red)">refresh failed</b> — showing last known`
-        : `<span title="When this scope's data was last collected from a device. The page itself refreshes every ${REFRESH_LABEL}.">polled <b>${
-            newest ? esc(relAge(new Date(newest).toISOString())) : 'never'}</b></span>`;
+        : '';
     }
   }
 
