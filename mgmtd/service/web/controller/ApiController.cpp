@@ -378,4 +378,20 @@ void ApiController::keysState(MgmtdServiceManager& sm, const pz::http::HttpReque
     fill(resp, 200, out.dump());
 }
 
+
+void ApiController::onTestResponse(MgmtdServiceManager& sm, const pz::ipc::IpcMessage& msg)
+{
+    const auto& pl = msg.getPayload();
+    if (pl.empty())
+    {
+        // The browser is holding this ticket open. Dropping the message silently would leave it
+        // polling until its own timeout, so the ticket is answered with the failure instead.
+        LOG_WARN("empty connector-test response (seq={}) — answering the ticket as failed", msg.getSeqNo());
+        sm.setApiTestResult(msg.getSeqNo(), R"({"ok":false,"message":"the daemon returned an empty result"})");
+        return;
+    }
+
+    sm.setApiTestResult(msg.getSeqNo(), std::string(pl.begin(), pl.end()));
+}
+
 }

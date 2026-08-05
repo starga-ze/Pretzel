@@ -5,8 +5,6 @@
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
 
-#include <nlohmann/json.hpp>
-
 #include <memory>
 
 namespace pz::mgmtd
@@ -33,60 +31,6 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
     LOG_TRACE("recv (cmd={}, src={})", pz::ipc::IpcProtocol::cmdToStr(msg->getCmd()),
               pz::ipc::IpcProtocol::daemonToStr(msg->getSrc()));
-
-    if (msg->getCmd() == pz::ipc::IpcCmd::ConfigReloadResponse)
-    {
-        LOG_INFO("config reload acknowledged by engined");
-        m_serviceManager->completeReload();
-        return;
-    }
-
-    if (msg->getCmd() == pz::ipc::IpcCmd::SettingsCommitStatus)
-    {
-        const auto& pl = msg->getPayload();
-        if (!pl.empty())
-        {
-            m_serviceManager->setCommitQueue(std::string(pl.begin(), pl.end()));
-            LOG_DEBUG("commit queue snapshot updated");
-        }
-        return;
-    }
-
-    if (msg->getCmd() == pz::ipc::IpcCmd::AuthSamlAcsResponse)
-    {
-        const auto& pl = msg->getPayload();
-        m_serviceManager->setSsoResult(msg->getSeqNo(), std::string(pl.begin(), pl.end()));
-        return;
-    }
-
-    // collectord ran the device call; seqNo is the ticket the browser is polling on.
-    if (msg->getCmd() == pz::ipc::IpcCmd::ApiConnectorTestResponse)
-    {
-        const auto& pl = msg->getPayload();
-        m_serviceManager->setApiTestResult(msg->getSeqNo(), std::string(pl.begin(), pl.end()));
-        return;
-    }
-
-    // topologyd composed a site. The model carries the site it was built for, so the answer files
-    // itself — no request/response correlation table for something that is simply the latest truth
-    // about a named site.
-    if (msg->getCmd() == pz::ipc::IpcCmd::TopologyResponse)
-    {
-        const auto& pl = msg->getPayload();
-        std::string body(pl.begin(), pl.end());
-        std::string site;
-        try
-        {
-            site = nlohmann::json::parse(body).value("site", std::string());
-        }
-        catch (const std::exception& e)
-        {
-            LOG_WARN("topology response was not JSON ({}) — dropping", e.what());
-            return;
-        }
-        m_serviceManager->setTopology(site, std::move(body));
-        return;
-    }
 
     std::unique_ptr<MgmtdEvent> event = m_eventFactory->create(std::move(msg));
 

@@ -33,10 +33,21 @@ find_package(GTest QUIET)
 # DB-stored running-config / state snapshots / device inventory in shared/db.
 find_package(PostgreSQL REQUIRED)
 
+# An appliance ships one build and debugs it from a core file — there is no attaching gdb to a
+# customer's box, and a crash that cannot be read is a crash that gets guessed at. Default to
+# RelWithDebInfo so every binary carries DWARF (-g) alongside -O2. Symbols cost disk, which the
+# appliance has, and nothing at runtime: they are not loaded unless something reads them.
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
+endif()
+
 add_compile_options(
     -Wall
     -Wextra
     -fdiagnostics-color=always
+    # Frame pointers survive -O2 here on purpose: without them a core's backtrace through an
+    # optimised Boost.Asio completion chain degrades into "??" exactly where the fault is.
+    -fno-omit-frame-pointer
 )
 
 # Keep symbols that come from static archives — notably our bundled OpenSSL — out of each

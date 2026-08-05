@@ -162,10 +162,60 @@ void BootstrapService::handleEvent(MgmtdServiceManager& serviceManager, const Bo
         break;
     }
 
+    case BootstrapEventType::ReceiveConfigReloadResponse:
+    {
+        const auto* msg = event.message();
+        if (!msg)
+        {
+            LOG_WARN("received empty ConfigReloadResponse");
+            return;
+        }
+
+        onConfigReloadResponse(serviceManager, *msg);
+        break;
+    }
+
     default:
         LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
         break;
     }
+}
+
+// engined answers this whether the fleet converged or not, and the two are not the same outcome.
+// The failure carries IpcFlag::Error and {"ok":false}; the browser is holding a progress bar open on
+// the result, so reporting a failed reload as "Published" is the one thing this must not do.
+//
+// The flag is the authority and the payload is a courtesy — a message that lost its body still has a
+// header, so a missing payload is read as whatever the flag says rather than as success.
+void BootstrapService::onConfigReloadResponse(MgmtdServiceManager& serviceManager,
+                                              const pz::ipc::IpcMessage& msg)
+{
+    bool ok = !pz::ipc::IpcProtocol::hasFlag(msg.getFlags(), pz::ipc::IpcFlag::Error);
+
+    const auto& pl = msg.getPayload();
+    if (!pl.empty())
+    {
+        try
+        {
+            const auto body = nlohmann::json::parse(std::string(pl.begin(), pl.end()));
+            if (body.contains("ok") && body["ok"].is_boolean())
+                ok = body["ok"].get<bool>();
+        }
+        catch (const std::exception& e)
+        {
+            LOG_WARN("ConfigReloadResponse payload was not JSON ({}) — trusting the header flag", e.what());
+        }
+    }
+
+    if (ok)
+    {
+        LOG_INFO("config reload acknowledged by engined");
+        serviceManager.completeReload();
+        return;
+    }
+
+    LOG_ERROR("config reload FAILED — the fleet did not converge onto the committed configuration");
+    serviceManager.failReload();
 }
 
 void BootstrapService::handleAction(MgmtdServiceManager& serviceManager, const BootstrapAction& action)

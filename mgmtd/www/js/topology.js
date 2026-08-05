@@ -133,6 +133,10 @@
     planeOpen: true,    // the data-plane frame — collapsed, the regions fold into one summary row
     egressOpen: false,  // the egress address list — the rest are one click away
     view: 'fabric',     // which deck is on screen: 'fabric' | 'ngfw'
+    links: [],          // NGFW → fabric/peer edges, composed by topologyd
+    shape: {},          // which end is the hub — {kind, tenants, ...}, also from topologyd
+    fwOpen: {},         // firewall oid → its port strip is expanded
+    ngfwDense: null,    // null = decide from the device count; true/false = the operator decided
     layers: {},         // device oid → { reachable, credential, api } from /api/status/devices
     selected: null,     // node key currently open in the drawer
     generatedAt: '',
@@ -727,10 +731,30 @@
   }
 
   // ── Deck 2: on-premise infrastructure ───────────────────────────────────────
-  // The fabric deck ends at the firewall; this one starts there. It is built for tens of devices, so
-  // it is a grid grouped by site rather than a diagram — a picture of forty firewalls wired to each
-  // other would be a picture of nothing.
+  // The fabric deck draws the service someone else runs; this one draws the boxes in the customer's
+  // own racks and — the part that makes it a topology rather than an inventory — where each of them
+  // reaches. It reads left to right the same way the fabric deck does, so moving between the two
+  // does not mean relearning the picture:
+  //
+  //   access edge          firewalls              destinations
+  //   GP portals/gateways  the box, with its      SASE tenants (Service Connections and Remote
+  //   the remote users     interfaces as ports    Networks, grouped by tenant) and external peers
+  //
+  // Every edge on this deck comes from an IKE gateway's peer address. That is a fact the firewall
+  // states about itself, so a line here means "this box is configured to reach that" — not "these
+  // two things look related", which is what a picture assembled from addresses alone would mean.
   const LAYER_WORD = { ok: 'active', fail: 'inactive', unknown: 'not configured' };
+
+  // Above this many firewalls the ports stop being readable at a glance and the deck switches to one
+  // row per box, expandable. It is a default rather than a rule: the toggle in the deck header
+  // overrides it in both directions, because "20 firewalls but I want to see all the ports" is a
+  // legitimate thing to want and the layout can do it.
+  const DENSE_ABOVE = 4;
+
+  const isDense = () => {
+    if (state.ngfwDense !== null) return state.ngfwDense;
+    return ngfwForSite().length > DENSE_ABOVE;
+  };
 
   function layerDots(oid) {
     const l = state.layers[oid] || {};
@@ -742,49 +766,202 @@
     }).join('');
   }
 
-  let fwIndex = 0;   // stagger counter, reset each render
+  // Links belonging to one firewall, and the ones that reach the fabric specifically. A firewall
+  // with fabric links is doing something the picture cares about; one with only external peers is a
+  // perfectly normal edge firewall and is drawn as one.
+  const linksOf = (oid) => (state.links || []).filter(l => l.device === oid);
+  const isFabric = (l) => l.kind === 'service_connection' || l.kind === 'remote_network';
 
-  // A firewall card now carries what the box actually IS, not only whether it answered: how many
-  // interfaces are configured and how many carry an address, and how many tunnels are defined and
-  // how many are switched on. Both come from collected configuration, so both say when they were
-  // last read — and a card whose data has never been collected says that instead of showing zeros,
-  // because "no interfaces" and "we have not looked" are completely different findings.
-  function fwCard(d) {
+  // ── Destinations ────────────────────────────────────────────────────────────
+  // Grouped by tenant, because that is the unit that means something: two Service Connections to the
+  // same tenant are two paths into one fabric, and to different tenants are two fabrics. The tenant
+  // token is the only thing in the collected data that can tell those apart — see topologyd's
+  // classifyPeer — so it is what the grouping is keyed on rather than the region or the name.
+  function destGroups() {
+    const tenants = new Map();
+    const external = [];
+
+    (state.links || []).forEach((l) => {
+      if (!isFabric(l)) { external.push(l); return; }
+      const key = l.tenant || 'unknown';
+      if (!tenants.has(key)) tenants.set(key, { key, sc: [], rn: [], devices: new Set() });
+      const g = tenants.get(key);
+      (l.kind === 'service_connection' ? g.sc : g.rn).push(l);
+      g.devices.add(l.device);
+    });
+
+    return { tenants: [...tenants.values()].sort((a, b) => b.devices.size - a.devices.size), external };
+  }
+
+  function destCard(g, hub) {
+    const row = (l, kind) => `<span class="topo-dest-r kind-${kind}">
+        <span class="topo-dest-k">${kind === 'sc' ? 'SC' : 'RN'}</span>
+        <span class="topo-dest-nm" title="${esc(l.peer)}">${esc(l.label || l.peer)}</span>
+        ${l.region ? `<span class="topo-dest-rg">${esc(l.region)}</span>` : ''}
+      </span>`;
+
+    // Deduplicated by the endpoint's own name: several firewalls reaching the same Service
+    // Connection is one destination reached twice, not two destinations.
+    const uniq = (arr) => {
+      const seenNm = new Set();
+      return arr.filter(l => !seenNm.has(l.label || l.peer) && seenNm.add(l.label || l.peer));
+    };
+
+    return `<div class="topo-dest ${hub ? 'is-hub' : ''}" id="ndest-${esc(g.key)}">
+        <div class="topo-dest-h">
+          <span class="topo-dest-ic"><svg viewBox="0 0 24 24">${ICONS.cloud}</svg></span>
+          <span>
+            <span class="topo-dest-t">Prisma Access</span>
+            <span class="topo-dest-sub">tenant <code>${esc(g.key)}</code></span>
+          </span>
+          ${hub ? '<span class="topo-hub-tag">hub</span>' : ''}
+        </div>
+        <div class="topo-dest-b">
+          ${uniq(g.sc).map(l => row(l, 'sc')).join('')}
+          ${uniq(g.rn).map(l => row(l, 'rn')).join('')}
+        </div>
+        <div class="topo-dest-f">${g.devices.size} firewall${g.devices.size === 1 ? '' : 's'} attached</div>
+      </div>`;
+  }
+
+  function externalCard(list) {
+    if (!list.length) return '';
+    // One row per distinct peer. A partner reached by three firewalls is one partner.
+    const byPeer = new Map();
+    list.forEach(l => { if (!byPeer.has(l.peer)) byPeer.set(l.peer, l); });
+
+    return `<div class="topo-dest is-ext" id="ndest-external">
+        <div class="topo-dest-h">
+          <span class="topo-dest-ic"><svg viewBox="0 0 24 24">${ICONS.globe}</svg></span>
+          <span>
+            <span class="topo-dest-t">External peers</span>
+            <span class="topo-dest-sub">not Prisma Access</span>
+          </span>
+        </div>
+        <div class="topo-dest-b">
+          ${[...byPeer.values()].map(l => `<span class="topo-dest-r kind-ext">
+              <span class="topo-dest-k">VPN</span>
+              <span class="topo-dest-nm mono" title="${esc(l.gateway)}">${esc(l.label || l.peer)}</span>
+            </span>`).join('')}
+        </div>
+        <div class="topo-dest-f">${byPeer.size} peer${byPeer.size === 1 ? '' : 's'}</div>
+      </div>`;
+  }
+
+  // ── The firewall box ────────────────────────────────────────────────────────
+  // A port carries the two things an operator looks for first: which side of the box it is on, and
+  // what address is on it. The role is topologyd's, and the badges say WHY it was called an edge —
+  // an interface is WAN because a VPN or GlobalProtect terminates on it, or because its address is
+  // public, and those are different confidences worth distinguishing.
+  function portChip(i) {
+    const badges =
+      (i.vpn_count ? `<span class="topo-port-b b-vpn" title="${i.vpn_count} IKE gateway${
+        i.vpn_count === 1 ? '' : 's'} terminate here">VPN</span>` : '') +
+      (i.gp_count ? `<span class="topo-port-b b-gp" title="GlobalProtect listens here">GP</span>` : '');
+
+    return `<span class="topo-port role-${esc(i.role || 'unknown')}${
+        i.admin_state === 'down' ? ' is-down' : ''}"
+        title="${esc(i.name + (i.mode ? ' · ' + i.mode : '') + (i.comment ? ' — ' + i.comment : ''))}">
+        <span class="topo-port-n">${esc(i.name)}</span>
+        <span class="topo-port-ip mono">${esc(i.ip || 'no address')}</span>
+        ${badges}
+      </span>`;
+  }
+
+  function fwBox(d, dense) {
+    const ifc = d.interfaces || {};
+    const tun = d.tunnels || {};
+    const gp = d.gp || {};
+    const list = ifc.list || [];
+    const my = linksOf(d.oid);
+    const fabricN = my.filter(isFabric).length;
+
+    // `edge` sits on the WAN side: whatever its address says, that is where the outside arrives.
+    // Its own colour keeps it from being read as a plain internet edge.
+    const wan = list.filter(i => i.role === 'wan' || i.role === 'edge');
+    const lan = list.filter(i => i.role === 'lan');
+    const rest = list.filter(i => ['wan', 'edge', 'lan', 'tunnel'].indexOf(i.role) < 0);
+
     const l = state.layers[d.oid] || {};
     const st = (l.reachable === 'ok' && l.credential === 'ok') ? 'ok'
              : (l.reachable === 'fail' || l.credential === 'fail') ? 'bad' : '';
+    const hub = state.shape && state.shape.kind === 'ngfw_hub' && fabricN >= 2;
+    const open = !dense || state.fwOpen[d.oid];
 
-    const ifc = d.interfaces || {};
-    const tun = d.tunnels || {};
+    // An expanded box needs a way back — a box you can open and not close is a trap. Only when it
+    // IS expanded, though: on a collapsed row the row itself already carries the toggle, and a
+    // second target inside it is the one closest() would find, leaving the click swapping out the
+    // header instead of the row.
+    const head = `<div class="topo-fwb-h"${dense && open ? ` data-fwrow="${esc(d.oid)}"` : ''}>
+        <span class="topo-fw-dot ${d.status === 'active' ? 'ok' : d.status === 'down' ? 'bad' : ''}"></span>
+        <span class="topo-fwb-nm">${esc(d.name || d.target || 'unnamed')}</span>
+        <span class="topo-fwb-t mono">${esc(d.target || '')}</span>
+        ${hub ? '<span class="topo-hub-tag">hub</span>' : ''}
+        <span class="topo-fwb-l">${layerDots(d.oid)}</span>
+      </div>`;
 
-    const metric = (collected, value, unit, sub) => collected
-      ? `<span class="topo-fwm"><b>${value}</b>${esc(unit)}<em>${esc(sub)}</em></span>`
-      : `<span class="topo-fwm is-none"><b>—</b><em>${esc(unit)} not collected</em></span>`;
+    // The one-line summary. In dense mode it IS the row; expanded, it sits under the ports as the
+    // count line. Either way it answers "how big is this box and how much of it faces outward".
+    const sum = `<div class="topo-fwb-sum">
+        ${ifc.collected
+          ? `<span><b>${ifc.total || 0}</b> interfaces</span>
+             <span class="topo-sum-wan"><b>${(ifc.wan || 0) + (ifc.edge || 0)}</b> WAN</span>
+             <span class="topo-sum-lan"><b>${ifc.lan || 0}</b> LAN</span>`
+          : '<span class="topo-sum-none">interfaces not collected</span>'}
+        ${tun.collected ? `<span><b>${tun.total || 0}</b> tunnels</span>` : ''}
+        ${fabricN ? `<span class="topo-sum-fab"><b>${fabricN}</b> to fabric</span>` : ''}
+        ${(gp.portals || []).length || (gp.gateways || []).length
+          ? `<span class="topo-sum-gp">GlobalProtect</span>` : ''}
+      </div>`;
 
-    return `<button class="topo-fwc ${st}" type="button" data-fw="${esc(d.oid)}" style="--i:${fwIndex++}">
-        <span class="topo-fwc-h">
-          <span class="topo-fw-dot ${d.status === 'active' ? 'ok' : d.status === 'down' ? 'bad' : ''}"></span>
-          <span class="topo-fwc-nm">${esc(d.name || d.target || 'unnamed')}</span>
-        </span>
-        <span class="topo-fwc-t">${esc(d.target || '—')}</span>
-        <span class="topo-fwc-m">
-          ${metric(ifc.collected, ifc.total || 0, 'interfaces',
-                   `${ifc.with_ip || 0} addressed${ifc.down ? ` · ${ifc.down} shut` : ''}`)}
-          ${metric(tun.collected, tun.total || 0, 'tunnels',
-                   `${tun.enabled || 0} enabled${tun.disabled ? ` · ${tun.disabled} off` : ''}`)}
-        </span>
-        <span class="topo-fwc-l">${layerDots(d.oid)}</span>
-      </button>`;
+    if (!open) {
+      return `<button class="topo-fwb is-row ${st}" type="button" data-fwrow="${esc(d.oid)}"
+                      id="nfw-${esc(d.oid)}">${head}${sum}</button>`;
+    }
+
+    const side = (title, arr, cls) => `<div class="topo-fwb-side ${cls}">
+        <div class="topo-fwb-side-t">${title}</div>
+        ${arr.length ? arr.map(portChip).join('')
+                     : `<span class="topo-port is-empty">none</span>`}
+      </div>`;
+
+    return `<div class="topo-fwb ${st}" id="nfw-${esc(d.oid)}" data-fwbox="${esc(d.oid)}">
+        ${head}
+        ${ifc.collected
+          ? `<div class="topo-fwb-ports">
+               ${side('LAN — inside', lan.concat(rest), 'is-lan')}
+               <div class="topo-fwb-core"><span>${esc(d.name || 'firewall')}</span></div>
+               ${side('WAN — edge', wan, 'is-wan')}
+             </div>`
+          : `<div class="topo-none-block">Interfaces have not been collected for this firewall.
+               Add the ethernet-interfaces endpoint to its
+               <a href="settings?tab=api-connector">API Connector</a>.</div>`}
+        ${sum}
+        <button class="topo-fwb-more" type="button" data-fwdetail="${esc(d.oid)}">Open detail</button>
+      </div>`;
   }
 
-  // The drawer's firewall view: the interface and tunnel lists themselves.
+  // ── The drawer's firewall view ──────────────────────────────────────────────
+  // The lists behind the picture. The tunnel table gains the column it could never fill before: a
+  // tunnel's peer, resolved through its IKE gateway, which is the same join the links are drawn from.
   function fwDetail(d) {
     const ifc = d.interfaces || {};
     const tun = d.tunnels || {};
+    const ike = d.ike || {};
+    const gp = d.gp || {};
+
+    const peerCell = (p) => {
+      if (!p || !p.kind || p.kind === 'unknown') return '<span class="topo-none">—</span>';
+      const tag = p.kind === 'service_connection' ? 'SC'
+                : p.kind === 'remote_network' ? 'RN' : 'ext';
+      return `<span class="topo-peer k-${esc(p.kind)}"><span class="topo-peer-k">${tag}</span>${
+        esc(p.label || p.addr)}</span>`;
+    };
 
     const ifRows = (ifc.list || []).map(i => `<tr>
         <td><span class="topo-dot ${i.admin_state === 'down' ? 'bad' : 'ok'}"></span>${esc(i.name)}</td>
         <td class="mono">${esc(i.ip) || '<span class="topo-none">no address</span>'}</td>
+        <td><span class="topo-rl role-${esc(i.role || 'unknown')}">${esc(i.role || 'unknown')}</span></td>
         <td class="topo-sub">${esc(i.mode || '')}</td>
       </tr>`).join('');
 
@@ -792,7 +969,26 @@
         <td><span class="topo-dot ${t.enabled ? 'ok' : 'off'}"></span>${esc(t.name)}</td>
         <td class="mono">${esc(t.interface) || '—'}</td>
         <td class="topo-sub">${esc(t.gateway) || '—'}</td>
+        <td>${peerCell(t.peer)}</td>
       </tr>`).join('');
+
+    const ikeRows = (ike.list || []).map(g => `<tr>
+        <td>${esc(g.name)}</td>
+        <td class="mono">${esc(g.interface) || '—'}</td>
+        <td class="mono topo-sub">${esc(g.local_ip) || '—'}</td>
+        <td>${peerCell(g.peer)}</td>
+      </tr>`).join('');
+
+    const gpRows = ((gp.portals || []).map(p => `<tr>
+        <td><span class="topo-acc-k">portal</span> ${esc(p.name)}</td>
+        <td class="mono">${esc(p.interface) || '—'}</td>
+        <td class="topo-sub">${esc((p.gateways || []).join(', ')) || '—'}</td>
+      </tr>`).join('')) +
+      ((gp.gateways || []).map(g => `<tr>
+        <td><span class="topo-acc-k k-gw">gateway</span> ${esc(g.name)}</td>
+        <td class="mono">${esc(g.interface) || (g.tunnel_mode ? 'tunnel mode' : '—')}</td>
+        <td class="topo-sub">${esc((g.pools || []).join(', ')) || '—'}</td>
+      </tr>`).join(''));
 
     const block = (title, collected, at, cols, rows, empty) => `
       <div class="topo-dsec">${title}
@@ -805,14 +1001,77 @@
              <tbody>${rows}</tbody></table>`
           : `<div class="topo-none-block">${empty}</div>`}`;
 
-    return block('Ethernet interfaces', ifc.collected, ifc.collected_at,
-                 ['Interface', 'Address', 'Mode'], ifRows, 'The firewall reports no ethernet interfaces.') +
+    return block('Interfaces', ifc.collected, ifc.collected_at,
+                 ['Interface', 'Address', 'Role', 'Mode'], ifRows,
+                 'The firewall reports no interfaces.') +
            block('IPSec tunnels', tun.collected, tun.collected_at,
-                 ['Tunnel', 'Interface', 'IKE gateway'], tunRows, 'No IPSec tunnels are defined.');
+                 ['Tunnel', 'Interface', 'IKE gateway', 'Peer'], tunRows,
+                 'No IPSec tunnels are defined.') +
+           block('IKE gateways', ike.collected, ike.collected_at,
+                 ['Gateway', 'Interface', 'Local address', 'Peer'], ikeRows,
+                 'No IKE gateways are defined.') +
+           block('GlobalProtect', gp.collected, gp.collected_at,
+                 ['Object', 'Interface', 'Gateways / client pools'], gpRows,
+                 'No GlobalProtect portal or gateway is configured.');
   }
 
+  // ── Access edge ─────────────────────────────────────────────────────────────
+  // GlobalProtect is where the firewall's own remote users arrive. It belongs on the left with the
+  // other inbound edges rather than beside the fabric: these users terminate ON the box, they do not
+  // travel through Prisma to get there.
+  function gpCard(devs) {
+    const portals = [];
+    const gateways = [];
+    devs.forEach((d) => {
+      ((d.gp || {}).portals || []).forEach(p => portals.push({ d, p }));
+      ((d.gp || {}).gateways || []).forEach(g => gateways.push({ d, g }));
+    });
+    if (!portals.length && !gateways.length) return '';
+
+    const pools = gateways.reduce((n, x) => n + ((x.g.pools || []).length), 0);
+
+    return `<div class="topo-acc" id="ngp">
+        <div class="topo-acc-h">
+          <span class="topo-acc-ic"><svg viewBox="0 0 24 24">${ICONS.mobile}</svg></span>
+          <span>
+            <span class="topo-acc-t">GlobalProtect</span>
+            <span class="topo-acc-sub">remote users terminating on-premise</span>
+          </span>
+        </div>
+        <div class="topo-acc-b">
+          ${portals.map(({ d, p }) => `<span class="topo-acc-r">
+              <span class="topo-acc-k">portal</span>
+              <span class="topo-acc-nm">${esc(p.name)}</span>
+              <span class="topo-acc-x mono">${esc(p.interface || '—')}</span>
+            </span>`).join('')}
+          ${gateways.map(({ d, g }) => `<span class="topo-acc-r">
+              <span class="topo-acc-k k-gw">gateway</span>
+              <span class="topo-acc-nm">${esc(g.name)}</span>
+              <span class="topo-acc-x mono">${esc(g.interface || (g.tunnel_mode ? 'tunnel' : '—'))}</span>
+            </span>`).join('')}
+        </div>
+        <div class="topo-acc-f">${portals.length} portal${portals.length === 1 ? '' : 's'} ·
+          ${gateways.length} gateway${gateways.length === 1 ? '' : 's'}${
+          pools ? ` · ${pools} client pool${pools === 1 ? '' : 's'}` : ''}</div>
+      </div>`;
+  }
+
+  // ── The deck ────────────────────────────────────────────────────────────────
+  // The shape line is the one sentence the picture is trying to say. It is derived by topologyd from
+  // where the fan-out is, not configured — see the shape block there — so it changes when the estate
+  // changes rather than when somebody remembers to update a label.
+  const SHAPE_WORD = {
+    sase_hub: ['Prisma Access is the hub',
+               'each firewall reaches the fabric on its own connection — a star with the fabric at the centre'],
+    ngfw_hub: ['One firewall is the hub',
+               'the fabric connections are held by a single box and the rest reach it through the estate'],
+    edge:     ['Edge attachment',
+               'this site attaches to the fabric on one firewall'],
+    flat:     ['No fabric attachment',
+               'no IKE gateway on these firewalls terminates on Prisma Access'],
+  };
+
   function ngfwDeck() {
-    fwIndex = 0;
     const all = ngfwForSite();
     if (!all.length) {
       return `<div class="topo-stage topo-stage-ngfw"><div class="topo-msg">
@@ -822,19 +1081,24 @@
         </div></div>`;
     }
 
-    const sites = [];
-    all.forEach((d) => {
-      const key = d.site || '';
-      let g = sites.find(x => x.key === key);
-      if (!g) sites.push(g = { key, name: d.site_name || 'Unassigned', devs: [] });
-      g.devs.push(d);
-    });
-    sites.sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || a.name.localeCompare(b.name));
+    const dense = isDense();
+    const dg = destGroups();
+    const shape = (state.shape && state.shape.kind) || 'flat';
+    const [shapeT, shapeS] = SHAPE_WORD[shape] || SHAPE_WORD.flat;
+
+    // The hub firewall leads, so the box everything else hangs off is the first one read.
+    const order = all.slice().sort((a, b) => linksOf(b.oid).filter(isFabric).length -
+                                             linksOf(a.oid).filter(isFabric).length);
 
     let ok = 0, bad = 0, unk = 0;
     all.forEach((d) => { if (d.status === 'active') ok++; else if (d.status === 'down') bad++; else unk++; });
 
-    return `<div class="topo-stage topo-stage-ngfw">
+    const access = gpCard(all);
+    const dests = dg.tenants.map(g => destCard(g, shape === 'sase_hub' && g.devices.size > 1)).join('') +
+                  externalCard(dg.external);
+
+    return `<div class="topo-stage topo-stage-ngfw" id="ngfwStage">
+        <svg class="topo-links" id="ngfwLinks" aria-hidden="true"></svg>
         <div class="topo-deck-h">
           <span class="topo-deck-t">NGFW Infrastructure</span>
           <span class="topo-deck-sum">
@@ -843,19 +1107,42 @@
             ${bad ? `· <span class="bad">${bad} unreachable</span>` : ''}
             ${unk ? `· <span class="muted">${unk} not probed</span>` : ''}
           </span>
+          <span class="topo-bar-spacer"></span>
+          <button class="topo-toggle ${dense ? '' : 'on'}" id="ngfwDensity" type="button"
+                  title="Show every interface as a port, or one row per firewall">
+            ${dense ? 'Show ports' : 'Compact rows'}</button>
         </div>
-        <div class="topo-sites">
-          ${sites.map(g => `<section class="topo-site">
-              <div class="topo-site-h">${esc(g.name)}
-                <span class="topo-site-n">${g.devs.length}</span></div>
-              <div class="topo-fw-grid">${g.devs.map(fwCard).join('')}</div>
-            </section>`).join('')}
+
+        <div class="topo-shape shape-${esc(shape)}">
+          <b>${esc(shapeT)}</b><span>${esc(shapeS)}</span>
         </div>
-        <div class="topo-deck-note">Layer dots, left to right: device reachability · credential ·
-          API collection. The private apps each firewall fronts, and which Service Connection or
-          connector reaches it, are not readable yet.</div>
+
+        <div class="topo-ncols">
+          <div class="topo-ncol is-access">
+            ${access || `<div class="topo-ncol-none">No GlobalProtect portal or gateway is configured
+              on these firewalls.</div>`}
+          </div>
+
+          <div class="topo-ncol is-fw">
+            ${order.map(d => fwBox(d, dense)).join('')}
+          </div>
+
+          <div class="topo-ncol is-dest">
+            ${dests || `<div class="topo-ncol-none">No IKE gateway on these firewalls names a peer,
+              so there is nothing to draw a link to yet. Collect the
+              <code>IKEGatewayNetworkProfiles</code> endpoint to populate this.</div>`}
+          </div>
+        </div>
+
+        <div class="topo-deck-note">Ports are coloured by role: <b class="k-wan">WAN</b> is a public
+          address, <b class="k-edge">EDGE</b> is a private address that nonetheless terminates a VPN
+          or GlobalProtect — a firewall behind an upstream NAT — and <b class="k-lan">LAN</b> is
+          RFC1918 with nothing external on it. Every link is an IKE gateway's configured peer: the
+          firewall stating where it reaches, not an inference.
+          Layer dots: reachability · credential · API collection.</div>
       </div>`;
   }
+
 
   // The control that moves between the two decks. It names the destination, and its arrow points the
   // way the screen will travel. It lives on the canvas frame rather than inside a deck: a deck can be
@@ -871,8 +1158,25 @@
       </button>`;
   }
 
+  // Per deck: the two draw different relationships and a combined key would ask the operator to
+  // ignore half of it. The colours themselves are shared, so a pink line means branch IPsec on
+  // either screen — which is the point of keeping one palette across both.
   function legendHtml() {
     const lg = (color, text) => `<span class="topo-lg"><i style="background:${color}"></i>${esc(text)}</span>`;
+
+    if (state.view === 'ngfw') {
+      return `<div class="topo-legend">
+          ${lg('#2dd4bf', 'Service Connection → Prisma Access')}
+          ${lg('#f472b6', 'Remote Network → Prisma Access')}
+          ${lg('#34d399', 'IPsec to an external peer')}
+          ${lg('#38bdf8', 'GlobalProtect — remote users on-premise')}
+          ${lg('#2dd4bf', 'Port badge VPN — an IKE gateway terminates here')}
+          ${lg('#f472b6', 'Port role WAN — a public address')}
+          ${lg('#fbbf24', 'Port role EDGE — private, but a VPN/GP endpoint terminates here')}
+          ${lg('#34d399', 'Port role LAN — RFC1918, nothing external')}
+        </div>`;
+    }
+
     return `<div class="topo-legend">
         ${lg('#38bdf8', 'GP tunnel → MU-SPN')}
         ${lg('#f472b6', 'Branch IPsec → RN-SPN')}
@@ -1014,7 +1318,7 @@
         </div><div class="topo-drawer-b" id="topoDrawerB"></div></aside>`;
 
     wire();
-    requestAnimationFrame(() => { syncDeck(false); drawLinks(); });
+    requestAnimationFrame(() => { syncDeck(false); drawLinks(); drawNgfwLinks(); });
   }
 
   // Both decks are laid out at all times, stacked; the viewport shows one and slides to the other.
@@ -1053,6 +1357,11 @@
     document.getElementById('deckSwitch')?.addEventListener('click', () =>
       goDeck(state.view === 'fabric' ? 'ngfw' : 'fabric'));
 
+    // The key belongs to the deck on screen, so it changes with it. Swapped rather than re-rendered:
+    // a full render would restage both decks to relabel one strip.
+    const legend = document.querySelector('.topo-legend');
+    if (legend) legend.outerHTML = legendHtml();
+
     // The cards assemble on arrival, not on every poll — a stagger that replayed every 30 seconds
     // would read as the page glitching rather than as the estate resolving into view.
     const deck = document.getElementById('deck-' + view);
@@ -1063,7 +1372,7 @@
 
     // Links are measured from laid-out cards, and an inactive deck is scaled — so they are only
     // worth redrawing once the fabric deck is the one on screen and settled.
-    if (view === 'fabric') setTimeout(drawLinks, 560);
+    setTimeout(view === 'fabric' ? drawLinks : drawNgfwLinks, 560);
   }
 
   // ── Links + packets ─────────────────────────────────────────────────────────
@@ -1165,31 +1474,40 @@
   }
 
   function drawLinks() {
+    if (state.view !== 'fabric') return;   // the deck is scaled away; its rects would lie
     const stage = document.getElementById('topoStage');
     const svg = document.getElementById('topoLinks');
     if (!stage || !svg || !model) return;
-    if (state.view !== 'fabric') return;   // the deck is scaled away; its rects would lie
 
-    const origin = stage.getBoundingClientRect();
-    const rectOf = (el) => {
-      const r = el.getBoundingClientRect();
-      return { l: r.left - origin.left, r: r.right - origin.left, t: r.top - origin.top,
-               b: r.bottom - origin.top, cx: r.left + r.width / 2 - origin.left,
-               cy: r.top + r.height / 2 - origin.top };
-    };
-
-    const specs = edgeSpecs(model);
-
-    // One pass to work out where every link runs...
+    const rectOf = rectReader(stage);
     const drawn = [];
-    specs.forEach((sp) => {
+    edgeSpecs(model).forEach((sp) => {
       const a = elFor(sp.from), b = elFor(sp.to);
       if (!a || !b) return;
       drawn.push({ spec: sp, d: geometry(sp, rectOf(a), rectOf(b)),
                    dim: !(state.region === 'all' || sp.zone === 'all' || sp.zone === state.region) });
     });
+    paintInto(svg, drawn);
+  }
 
-    // ...and a second only if the set of links actually changed. A sidebar sliding open fires a
+  // Rects relative to a stage, which is what every path here is expressed in. Anchors are read from
+  // the laid-out DOM rather than computed from a virtual layout: the cards are ordinary flow content,
+  // so the browser is the only thing that knows where they ended up.
+  function rectReader(stage) {
+    const origin = stage.getBoundingClientRect();
+    return (el) => {
+      const r = el.getBoundingClientRect();
+      return { l: r.left - origin.left, r: r.right - origin.left, t: r.top - origin.top,
+               b: r.bottom - origin.top, cx: r.left + r.width / 2 - origin.left,
+               cy: r.top + r.height / 2 - origin.top };
+    };
+  }
+
+  // Draw a computed link set into an SVG layer, packets and all. Shared by both decks: what a link
+  // looks like and how a packet rides it is the page's visual language, not one deck's, and having
+  // the NGFW deck grow its own copy would be how the two drift apart.
+  function paintInto(svg, drawn) {
+    // A second full rebuild only if the set of links actually changed. A sidebar sliding open fires a
     // resize on every frame; tearing the SVG down each time would restart every packet mid-flight
     // and leave the dots stuttering at the start of their paths. Instead the existing lines are
     // re-pointed, and each packet's motion path with them.
@@ -1214,11 +1532,11 @@
     const paths = [];
     drawn.forEach((x, i) => {
       const path = document.createElementNS(NS, 'path');
-      path.setAttribute('id', 'fp-' + i);
+      path.setAttribute('id', svg.id + '-fp-' + i);
       path.setAttribute('d', x.d);
       path.setAttribute('class', 'topo-link kind-' + x.spec.kind + (x.dim ? ' is-dimmed' : ''));
       svg.appendChild(path);
-      paths.push({ path, spec: x.spec, dim: x.dim, id: 'fp-' + i });
+      paths.push({ path, spec: x.spec, dim: x.dim });
     });
 
     // The packets need each path's length, which only exists once it is in the document.
@@ -1249,6 +1567,63 @@
         svg.appendChild(dot);
       }
     });
+  }
+
+  // ── NGFW deck edges ─────────────────────────────────────────────────────────
+  // One line per relationship the firewall states about itself. Fabric links are grouped to the
+  // tenant card rather than drawn per Service Connection: three connections into one tenant is one
+  // relationship drawn three times, and on a twenty-firewall estate that is the difference between a
+  // diagram and a ball of string. The per-connection detail is in the destination card and the drawer.
+  function ngfwEdgeSpecs() {
+    const out = [];
+    const devs = ngfwForSite();
+    const haveGp = devs.some(d => ((d.gp || {}).portals || []).length || ((d.gp || {}).gateways || []).length);
+
+    devs.forEach((d) => {
+      const my = linksOf(d.oid);
+      const fw = 'nfw-' + d.oid;
+
+      // Remote users arrive on the box, so the line runs into it, not through it.
+      const gp = d.gp || {};
+      if (haveGp && ((gp.portals || []).length || (gp.gateways || []).length))
+        out.push({ from: 'ngp', to: fw, kind: 'mu', zone: 'all' });
+
+      const tenants = new Set();
+      let external = false;
+      my.forEach((l) => {
+        if (isFabric(l)) tenants.add(l.tenant || 'unknown');
+        else external = true;
+      });
+
+      tenants.forEach((t) => {
+        // Service Connections and Remote Networks are different lanes on the fabric deck and stay
+        // different here, so the two decks read the same. A tenant reached by both takes the SC
+        // colour, which is the stronger statement about the site.
+        const kinds = my.filter(l => isFabric(l) && (l.tenant || 'unknown') === t).map(l => l.kind);
+        out.push({ from: fw, to: 'ndest-' + t, zone: 'all',
+                   kind: kinds.indexOf('service_connection') >= 0 ? 'sc' : 'rn' });
+      });
+
+      if (external) out.push({ from: fw, to: 'ndest-external', kind: 'egress', zone: 'all' });
+    });
+
+    return out;
+  }
+
+  function drawNgfwLinks() {
+    if (state.view !== 'ngfw') return;
+    const stage = document.getElementById('ngfwStage');
+    const svg = document.getElementById('ngfwLinks');
+    if (!stage || !svg) return;
+
+    const rectOf = rectReader(stage);
+    const drawn = [];
+    ngfwEdgeSpecs().forEach((sp) => {
+      const a = document.getElementById(sp.from), b = document.getElementById(sp.to);
+      if (!a || !b) return;
+      drawn.push({ spec: sp, d: geometry(sp, rectOf(a), rectOf(b)), dim: false });
+    });
+    paintInto(svg, drawn);
   }
 
   // Where one link runs, given the two boxes it joins. Pure geometry: no DOM, so it can be re-run on
@@ -1447,8 +1822,34 @@
 
       const n = e.target.closest('.topo-node[data-node]');
       if (n) { openDrawer(n.dataset.node); return; }
-      // Both the fabric deck's compact row (.topo-fw) and the NGFW deck's card (.topo-fwc) open
-      // the same drawer.
+
+      // The NGFW deck's own controls. Density is a whole-deck decision, so it re-renders; expanding
+      // one firewall's ports is not, so it swaps that one box in place — re-rendering the deck to
+      // open a row would restage every other card and lose the scroll position.
+      if (e.target.closest('#ngfwDensity')) {
+        state.ngfwDense = !isDense();
+        state.fwOpen = {};
+        render();
+        return;
+      }
+
+      const row = e.target.closest('[data-fwrow]');
+      if (row) {
+        const oid = row.dataset.fwrow;
+        state.fwOpen[oid] = !state.fwOpen[oid];
+        const box = ngfwForSite().find(d => d.oid === oid);
+        if (box) {
+          row.outerHTML = fwBox(box, isDense());
+          // The box just changed height, so every link that lands on it moved with it.
+          requestAnimationFrame(drawNgfwLinks);
+        }
+        return;
+      }
+
+      const det = e.target.closest('[data-fwdetail]');
+      if (det) { openFwDrawer(det.dataset.fwdetail); return; }
+
+      // The fabric deck's compact row (.topo-fw) opens the same drawer.
       const f = e.target.closest('[data-fw]');
       if (f) openFwDrawer(f.dataset.fw);
     });
@@ -1476,6 +1877,10 @@
       if (d.sase || d.ngfw) {
         state.tenants = (d.sase && Array.isArray(d.sase.tenants)) ? d.sase.tenants : [];
         state.ngfw = (d.ngfw && Array.isArray(d.ngfw.devices)) ? d.ngfw.devices : [];
+        // The off-box relationships, and which end of them is the hub. Both are composed by
+        // topologyd from the IKE gateway document — the page draws them, it does not derive them.
+        state.links = (d.ngfw && Array.isArray(d.ngfw.links)) ? d.ngfw.links : [];
+        state.shape = (d.ngfw && d.ngfw.shape) || {};
         state.siteList = Array.isArray(d.sites) ? d.sites : [];
         state.sources = d.sources || {};
       }
@@ -1573,11 +1978,11 @@
     const redraw = () => {
       if (pending) return;
       pending = true;
-      requestAnimationFrame(() => { pending = false; drawLinks(); });
+      requestAnimationFrame(() => { pending = false; drawLinks(); drawNgfwLinks(); });
     };
 
     if (root && window.ResizeObserver) new ResizeObserver(redraw).observe(root);
-    else window.addEventListener('resize', debounce(drawLinks, 120));
+    else window.addEventListener('resize', debounce(() => { drawLinks(); drawNgfwLinks(); }, 120));
   }
 
   function mount() {

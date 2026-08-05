@@ -15,7 +15,8 @@ enum class MgmtdEventDomain : std::uint32_t
     Unknown = 0,
     Bootstrap = 1,
     Web = 2,
-    Heartbeat = 3
+    Heartbeat = 3,
+    Auth = 4
 };
 
 class MgmtdEvent : public pz::event::Event

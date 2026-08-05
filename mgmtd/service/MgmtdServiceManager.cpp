@@ -118,6 +118,16 @@ void MgmtdServiceManager::completeReload()
     LOG_INFO("reload complete (elapsed_ms={})", reloadElapsedMs());
 }
 
+void MgmtdServiceManager::failReload()
+{
+    // The cache is invalidated on a failure too: engined committed the new running_config before it
+    // asked the fleet to converge, so what mgmtd holds is stale either way. What failed is the
+    // convergence, not the write.
+    pz::config::Config::invalidateConfigCache();
+    m_reloadStatus.store(static_cast<int>(ReloadStatus::Failed), std::memory_order_release);
+    LOG_ERROR("reload failed (elapsed_ms={})", reloadElapsedMs());
+}
+
 MgmtdServiceManager::ReloadStatus MgmtdServiceManager::reloadStatus() const
 {
     return static_cast<ReloadStatus>(m_reloadStatus.load(std::memory_order_acquire));

@@ -15,6 +15,10 @@ RestartSec=3
 
 LimitNOFILE=65536
 
+# systemd's default leaves RLIMIT_CORE's SOFT limit at 0, so a crash writes nothing however
+# generous the hard limit is. The core goes to kernel.core_pattern, which pz-core-handler owns.
+LimitCORE=infinity
+
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=pz-probed

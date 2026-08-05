@@ -1,5 +1,8 @@
 #include "service/auth/AuthService.h"
 
+#include "service/MgmtdServiceManager.h"
+#include "service/auth/AuthEvent.h"
+
 #include "db/Database.h"
 #include "util/Logger.h"
 #include "util/PasswordHash.h"
@@ -206,6 +209,37 @@ std::string AuthService::generateSessionId()
         out.push_back(hex[c & 0xF]);
     }
     return out;
+}
+
+
+// authd verified (or rejected) a SAML assertion. seqNo is the ticket SsoController handed the
+// browser, so the answer is filed under it and drained there.
+void AuthService::handleEvent(MgmtdServiceManager& serviceManager, const AuthEvent& event)
+{
+    if (event.type() != AuthEventType::ReceiveSamlAcsResponse)
+    {
+        LOG_WARN("unhandled auth event (type={})", static_cast<std::uint32_t>(event.type()));
+        return;
+    }
+
+    const auto* msg = event.message();
+    if (!msg)
+    {
+        LOG_WARN("received empty AuthSamlAcsResponse");
+        return;
+    }
+
+    const auto& pl = msg->getPayload();
+    if (pl.empty())
+    {
+        // A browser is mid-login on this ticket. Dropping the message would leave it polling until
+        // its own timeout with nothing to show, so the ticket is failed explicitly instead.
+        LOG_WARN("empty SAML ACS response (seq={}) — failing the ticket", msg->getSeqNo());
+        serviceManager.setSsoResult(msg->getSeqNo(), R"({"ok":false,"error":"authd returned an empty result"})");
+        return;
+    }
+
+    serviceManager.setSsoResult(msg->getSeqNo(), std::string(pl.begin(), pl.end()));
 }
 
 }

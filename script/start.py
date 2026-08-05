@@ -35,6 +35,8 @@ SYSTEMD_DIR = "/etc/systemd/system"
 INSTALL_BIN_DIR = "/opt/pretzel/bin"
 ETC_ROOT_DIR = "/etc/pretzel"
 CERT_INSTALL_DIR = os.path.join(ETC_ROOT_DIR, "cert")
+CORE_DIR = "/var/crash/pretzel"
+SYSCTL_CORE_FILE = "/etc/sysctl.d/60-pretzel-core.conf"
 CREDENTIALS_KEY_NAME = "credentials.key"
 CREDENTIALS_KEY_PATH = os.path.join(ETC_ROOT_DIR, CREDENTIALS_KEY_NAME)
 
@@ -407,6 +409,53 @@ def stop_services():
     time.sleep(2)
 
 
+def deploy_coredump():
+    """
+    Core dumps for the pretzel daemons.
+
+    A crash on a customer appliance is debugged from a core file or it is guessed at — there is no
+    attaching gdb to somebody else's box. Three things have to be true for that to work, and none
+    of them is a default:
+
+      1. RLIMIT_CORE's SOFT limit must be raised. systemd leaves it at 0 on Ubuntu, so the units
+         carry LimitCORE=infinity (a hard limit alone writes nothing). That travels with the unit
+         files and needs nothing here.
+      2. kernel.core_pattern must point somewhere useful. Out of the box it pipes to apport, which
+         files a .crash report for a packaged program and is no help for a locally built daemon.
+      3. Somewhere to put them, readable by whoever debugs without being readable by everyone. A
+         core is a dump of process memory: decrypted device API keys, bearer tokens and session ids
+         are in it verbatim, so the directory is root:adm 0750 — the same arrangement the distro
+         uses for privileged logs, and `adm` is a group operators are already in.
+    """
+    print("[*] Configuring core dumps...")
+
+    # The handler lives beside the binaries it serves; core_pattern runs it as root with the core
+    # on stdin. It also owns the naming and retention — see the script for why both are needed.
+    install_file(os.path.join(SERVICE_DIR, "pz-core-handler"),
+                 os.path.join(INSTALL_BIN_DIR, "pz-core-handler"), 0o755, quiet=True)
+
+    os.makedirs(CORE_DIR, exist_ok=True)
+    try:
+        shutil.chown(CORE_DIR, user="root", group="adm")
+        os.chmod(CORE_DIR, 0o750)
+    except (LookupError, PermissionError) as e:
+        # A system without an `adm` group still gets cores; they are simply root-only.
+        print(f"[!] Could not set {CORE_DIR} to root:adm ({e}) — leaving it root-owned")
+
+    # A sysctl drop-in rather than a live `sysctl -w`, so the setting survives a reboot. Applied
+    # immediately too: the daemons are about to start and the first crash may be one of them.
+    with open(SYSCTL_CORE_FILE, "w") as f:
+        f.write(
+            "# Cores for the pretzel daemons go through pz-core-handler, which names them by\n"
+            "# daemon and time and forwards anything that is not ours back to the distribution\n"
+            "# handler. Installed by script/start.py (./pretzel start).\n"
+            f"kernel.core_pattern=|{INSTALL_BIN_DIR}/pz-core-handler %p %e %s %E\n"
+            "kernel.core_uses_pid=0\n"
+        )
+    run_cmd(["sysctl", "-q", "-p", SYSCTL_CORE_FILE], msg=None)
+    print(f"[*] Core dumps -> {CORE_DIR} (root:adm 0750, newest 20 kept)")
+
+
 def deploy_files():
     """
     Copies all files required for the operational environment (binaries, configs, service units, etc.) 
@@ -530,6 +579,7 @@ def run():
     # be accepting connections before the daemons start.
     stop_services()
     deploy_files()
+    deploy_coredump()
     ensure_postgresql()
     start_services()
 

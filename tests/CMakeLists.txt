@@ -62,3 +62,11 @@ target_sources(test-collection-sample PRIVATE
 target_include_directories(test-collection-sample PRIVATE ${CMAKE_SOURCE_DIR}/collectord)
 target_compile_options(test-collection-sample PRIVATE -ffunction-sections -fdata-sections)
 target_link_options(test-collection-sample PRIVATE -Wl,--gc-sections)
+
+# Same arrangement for topologyd's NGFW classifier: one translation unit of pure functions over
+# vendor JSON, with topologyd/ on the include path for its own header. No daemon dependencies —
+# NgfwModel deliberately touches no database, config or IPC, which is what makes this testable.
+pz_add_test(test-ngfw-model         test_ngfw_model.cpp         GTest::gtest_main)
+target_sources(test-ngfw-model PRIVATE
+    ${CMAKE_SOURCE_DIR}/topologyd/service/topology/NgfwModel.cpp)
+target_include_directories(test-ngfw-model PRIVATE ${CMAKE_SOURCE_DIR}/topologyd)

@@ -7,9 +7,16 @@
 namespace pz::mgmtd
 {
 
+class MgmtdServiceManager;
+class AuthEvent;
+
 class AuthService
 {
 public:
+    // The one asynchronous part of this domain: authd verified a SAML assertion and answered on the
+    // ticket the browser is polling. Everything else here answers inside the request that asked.
+    void handleEvent(MgmtdServiceManager& serviceManager, const AuthEvent& event);
+
     struct LoginResult
     {
         bool success{false};

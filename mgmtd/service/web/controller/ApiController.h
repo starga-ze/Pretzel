@@ -2,6 +2,11 @@
 
 #include "http/HttpMessage.h"
 
+namespace pz::ipc
+{
+class IpcMessage;
+}
+
 namespace pz::mgmtd
 {
 
@@ -23,6 +28,10 @@ public:
     void tlsProbe(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
     void testResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
     void keysState(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // collectord ran the device call. seqNo is the ticket the browser is polling on, so the answer
+    // is filed under it and drained by testResult() above.
+    void onTestResponse(MgmtdServiceManager& sm, const pz::ipc::IpcMessage& msg);
 };
 
 }

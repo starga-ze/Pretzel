@@ -574,6 +574,8 @@ void SettingsController::reloadStatus(MgmtdServiceManager& sm, const pz::http::H
         body["status"] = "reloading";
     else if (s == MgmtdServiceManager::ReloadStatus::Complete)
         body["status"] = "complete";
+    else if (s == MgmtdServiceManager::ReloadStatus::Failed)
+        body["status"] = "failed";
     else
         body["status"] = "idle";
 
@@ -742,6 +744,21 @@ void SettingsController::savedConfigContent(MgmtdServiceManager& sm, const pz::h
 
     std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     fill(resp, 200, content);   // already a JSON config document
+}
+
+
+void SettingsController::onCommitStatus(MgmtdServiceManager& sm, const pz::ipc::IpcMessage& msg)
+{
+    const auto& pl = msg.getPayload();
+    if (pl.empty())
+    {
+        // An empty payload is not an empty queue — it is a message that lost its body. Overwriting a
+        // good snapshot with "[]" would tell the browser every task finished.
+        LOG_WARN("empty commit-queue snapshot — keeping the last one");
+        return;
+    }
+
+    sm.setCommitQueue(std::string(pl.begin(), pl.end()));
 }
 
 }

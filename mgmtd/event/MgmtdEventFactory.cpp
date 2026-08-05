@@ -1,6 +1,8 @@
 #include "event/MgmtdEventFactory.h"
 
 #include "service/bootstrap/BootstrapEvent.h"
+#include "service/auth/AuthEvent.h"
+#include "service/web/WebIpcEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 
 #include "util/Logger.h"
@@ -50,6 +52,23 @@ std::unique_ptr<MgmtdEvent> MgmtdEventFactory::create(std::unique_ptr<pz::ipc::I
 
     case pz::ipc::IpcCmd::HeartbeatResult:
         return std::make_unique<HeartbeatEvent>(HeartbeatEventType::ReceiveHeartbeatResult, std::move(msg));
+
+    case pz::ipc::IpcCmd::ConfigReloadResponse:
+        return std::make_unique<BootstrapEvent>(BootstrapEventType::ReceiveConfigReloadResponse, std::move(msg));
+
+    case pz::ipc::IpcCmd::AuthSamlAcsResponse:
+        return std::make_unique<AuthEvent>(AuthEventType::ReceiveSamlAcsResponse, std::move(msg));
+
+    // Answers a web-domain controller is waiting on. Each carries on to the controller that owns the
+    // route serving it, so the ask and the answer stay in one file.
+    case pz::ipc::IpcCmd::TopologyResponse:
+        return std::make_unique<WebIpcEvent>(WebIpcEventType::TopologyResponse, std::move(msg));
+
+    case pz::ipc::IpcCmd::SettingsCommitStatus:
+        return std::make_unique<WebIpcEvent>(WebIpcEventType::SettingsCommitStatus, std::move(msg));
+
+    case pz::ipc::IpcCmd::ApiConnectorTestResponse:
+        return std::make_unique<WebIpcEvent>(WebIpcEventType::ApiConnectorTestResponse, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

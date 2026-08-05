@@ -7,6 +7,7 @@
 #include "service/web/controller/SettingsController.h"
 #include "service/web/controller/SsoController.h"
 #include "service/web/controller/StatusController.h"
+#include "service/web/controller/TopologyController.h"
 
 #include "http/HttpMessage.h"
 
@@ -17,6 +18,7 @@ namespace pz::mgmtd
 
 class MgmtdServiceManager;
 class WebEvent;
+class WebIpcEvent;
 class WebAction;
 
 // Every URL this service answers, as one enum value — the switch key WebService::route() dispatches
@@ -91,6 +93,10 @@ public:
 
     void handleEvent(MgmtdServiceManager& serviceManager, const WebEvent& event);
 
+    // An answer from another daemon, forwarded to the controller that owns the route serving it.
+    // WebService routes it the same way it routes an HTTP request: it knows the map, not the domain.
+    void handleIpcEvent(MgmtdServiceManager& serviceManager, const WebIpcEvent& event);
+
     void handleAction(MgmtdServiceManager& serviceManager, WebAction& action);
 
 private:
@@ -143,6 +149,7 @@ private:
     SsoController m_ssoController;
     SettingsController m_settingsController;
     StatusController m_statusController;
+    TopologyController m_topologyController;
     ApiController m_apiController;
     CollectionController m_collectionController;
     LogsController m_logsController;

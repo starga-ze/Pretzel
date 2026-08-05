@@ -4,6 +4,7 @@
 
 #include "service/web/WebAction.h"
 #include "service/web/WebEvent.h"
+#include "service/web/WebIpcEvent.h"
 #include "service/web/WebUtil.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -32,6 +33,34 @@ void WebService::handleEvent(MgmtdServiceManager& sm, const WebEvent& event)
     route(sm, event.request(), resp);
 
     sm.postAction(std::make_unique<WebAction>(std::move(resp), event.sessionId()));
+}
+
+// The IPC counterpart of route(). Same shape, same reason: WebService knows which controller owns
+// which conversation, and the controller knows what the answer means.
+void WebService::handleIpcEvent(MgmtdServiceManager& sm, const WebIpcEvent& event)
+{
+    const pz::ipc::IpcMessage* msg = event.message();
+    if (!msg)
+    {
+        LOG_WARN("web IPC event without a message — dropping");
+        return;
+    }
+
+    switch (event.type())
+    {
+    case WebIpcEventType::TopologyResponse:
+        return m_topologyController.onTopologyResponse(sm, *msg);
+
+    case WebIpcEventType::SettingsCommitStatus:
+        return m_settingsController.onCommitStatus(sm, *msg);
+
+    case WebIpcEventType::ApiConnectorTestResponse:
+        return m_apiController.onTestResponse(sm, *msg);
+
+    default:
+        LOG_WARN("unhandled web IPC event (type={})", static_cast<std::uint32_t>(event.type()));
+        return;
+    }
 }
 
 void WebService::handleAction(MgmtdServiceManager& sm, WebAction& action)
@@ -216,7 +245,7 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
     case WebRoute::SavedConfigContent: return m_settingsController.savedConfigContent(sm, req, resp);
 
     case WebRoute::DeviceStatus:       return m_statusController.deviceStatus(sm, req, resp);
-    case WebRoute::SiteTopology:       return m_statusController.siteTopology(sm, req, resp);
+    case WebRoute::SiteTopology:       return m_topologyController.siteTopology(sm, req, resp);
 
     case WebRoute::KeygenTest:         return m_apiController.keygenTest(sm, req, resp);
     case WebRoute::EndpointTest:       return m_apiController.endpointTest(sm, req, resp);

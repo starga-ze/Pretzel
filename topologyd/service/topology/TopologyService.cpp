@@ -1,6 +1,7 @@
 #include "service/topology/TopologyService.h"
 
 #include "service/TopologydServiceManager.h"
+#include "service/topology/NgfwModel.h"
 #include "router/TopologydTxRouter.h"
 
 #include "config/Config.h"
@@ -35,10 +36,14 @@ constexpr const char* kTs = "YYYY-MM-DD\"T\"HH24:MI:SSOF";
 enum class Role
 {
     None,
-    ZtnaGroups,       // ZTNA connector-groups
-    ZtnaConnectors,   // ZTNA connectors
-    NgfwInterfaces,   // ethernet interfaces
-    NgfwTunnels,      // IPSec tunnels
+    ZtnaGroups,        // ZTNA connector-groups
+    ZtnaConnectors,    // ZTNA connectors
+    NgfwInterfaces,    // ethernet interfaces
+    NgfwTunnels,       // IPSec tunnels
+    NgfwIke,           // IKE gateways — where the peer address lives, and so every off-box link
+    NgfwTunnelIfs,     // tunnel interface units
+    NgfwGpPortals,     // GlobalProtect portals
+    NgfwGpGateways,    // GlobalProtect gateways
 };
 
 bool contains(const std::string& hay, const char* needle)
@@ -68,34 +73,22 @@ Role roleOf(const json& ep)
         return Role::None;
     }
 
+    // Order matters throughout: "IKEGatewayNetworkProfiles" contains "gateway", and
+    // "TunnelInterfaces" contains both "tunnel" and "interface". The most specific token wins, and
+    // the loose fallbacks stay last so an operator who renamed a path still lands somewhere sane.
+    if (contains(path, "GlobalProtectPortals"))
+        return Role::NgfwGpPortals;
+    if (contains(path, "GlobalProtectGateways"))
+        return Role::NgfwGpGateways;
+    if (contains(path, "IKEGateway") || contains(path, "ike-gateway"))
+        return Role::NgfwIke;
+    if (contains(path, "TunnelInterfaces"))
+        return Role::NgfwTunnelIfs;
     if (contains(path, "IPSecTunnels") || contains(path, "ipsec"))
         return Role::NgfwTunnels;
     if (contains(path, "EthernetInterfaces") || contains(path, "ethernet"))
         return Role::NgfwInterfaces;
     return Role::None;
-}
-
-// PAN-OS REST wraps everything as {"result":{"entry":[…]}}; a single entry comes back as an object
-// rather than a one-element array. The vendor's own JSON, normalised to a list once here so no
-// caller has to remember which shape it got.
-json entriesOf(const json& doc)
-{
-    if (!doc.is_object())
-        return json::array();
-
-    const json* node = &doc;
-    if (doc.contains("result") && doc["result"].is_object())
-        node = &doc["result"];
-
-    if (!node->contains("entry"))
-        return json::array();
-
-    const json& e = (*node)["entry"];
-    if (e.is_array())
-        return e;
-    if (e.is_object())
-        return json::array({e});
-    return json::array();
 }
 
 // The ZTNA API answers {"data":[…]} — a different envelope from PAN-OS, same idea.
@@ -114,77 +107,6 @@ std::string str(const json& o, const char* key)
     return v.is_string() ? v.get<std::string>() : v.dump();
 }
 
-// The addresses configured on an interface. PAN-OS nests them per mode (layer3/layer2/…), and each
-// address is itself an `entry` whose NAME is the address — "10.0.0.1/24" is the key, not a value.
-std::string interfaceIp(const json& entry)
-{
-    for (const char* mode : {"layer3", "layer2", "tap", "ha", "virtual-wire"})
-    {
-        if (!entry.contains(mode) || !entry[mode].is_object())
-            continue;
-        const json& m = entry[mode];
-        if (!m.contains("ip"))
-            continue;
-
-        std::string out;
-        for (const auto& a : entriesOf(m))
-        {
-            const std::string addr = str(a, "@name");
-            if (addr.empty())
-                continue;
-            out += (out.empty() ? "" : ", ") + addr;
-        }
-        if (!out.empty())
-            return out;
-
-        // {"ip":{"entry":…}} handled above; some releases put a bare list under ip.
-        if (m["ip"].is_object())
-        {
-            for (const auto& a : entriesOf(m["ip"]))
-            {
-                const std::string addr = str(a, "@name");
-                if (addr.empty())
-                    continue;
-                out += (out.empty() ? "" : ", ") + addr;
-            }
-        }
-        if (!out.empty())
-            return out;
-    }
-    return {};
-}
-
-// Which mode an interface is configured in — the closest thing the config document has to "what is
-// this interface for", and worth showing beside the address.
-std::string interfaceMode(const json& entry)
-{
-    for (const char* mode : {"layer3", "layer2", "tap", "ha", "virtual-wire", "aggregate-group"})
-        if (entry.contains(mode))
-            return mode;
-    return {};
-}
-
-// Admin state from the configuration. PAN-OS marks a shut interface with link-state=down (or, on
-// some objects, `disabled`); anything else is administratively up.
-//
-// This is NOT operational state — the config API cannot say whether a cable is plugged in. The model
-// therefore reports `admin_state` and the page says so, rather than printing "up" over a link that
-// might be dark. Operational state needs `show interface`, which is a separate collection.
-std::string adminState(const json& entry)
-{
-    if (entry.contains("link-state"))
-    {
-        const std::string ls = str(entry, "link-state");
-        if (contains(ls, "down"))
-            return "down";
-        if (contains(ls, "up"))
-            return "up";
-    }
-    const std::string disabled = str(entry, "disabled");
-    if (disabled == "yes" || disabled == "true")
-        return "down";
-    return "up";
-}
 
 }
 
@@ -513,22 +435,38 @@ nlohmann::json TopologyService::composeSase(const std::string& siteOid, const Sa
     return out;
 }
 
-// The NGFW half: the customer's own firewalls, drawn from two collected documents — the ethernet
-// interfaces and the IPSec tunnels.
+// The NGFW half: the customer's own firewalls, and — new here — how they reach the fabric.
 //
-// Note on what is NOT drawn here: a ZTNA connector is not an NGFW peer. The connectors sit on VMs
-// behind the firewall and tunnel to the Prisma fabric directly, so correlating an NGFW tunnel's peer
-// against a connector's public address would invent a link that does not exist. The two halves of
-// this answer are two estates, not two ends of one wire.
+// The old version drew two documents (interfaces, IPSec tunnels) and stopped at the box. It could
+// not draw a link, because an IPSec tunnel names an IKE gateway and the peer address lives on the
+// gateway, which was not collected. With the gateway document in hand, every off-box relationship
+// the firewall has becomes readable, and that is what turns a grid of cards into a topology.
+//
+// Three things are produced:
+//
+//   devices   what each firewall IS — interfaces with a role (which side is the internet), the
+//             tunnels, the IKE gateways, the GlobalProtect portals and gateways.
+//   links     one edge per IKE gateway that has a peer. This is the traffic-bearing relationship:
+//             firewall, out of this interface, to that Service Connection / Remote Network / peer.
+//   shape     whether the fabric or a firewall is the hub — derived, not configured. See below.
+//
+// What is deliberately NOT correlated: a ZTNA connector is not an NGFW peer. Connectors sit on VMs
+// behind the firewall and tunnel to Prisma directly, so matching a tunnel's peer against a
+// connector's address would invent a link that does not exist.
 nlohmann::json TopologyService::composeNgfw(const std::string& siteOid, const SampleMap& samples,
                                             nlohmann::json& sources)
 {
+    namespace nm = pz::topologyd::ngfw;
+
     json out;
     out["devices"] = json::array();
+    out["links"] = json::array();
 
     const auto names = siteNames();
     int ifStreams = 0;
     int tunStreams = 0;
+    int ikeStreams = 0;
+    int gpStreams = 0;
 
     std::unordered_map<std::string, json> deviceRows;
     try
@@ -567,113 +505,386 @@ nlohmann::json TopologyService::composeNgfw(const std::string& siteOid, const Sa
         fw["last_seen"] = row == deviceRows.end() ? "" : row->second.value("last_seen", std::string());
 
         json interfaces = {{"list", json::array()}, {"total", 0}, {"up", 0}, {"down", 0},
-                           {"with_ip", 0},          {"collected_at", ""},    {"collected", false}};
+                           {"with_ip", 0},          {"wan", 0},   {"edge", 0},  {"lan", 0},
+                           {"collected_at", ""},    {"collected", false}};
         json tunnels = {{"list", json::array()}, {"total", 0}, {"enabled", 0}, {"disabled", 0},
                         {"collected_at", ""},    {"collected", false}};
+        json ike = {{"list", json::array()}, {"total", 0}, {"collected_at", ""}, {"collected", false}};
+        json gp = {{"portals", json::array()}, {"gateways", json::array()},
+                   {"collected_at", ""},       {"collected", false}};
+
+        // The raw interface document is needed twice — once to list the interfaces, once to decide
+        // which of them are the internet edge, and the second pass needs the IKE and GP documents
+        // that may arrive from a different stream. So the documents are gathered first and the
+        // model is built afterwards, rather than built as the streams are walked.
+        json ifDoc, tunDoc, ikeDoc, tunIfDoc, portalDoc, gwDoc;
 
         for (const auto& s : streamsForDevice(oid))
         {
             const Role role = roleOf(s.endpoint);
-            if (role != Role::NgfwInterfaces && role != Role::NgfwTunnels)
+            if (role == Role::None || role == Role::ZtnaGroups || role == Role::ZtnaConnectors)
                 continue;
 
             const auto it = samples.find(s.connectorOid + '\x1f' + s.endpointOid);
             if (it == samples.end())
                 continue;
 
-            const json entries = entriesOf(parseBody(it->second));
+            const json doc = parseBody(it->second);
+            const std::string at = it->second.at;
 
-            if (role == Role::NgfwInterfaces)
+            switch (role)
             {
+            case Role::NgfwInterfaces:
+                ifDoc = doc;
                 ++ifStreams;
                 interfaces["collected"] = true;
-                interfaces["collected_at"] = it->second.at;
-
-                int up = 0, down = 0, withIp = 0;
-                for (const auto& e : entries)
-                {
-                    if (!e.is_object())
-                        continue;
-                    const std::string ip = interfaceIp(e);
-                    const std::string state = adminState(e);
-                    state == "down" ? ++down : ++up;
-                    if (!ip.empty())
-                        ++withIp;
-
-                    interfaces["list"].push_back({{"name", str(e, "@name")},
-                                                  {"ip", ip},
-                                                  {"mode", interfaceMode(e)},
-                                                  {"comment", str(e, "comment")},
-                                                  {"admin_state", state}});
-                }
-                interfaces["total"] = interfaces["list"].size();
-                interfaces["up"] = up;
-                interfaces["down"] = down;
-                interfaces["with_ip"] = withIp;
-            }
-            else
-            {
+                interfaces["collected_at"] = at;
+                break;
+            case Role::NgfwTunnels:
+                tunDoc = doc;
                 ++tunStreams;
                 tunnels["collected"] = true;
-                tunnels["collected_at"] = it->second.at;
-
-                int enabled = 0, disabled = 0;
-                for (const auto& e : entries)
-                {
-                    if (!e.is_object())
-                        continue;
-
-                    // The peer address lives on the IKE gateway, which is a separate object this
-                    // does not collect — so the gateway is named and the peer is left honestly blank
-                    // rather than guessed at.
-                    std::string gateway;
-                    std::string crypto;
-                    if (e.contains("auto-key") && e["auto-key"].is_object())
-                    {
-                        const json& ak = e["auto-key"];
-                        crypto = str(ak, "ipsec-crypto-profile");
-                        if (ak.contains("ike-gateway"))
-                        {
-                            const json gws = entriesOf(ak["ike-gateway"]);
-                            for (const auto& g : gws)
-                            {
-                                const std::string n = str(g, "@name");
-                                if (n.empty())
-                                    continue;
-                                gateway += (gateway.empty() ? "" : ", ") + n;
-                            }
-                        }
-                    }
-
-                    const std::string dis = str(e, "disabled");
-                    const bool off = (dis == "yes" || dis == "true");
-                    off ? ++disabled : ++enabled;
-
-                    std::string monitor;
-                    if (e.contains("tunnel-monitor") && e["tunnel-monitor"].is_object())
-                        monitor = str(e["tunnel-monitor"], "enable");
-
-                    tunnels["list"].push_back({{"name", str(e, "@name")},
-                                               {"interface", str(e, "tunnel-interface")},
-                                               {"gateway", gateway},
-                                               {"crypto", crypto},
-                                               {"monitor", monitor},
-                                               {"enabled", !off}});
-                }
-                tunnels["total"] = tunnels["list"].size();
-                tunnels["enabled"] = enabled;
-                tunnels["disabled"] = disabled;
+                tunnels["collected_at"] = at;
+                break;
+            case Role::NgfwIke:
+                ikeDoc = doc;
+                ++ikeStreams;
+                ike["collected"] = true;
+                ike["collected_at"] = at;
+                break;
+            case Role::NgfwTunnelIfs:
+                tunIfDoc = doc;
+                break;
+            case Role::NgfwGpPortals:
+                portalDoc = doc;
+                ++gpStreams;
+                gp["collected"] = true;
+                gp["collected_at"] = at;
+                break;
+            case Role::NgfwGpGateways:
+                gwDoc = doc;
+                ++gpStreams;
+                gp["collected"] = true;
+                if (gp["collected_at"].get<std::string>().empty())
+                    gp["collected_at"] = at;
+                break;
+            default:
+                break;
             }
         }
 
+        // ── IKE gateways: read first, because the interface roles depend on them ──────────────
+        const auto ikeGws = nm::readIkeGateways(ikeDoc);
+        const auto portals = nm::readGpPortals(portalDoc);
+        const auto gateways = nm::readGpGateways(gwDoc);
+
+        // Which interfaces something terminates on. An interface that carries a VPN or fronts
+        // GlobalProtect is an edge whatever its address says — this is the configuration stating a
+        // fact, where the address is only ever an inference.
+        std::unordered_map<std::string, int> vpnOn;   // interface -> IKE gateways terminating there
+        std::unordered_map<std::string, int> gpOn;    // interface -> GP portals/gateways there
+        for (const auto& g : ikeGws)
+            if (!g.interfaceName.empty())
+                ++vpnOn[g.interfaceName];
+        for (const auto& p : portals)
+            if (!p.interfaceName.empty())
+                ++gpOn[p.interfaceName];
+        for (const auto& g : gateways)
+            if (!g.interfaceName.empty())
+                ++gpOn[g.interfaceName];
+
+        // ── Interfaces ────────────────────────────────────────────────────────────────────────
+        {
+            int up = 0, down = 0, withIp = 0, wan = 0, edge = 0, lan = 0;
+            for (const auto& e : nm::entriesOf(ifDoc))
+            {
+                if (!e.is_object())
+                    continue;
+
+                const std::string name = nm::str(e, "@name");
+                const auto addrs = nm::interfaceAddresses(e);
+                const std::string state = nm::adminState(e);
+                state == "down" ? ++down : ++up;
+                if (!addrs.empty())
+                    ++withIp;
+
+                // The role. A public address is the internet edge outright; a private one that
+                // nonetheless terminates a VPN or GlobalProtect is `edge` — see IfRole. An
+                // interface with no address at all is left unknown rather than filed as inside,
+                // because a spare port and a LAN port are not the same finding.
+                const bool terminates = vpnOn.count(name) || gpOn.count(name);
+                nm::IfRole role = nm::IfRole::Unknown;
+                if (name.rfind("loopback", 0) == 0)
+                    role = nm::IfRole::Loopback;
+                else if (name.rfind("tunnel", 0) == 0)
+                    role = nm::IfRole::Tunnel;
+                else if (!addrs.empty())
+                {
+                    bool anyPublic = false;
+                    for (const auto& a : addrs)
+                        if (!nm::isPrivateV4(a))
+                            anyPublic = true;
+                    role = anyPublic ? nm::IfRole::Wan
+                                     : (terminates ? nm::IfRole::Edge : nm::IfRole::Lan);
+                }
+                else if (terminates)
+                {
+                    // Services bound to an interface the document gives no address for. It is
+                    // still where the outside arrives, which is the whole point of the role.
+                    role = nm::IfRole::Edge;
+                }
+
+                if (role == nm::IfRole::Wan)
+                    ++wan;
+                else if (role == nm::IfRole::Edge)
+                    ++edge;
+                else if (role == nm::IfRole::Lan)
+                    ++lan;
+
+                std::string joined;
+                for (const auto& a : addrs)
+                    joined += (joined.empty() ? "" : ", ") + a;
+
+                interfaces["list"].push_back({{"name", name},
+                                              {"ip", joined},
+                                              {"addresses", addrs},
+                                              {"mode", nm::interfaceMode(e)},
+                                              {"comment", nm::str(e, "comment")},
+                                              {"role", nm::ifRoleName(role)},
+                                              {"vpn_count", vpnOn.count(name) ? vpnOn.at(name) : 0},
+                                              {"gp_count", gpOn.count(name) ? gpOn.at(name) : 0},
+                                              {"admin_state", state}});
+            }
+            interfaces["total"] = interfaces["list"].size();
+            interfaces["up"] = up;
+            interfaces["down"] = down;
+            interfaces["with_ip"] = withIp;
+            interfaces["wan"] = wan;
+            interfaces["edge"] = edge;
+            interfaces["lan"] = lan;
+        }
+
+        // ── Tunnel interfaces ─────────────────────────────────────────────────────────────────
+        // Appended to the same list with role=tunnel. They are interfaces on the box and belong in
+        // the box's picture; PAN-OS just serves them from a different resource. When the vsys scope
+        // hides them this document is empty, and the IPSec tunnels below still name them — so the
+        // drawing degrades to "the tunnel exists, its interface was not readable" rather than to a
+        // blank.
+        for (const auto& e : nm::entriesOf(tunIfDoc))
+        {
+            if (!e.is_object())
+                continue;
+            const auto addrs = nm::interfaceAddresses(e);
+            std::string joined;
+            for (const auto& a : addrs)
+                joined += (joined.empty() ? "" : ", ") + a;
+
+            interfaces["list"].push_back({{"name", nm::str(e, "@name")},
+                                          {"ip", joined},
+                                          {"addresses", addrs},
+                                          {"mode", "tunnel"},
+                                          {"comment", nm::str(e, "comment")},
+                                          {"role", "tunnel"},
+                                          {"vpn_count", 0},
+                                          {"gp_count", 0},
+                                          {"admin_state", nm::adminState(e)}});
+            interfaces["total"] = interfaces["list"].size();
+        }
+
+        // ── IPSec tunnels, now joined to their gateway's peer ─────────────────────────────────
+        std::unordered_map<std::string, const nm::IkeGateway*> byName;
+        for (const auto& g : ikeGws)
+            byName[g.name] = &g;
+
+        // Which tunnel rides which gateway, so a link can name the tunnel that carries it.
+        std::unordered_map<std::string, std::string> tunnelOfGateway;
+
+        {
+            int enabled = 0, disabled = 0;
+            for (const auto& e : nm::entriesOf(tunDoc))
+            {
+                if (!e.is_object())
+                    continue;
+
+                std::string gateway;
+                std::string crypto;
+                if (e.contains("auto-key") && e["auto-key"].is_object())
+                {
+                    const json& ak = e["auto-key"];
+                    crypto = nm::str(ak, "ipsec-crypto-profile");
+                    if (ak.contains("ike-gateway"))
+                    {
+                        for (const auto& g : nm::entriesOf(ak["ike-gateway"]))
+                        {
+                            const std::string n = nm::str(g, "@name");
+                            if (n.empty())
+                                continue;
+                            gateway += (gateway.empty() ? "" : ", ") + n;
+                        }
+                    }
+                }
+
+                const std::string dis = nm::str(e, "disabled");
+                const bool off = (dis == "yes" || dis == "true");
+                off ? ++disabled : ++enabled;
+
+                std::string monitor;
+                if (e.contains("tunnel-monitor") && e["tunnel-monitor"].is_object())
+                    monitor = nm::str(e["tunnel-monitor"], "enable");
+
+                const std::string tunName = nm::str(e, "@name");
+                if (!gateway.empty())
+                    tunnelOfGateway[gateway] = tunName;
+
+                // The peer, resolved through the gateway. This is the join the old model could not
+                // make, and it is the whole reason a tunnel row can now say where it goes.
+                json peer = nullptr;
+                const auto g = byName.find(gateway);
+                if (g != byName.end())
+                    peer = {{"kind", nm::peerKindName(g->second->peer.kind)},
+                            {"addr", g->second->peer.addr},
+                            {"label", g->second->peer.label},
+                            {"region", g->second->peer.region},
+                            {"tenant", g->second->peer.tenant}};
+
+                tunnels["list"].push_back({{"name", tunName},
+                                           {"interface", nm::str(e, "tunnel-interface")},
+                                           {"gateway", gateway},
+                                           {"crypto", crypto},
+                                           {"monitor", monitor},
+                                           {"peer", peer},
+                                           {"enabled", !off}});
+            }
+            tunnels["total"] = tunnels["list"].size();
+            tunnels["enabled"] = enabled;
+            tunnels["disabled"] = disabled;
+        }
+
+        // ── IKE gateways, and the links they imply ────────────────────────────────────────────
+        for (const auto& g : ikeGws)
+        {
+            json row = {{"name", g.name},
+                        {"interface", g.interfaceName},
+                        {"local_ip", g.localIp},
+                        {"version", g.version},
+                        {"peer", {{"kind", nm::peerKindName(g.peer.kind)},
+                                  {"addr", g.peer.addr},
+                                  {"label", g.peer.label},
+                                  {"region", g.peer.region},
+                                  {"tenant", g.peer.tenant}}}};
+            ike["list"].push_back(std::move(row));
+
+            if (g.peer.kind == nm::PeerKind::Unknown || g.peer.addr.empty())
+                continue;
+
+            const auto tun = tunnelOfGateway.find(g.name);
+            out["links"].push_back({{"device", oid},
+                                    {"device_name", fw["name"]},
+                                    {"site", devSite},
+                                    {"interface", g.interfaceName},
+                                    {"local_ip", g.localIp},
+                                    {"gateway", g.name},
+                                    {"tunnel", tun == tunnelOfGateway.end() ? std::string() : tun->second},
+                                    {"kind", nm::peerKindName(g.peer.kind)},
+                                    {"peer", g.peer.addr},
+                                    {"label", g.peer.label},
+                                    {"region", g.peer.region},
+                                    {"tenant", g.peer.tenant}});
+        }
+        ike["total"] = ike["list"].size();
+
+        // ── GlobalProtect ─────────────────────────────────────────────────────────────────────
+        for (const auto& p : portals)
+            gp["portals"].push_back({{"name", p.name},
+                                     {"interface", p.interfaceName},
+                                     {"local_ip", p.localIp},
+                                     {"gateways", p.gateways}});
+        for (const auto& g : gateways)
+            gp["gateways"].push_back({{"name", g.name},
+                                      {"interface", g.interfaceName},
+                                      {"local_ip", g.localIp},
+                                      {"tunnel_mode", g.tunnelMode},
+                                      {"pools", g.pools}});
+
         fw["interfaces"] = std::move(interfaces);
         fw["tunnels"] = std::move(tunnels);
+        fw["ike"] = std::move(ike);
+        fw["gp"] = std::move(gp);
         out["devices"].push_back(std::move(fw));
+    }
+
+    // ── Shape ─────────────────────────────────────────────────────────────────────────────────
+    //
+    // Which end is the hub, decided from the links rather than declared by an operator. Two real
+    // deployments have to be told apart and they are mirror images:
+    //
+    //   sase_hub   every firewall has its own Service Connection to the same tenant. The fabric is
+    //              the centre and the firewalls are spokes around it — the common Prisma design.
+    //   ngfw_hub   one firewall holds the connections and the others reach the fabric through it.
+    //              That firewall is the centre; it is a classic hub-and-spoke with an on-prem core.
+    //
+    // The test is where the fan-out is. Count firewalls per tenant, and connections per firewall: a
+    // tenant reached by several firewalls is a hub tenant; a firewall holding several tenants'
+    // connections while its siblings hold none is a hub firewall. Neither, and it is flat.
+    {
+        std::unordered_map<std::string, std::vector<std::string>> devicesPerTenant;
+        std::unordered_map<std::string, int> fabricLinksPerDevice;
+
+        for (const auto& l : out["links"])
+        {
+            const std::string kind = l.value("kind", std::string());
+            if (kind != "service_connection" && kind != "remote_network")
+                continue;
+
+            const std::string tenant = l.value("tenant", std::string());
+            const std::string dev = l.value("device", std::string());
+            ++fabricLinksPerDevice[dev];
+
+            auto& v = devicesPerTenant[tenant];
+            if (std::find(v.begin(), v.end(), dev) == v.end())
+                v.push_back(dev);
+        }
+
+        std::size_t widestTenant = 0;
+        for (const auto& [tenant, devs] : devicesPerTenant)
+        {
+            (void)tenant;
+            widestTenant = std::max(widestTenant, devs.size());
+        }
+
+        int busiestDevice = 0;
+        int devicesWithFabric = 0;
+        for (const auto& [dev, n] : fabricLinksPerDevice)
+        {
+            (void)dev;
+            busiestDevice = std::max(busiestDevice, n);
+            ++devicesWithFabric;
+        }
+
+        std::string shape = "flat";
+        if (widestTenant >= 2)
+            shape = "sase_hub";
+        else if (devicesWithFabric == 1 && busiestDevice >= 2 && out["devices"].size() > 1)
+            shape = "ngfw_hub";
+        else if (devicesWithFabric >= 1)
+            shape = "edge";
+
+        json tenants = json::object();
+        for (const auto& [tenant, devs] : devicesPerTenant)
+            tenants[tenant.empty() ? "unknown" : tenant] = devs;
+
+        out["shape"] = {{"kind", shape},
+                        {"tenants", std::move(tenants)},
+                        {"fabric_devices", devicesWithFabric},
+                        {"max_links_per_device", busiestDevice}};
     }
 
     sources["ngfw_devices"] = out["devices"].size();
     sources["interface_streams"] = ifStreams;
     sources["tunnel_streams"] = tunStreams;
+    sources["ike_streams"] = ikeStreams;
+    sources["gp_streams"] = gpStreams;
+    sources["ngfw_links"] = out["links"].size();
     return out;
 }
 

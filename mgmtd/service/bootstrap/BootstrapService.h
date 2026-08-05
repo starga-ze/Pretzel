@@ -44,6 +44,9 @@ private:
 
     void onRuntimeStart(const pz::ipc::IpcMessage& msg);
 
+    // Success and failure both arrive as ConfigReloadResponse; this is where they are told apart.
+    void onConfigReloadResponse(MgmtdServiceManager& serviceManager, const pz::ipc::IpcMessage& msg);
+
     bool checkTimeout(std::chrono::steady_clock::time_point now, const char* stateName);
 
     std::unique_ptr<pz::ipc::IpcMessage> buildClientHelloMessage() const;

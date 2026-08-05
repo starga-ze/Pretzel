@@ -2,6 +2,11 @@
 
 #include "http/HttpMessage.h"
 
+namespace pz::ipc
+{
+class IpcMessage;
+}
+
 namespace pz::mgmtd
 {
 
@@ -24,6 +29,10 @@ public:
     void saveConfig(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
     void savedConfigs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
     void savedConfigContent(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // engined's commit queue moved. The snapshot is what GET /api/settings/commit-queue serves, so
+    // filing it belongs beside that route rather than in the router that happened to receive it.
+    void onCommitStatus(MgmtdServiceManager& sm, const pz::ipc::IpcMessage& msg);
 };
 
 }

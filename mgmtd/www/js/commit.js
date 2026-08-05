@@ -355,6 +355,23 @@
       document.getElementById('cmDone').onclick = closeModal;
       return;
     }
+    // The configuration was written but the fleet did not converge onto it — a daemon failed to come
+    // back. Distinct from a timeout, which says only that it is taking longer than we wait: this is
+    // engined reporting that it is not coming. Nothing here can be retried by publishing again, so
+    // the message points at the logs rather than offering a button that would not help.
+    if (st && st.status === 'failed') {
+      setProg(100, 'Applied, but the daemons did not come back', 'error');
+      document.getElementById('cmBody')?.insertAdjacentHTML('beforeend', `<div class="cm-warn">
+          <div class="cm-warn-h">Reload did not converge</div>
+          <ul><li>The new configuration was committed, but at least one daemon failed to restart
+            onto it. The appliance is running a mix of old and new configuration.</li></ul>
+          <div class="cm-warn-note">Check <a href="monitor?tab=system-log">Monitor › System Log</a>
+            for the daemon that did not report ready. Publishing again will not fix this.</div>
+        </div>`);
+      foot.innerHTML = `<button class="btn-sm" id="cmDone">Close</button>`;
+      document.getElementById('cmDone').onclick = closeModal;
+      return;
+    }
     if (elapsed >= RELOAD_TIMEOUT_MS) {
       setProg(100, 'Timed out — committed, still applying', 'warn');
       foot.innerHTML = `<button class="btn-sm" id="cmDone">Close</button>`;

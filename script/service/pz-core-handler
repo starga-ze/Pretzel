@@ -1,0 +1,77 @@
+#!/bin/bash
+# Kernel core handler for the pretzel daemons.
+#
+# Installed as kernel.core_pattern with a leading '|', so the kernel runs it as root with the core
+# stream on stdin. That is the only way to control the filename beyond the kernel's own %-escapes:
+# core_pattern has no strftime, so a human-readable timestamp has to be formatted here.
+#
+# Why a handler at all, rather than a plain path pattern:
+#   - the timestamp an operator wants (20260805_T112500) is not a thing the kernel can write
+#   - non-pretzel crashes must keep going wherever the distribution sends them, not land in our
+#     directory; this forwards them on rather than swallowing them
+#   - retention has to happen somewhere, and a core directory that fills the disk takes the
+#     appliance down more reliably than the bug that produced the cores
+#
+# Arguments come from core_pattern: %p pid, %e exe (comm, 15 chars), %s signal, %E full path.
+#
+#   |/opt/pretzel/bin/pz-core-handler %p %e %s %E
+set -u
+
+PID="${1:-0}"
+COMM="${2:-unknown}"
+SIG="${3:-0}"
+EXE="${4:-}"                       # full path with '/' replaced by '!'
+
+CORE_DIR=/var/crash/pretzel
+KEEP=20                            # newest N cores; older ones are removed after each write
+
+# %E arrives with '/' escaped as '!' — turn it back into a path so the filter below can match.
+EXE_PATH="${EXE//!//}"
+
+# Anything that is not ours goes back to the distribution's handler untouched. An appliance still
+# runs other software, and quietly eating its cores would be a debugging problem of its own.
+case "$EXE_PATH" in
+    /opt/pretzel/bin/pz-*) ;;
+    *)
+        if [ -x /usr/share/apport/apport ]; then
+            exec /usr/share/apport/apport -p"$PID" -s"$SIG" -c0 -d1 -P"$PID" -u0 -g0 -- "$EXE"
+        fi
+        exit 0
+        ;;
+esac
+
+# root:adm 0750 — the same arrangement Debian/Ubuntu use for privileged logs, and for the same
+# reason. A core is a dump of process memory: decrypted device API keys, bearer tokens, session
+# ids and password hashes are all in it verbatim. World-readable is therefore wrong however
+# convenient it would be. `adm` is the group an operator who is allowed to read crash data is
+# already in, so this needs no new group and no sudo to read.
+mkdir -p "$CORE_DIR" || exit 0
+chown root:adm "$CORE_DIR" 2>/dev/null
+chmod 0750 "$CORE_DIR" 2>/dev/null
+
+# <daemon>_<YYYYMMDD>_T<HHMMSS>_sig<N>_pid<N>.core
+#
+# The daemon name and pid are not decoration. Two daemons can fault in the same second — a bad
+# config reload takes several down together, which is exactly when cores matter most — and a name
+# carrying only the timestamp would have them overwrite each other. The signal is in the name so
+# `ls` already distinguishes a SIGSEGV from the SIGABRT of an uncaught exception, which are
+# different investigations.
+STAMP=$(date +%Y%m%d_T%H%M%S)
+OUT="$CORE_DIR/${COMM}_${STAMP}_sig${SIG}_pid${PID}.core"
+
+cat > "$OUT"
+chown root:adm "$OUT" 2>/dev/null
+chmod 0640 "$OUT" 2>/dev/null
+
+# Retention. Cores are tens to hundreds of megabytes and a crash-looping daemon under
+# Restart=always produces one every RestartSec — unbounded, that fills the disk in minutes.
+ls -1t "$CORE_DIR"/*.core 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+    rm -f "$old"
+done
+
+# Say so where the operator is already looking. The daemon is gone and cannot log its own death,
+# so this is the only line that will appear in the journal at the moment it happens.
+logger -t pz-core-handler -p daemon.crit \
+    "core written: $OUT (daemon=$COMM signal=$SIG pid=$PID)"
+
+exit 0

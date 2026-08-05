@@ -14,7 +14,11 @@ enum class BootstrapEventType : std::uint32_t
     Unknown = 0,
     SendClientHello = 1,
     ReceiveServerHello = 2,
-    ReceiveRuntimeStart = 3
+    ReceiveRuntimeStart = 3,
+    // engined reports the fleet has converged onto the committed configuration — or has failed to.
+    // The runtime lifecycle is this service's domain either way; a commit reload is the same
+    // handshake the daemon already tracks, run again against a new target version.
+    ReceiveConfigReloadResponse = 4
 };
 
 class BootstrapEvent final : public MgmtdEvent

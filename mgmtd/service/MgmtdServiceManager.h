@@ -51,14 +51,19 @@ public:
 
     MgmtdTxRouter& txRouter();
 
+    // A commit's reload has three outcomes, not two. `Failed` exists because engined answers a
+    // reload that did not converge with the same command it answers a successful one, and folding
+    // that into Complete told the browser a failed publish had succeeded.
     enum class ReloadStatus
     {
         Idle,
         Reloading,
-        Complete
+        Complete,
+        Failed
     };
     void startReload();
     void completeReload();
+    void failReload();
     ReloadStatus reloadStatus() const;
     std::int64_t reloadElapsedMs() const;
 
