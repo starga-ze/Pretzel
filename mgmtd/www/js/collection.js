@@ -888,7 +888,7 @@
          <dt>HTTP status</dt><dd>${last.http_status != null ? last.http_status : '<span class="col-null">no reply</span>'}</dd>
          <dt>Latency</dt><dd>${last.latency_ms != null ? last.latency_ms + ' ms' : '—'}</dd>
          <dt>Size</dt><dd>${last.bytes != null ? fmtBytes(last.bytes) : '—'}${
-           last.truncated ? ' <span class="col-state stale">— stored copy was cut at the 16 KB cap</span>' : ''}</dd>
+           last.truncated ? ' <span class="col-state stale">— stored copy was cut at the 64 KB cap</span>' : ''}</dd>
        </dl>` : ''}`;
   }
 
@@ -979,7 +979,7 @@
        <div class="col-sec">Full structure</div><div class="col-tree">${treeHtml(parsed.value)}</div>`;
   }
 
-  // Raw is the stored response. Devices send it minified — one 16 KB line is unreadable — so it is
+  // Raw is the stored response. Devices send it minified — one 64 KB line is unreadable — so it is
   // reflowed by default and the exact bytes are one click away. Reflowing only ever changes
   // whitespace, and where that is not good enough (a truncated body, a checksum, anything where the
   // literal bytes are the point) Exact is the same text untouched. Copy and Download always take
@@ -1008,7 +1008,7 @@
          <button class="col-btn" id="colCopy" type="button">Copy</button>
          <button class="col-btn" id="colDownload" type="button">Download</button>
          <span class="col-stamp">${esc(fmtTs(m.at))} · ${m.bytes != null ? esc(fmtBytes(m.bytes)) : '—'}${
-           m.truncated ? ' · cut at the 16 KB cap' : ''}${failed}${
+           m.truncated ? ' · cut at the 64 KB cap' : ''}${failed}${
            pretty ? ` · ${pretty.kind}, reflowed` : ''}</span>
        </div>
        <pre class="col-raw" id="colRaw">${esc(shown)}</pre>`;

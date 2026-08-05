@@ -378,11 +378,19 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ changes: opts.payload }),
       });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
       const res = await r.json().catch(() => ({}));
-      if ((res.applied | 0) <= 0) throw new Error('no changes applied (failed=' + (res.failed | 0) + ')');
+
+      // `failed` has to be read even on a 2xx, and the body has to be read even on a non-2xx. A
+      // partially accepted batch used to answer 200 with the rejections buried in `results`, and
+      // this only looked at `applied` — so onPublished below cleared the drafts for changes the
+      // server never took. That was the one way a published edit could vanish without a word.
+      const rejected = (res.results || []).filter(x => x && x.ok === false);
+      if (!r.ok || (res.failed | 0) > 0 || (res.applied | 0) <= 0) {
+        throw Object.assign(new Error(res.error || 'HTTP ' + r.status), { rejected });
+      }
     } catch (e) {
-      setProg(100, 'Failed: ' + e.message, 'error');
+      setProg(100, 'Not published', 'error');
+      body.insertAdjacentHTML('beforeend', rejectionBlock(e.message, e.rejected));
       foot.innerHTML = `<button class="btn-sm" id="cmDone">Close</button>`;
       document.getElementById('cmDone').onclick = closeModal;
       return;
@@ -391,6 +399,22 @@
     if (typeof opts.onPublished === 'function') opts.onPublished();
     setProg(30, 'Applying');
     pollProgress(Date.now());
+  }
+
+  // Why nothing was published. The server answers per change, and those reasons are the useful part
+  // — "connector collects an endpoint that does not exist" names what to go and fix, where a bare
+  // status code sends the operator to the logs. The closing line matters as much: the drafts are
+  // still staged, so this is a retry rather than lost work.
+  function rejectionBlock(message, rejected) {
+    const items = (rejected && rejected.length)
+      ? rejected.map(x => `<li><b>${esc(x.daemon)}.${esc(x.domain)}</b> — ${esc(x.error || 'rejected')}</li>`).join('')
+      : `<li>${esc(message)}</li>`;
+    return `<div class="cm-warn">
+        <div class="cm-warn-h">Nothing was published</div>
+        <ul>${items}</ul>
+        <div class="cm-warn-note">The batch is applied whole or not at all, so no part of it was
+          committed. Your staged changes are still here — fix the above and publish again.</div>
+      </div>`;
   }
 
   // Dangling references are worth stopping on: they publish quietly and only show up later as a

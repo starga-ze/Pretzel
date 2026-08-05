@@ -21,9 +21,10 @@ namespace
 constexpr int kRetentionDays = 14;
 
 // How many samples per stream keep their raw response body. Everything older keeps its row but
-// releases the payload (body_aged). At 16 KB a body and a 60-second poll, retaining every body for
-// the full window would be ~320 MB per stream; retaining the newest 50 is under 1 MB, and 50 covers
-// the only question a body is ever opened to answer — "what is this endpoint returning right now".
+// releases the payload (body_aged). At the 64 KB collectord keeps and a 60-second poll, retaining
+// every body for the full window would be ~1.3 GB per stream; retaining the newest 50 is ~3 MB, and
+// 50 covers the only question a body is ever opened to answer — "what is this endpoint returning
+// right now".
 constexpr int kBodiesPerStream = 50;
 
 constexpr auto kPruneInterval = std::chrono::hours(1);

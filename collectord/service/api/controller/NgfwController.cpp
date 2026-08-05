@@ -41,9 +41,9 @@ void onEndpointResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResp
     }
 
     // The body is returned so the operator can confirm the path produced what they meant to
-    // collect, not merely that it returned 200. Capped because a broad query would be megabytes.
-    constexpr std::size_t kMaxBody = 16000;
-    const bool truncated = res.body.size() > kMaxBody;
+    // collect, not merely that it returned 200. Capped at the same size collection keeps, so what
+    // the test panel shows is what a poll would store.
+    const bool truncated = res.body.size() > kMaxSampleBody;
     const bool ok = (res.status == 200);
 
     if (ok)
@@ -56,7 +56,7 @@ void onEndpointResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResp
                          (ok ? "" : " — " + (apiType == "xml" ? xmlErrorMessage(res.body) : res.body.substr(0, 160))));
     out["ok"] = ok;
     out["response"] = {{"status", res.status},
-                       {"body", res.body.substr(0, kMaxBody)},
+                       {"body", res.body.substr(0, kMaxSampleBody)},
                        {"bytes", res.body.size()},
                        {"truncated", truncated}};
     out["message"] = ok ? "endpoint responded" : "endpoint returned HTTP " + std::to_string(res.status);

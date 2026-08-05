@@ -50,10 +50,6 @@ namespace
 
 using json = nlohmann::json;
 
-// The response body is stored raw; cap it so one broad query (every address object on a large
-// firewall) cannot turn a single sample into a multi-megabyte IPC message and DB row.
-constexpr std::size_t kMaxBody = 16000;
-
 // The first poll fires this soon after start rather than a full interval later, so a fresh commit
 // (a reload restarts the daemon) shows data within seconds instead of after minutes. The small
 // delay lets the issued keys arrive first; it is capped at the interval so a sub-delay interval
@@ -259,7 +255,7 @@ void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::ti
     const auto latencyMs =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startedAt).count();
 
-    const json sample = buildCollectionSample(job->connectorOid, job->endpointOid, res, latencyMs, kMaxBody);
+    const json sample = buildCollectionSample(job->connectorOid, job->endpointOid, res, latencyMs, kMaxSampleBody);
 
     if (sample.value("ok", false))
         LOG_INFO("collection sample (connector={}, endpoint={}, status={}, bytes={}, {}ms)", job->connectorOid,

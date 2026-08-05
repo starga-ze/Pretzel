@@ -128,8 +128,9 @@
     } catch (e) { setMsg('Apply failed: ' + e.message, true); return; }
 
     if (!d.applied) { setMsg('Nothing applied — no section was accepted.', true); return; }
-    const skipped = d.failed ? `, ${d.failed} skipped` : '';
-    setMsg(`Applied ${d.applied} section(s)${skipped}. The daemons are reloading onto it.`, false);
+    // No "skipped" count to report: a commit is accepted whole or rejected whole, so anything that
+    // failed validation came back above as a rejection with nothing applied.
+    setMsg(`Applied ${d.applied} section(s). The daemons are reloading onto it.`, false);
     await load(); render();
   }
 

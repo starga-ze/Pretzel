@@ -17,7 +17,7 @@ class EnginedServiceManager;
 // Pure state, append-only: every poll is one row, never an update — the point is the time series.
 //
 // Append-only needs a floor, and this table has two very different tenants in one row: a few dozen
-// bytes of call metadata (when, ok, status, latency) and up to 16 KB of raw response body. They are
+// bytes of call metadata (when, ok, status, latency) and up to 64 KB of raw response body. They are
 // worth keeping for different lengths of time — the history that draws a trend is cheap and wanted
 // for weeks, the payload is expensive and only ever read for a recent sample. prune() therefore ages
 // them separately rather than picking one compromise retention for both.

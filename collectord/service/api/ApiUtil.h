@@ -94,6 +94,18 @@ void rejectTest(const std::shared_ptr<ConnectorTest>& ctx, const std::string& me
 
 // ── Collection sample ─────────────────────────────────────────────────────────────────────
 
+// How much of a response body is kept, for both the scheduled poll and the operator's endpoint test.
+// Shared deliberately: the two used to hold their own copy of this number, so a body could survive
+// collection and still arrive truncated in the test panel, or the reverse.
+//
+// A cut body is not a smaller body — it is a broken one. The stored text stops mid-token, so nothing
+// downstream can parse it and the UI can only offer the raw bytes; the whole Data view is lost to
+// save the tail. 16 KB was under a real PAN-OS answer (a GlobalProtect portal with its client
+// configs runs past 23 KB), so it was cutting responses an operator had every reason to expect to
+// read. 64 KB clears those while staying far below IPC_MAX_FRAME_SIZE (1 MB) and bounding the worst
+// case a broad query can cost — at 50 retained bodies per stream, 3.2 MB.
+inline constexpr std::size_t kMaxSampleBody = 64 * 1024;
+
 // Builds the api_collection sample document from one device call's outcome — the shape collectord
 // ships to engined. A pure function of its inputs (no timer, no IPC, no config), which is what makes
 // it unit-testable in isolation.

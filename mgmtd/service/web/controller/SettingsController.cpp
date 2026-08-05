@@ -24,8 +24,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace pz::mgmtd
@@ -257,8 +259,10 @@ bool validateApiReferences(const json& values, std::string& error)
     return pz::config::checkApiReferences(effective, error);
 }
 
-bool validateCommitValues(const std::string& daemon, const std::string& domain, const json& values,
-                          std::string& error)
+// Shape only: every entry in every array this domain owns is well-formed on its own. Deliberately
+// says nothing about references — those cannot be judged one change at a time, see below.
+bool validateCommitShape(const std::string& daemon, const std::string& domain, const json& values,
+                         std::string& error)
 {
     auto validateArray = [&](const char* key, bool (*validEntry)(const json&))
     {
@@ -290,7 +294,23 @@ bool validateCommitValues(const std::string& daemon, const std::string& domain, 
 
     if (daemon == "collectord" && domain == "api")
         return validateArray("api_credentials", validApiKey) && validateArray("endpoints", validApiEndpoint) &&
-               validateArray("connectors", validApiConnector) && validateApiReferences(values, error);
+               validateArray("connectors", validApiConnector);
+
+    return true;
+}
+
+// Referential integrity, run once per (daemon, domain) over the MERGED values of every change in
+// the batch that targets it — never per change. The three API editors each publish their own slice
+// of collectord.api (endpoints.js sends `endpoints`, api-connectors.js sends `connectors`,
+// api-keys.js sends `api_credentials`), so one operator action routinely arrives as several sibling
+// entries. Checking a connector entry against the stored config alone would reject the commonest
+// edit there is — add an endpoint and attach it — because the endpoint it points at is sitting in
+// the sibling entry, not yet in the database.
+bool validateCommitRefs(const std::string& daemon, const std::string& domain, const json& values,
+                        std::string& error)
+{
+    if (daemon == "collectord" && domain == "api")
+        return validateApiReferences(values, error);
 
     return true;
 }
@@ -404,6 +424,7 @@ void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpReq
 
     json validChanges = json::array();
     json results = json::array();   // per-change outcome, returned to the browser and used below
+    std::vector<std::size_t> resultOf;   // parallel to validChanges: where its result entry lives
     int failed = 0;
 
     // Record a per-change rejection: logged (so the reason survives in mgmtd.log) and returned.
@@ -441,21 +462,76 @@ void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpReq
         }
 
         std::string schemaError;
-        if (!validateCommitValues(daemon, domain, values, schemaError))
+        if (!validateCommitShape(daemon, domain, values, schemaError))
         {
             reject(daemon, domain, schemaError.empty() ? "schema validation failed" : schemaError);
             continue;
         }
 
         results.push_back({{"daemon", daemon}, {"domain", domain}, {"ok", true}});
+        resultOf.push_back(results.size() - 1);
         validChanges.push_back(change);
     }
 
-    const int applied = static_cast<int>(validChanges.size());
-    if (failed > 0)
-        LOG_WARN("settings-commit: {} change(s) rejected, {} accepted", failed, applied);
+    // Reference pass, on the merged view of each domain — see validateCommitRefs. Only worth running
+    // on a batch that is otherwise sound: merging values from an entry already known to be malformed
+    // would report a dangling reference the operator cannot act on.
+    if (failed == 0)
+    {
+        std::map<std::pair<std::string, std::string>, json> mergedByDomain;
+        for (const auto& c : validChanges)
+        {
+            json& dst = mergedByDomain[{c.value("daemon", std::string()), c.value("domain", std::string())}];
+            if (!dst.is_object())
+                dst = json::object();
+            // Key-level replacement, matching how the values are assembled for the check itself: an
+            // editor publishes a whole array under its own key and owns that key completely.
+            for (const auto& [key, value] : c["values"].items())
+                dst[key] = value;
+        }
 
-    if (applied > 0)
+        for (const auto& [target, values] : mergedByDomain)
+        {
+            std::string refError;
+            if (validateCommitRefs(target.first, target.second, values, refError))
+                continue;
+
+            if (refError.empty())
+                refError = "reference check failed";
+
+            LOG_WARN("settings-commit rejected (daemon={}, domain={}, reason={})", target.first, target.second,
+                     refError);
+
+            // It is the combination that broke the reference, not one entry in it, so every change
+            // aimed at this domain is marked — the operator needs to see all the parts involved to
+            // know which one to correct.
+            for (std::size_t i = 0; i < validChanges.size(); ++i)
+            {
+                if (validChanges[i].value("daemon", std::string()) != target.first ||
+                    validChanges[i].value("domain", std::string()) != target.second)
+                    continue;
+
+                results[resultOf[i]]["ok"] = false;
+                results[resultOf[i]]["error"] = refError;
+                failed++;
+            }
+        }
+    }
+
+    const int applied = static_cast<int>(validChanges.size());
+
+    // All or nothing. A batch is one operator action spread across several editors and the parts are
+    // not independent — a connector references an endpoint staged beside it. Publishing only the half
+    // that validated leaves a configuration nobody asked for, and because the browser clears every
+    // staged draft the moment anything is applied, the rejected half is gone with no way to retry it.
+    // That is how a commit could appear to succeed and silently lose an edit.
+    const bool accepted = (failed == 0 && applied > 0);
+
+    if (failed > 0)
+        LOG_WARN("settings-commit: {} change(s) rejected of {} — batch not published", failed,
+                 static_cast<int>(changes.size()));
+
+    if (accepted)
     {
         const std::string payload = validChanges.dump();
         auto msg = std::make_unique<pz::ipc::IpcMessage>();
@@ -470,15 +546,19 @@ void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpReq
         LOG_INFO("SettingsCommitRequest sent to engined (changes={})", applied);
     }
 
-    const int status = (failed == 0) ? 200 : (applied > 0 ? 200 : 500);
+    // 409, not 200: the request was understood but conflicts with the configuration it would have
+    // produced. The browser reads `results` for the per-change reason either way — the code only has
+    // to be un-2xx so a rejection can never be mistaken for a publish.
+    const int status = accepted ? 200 : 409;
 
     json body;
-    body["applied"] = applied;
+    body["applied"] = accepted ? applied : 0;
     body["failed"] = failed;
     body["results"] = std::move(results);
-    body["reloading"] = (applied > 0);
-    if (failed > 0 && applied == 0)
-        body["error"] = "no change was accepted — see results";
+    body["reloading"] = accepted;
+    if (!accepted)
+        body["error"] = (failed > 0) ? "no change was published — the batch is applied whole or not at all"
+                                     : "nothing to commit";
 
     fill(resp, status, body.dump());
 }
