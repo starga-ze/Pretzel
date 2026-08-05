@@ -49,15 +49,26 @@ mkdir -p "$CORE_DIR" || exit 0
 chown root:adm "$CORE_DIR" 2>/dev/null
 chmod 0750 "$CORE_DIR" 2>/dev/null
 
-# <daemon>_<YYYYMMDD>_T<HHMMSS>_sig<N>_pid<N>.core
+# core.<daemon>_<YYYYMMDD>_T<HHMMSS>_sig<N>_pid<N>
 #
-# The daemon name and pid are not decoration. Two daemons can fault in the same second — a bad
+# The `core.` PREFIX is load-bearing, not decoration, and this file was originally named the other
+# way round (…​.core) until that turned out to break the one tool the whole exercise is for. gdb's
+# bash completion offers a core file for its second argument only if the name matches
+#
+#     ?(*/)core?(.?*)
+#
+# — that is, a file whose basename begins with `core`. A name ending in `.core` is filtered out, so
+# TAB silently offers nothing and the operator concludes the path is wrong. The kernel's own default
+# (`core`, `core.%p`) is the same shape, and matching it keeps every tool that assumes the tradition
+# working.
+#
+# The daemon name and pid are not decoration either. Two daemons can fault in the same second — a bad
 # config reload takes several down together, which is exactly when cores matter most — and a name
 # carrying only the timestamp would have them overwrite each other. The signal is in the name so
-# `ls` already distinguishes a SIGSEGV from the SIGABRT of an uncaught exception, which are
-# different investigations.
+# `ls` already distinguishes a SIGSEGV from the SIGABRT of a corrupted heap, which are different
+# investigations.
 STAMP=$(date +%Y%m%d_T%H%M%S)
-OUT="$CORE_DIR/${COMM}_${STAMP}_sig${SIG}_pid${PID}.core"
+OUT="$CORE_DIR/core.${COMM}_${STAMP}_sig${SIG}_pid${PID}"
 
 cat > "$OUT"
 chown root:adm "$OUT" 2>/dev/null
@@ -65,7 +76,7 @@ chmod 0640 "$OUT" 2>/dev/null
 
 # Retention. Cores are tens to hundreds of megabytes and a crash-looping daemon under
 # Restart=always produces one every RestartSec — unbounded, that fills the disk in minutes.
-ls -1t "$CORE_DIR"/*.core 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+ls -1t "$CORE_DIR"/core.* 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
     rm -f "$old"
 done
 

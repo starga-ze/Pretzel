@@ -30,7 +30,13 @@ DAEMONS = [
 
 # Defines source and destination paths for deployment
 BUILD_BIN_DIR = os.path.join(BUILD_DIR, "bin")
+# Two source directories, split by destination rather than by file type:
+#   service/ → /etc/systemd/system   unit files, nothing else
+#   bin/     → /opt/pretzel/bin      runtime scripts that ship beside the compiled daemons
+# Keeping a shell script in service/ made deploy_files' "install every .service" loop skip it, and
+# left a file in a directory whose whole contents were otherwise systemd's.
 SERVICE_DIR = os.path.join(os.path.dirname(__file__), "service")
+SCRIPT_BIN_DIR = os.path.join(os.path.dirname(__file__), "bin")
 SYSTEMD_DIR = "/etc/systemd/system"
 INSTALL_BIN_DIR = "/opt/pretzel/bin"
 ETC_ROOT_DIR = "/etc/pretzel"
@@ -431,7 +437,7 @@ def deploy_coredump():
 
     # The handler lives beside the binaries it serves; core_pattern runs it as root with the core
     # on stdin. It also owns the naming and retention — see the script for why both are needed.
-    install_file(os.path.join(SERVICE_DIR, "pz-core-handler"),
+    install_file(os.path.join(SCRIPT_BIN_DIR, "pz-core-handler"),
                  os.path.join(INSTALL_BIN_DIR, "pz-core-handler"), 0o755, quiet=True)
 
     os.makedirs(CORE_DIR, exist_ok=True)
