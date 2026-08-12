@@ -37,6 +37,7 @@ enum class WebRoute
     Logout,           // POST /api/logout
     ChangePassword,   // POST /api/change-password  (authenticated, must-change-exempt)
     Whoami,           // GET  /api/whoami
+    SessionKeepalive, // POST /api/session/keepalive  (the only route that extends the session)
 
     // SsoController — SAML sign-in.
     SsoInfo,      // GET  /api/auth/sso/info

@@ -144,4 +144,19 @@ void AuthController::whoami(MgmtdServiceManager& sm, const pz::http::HttpRequest
     fill(resp, 200, out.dump());
 }
 
+// Push the idle timeout out by a full TTL. The router has already answered 401 for a session that
+// expired, so reaching here means the operator is still signed in and has just done something.
+// The new lifetime is echoed back: the frontend does not need it today, but a client that wants to
+// warn before a session goes should read it rather than hardcode what this daemon considers 30
+// minutes.
+void AuthController::keepalive(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
+                               pz::http::HttpResponse& resp)
+{
+    if (!sm.authService().renewSession(sessionCookie(req)))
+        return fill(resp, 401, R"({"error":"unauthorized","code":"UNAUTHENTICATED"})");
+
+    const json out = {{"expires_in", sm.authService().sessionTtlSec()}};
+    fill(resp, 200, out.dump());
+}
+
 }

@@ -100,8 +100,14 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
             Match::Exact,  WebRoute::Logout,             Access::Public,        false},
         {"POST", "/api/change-password",                
             Match::Exact,  WebRoute::ChangePassword,     Access::Authenticated, true},
-        {"GET",  "/api/whoami",                         
+        {"GET",  "/api/whoami",
             Match::Exact,  WebRoute::Whoami,             Access::Authenticated, false},
+        // Renewal is its own route because it is the only one allowed to move the expiry: the
+        // frontend fires it only after real operator input, so the TTL stays an idle timeout even
+        // while a live view polls in the background. Kept exempt-free — a session under the
+        // must-change lock has nothing to keep alive but the change-password form.
+        {"POST", "/api/session/keepalive",
+            Match::Exact,  WebRoute::SessionKeepalive,   Access::Authenticated, false},
 
         // SSO / SAML.
         {"GET",  "/api/auth/sso/info",                  
@@ -229,6 +235,7 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
     case WebRoute::Logout:             return m_authController.logout(sm, req, resp);
     case WebRoute::ChangePassword:     return m_authController.changePassword(sm, req, resp);
     case WebRoute::Whoami:             return m_authController.whoami(sm, req, resp);
+    case WebRoute::SessionKeepalive:   return m_authController.keepalive(sm, req, resp);
 
     case WebRoute::SsoInfo:            return m_ssoController.info(sm, req, resp);
     case WebRoute::SsoLogin:           return m_ssoController.login(sm, req, resp);

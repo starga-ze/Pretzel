@@ -66,7 +66,23 @@ public:
         return m_loaded;
     }
 
+    std::uint64_t sessionTtlSec() const
+    {
+        return m_sessionTtlSec;
+    }
+
+    // Checks a session without touching its lifetime. Every authenticated request goes through
+    // this, and most of them are not the operator doing anything — the Home dashboard, the
+    // Infrastructure and API Collection live views and the log tail all poll on timers. If those
+    // extended the session, leaving a browser tab open on any of them would keep it alive for
+    // ever and the timeout would mean nothing.
     bool validateSession(const std::string& sessionId);
+
+    // Extends a live session by the full TTL. Called only from the keepalive route, which the
+    // frontend fires only after real operator input (see the heartbeat in www/js/main.js) — that
+    // is what makes the TTL an idle timeout rather than a fixed session lifetime.
+    bool renewSession(const std::string& sessionId);
+
     void logout(const std::string& sessionId);
 
     std::string sessionUser(const std::string& sessionId) const;
@@ -106,6 +122,8 @@ private:
     std::string m_salt;
     bool m_mustChange{false};
     bool m_loaded{false};
+    // Idle timeout: 30 minutes with no operator input. Set at login and pushed forward by
+    // renewSession(); nothing else moves it.
     std::uint64_t m_sessionTtlSec{1800};
 };
 

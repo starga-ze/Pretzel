@@ -3141,6 +3141,181 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .cfg-h { font-size: 13px; font-weight: 700; color: var(--text); }
 .cfg-h-sub { font-size: 10.5px; color: var(--text-muted); }
 
+/* ══════════════════════════════════════
+   CONFIGURATION TABLES — search · sort · per-column filter   (see www/js/table-tools.js)
+   One set of rules for all five Configuration tables. The table chrome itself is unchanged: these
+   only add the bar above it and the affordances inside the header cells, so each tab's existing
+   column widths keep working.
+══════════════════════════════════════ */
+.tbl-host { display: flex; flex-direction: column; gap: 9px; }
+
+/* Bar above the table: search, what is currently narrowing it, and the resulting count. */
+.tbl-bar { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-height: 28px; }
+.tbl-spacer { flex: 1 1 auto; }
+
+.tbl-search {
+  position: relative; display: flex; align-items: center; gap: 6px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0 9px; height: 28px; transition: border-color var(--tr), box-shadow var(--tr);
+}
+.tbl-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.tbl-search svg { width: 13px; height: 13px; color: var(--text-muted); flex: 0 0 auto; }
+.tbl-search input {
+  border: none; outline: none; background: none; color: var(--text);
+  font-family: var(--font-ui); font-size: 11.5px; width: 190px; height: 100%;
+}
+.tbl-search input::placeholder { color: var(--text-muted); opacity: .8; }
+.tbl-search input::-webkit-search-cancel-button { cursor: pointer; }
+
+/* Every active sort key and filter, each removable on its own — the operator can undo one
+   condition without losing the rest of what they built up. */
+.tbl-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tbl-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 260px;
+  padding: 2px 6px 2px 8px; border-radius: 20px; cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  font-size: 10px; line-height: 1.6; color: var(--text);
+  transition: background var(--tr), border-color var(--tr);
+}
+.tbl-chip:hover { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); }
+.tbl-chip-k { font-weight: 700; letter-spacing: .01em; }
+.tbl-chip-v {
+  color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tbl-chip-x { color: var(--text-muted); font-size: 13px; line-height: 1; padding: 0 1px; }
+.tbl-chip:hover .tbl-chip-x { color: var(--red); }
+.tbl-chip-sort { background: var(--surface-2); border-color: var(--border); }
+.tbl-chip-sort:hover { background: var(--surface-hover); }
+.tbl-chip-sort .tbl-chip-v { font-size: 11px; color: var(--accent); font-weight: 700; }
+
+.tbl-count { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
+.tbl-count.is-narrowed { color: var(--accent); font-weight: 700; }
+
+.tbl-reset {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+  border-radius: 7px; height: 24px; padding: 0 9px; cursor: pointer;
+  font-family: var(--font-ui); font-size: 10.5px; font-weight: 600;
+}
+.tbl-reset:hover { color: var(--text); border-color: var(--text-muted); }
+.tbl-link {
+  border: none; background: none; padding: 0; cursor: pointer;
+  color: var(--accent); font: inherit; font-weight: 600; text-decoration: underline;
+}
+
+/* ── Header affordances ──
+   The whole header cell sorts; the funnel inside it filters and stops the click from reaching it. */
+.cfg-table.tbl th { user-select: none; }
+.cfg-table.tbl th .th-in { display: flex; align-items: center; gap: 5px; }
+.cfg-table.tbl th.col-act .th-in,
+.cfg-table.tbl th[class*="right"] .th-in { justify-content: flex-end; }
+.cfg-table.tbl th.th-sortable { cursor: pointer; transition: color var(--tr); }
+.cfg-table.tbl th.th-sortable:hover { color: var(--text); }
+.cfg-table.tbl th.th-sortable:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px;
+}
+.cfg-table.tbl th.th-sorted { color: var(--text); }
+.cfg-table.tbl th.th-filtered .th-label { color: var(--accent); }
+
+.th-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A triangle that is faint until the column is hovered and coloured once it is the sort key —
+   so an unsorted table shows no clutter but never hides that the header does something. */
+.th-arrow {
+  flex: 0 0 auto; width: 0; height: 0;
+  border-left: 3.5px solid transparent; border-right: 3.5px solid transparent;
+  border-bottom: 4.5px solid currentColor;
+  opacity: 0; transition: opacity var(--tr), transform var(--tr);
+}
+.cfg-table.tbl th.th-sortable:hover .th-arrow { opacity: .38; }
+.cfg-table.tbl th.th-sorted .th-arrow { opacity: 1; color: var(--accent); }
+.cfg-table.tbl th.th-desc .th-arrow { transform: rotate(180deg); }
+/* Only shown when there is more than one key, which is the only time the order matters. */
+.th-ord {
+  font-size: 8px; font-weight: 800; line-height: 1; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-radius: 20px; padding: 2px 4px;
+}
+
+.th-filter {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; padding: 0; margin-left: auto;
+  border: none; background: none; border-radius: 4px; cursor: pointer;
+  color: var(--text-muted); opacity: .28; transition: opacity var(--tr), color var(--tr), background var(--tr);
+}
+.th-filter svg { width: 11px; height: 11px; }
+.cfg-table.tbl th:hover .th-filter { opacity: .7; }
+.th-filter:hover { opacity: 1 !important; color: var(--text); background: var(--surface-hover); }
+.th-filter:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
+.cfg-table.tbl th.th-filtered .th-filter { opacity: 1; color: var(--accent); }
+
+/* A filtered-to-nothing table keeps its header, so the row that says so has to fill the width. */
+.cfg-table.tbl tbody tr.tbl-empty-row:hover { background: none; }
+
+/* ── Filter panel ──
+   Body-mounted (the table has its own overflow) and positioned under the funnel that opened it. */
+.tf-pop {
+  position: fixed; z-index: 1200; display: none;
+  width: 246px; padding: 8px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+}
+.tf-pop.open { display: block; }
+.tf-head {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); padding: 2px 4px 7px;
+}
+.tf-sorts { display: flex; gap: 4px; padding-bottom: 7px; margin-bottom: 7px; border-bottom: 1px solid var(--border); }
+.tf-sort {
+  flex: 1; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-secondary);
+  border-radius: 6px; height: 24px; cursor: pointer; font-family: var(--font-ui); font-size: 10px; font-weight: 600;
+}
+.tf-sort:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.tf-sort:disabled { opacity: .4; cursor: default; }
+
+.tf-body { display: flex; flex-direction: column; gap: 6px; }
+.tf-pop .tf-op, .tf-pop .tf-find, .tf-pop .tf-v, .tf-pop .tf-num {
+  width: 100%; height: 27px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--surface);
+  color: var(--text); font-family: var(--font-ui); font-size: 11.5px; outline: none;
+}
+.tf-pop .tf-op { cursor: pointer; }
+.tf-pop .tf-v:disabled { opacity: .45; background: var(--surface-2); }
+.tf-pop input:focus, .tf-pop select:focus { border-color: var(--accent); }
+.tf-range { display: flex; align-items: center; gap: 6px; }
+.tf-range .tf-num { width: 50%; }
+.tf-dash { color: var(--text-muted); font-size: 11px; }
+
+.tf-list { max-height: 210px; overflow-y: auto; display: flex; flex-direction: column; }
+.tf-opt {
+  display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 6px;
+  cursor: pointer; font-size: 11.5px; color: var(--text);
+}
+.tf-opt:hover { background: var(--surface-hover); }
+.tf-opt input { accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
+.tf-opt-all { border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; padding-bottom: 6px; margin-bottom: 2px; }
+.tf-opt-all .tf-v-label { color: var(--text-muted); font-weight: 700; font-size: 10.5px; }
+.tf-v-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-n { margin-left: auto; font-size: 9.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tf-none { padding: 10px 6px; font-size: 11px; color: var(--text-muted); text-align: center; }
+
+.tf-foot { display: flex; align-items: center; gap: 6px; padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--border); }
+.tf-clear {
+  flex: 1; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+  border-radius: 7px; height: 26px; cursor: pointer; font-family: var(--font-ui); font-size: 10.5px; font-weight: 600;
+}
+.tf-clear:hover:not(:disabled) { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+.tf-clear:disabled { opacity: .4; cursor: default; }
+.tf-pop .tf-done { flex: 1; height: 26px; }
+
+@media (max-width: 680px) {
+  .tbl-search input { width: 100%; }
+  .tbl-search { flex: 1 1 100%; }
+}
+
 /* Inventory table: drastically smaller type, thin rows, borderless (no card chrome) */
 .name-line { display: flex; align-items: center; gap: 8px; }
 .cell-name { color: var(--text); }

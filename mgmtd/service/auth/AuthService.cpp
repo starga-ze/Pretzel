@@ -177,6 +177,20 @@ bool AuthService::validateSession(const std::string& sessionId)
     return true;
 }
 
+bool AuthService::renewSession(const std::string& sessionId)
+{
+    // The router already validated the session before routing here, so an expired one cannot
+    // reach this — but the check is repeated rather than assumed: resurrecting a dead session
+    // is the one mistake this function could make.
+    if (!validateSession(sessionId))
+    {
+        return false;
+    }
+
+    m_sessions[sessionId].expiresAt = now() + m_sessionTtlSec;
+    return true;
+}
+
 void AuthService::logout(const std::string& sessionId)
 {
     m_sessions.erase(sessionId);

@@ -146,61 +146,73 @@
       : `<span class="ref-missing" title="Site ${esc(d.site)} no longer exists">missing</span>`;
   }
 
+  // A dangling site reference reads as "missing" rather than as a blank, in the cell and equally in
+  // the Site filter — an operator hunting for broken references filters for exactly that word.
+  function siteText(d) {
+    if (!d.site) return '';
+    return (window.NMS.sites && window.NMS.sites.label(d.site)) || 'missing';
+  }
+
+  // ── Table (sort / filter / search) ─────────────────────────────────────────────
+  const table = window.NMS.table.create({
+    id: 'cfg.devices',
+    tableClass: 'cfg-table-device',
+    searchPlaceholder: 'Search devices…',
+    empty: `<div class="cfg-empty">No devices yet — click <b>Add Device</b> to define one.</div>`,
+    onRows: wireRows,
+    columns: [
+      { key: 'name', label: 'Name', cls: 'col-name', filter: 'text',
+        text: (d) => d.name,
+        cell: (d) => `<div class="cell-name">${esc(d.name) || '<span class="muted">—</span>'}</div>` },
+      { key: 'description', label: 'Description', cls: 'col-desc', filter: 'text',
+        text: (d) => d.description },
+      { key: 'site', label: 'Site', cls: 'col-site', filter: 'enum',
+        text: siteText, cell: siteCell },
+      { key: 'device_type', label: 'Device Type', cls: 'col-type', filter: 'enum',
+        text: (d) => typeLabel(d.device_type),
+        cell: (d) => `<span class="type-badge">${esc(typeLabel(d.device_type))}</span>` },
+      { key: 'access_type', label: 'Access Type', cls: 'col-access', filter: 'enum',
+        text: (d) => accessLabel(d.device_type),
+        cell: (d) => `<span class="access-badge ${esc(accessKind(d.device_type))}">${
+          esc(accessLabel(d.device_type))}</span>` },
+      { key: 'target', label: 'Access Identifier', cls: 'col-endpoint', filter: 'text',
+        text: (d) => d.target },
+      { key: 'act', label: '', cls: 'col-act', sort: false,
+        cell: (d, i) => `
+          ${d.device_type === 'sase'
+            ? `<button class="btn-sm" data-satest="${i}" title="Run the infrastructure check">Infrastructure Test</button>`
+            : ''}
+          <button class="icon-btn" data-edit="${i}" title="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+          </button>
+          <button class="icon-btn danger" data-del="${i}" title="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>` },
+    ],
+  });
+
   // ── Render ─────────────────────────────────────────────────────────────────────
   function render() {
     const el = document.getElementById('contentBody');
     if (!el || activeTab() !== 'devices') return;
 
-    const rows = state.devices.length
-      ? state.devices.map((d, i) => `
-        <tr>
-          <td class="col-name"><div class="cell-name">${esc(d.name) || '<span class="muted">—</span>'}</div></td>
-          <td class="col-desc">${esc(d.description) || '<span class="muted">—</span>'}</td>
-          <td class="col-site">${siteCell(d)}</td>
-          <td class="col-type"><span class="type-badge">${esc(typeLabel(d.device_type))}</span></td>
-          <td class="col-access"><span class="access-badge ${esc(accessKind(d.device_type))}">${esc(accessLabel(d.device_type))}</span></td>
-          <td class="col-endpoint">${esc(d.target) || '<span class="muted">—</span>'}</td>
-          <td class="col-act">
-            ${d.device_type === 'sase'
-              ? `<button class="btn-sm" data-satest="${i}" title="Run the infrastructure check">Infrastructure Test</button>`
-              : ''}
-            <button class="icon-btn" data-edit="${i}" title="Edit">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-            </button>
-            <button class="icon-btn danger" data-del="${i}" title="Delete">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-          </td>
-        </tr>`).join('')
-      : `<tr><td colspan="7"><div class="cfg-empty">No devices yet — click <b>Add Device</b> to define one.
-           ${(window.NMS.sites && window.NMS.sites.list().length) ? ''
-             : 'Tip: <a href="settings?tab=sites">create a site first</a> so devices can belong to one.'}</div></td></tr>`;
-
     const counts = DEVICE_TYPES.map(([k, label]) =>
       `${state.devices.filter(d => d.device_type === k).length} ${label}`).join(' · ');
+    const noSites = !(window.NMS.sites && window.NMS.sites.list().length);
 
     el.innerHTML = `
       <div class="cfg-page">
         <div class="cfg-toolbar">
           <div class="cfg-toolbar-meta">
             <span class="cfg-h">Devices</span>
-            <span class="cfg-h-sub">${counts}</span>
+            <span class="cfg-h-sub">${counts}${noSites
+              ? ' · <a href="settings?tab=sites">create a site first</a> so devices can belong to one'
+              : ''}</span>
           </div>
           <button class="btn-primary btn-sm" id="devAdd">+ Add Device</button>
         </div>
 
-        <table class="cfg-table cfg-table-device">
-          <thead><tr>
-            <th class="col-name">Name</th>
-            <th class="col-desc">Description</th>
-            <th class="col-site">Site</th>
-            <th class="col-type">Device Type</th>
-            <th class="col-access">Access Type</th>
-            <th class="col-endpoint">Access Identifier</th>
-            <th class="col-act"></th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div id="devTable"></div>
       </div>
 
       <div class="slideover-overlay" id="devOverlay"></div>
@@ -578,16 +590,20 @@
   }
 
   // ── Wiring (table) ────────────────────────────────────────────────────────────
-  function wire() {
-    const el = document.getElementById('contentBody');
-    document.getElementById('devAdd')?.addEventListener('click', () => openEditor(null));
-    el.querySelectorAll('[data-edit]').forEach(b =>
+  // Re-run after every body paint: sorting or filtering replaces the rows these buttons live in.
+  function wireRows(scope) {
+    scope.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => openEditor(+b.dataset.edit)));
-    el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+    scope.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       if (removeDevice(+b.dataset.del)) render();
     }));
-    el.querySelectorAll('[data-satest]').forEach(b =>
+    scope.querySelectorAll('[data-satest]').forEach(b =>
       b.addEventListener('click', () => runSaseRowTest(+b.dataset.satest)));
+  }
+
+  function wire() {
+    document.getElementById('devAdd')?.addEventListener('click', () => openEditor(null));
+    table.mount(document.getElementById('devTable'), state.devices);
   }
 
   // SASE infrastructure check, run from the device row (like the API Credential / Endpoint tests) so

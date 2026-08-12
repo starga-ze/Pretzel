@@ -292,33 +292,56 @@
       : `<span class="st-fail" title="${esc(t.detail || '')}${esc(via)} — ${esc(when)}">failed</span>`;
   }
 
+  // The word the Status column reads as — and the word its filter offers. Ordered worst-first when
+  // sorted descending is not what an operator wants; they want the untested and the failed together
+  // at one end, so the rank is "how proven is this", not alphabetical.
+  const statusText = (e) => {
+    const t = testState.for(e.oid);
+    return !t ? 'never tested' : (t.ok ? 'OK' : 'failed');
+  };
+  const statusRank = (e) => {
+    const t = testState.for(e.oid);
+    return !t ? 0 : (t.ok ? 2 : 1);
+  };
+
+  // ── Table (sort / filter / search) ───────────────────────────────────────────
+  const table = window.NMS.table.create({
+    id: 'cfg.endpoints',
+    tableClass: 'cfg-table-endpoint',
+    searchPlaceholder: 'Search endpoints…',
+    empty: `<div class="cfg-empty">No API endpoints yet — click <b>Add Endpoint</b> to define one.
+              An endpoint is device-independent; a test names the API Key to run it against.</div>`,
+    onRows: wireRows,
+    columns: [
+      { key: 'name', label: 'Name', cls: 'col-name', filter: 'text',
+        text: (e) => e.name,
+        cell: (e) => `<div class="cell-name">${esc(e.name) || '<span class="muted">unnamed</span>'}</div>` },
+      { key: 'description', label: 'Description', cls: 'col-desc', filter: 'text',
+        text: (e) => e.description },
+      { key: 'device_type', label: 'Device Type', cls: 'col-dev', filter: 'enum',
+        text: (e) => String(e.device_type || '').toUpperCase(), cell: deviceBadge },
+      { key: 'subtype', label: 'SubType', cls: 'col-type', filter: 'enum',
+        text: (e) => subtypeSpec(e.subtype).label, cell: subtypeBadge },
+      { key: 'endpoint', label: 'Endpoint', cls: 'col-ep', filter: 'text',
+        text: effectiveUrl,
+        cell: (e) => `<span class="ep-path" title="${esc(effectiveUrl(e))}">${esc(effectiveUrl(e))}</span>` },
+      { key: 'status', label: 'Status', cls: 'col-status', filter: 'enum',
+        text: statusText, sortValue: statusRank, cell: statusCell },
+      { key: 'act', label: '', cls: 'col-act', sort: false,
+        cell: (e, i) => `
+          <button class="btn-sm" data-test="${i}">Endpoint Test</button>
+          <button class="icon-btn" data-edit="${i}" title="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+          </button>
+          <button class="icon-btn danger" data-del="${i}" title="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>` },
+    ],
+  });
+
   function render() {
     const el = document.getElementById('contentBody');
     if (!el || activeTab() !== 'api-endpoint') return;
-
-    const rows = state.endpoints.length
-      ? state.endpoints.map((e, i) => `
-        <tr>
-          <td class="col-name"><div class="cell-name">${esc(e.name) || '<span class="muted">unnamed</span>'}</div></td>
-          <td class="col-desc">${esc(e.description) || '<span class="muted">—</span>'}</td>
-          <td class="col-dev">${deviceBadge(e)}</td>
-          <td class="col-type">${subtypeBadge(e)}</td>
-          <td class="col-ep">
-            <span class="ep-path" title="${esc(effectiveUrl(e))}">${esc(effectiveUrl(e))}</span>
-          </td>
-          <td class="col-status">${statusCell(e)}</td>
-          <td class="col-act">
-            <button class="btn-sm" data-test="${i}">Endpoint Test</button>
-            <button class="icon-btn" data-edit="${i}" title="Edit">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-            </button>
-            <button class="icon-btn danger" data-del="${i}" title="Delete">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-          </td>
-        </tr>`).join('')
-      : `<tr><td colspan="7"><div class="cfg-empty">No API endpoints yet — click <b>Add Endpoint</b> to define one.
-           An endpoint is device-independent; a test names the API Key to run it against.</div></td></tr>`;
 
     el.innerHTML = `
       <div class="cfg-page">
@@ -330,18 +353,7 @@
           <button class="btn-primary btn-sm" id="epAdd">+ Add Endpoint</button>
         </div>
 
-        <table class="cfg-table cfg-table-endpoint">
-          <thead><tr>
-            <th class="col-name">Name</th>
-            <th class="col-desc">Description</th>
-            <th class="col-dev">Device Type</th>
-            <th class="col-type">SubType</th>
-            <th class="col-ep">Endpoint</th>
-            <th class="col-status">Status</th>
-            <th class="col-act"></th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div id="epTable"></div>
 
         <p class="cfg-foot-note">Reusable across devices. The PAN-OS release is part of the path,
           so name endpoints accordingly.</p>
@@ -884,16 +896,20 @@
     render();
   }
 
-  function wire() {
-    const el = document.getElementById('contentBody');
-    document.getElementById('epAdd')?.addEventListener('click', openAddPicker);
-    el.querySelectorAll('[data-edit]').forEach(b =>
+  // Re-run after every body paint: sorting or filtering replaces the rows these buttons live in.
+  function wireRows(scope) {
+    scope.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => openEditor(+b.dataset.edit)));
-    el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+    scope.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       if (removeEndpoint(+b.dataset.del)) render();
     }));
-    el.querySelectorAll('[data-test]').forEach(b =>
+    scope.querySelectorAll('[data-test]').forEach(b =>
       b.addEventListener('click', () => openTestPicker(+b.dataset.test)));
+  }
+
+  function wire() {
+    document.getElementById('epAdd')?.addEventListener('click', openAddPicker);
+    table.mount(document.getElementById('epTable'), state.endpoints);
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────

@@ -30,27 +30,55 @@
   })();
 
   // ── Session heartbeat ─────────────────────────────────────────────────────
-  // The 401 guard above only fires when something calls the server, but in-app tab switches are
-  // client-side (history.pushState — no request), so after the session dies (30-min TTL, or a
-  // `./pretzel start` that wiped the in-memory sessions) clicking around would never notice until
-  // a full page reload. This pings a tiny authenticated endpoint on a timer, whenever the tab
-  // regains focus, and (throttled) on any click — so any interaction bounces to login within
-  // seconds. The redirect itself is still done by the 401 guard above; here we only make sure a
-  // request actually happens.
+  // Two jobs, and they must stay separate — the whole idle timeout depends on the distinction.
+  //
+  //   renew  POST /api/session/keepalive — the only route that moves the session's expiry.
+  //          Fired from real operator input (pointer, key, wheel) and nothing else, throttled to
+  //          one per RENEW_MS. So the 30-minute TTL measures idleness, not how long ago the
+  //          operator signed in.
+  //   probe  GET /api/whoami — validates without extending. This is what notices a session that
+  //          died while the tab sat idle, so the operator meets the login page rather than a
+  //          screen full of stale data.
+  //
+  // Nothing else may renew: the Home dashboard, the Infrastructure and API Collection live views
+  // and the log tail all poll on timers, and if polling extended the session then leaving any of
+  // those open would keep it alive for ever. That is also why returning to the tab only probes —
+  // alt-tabbing back is not work, and must not buy another 30 minutes.
+  //
+  // The redirect itself is still the 401 guard above; here we only make sure a request happens.
   (function installSessionHeartbeat() {
-    let last = 0;
-    const ping = () => {
+    const RENEW_MS = 30000;   // at most one renewal per 30s of continuous activity
+    const PROBE_MS = 60000;   // idle liveness check
+    const PROBE_MIN_MS = 3000;
+
+    let renewedAt = 0, probedAt = 0;
+
+    // Renewing is itself an authenticated call, so an operator who comes back to a dead session
+    // and clicks is bounced by the 401 on this very request — no separate check needed.
+    function noteActivity() {
       const now = Date.now();
-      if (now - last < 3000) return;   // throttle: at most one probe per 3s
-      last = now;
+      if (now - renewedAt < RENEW_MS) return;
+      renewedAt = now;
+      probedAt = now;
+      window.fetch('/api/session/keepalive', { method: 'POST', credentials: 'same-origin' })
+        .catch(() => {});
+    }
+
+    function probe() {
+      const now = Date.now();
+      if (now - probedAt < PROBE_MIN_MS) return;
+      probedAt = now;
       window.fetch('/api/whoami', { credentials: 'same-origin' }).catch(() => {});
-    };
-    setInterval(ping, 30000);
+    }
+
+    ['pointerdown', 'keydown', 'wheel'].forEach(
+      t => document.addEventListener(t, noteActivity, { capture: true, passive: true }));
+
+    setInterval(probe, PROBE_MS);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') ping();
+      if (document.visibilityState === 'visible') probe();
     });
-    window.addEventListener('focus', ping);
-    document.addEventListener('click', ping, true);   // any action re-checks the session
+    window.addEventListener('focus', probe);
   })();
 
   // ── Configuration groups ─────────────────────────────────────────────────

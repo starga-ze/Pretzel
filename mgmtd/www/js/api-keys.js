@@ -295,7 +295,7 @@
   let expiryTimer = null;
 
   function paintExpiry() {
-    document.querySelectorAll('#contentBody td[data-expiry-oid]').forEach(td => {
+    document.querySelectorAll('#contentBody [data-expiry-oid]').forEach(td => {
       const k = state.keys.find(x => x.oid === td.dataset.expiryOid);
       if (k) td.innerHTML = expiryCell(k);
     });
@@ -309,7 +309,7 @@
   function startExpiryTicker() {
     stopExpiryTicker();
     expiryTimer = setInterval(async () => {
-      const cells = document.querySelectorAll('#contentBody td[data-expiry-oid]');
+      const cells = document.querySelectorAll('#contentBody [data-expiry-oid]');
       if (activeTab() !== 'api-key' || !cells.length) { stopExpiryTicker(); return; }
       const anyExpired = Array.from(cells).some(td => {
         const when = parseTs(secrets.for(td.dataset.expiryOid).expires_at);
@@ -320,36 +320,106 @@
     }, EXPIRY_TICK_MS);
   }
 
+  // ── Column accessors ─────────────────────────────────────────────────────────
+  // What each cell says in plain text — what the search box reads, what the filters offer, and what
+  // the column is ordered by unless a sortValue overrides it.
+  const siteText = (k) => { const d = deviceOf(k); return d ? (siteName(d.site) || '') : ''; };
+  const deviceText = (k) => {
+    const d = deviceOf(k);
+    if (!d) return k.device ? 'missing' : '';
+    return [d.name || d.target, window.NMS.devices.typeLabel(d.device_type), d.target]
+      .filter(Boolean).join(' ');
+  };
+  const endpointText = (k) => {
+    const dev = deviceOf(k);
+    return k.endpoint || credSpec(dev ? dev.device_type : 'ngfw').keygenHint || '';
+  };
+  const keyText = (k) => (secrets.for(k.oid).stored ? 'stored' : 'not generated');
+  const refreshText = (k) => (k.refresh_mode === 'auto' ? 'auto' : 'manual');
+  // Manual keys have no interval, so they sort past every automatic one rather than pretending to be
+  // a zero-minute schedule.
+  const refreshRank = (k) =>
+    (k.refresh_mode === 'auto' ? (Number(k.refresh_interval_min) || 60) : Number.MAX_SAFE_INTEGER);
+
+  const statusText = (k) => {
+    const st = secrets.for(k.oid);
+    if (!st.stored) return 'no token';
+    const when = parseTs(st.expires_at);
+    return (when && when.getTime() <= Date.now()) ? 'invalid (expired)' : 'valid';
+  };
+
+  // Expiry is ordered by the instant it happens, not by the label — "5m" and "3d left" are the same
+  // kind of thing and must not sort alphabetically. A key with no token sorts last (nothing to run
+  // out); one that never expires sorts after every one that does.
+  function expiryText(k) {
+    const st = secrets.for(k.oid);
+    if (!st.stored) return '';
+    if (!st.expires_at) return 'no expiry';
+    const when = parseTs(st.expires_at);
+    if (!when) return 'unknown';
+    const left = when.getTime() - Date.now();
+    if (left <= 0) return 'expired';
+    const tier = EXPIRY_TIERS.find(t => left <= t.ms);
+    if (tier) return tier.label;
+    const days = Math.floor(left / 86400000);
+    return days > 0 ? days + 'd left' : Math.floor(left / 3600000) + 'h left';
+  }
+
+  function expiryRank(k) {
+    const st = secrets.for(k.oid);
+    if (!st.stored) return '';                       // blank — sorts last in both directions
+    if (!st.expires_at) return Number.MAX_SAFE_INTEGER;
+    const when = parseTs(st.expires_at);
+    return when ? when.getTime() : Number.MAX_SAFE_INTEGER - 1;
+  }
+
+  // ── Table (sort / filter / search) ───────────────────────────────────────────
+  const table = window.NMS.table.create({
+    id: 'cfg.api-keys',
+    tableClass: 'cfg-table-apikey',
+    searchPlaceholder: 'Search credentials…',
+    empty: `<div class="cfg-empty">No API credentials yet — click <b>Add API Credential</b> to define one.</div>`,
+    onRows: wireRows,
+    columns: [
+      { key: 'name', label: 'Name', cls: 'col-name', filter: 'text',
+        text: (k) => k.name,
+        cell: (k) => `<div class="cell-name">${esc(k.name) || '<span class="muted">unnamed</span>'}</div>` },
+      { key: 'site', label: 'Site', cls: 'col-site', filter: 'enum',
+        text: siteText, cell: siteCell },
+      { key: 'device', label: 'Device', cls: 'col-device', filter: 'text',
+        text: deviceText, cell: deviceCell },
+      { key: 'endpoint', label: 'Endpoint', cls: 'col-ep', filter: 'text',
+        text: endpointText, cell: endpointCell },
+      { key: 'credential', label: 'Credential', cls: 'col-cred', filter: 'text',
+        text: (k) => k.username, cell: credCell },
+      { key: 'key', label: 'Key', cls: 'col-key', filter: 'enum',
+        text: keyText, cell: keyCell },
+      // Filtering on a countdown would be a filter that stops being true while you read it; Status
+      // is the durable question ("which of these cannot authenticate right now") and carries it.
+      { key: 'expiry', label: 'Expiry', cls: 'col-expiry', filter: false,
+        text: expiryText, sortValue: expiryRank,
+        cell: (k) => `<span data-expiry-oid="${esc(k.oid)}">${expiryCell(k)}</span>` },
+      { key: 'refresh', label: 'Refresh', cls: 'col-refresh', filter: 'enum',
+        text: refreshText, sortValue: refreshRank, cell: refreshCell },
+      { key: 'status', label: 'Status', cls: 'col-status', filter: 'enum',
+        text: statusText, cell: statusCell },
+      { key: 'act', label: '', cls: 'col-act', sort: false,
+        cell: (k, i) => `
+          <button class="btn-sm" data-test="${i}">Credential Test</button>
+          <button class="icon-btn" data-edit="${i}" title="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+          </button>
+          <button class="icon-btn danger" data-del="${i}" title="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>` },
+    ],
+  });
+
   function render() {
     const el = document.getElementById('contentBody');
     if (!el || activeTab() !== 'api-key') { stopExpiryTicker(); return; }
 
     const devices = (window.NMS.devices && window.NMS.devices.list()) || [];
-
-    const rows = state.keys.length
-      ? state.keys.map((k, i) => `
-        <tr>
-          <td class="col-name"><div class="cell-name">${esc(k.name) || '<span class="muted">unnamed</span>'}</div></td>
-          <td class="col-site">${siteCell(k)}</td>
-          <td class="col-device">${deviceCell(k)}</td>
-          <td class="col-ep">${endpointCell(k)}</td>
-          <td class="col-cred">${credCell(k)}</td>
-          <td class="col-key">${keyCell(k)}</td>
-          <td class="col-expiry" data-expiry-oid="${esc(k.oid)}">${expiryCell(k)}</td>
-          <td class="col-refresh">${refreshCell(k)}</td>
-          <td class="col-status">${statusCell(k)}</td>
-          <td class="col-act">
-            <button class="btn-sm" data-test="${i}">Credential Test</button>
-            <button class="icon-btn" data-edit="${i}" title="Edit">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-            </button>
-            <button class="icon-btn danger" data-del="${i}" title="Delete">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-          </td>
-        </tr>`).join('')
-      : `<tr><td colspan="10"><div class="cfg-empty">No API credentials yet — click <b>Add API Credential</b> to define one.
-           ${devices.length ? '' : 'Tip: <a href="settings?tab=devices">add a device first</a>; a key belongs to one.'}</div></td></tr>`;
 
     el.innerHTML = `
       <div class="cfg-page">
@@ -357,26 +427,13 @@
           <div class="cfg-toolbar-meta">
             <span class="cfg-h">API Credentials</span>
             <span class="cfg-h-sub">${state.keys.length} key${state.keys.length === 1 ? '' : 's'}
-              · one credential per device</span>
+              · one credential per device${devices.length ? ''
+                : ' · <a href="settings?tab=devices">add a device first</a>; a key belongs to one'}</span>
           </div>
           <button class="btn-primary btn-sm" id="akAdd" ${devices.length ? '' : 'disabled'}>+ Add API Credential</button>
         </div>
 
-        <table class="cfg-table cfg-table-apikey">
-          <thead><tr>
-            <th class="col-name">Name</th>
-            <th class="col-site">Site</th>
-            <th class="col-device">Device</th>
-            <th class="col-ep">Endpoint</th>
-            <th class="col-cred">Credential</th>
-            <th class="col-key">Key</th>
-            <th class="col-expiry">Expiry</th>
-            <th class="col-refresh">Refresh</th>
-            <th class="col-status">Status</th>
-            <th class="col-act"></th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div id="akTable"></div>
 
         <p class="cfg-foot-note">Issued keys are encrypted on the appliance and kept out of the
           configuration. The password you type is not stored.</p>
@@ -772,16 +829,20 @@
     render();
   }
 
-  function wire() {
-    const el = document.getElementById('contentBody');
-    document.getElementById('akAdd')?.addEventListener('click', () => openEditor(null));
-    el.querySelectorAll('[data-edit]').forEach(b =>
+  // Re-run after every body paint: sorting or filtering replaces the rows these buttons live in.
+  function wireRows(scope) {
+    scope.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => openEditor(+b.dataset.edit)));
-    el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+    scope.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       if (removeKey(+b.dataset.del)) render();
     }));
-    el.querySelectorAll('[data-test]').forEach(b =>
+    scope.querySelectorAll('[data-test]').forEach(b =>
       b.addEventListener('click', () => runKeygenTest(+b.dataset.test)));
+  }
+
+  function wire() {
+    document.getElementById('akAdd')?.addEventListener('click', () => openEditor(null));
+    table.mount(document.getElementById('akTable'), state.keys);
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────

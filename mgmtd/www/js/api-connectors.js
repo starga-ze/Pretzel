@@ -199,6 +199,27 @@
       </div>`;
   }
 
+  // ── Column accessors ─────────────────────────────────────────────────────────
+  // Plain text for search, filtering and ordering. A reference that no longer resolves reads as
+  // "missing" here exactly as it does in the cell, so filtering for the broken ones is possible.
+  const siteText = (c) => {
+    const o = objectByOid(c.object);
+    return o ? (siteName(o.site) || '') : '';
+  };
+  const objectText = (c) => {
+    const o = objectByOid(c.object);
+    if (!o) return c.object ? 'missing' : '';
+    return [o.name || o.target, o.target].filter(Boolean).join(' ');
+  };
+  const profileText = (c) => {
+    if (!c.auth_profile) return 'none';
+    return (window.NMS.apiKeys && window.NMS.apiKeys.label(c.auth_profile)) || 'missing';
+  };
+  // What the cell lists — the endpoint names — so searching for an endpoint finds every connector
+  // that polls it. The column itself is ordered by how much this connector collects.
+  const collectionText = (c) => (c.items || [])
+    .map(i => endpointName(i.endpoint) || i.endpoint).filter(Boolean).join(' ');
+
   // Hover card: the full list, using the exact same row markup as the cell. A single shared,
   // body-mounted element positioned by the cell so the table's overflow never crops it.
   function epPopEl() {
@@ -243,6 +264,47 @@
     if (el) el.classList.remove('open');
   }
 
+  // ── Table (sort / filter / search) ───────────────────────────────────────────
+  // Rebuilt on every render because it names what is still missing.
+  let tableEmpty = '';
+
+  const table = window.NMS.table.create({
+    id: 'cfg.connectors',
+    tableClass: 'cfg-table-conn',
+    searchPlaceholder: 'Search connectors…',
+    empty: () => tableEmpty,
+    onRows: wireRows,
+    rowClass: (c) => (anyEnabled(c) ? '' : 'row-off'),
+    columns: [
+      { key: 'name', label: 'Name', cls: 'col-name', filter: 'text',
+        text: (c) => c.name,
+        // The description is on the same cell, so the search box has to see it.
+        searchText: (c) => [c.name, c.description].filter(Boolean).join(' '),
+        cell: (c) => `<div class="cell-name">${esc(c.name) || '<span class="muted">unnamed</span>'}</div>
+          ${c.description ? `<div class="cell-sub">${esc(c.description)}</div>` : ''}` },
+      { key: 'site', label: 'Site', cls: 'col-site', filter: 'enum',
+        text: siteText, cell: siteCell },
+      { key: 'device', label: 'Device', cls: 'col-obj', filter: 'text',
+        text: objectText, cell: objectCell },
+      { key: 'api_key', label: 'API Key', cls: 'col-authp', filter: 'enum',
+        text: profileText, cell: profileCell },
+      { key: 'collection', label: 'Endpoint Control', cls: 'col-ep', filter: 'text',
+        text: collectionText,
+        sortValue: (c) => (c.items || []).length,
+        // The hover card is anchored to this element, so the index rides on it rather than on the
+        // td — the cell markup is the tab's, the td is the table module's.
+        cell: (c, i) => `<div data-ep="${i}">${collectionCell(c)}</div>` },
+      { key: 'act', label: '', cls: 'col-act', sort: false,
+        cell: (c, i) => `
+          <button class="icon-btn" data-edit="${i}" title="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+          </button>
+          <button class="icon-btn danger" data-del="${i}" title="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>` },
+    ],
+  });
+
   // ── Render ───────────────────────────────────────────────────────────────────
   function render() {
     const el = document.getElementById('contentBody');
@@ -266,27 +328,9 @@
          <a href="settings?tab=api-key">API key</a> and an
          <a href="settings?tab=api-endpoint">API endpoint</a> first, then bind them here.`;
 
-    const rows = state.connectors.length
-      ? state.connectors.map((c, i) => `
-        <tr class="${anyEnabled(c) ? '' : 'row-off'}">
-          <td class="col-name">
-            <div class="cell-name">${esc(c.name) || '<span class="muted">unnamed</span>'}</div>
-            ${c.description ? `<div class="cell-sub">${esc(c.description)}</div>` : ''}
-          </td>
-          <td class="col-site">${siteCell(c)}</td>
-          <td class="col-obj">${objectCell(c)}</td>
-          <td class="col-authp">${profileCell(c)}</td>
-          <td class="col-ep" data-ep="${i}">${collectionCell(c)}</td>
-          <td class="col-act">
-            <button class="icon-btn" data-edit="${i}" title="Edit">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-            </button>
-            <button class="icon-btn danger" data-del="${i}" title="Delete">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-          </td>
-        </tr>`).join('')
-      : `<tr><td colspan="6"><div class="cfg-empty">No API connectors yet — ${emptyHint}</div></td></tr>`;
+    // The empty state names what is missing, so it is rebuilt on every render rather than fixed at
+    // table-construction time.
+    tableEmpty = `<div class="cfg-empty">No API connectors yet — ${emptyHint}</div>`;
 
     el.innerHTML = `
       <div class="cfg-page">
@@ -302,17 +346,7 @@
                   title="${esc(addBlocker)}">+ Add Connector</button>
         </div>
 
-        <table class="cfg-table cfg-table-conn">
-          <thead><tr>
-            <th class="col-name">Name</th>
-            <th class="col-site">Site</th>
-            <th class="col-obj">Device</th>
-            <th class="col-authp">API Key</th>
-            <th class="col-ep">Endpoint Control</th>
-            <th class="col-act"></th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div id="acTable"></div>
       </div>
 
       <div class="slideover-overlay" id="acOverlay"></div>
@@ -752,20 +786,24 @@
   }
 
   // ── Wiring (table) ──────────────────────────────────────────────────────────
-  // render() replaces #contentBody wholesale, so row controls are re-bound on each paint.
-  function wire() {
-    const el = document.getElementById('contentBody');
-    document.getElementById('acAdd')?.addEventListener('click', () => openEditor(null));
-    el.querySelectorAll('[data-edit]').forEach(b =>
+  // Re-run after every body paint — a sort, a filter or a full render() all replace the rows these
+  // controls live in.
+  function wireRows(scope) {
+    scope.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => openEditor(+b.dataset.edit)));
-    el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+    scope.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       state.connectors.splice(+b.dataset.del, 1); stage(); render();
     }));
-    el.querySelectorAll('td.col-ep[data-ep]').forEach(cell => {
+    scope.querySelectorAll('[data-ep]').forEach(cell => {
       cell.addEventListener('mouseenter', () => showEpPop(cell));
       cell.addEventListener('mouseleave', hideEpPop);
     });
     hideEpPop();
+  }
+
+  function wire() {
+    document.getElementById('acAdd')?.addEventListener('click', () => openEditor(null));
+    table.mount(document.getElementById('acTable'), state.connectors);
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────

@@ -80,38 +80,67 @@
 
   // ── Render ───────────────────────────────────────────────────────────────────
   // A site is judged by what is in it, so the count is broken down by device type rather than
-  // reduced to a single number.
-  function deviceMix(oid) {
+  // reduced to a single number. The breakdown is asked three ways — as markup for the cell, as text
+  // for the search box, and as a total to order and filter by — so it is counted once here.
+  function deviceCounts(oid) {
     const devices = (window.NMS.devices && window.NMS.devices.list()) || [];
-    const mine = devices.filter(d => d.site === oid);
-    if (!mine.length) return `<span class="muted">empty</span>`;
     const counts = {};
-    mine.forEach(d => { counts[d.device_type] = (counts[d.device_type] || 0) + 1; });
+    let total = 0;
+    devices.forEach(d => {
+      if (d.site !== oid) return;
+      counts[d.device_type] = (counts[d.device_type] || 0) + 1;
+      total++;
+    });
+    return { counts, total };
+  }
+
+  function deviceMix(oid) {
+    const { counts, total } = deviceCounts(oid);
+    if (!total) return `<span class="muted">empty</span>`;
     return Object.keys(counts).map(t =>
       `<span class="mix-item"><b>${counts[t]}</b> ${esc(window.NMS.devices.typeLabel(t))}</span>`).join('');
   }
 
+  function deviceText(oid) {
+    const { counts, total } = deviceCounts(oid);
+    if (!total) return '';
+    return Object.keys(counts).map(t => `${counts[t]} ${window.NMS.devices.typeLabel(t)}`).join(' · ');
+  }
+
+  // ── Table (sort / filter / search) ───────────────────────────────────────────
+  const rowActions = (i) => `
+    <button class="icon-btn" data-edit="${i}" title="Edit">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+    </button>
+    <button class="icon-btn danger" data-del="${i}" title="Delete">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    </button>`;
+
+  const table = window.NMS.table.create({
+    id: 'cfg.sites',
+    tableClass: 'cfg-table-site',
+    searchPlaceholder: 'Search sites…',
+    empty: `<div class="cfg-empty">No sites yet — click <b>Add Site</b> to define one.
+              Devices are then placed into a site.</div>`,
+    onRows: wireRows,
+    columns: [
+      { key: 'name', label: 'Name', cls: 'col-name', filter: 'text',
+        text: (s) => s.name,
+        cell: (s) => `<div class="cell-name">${esc(s.name) || '<span class="muted">unnamed</span>'}</div>` },
+      { key: 'description', label: 'Description', cls: 'col-desc', filter: 'text',
+        text: (s) => s.description },
+      { key: 'devices', label: 'Devices', cls: 'col-devices', filter: 'number',
+        text: (s) => deviceText(s.oid),
+        sortValue: (s) => deviceCounts(s.oid).total,
+        cell: (s) => deviceMix(s.oid) },
+      { key: 'act', label: '', cls: 'col-act', sort: false,
+        cell: (s, i) => rowActions(i) },
+    ],
+  });
+
   function render() {
     const el = document.getElementById('contentBody');
     if (!el || activeTab() !== 'sites') return;
-
-    const rows = state.sites.length
-      ? state.sites.map((s, i) => `
-        <tr>
-          <td class="col-name"><div class="cell-name">${esc(s.name) || '<span class="muted">unnamed</span>'}</div></td>
-          <td class="col-desc">${esc(s.description) || '<span class="muted">—</span>'}</td>
-          <td class="col-devices">${deviceMix(s.oid)}</td>
-          <td class="col-act">
-            <button class="icon-btn" data-edit="${i}" title="Edit">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-            </button>
-            <button class="icon-btn danger" data-del="${i}" title="Delete">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            </button>
-          </td>
-        </tr>`).join('')
-      : `<tr><td colspan="4"><div class="cfg-empty">No sites yet — click <b>Add Site</b> to define one.
-           Devices are then placed into a site.</div></td></tr>`;
 
     el.innerHTML = `
       <div class="cfg-page">
@@ -123,15 +152,7 @@
           <button class="btn-primary btn-sm" id="stAdd">+ Add Site</button>
         </div>
 
-        <table class="cfg-table cfg-table-site">
-          <thead><tr>
-            <th class="col-name">Name</th>
-            <th class="col-desc">Description</th>
-            <th class="col-devices">Devices</th>
-            <th class="col-act"></th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div id="stTable"></div>
       </div>
 
       <div class="slideover-overlay" id="stOverlay"></div>
@@ -219,14 +240,18 @@
     };
   }
 
-  function wire() {
-    const el = document.getElementById('contentBody');
-    document.getElementById('stAdd')?.addEventListener('click', () => openEditor(null));
-    el.querySelectorAll('[data-edit]').forEach(b =>
+  // Re-run after every body paint: sorting or filtering replaces the rows these buttons live in.
+  function wireRows(scope) {
+    scope.querySelectorAll('[data-edit]').forEach(b =>
       b.addEventListener('click', () => openEditor(+b.dataset.edit)));
-    el.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
+    scope.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       if (removeSite(+b.dataset.del)) render();
     }));
+  }
+
+  function wire() {
+    document.getElementById('stAdd')?.addEventListener('click', () => openEditor(null));
+    table.mount(document.getElementById('stTable'), state.sites);
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
