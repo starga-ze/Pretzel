@@ -1,8 +1,8 @@
 # config/pgadmin/config_local.py
 #
-# Canonical pgAdmin (server-mode) configuration — version-controlled here, the same
-# way config/grafana/grafana.ini and config/prometheus/prometheus.yml are. This is
-# the single source of truth for pgAdmin's settings. script/start.py deploys it:
+# Canonical pgAdmin (server-mode) configuration, version-controlled here rather than
+# edited in place after deploy. This is the single source of truth for pgAdmin's
+# settings. script/start.py deploys it:
 #   - into pgAdmin's package dir, where pgAdmin reads `config_local.py` at startup
 #   - into /etc/pretzel/pgadmin/ for parity/visibility with the other services
 # and reads the PZ_PGADMIN_LISTEN_* values below to bind gunicorn. Edit here, then

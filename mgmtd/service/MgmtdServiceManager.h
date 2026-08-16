@@ -79,6 +79,19 @@ public:
     void setApiTestResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeApiTestResult(std::uint32_t ticket);
 
+    // The same arrangement for one assistant turn: inferd calls the AI gateway, which takes
+    // seconds, and answers on the ticket the browser is polling. Filed by the WebIpcEvent handler,
+    // drained by the poll route — both on the main loop, so no lock.
+    void setChatResult(std::uint32_t ticket, std::string resultJson);
+    std::optional<std::string> takeChatResult(std::uint32_t ticket);
+
+    // A grounded turn answers twice on one ticket: the passages as soon as they are found,
+    // the answer when the model returns. Kept in its own slot so the second does not
+    // overwrite the first — the page shows what was retrieved while the model is still
+    // working, which is the whole point of splitting them.
+    void setRetrievalResult(std::uint32_t ticket, std::string resultJson);
+    std::optional<std::string> takeRetrievalResult(std::uint32_t ticket);
+
     // The composed site topology, as topologyd last answered. mgmtd owns no topology logic — it asks
     // and it serves. Kept rather than awaited because an HTTP response here is built synchronously:
     // holding one open for a cross-daemon round trip would block the loop every other daemon's
@@ -102,6 +115,7 @@ public:
     // here beside the result stores they key into, not on the (now stateless) WebService.
     std::uint32_t nextSsoTicket();
     std::uint32_t nextApiTestTicket();
+    std::uint32_t nextChatTicket();
 
 private:
     MgmtdEventFactory* m_eventFactory{nullptr};
@@ -126,6 +140,9 @@ private:
 
     std::unordered_map<std::uint32_t, std::string> m_apiTestResults;
 
+    std::unordered_map<std::uint32_t, std::string> m_chatResults;
+    std::unordered_map<std::uint32_t, std::string> m_retrievalResults;
+
     // site oid ('' = every site) -> last composed model. One entry per site the operator has looked
     // at; an estate has tens of sites, not thousands, so this never needs eviction.
     std::unordered_map<std::string, std::string> m_topology;
@@ -136,6 +153,7 @@ private:
     std::shared_ptr<pz::http::StaticFileCache> m_staticCache;
     std::uint32_t m_ssoTicket{1};
     std::uint32_t m_apiTestTicket{1};
+    std::uint32_t m_chatTicket{1};
 };
 
 }

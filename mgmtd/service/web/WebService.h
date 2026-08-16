@@ -2,6 +2,7 @@
 
 #include "service/web/controller/ApiController.h"
 #include "service/web/controller/AuthController.h"
+#include "service/web/controller/ChatController.h"
 #include "service/web/controller/CollectionController.h"
 #include "service/web/controller/LogsController.h"
 #include "service/web/controller/SettingsController.h"
@@ -73,6 +74,11 @@ enum class WebRoute
     CollectionOverview,   // GET  /api/collection/overview?window=
     CollectionSamples,    // GET  /api/collection/samples?connector=&endpoint=&status=&before=&limit=
     CollectionSample,     // GET  /api/collection/sample?oid=
+
+    // ChatController — the internal assistant.
+    ChatSend,     // POST /api/chat
+    ChatResult,   // GET  /api/chat/result?ticket=
+    ChatRetrieve, // POST /api/chat/retrieve
 
     // LogsController.
     Logs,   // GET  /api/logs?…
@@ -152,6 +158,7 @@ private:
     StatusController m_statusController;
     TopologyController m_topologyController;
     ApiController m_apiController;
+    ChatController m_chatController;
     CollectionController m_collectionController;
     LogsController m_logsController;
 };

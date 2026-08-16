@@ -351,6 +351,64 @@ bool Config::seedStore()
         return false;
     }
 
+    // Back-fill daemon sections that the running config has never heard of.
+    //
+    // The seed above only fires on an empty table, which is right: the running config is the
+    // operator's, and re-seeding it would throw their work away on every start. But it means an
+    // appliance that has been running since before a daemon existed has no section for it — and a
+    // daemon reading a section that is not there gets nothing but the merged `global` block. When
+    // that daemon is part of the bootstrap convergence set, a config gap becomes a fleet that never
+    // starts.
+    //
+    // So: add the missing top-level sections from startup-config, and touch nothing else. Never an
+    // update of an existing key — an operator who changed a value meant it, and a "helpful" merge
+    // that reverted it on restart would be indistinguishable from the setting not working. Adding
+    // an absent section cannot revert anything, because there was nothing there to revert.
+    //
+    // Applied in place, without a version bump: the daemons that already converged on this version
+    // are unaffected (their sections are untouched), and the new daemon reads it fresh at its own
+    // startup. A bump would restart the fleet to deliver defaults nobody else is waiting for.
+    {
+        const nlohmann::json activeRoot = loadRunningConfigRoot();
+        const nlohmann::json startupRoot = redactSecretsForPersist(startup);
+
+        nlohmann::json additions = nlohmann::json::object();
+        if (activeRoot.is_object() && startupRoot.is_object())
+        {
+            for (auto it = startupRoot.begin(); it != startupRoot.end(); ++it)
+            {
+                // "//"-prefixed keys are the template's comments; they are stripped on deploy and
+                // have no business being reintroduced here.
+                if (it.key().rfind("//", 0) == 0)
+                    continue;
+                if (!activeRoot.contains(it.key()))
+                    additions[it.key()] = it.value();
+            }
+        }
+
+        if (!additions.empty())
+        {
+            std::string names;
+            for (auto it = additions.begin(); it != additions.end(); ++it)
+            {
+                if (!names.empty())
+                    names += ", ";
+                names += it.key();
+            }
+
+            if (dbi.exec("UPDATE running_config SET config_json = config_json || $1::jsonb "
+                         "WHERE state = 'active'",
+                         {additions.dump()}))
+            {
+                std::cerr << "seedStore: back-filled running_config sections: " << names << std::endl;
+            }
+            else
+            {
+                std::cerr << "seedStore: running_config back-fill failed for: " << names << std::endl;
+            }
+        }
+    }
+
     {
         const std::string salt = pz::util::generateSalt();
         const std::string hash = salt.empty() ? std::string() : pz::util::hashPassword(kDefaultAdminPassword, salt);

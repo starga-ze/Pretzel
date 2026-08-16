@@ -63,27 +63,6 @@ GTEST_INSTALL = os.path.join(INSTALL_ROOT, "googletest")
 GTEST_TAR = os.path.join(GTEST_DIR, f"googletest-{GTEST_VERSION}.tar.gz")
 GTEST_SRC_PATH = os.path.join(GTEST_DIR, f"googletest-{GTEST_VERSION}")
 
-PROMETHEUS_VERSION = "3.5.0"
-PROMETHEUS_DIR = os.path.join(THIRD_PARTY_DIR, "prometheus")
-PROMETHEUS_TAR = os.path.join(PROMETHEUS_DIR, f"prometheus-{PROMETHEUS_VERSION}.linux-amd64.tar.gz")
-PROMETHEUS_SRC_PATH = os.path.join(PROMETHEUS_DIR, f"prometheus-{PROMETHEUS_VERSION}.linux-amd64")
-
-NODE_EXPORTER_VERSION = "1.8.2"
-NODE_EXPORTER_DIR = os.path.join(THIRD_PARTY_DIR, "node_exporter")
-NODE_EXPORTER_TAR = os.path.join(NODE_EXPORTER_DIR, f"node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64.tar.gz")
-NODE_EXPORTER_SRC_PATH = os.path.join(NODE_EXPORTER_DIR, f"node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64")
-
-# postgres_exporter (prometheus-community) exposes PostgreSQL server metrics for
-# Prometheus to scrape and Grafana to visualize. Pre-compiled binary distribution,
-# same pattern as node_exporter. It connects to the pretzel database over localhost
-# TCP using DATA_SOURCE_NAME (see pz-postgres-exporter.service), so the credentials
-# below MUST match PG_DB_* and the "database" block in running-config.json.
-POSTGRES_EXPORTER_VERSION = "0.15.0"
-POSTGRES_EXPORTER_DIR = os.path.join(THIRD_PARTY_DIR, "postgres_exporter")
-POSTGRES_EXPORTER_TAR = os.path.join(POSTGRES_EXPORTER_DIR, f"postgres_exporter-{POSTGRES_EXPORTER_VERSION}.linux-amd64.tar.gz")
-POSTGRES_EXPORTER_SRC_PATH = os.path.join(POSTGRES_EXPORTER_DIR, f"postgres_exporter-{POSTGRES_EXPORTER_VERSION}.linux-amd64")
-POSTGRES_EXPORTER_PORT = 9187
-
 # pgAdmin 4 — web-based PostgreSQL admin GUI. Installed via pip into a dedicated
 # virtualenv (NOT the apt pgadmin4-web package, which pulls in Apache and an
 # interactive setup-web.sh) and run headless via gunicorn under pz-pgadmin.service,
@@ -94,7 +73,7 @@ PGADMIN_VERSION          = "8.14"
 # so it has no 3rd_party/<name>/ source dir — only this venv under install/.
 PGADMIN_VENV             = os.path.join(INSTALL_ROOT, "pgadmin", "venv")
 # Network/runtime settings (listen address/port, data dirs) live in the canonical
-# config/pgadmin/config_local.py — consistent with grafana/prometheus — NOT here.
+# config/pgadmin/config_local.py, not here.
 # Only the deploy-time admin credentials remain here.
 # Initial server-mode login, created at deploy time. Localhost-only dev default —
 # harden for prod. The email is only an identifier and need not be deliverable, BUT
@@ -117,9 +96,9 @@ PG_SERVICE     = "postgresql"        # distro-managed systemd unit
 PG_DB_NAME     = "pretzel"
 PG_DB_USER     = "pretzel"
 # Single source of truth for the DB password. install.py uses it to CREATE the role;
-# start.py injects it into the deployed startup-config (mgmtd) and the postgres-exporter
-# env file — so the role, mgmtd and the exporter can never drift apart. Override via
-# PZ_PG_PASSWORD; the literal is a localhost-only dev default — harden for prod.
+# start.py injects it into the deployed startup-config, so the role and mgmtd can never
+# drift apart. Override via PZ_PG_PASSWORD; the literal is a localhost-only dev default
+# — harden for prod.
 PG_DB_PASSWORD = os.environ.get("PZ_PG_PASSWORD", "pretzel")
 PG_DB_HOST     = "127.0.0.1"
 PG_DB_PORT     = 5432
@@ -185,7 +164,7 @@ def download_and_extract(url, tar_path, dest_dir, msg=None):
     # 2. Extraction Logic (Prevent duplicate extraction)
     # Attempts extraction only if the base directory (without .tar.gz) does not exist
     extract_target = tar_path.replace('.tar.gz', '')
-    if not os.path.exists(extract_target) and not os.path.exists(os.path.join(dest_dir, 'prometheus')): 
+    if not os.path.exists(extract_target):
         print(f"[*] {msg or 'Extracting archive'}...")
         with tarfile.open(tar_path, "r:gz") as tar:
             tar.extractall(path=dest_dir)

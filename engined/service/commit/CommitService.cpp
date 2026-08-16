@@ -263,7 +263,8 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager, const Co
             pz::ipc::IpcDaemon::Probed,
             pz::ipc::IpcDaemon::Collectord,
             pz::ipc::IpcDaemon::Topologyd,
-            pz::ipc::IpcDaemon::Apid
+            pz::ipc::IpcDaemon::Apid,
+            pz::ipc::IpcDaemon::Inferd
         };
 
         for (const auto dst : kServiceDaemons)

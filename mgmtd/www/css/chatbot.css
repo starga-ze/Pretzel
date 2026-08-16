@@ -1,0 +1,558 @@
+/* ============================================================
+   chatbot.css — AI › Assistant
+   ------------------------------------------------------------
+   Every other page in this console is a READING of the estate: strips, tiles, tables, a drawer.
+   This one is a conversation, and a conversation only works if the thread is the page — so the
+   usual content padding is dropped here and the three columns (history rail · thread · inspector)
+   own the full band under the topbar. Nothing scrolls but the thread and the two panels.
+
+   The second thing this page has to show is not part of a normal chat UI at all: every turn passes
+   through the AI gateway and its AI Runtime Security scan, and the operator has to be able to see
+   what that scan did WITHOUT the chat turning into a security console. So the verdict is a single
+   pill under each message — colourless when nothing was found, which is the common case — and the
+   whole finding only opens when clicked, in the inspector on the right. A chat that shouted about
+   every clean scan would train people to stop reading the one that mattered.
+   ============================================================ */
+
+/* The shell's content band is a chat surface here: no page padding, no page scroll. */
+body.page-chatbot .content-body {
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg);
+  display: flex;
+  min-height: 0;
+  /* The rail and the inspector go absolute on a narrow viewport; this is what they position
+     against. */
+  position: relative;
+}
+
+.chat-page {
+  flex: 1 1 auto;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── History rail ───────────────────────────────────────────────────────────── */
+/* Conversations are kept in this browser only (localStorage) — the frontend has no server-side
+   thread store yet, and pretending otherwise by hiding them would lose work on a reload. */
+.chat-rail {
+  width: 216px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  min-height: 0;
+  transition: width var(--tr);
+}
+.chat-rail.is-hidden { width: 0; border-right-color: transparent; overflow: hidden; }
+
+.chat-rail-h { padding: 11px 11px 8px; }
+.chat-new {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  font: inherit; font-size: 12px; font-weight: 600;
+  color: #fff; background: var(--accent);
+  border: none; border-radius: 9px; padding: 8px 10px; cursor: pointer;
+  transition: opacity var(--tr);
+}
+.chat-new:hover { opacity: .88; }
+.chat-new svg { width: 14px; height: 14px; stroke-width: 2.4; }
+
+.chat-rail-list {
+  flex: 1 1 auto; overflow-y: auto; padding: 2px 8px 8px; min-height: 0;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.chat-rail-list::-webkit-scrollbar { width: 4px; }
+.chat-rail-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.chat-rail-sec {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); padding: 10px 6px 5px;
+}
+.chat-convo {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 8px; border-radius: 8px; cursor: pointer;
+  color: var(--text-secondary); transition: background var(--tr), color var(--tr);
+}
+.chat-convo:hover { background: var(--surface-hover); color: var(--text); }
+.chat-convo.active { background: var(--sb-active-bg); color: var(--text); }
+.chat-convo-t {
+  flex: 1 1 auto; min-width: 0; font-size: 12px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* A blocked turn anywhere in the thread leaves a mark on the list entry — the reason to come back
+   to an old conversation is usually that something happened in it. */
+.chat-convo-flag { width: 6px; height: 6px; border-radius: 50%; background: var(--red); flex: 0 0 auto; }
+.chat-convo-x {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; padding: 2px;
+  color: var(--text-muted); line-height: 0; opacity: 0; transition: opacity var(--tr), color var(--tr);
+}
+.chat-convo:hover .chat-convo-x { opacity: 1; }
+.chat-convo-x:hover { color: var(--red); }
+.chat-convo-x svg { width: 13px; height: 13px; stroke-width: 2.2; }
+
+/* Session counters: what this browser has put through the scanner since it was opened. */
+.chat-rail-f {
+  flex: 0 0 auto; border-top: 1px solid var(--border); padding: 9px 12px 11px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.chat-stat { display: flex; align-items: baseline; gap: 6px; font-size: 10.5px; color: var(--text-muted); }
+.chat-stat b { font-size: 11.5px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.chat-stat.is-block b { color: var(--red); }
+.chat-stat.is-mask  b { color: var(--orange); }
+.chat-stat.is-flag  b { color: var(--ink-amber); }
+
+/* ── Main column ────────────────────────────────────────────────────────────── */
+.chat-main {
+  flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0;
+}
+
+/* Control strip — same vocabulary as the Insight pages' strip, so the console reads as one app. */
+.chat-bar {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 7px 14px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.chat-bar-spacer { flex: 1 1 auto; }
+.chat-icon-btn {
+  border: 1px solid var(--border); background: var(--surface-2); border-radius: 7px;
+  color: var(--text-muted); cursor: pointer; padding: 4px; line-height: 0;
+  transition: color var(--tr), border-color var(--tr);
+}
+.chat-icon-btn:hover { color: var(--text); }
+.chat-icon-btn.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.chat-icon-btn svg { width: 15px; height: 15px; stroke-width: 2; }
+
+.chat-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 600; color: var(--text-muted);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
+  padding: 3px 10px; white-space: nowrap;
+}
+.chat-pill b { color: var(--text); font-weight: 700; }
+.chat-pill.is-live   { color: var(--ink-green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); background: var(--tint-green); }
+.chat-pill.is-mock   { color: var(--ink-amber); border-color: color-mix(in srgb, var(--orange) 40%, var(--border)); background: var(--tint-orange); }
+.chat-pill.is-err    { color: var(--ink-red); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); background: var(--tint-red); }
+.chat-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+.chat-select {
+  font-family: inherit; font-size: 11.5px; font-weight: 600; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 4px 8px; max-width: 210px;
+}
+/* The model picker goes through the shared custom dropdown (NMS.utils.enhanceSelect) so it looks
+   the same here as in Configuration — but that control is sized for a settings form, and in a
+   control strip it has to sit at the height of the pills beside it. */
+.chat-bar .cs { width: auto; flex: 0 0 auto; }
+.chat-bar .cs-trigger {
+  width: auto; min-width: 176px; gap: 7px; padding: 4px 9px; border-radius: 7px;
+  font-size: 11.5px; font-weight: 600; background: var(--surface-2);
+}
+
+/* ── Thread ─────────────────────────────────────────────────────────────────── */
+.chat-thread {
+  flex: 1 1 auto; overflow-y: auto; min-height: 0;
+  padding: 20px 0 8px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.chat-thread::-webkit-scrollbar { width: 6px; }
+.chat-thread::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* One measure for the whole conversation, composer included, so nothing shifts sideways as the
+   thread fills up. */
+.chat-col { max-width: 760px; margin: 0 auto; padding: 0 22px; }
+
+.chat-turn { display: flex; flex-direction: column; gap: 5px; margin-bottom: 18px; }
+.chat-turn.is-user { align-items: flex-end; }
+
+.chat-who {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); padding: 0 3px;
+}
+
+.chat-bubble {
+  max-width: 100%;
+  border-radius: 14px; padding: 10px 14px;
+  font-size: 13.5px; line-height: 1.62; color: var(--text);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.chat-turn.is-user .chat-bubble {
+  background: var(--sb-active-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  border-bottom-right-radius: 5px;
+  max-width: 82%;
+}
+.chat-turn.is-bot .chat-bubble {
+  background: var(--surface); border: 1px solid var(--border);
+  border-bottom-left-radius: 5px;
+}
+.chat-bubble code {
+  font-family: var(--font-mono); font-size: 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 1px 5px;
+}
+.chat-bubble pre {
+  font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
+  padding: 9px 11px; margin: 7px 0; overflow-x: auto; white-space: pre;
+}
+.chat-bubble pre code { background: none; border: none; padding: 0; font-size: inherit; }
+.chat-bubble b { font-weight: 700; }
+/* A redaction in the transcript: this text never left the appliance in this form. */
+.chat-bubble .chat-redact {
+  background: var(--tint-orange); color: var(--ink-orange);
+  border-radius: 4px; padding: 0 3px; font-weight: 600;
+}
+
+/* The block card replaces the answer — there is no answer, and a bubble saying so in ordinary type
+   would read as the model's opinion rather than as an enforcement result. */
+.chat-block {
+  display: flex; gap: 11px; align-items: flex-start;
+  background: var(--tint-red); border: 1px solid color-mix(in srgb, var(--red) 38%, transparent);
+  border-radius: 14px; border-bottom-left-radius: 5px; padding: 11px 14px;
+}
+.chat-block-ic { flex: 0 0 auto; color: var(--red); line-height: 0; margin-top: 1px; }
+.chat-block-ic svg { width: 17px; height: 17px; stroke-width: 2; }
+.chat-block-b { min-width: 0; }
+.chat-block-t { font-size: 12.5px; font-weight: 700; color: var(--ink-red); }
+.chat-block-d { font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.55; }
+.chat-block-a {
+  margin-top: 8px; display: inline-flex; align-items: center; gap: 5px;
+  font: inherit; font-size: 11px; font-weight: 600; color: var(--ink-red);
+  background: none; border: 1px solid color-mix(in srgb, var(--red) 40%, transparent);
+  border-radius: 7px; padding: 3px 9px; cursor: pointer;
+}
+.chat-block-a:hover { background: color-mix(in srgb, var(--red) 12%, transparent); }
+
+/* The turn never reached a model. Muted rather than alarming, and visibly not the block card: an
+   outage is not an enforcement decision, and the two must not be confused when reading a thread back. */
+.chat-fail {
+  display: flex; gap: 11px; align-items: flex-start;
+  background: var(--surface); border: 1px dashed var(--border);
+  border-radius: 14px; border-bottom-left-radius: 5px; padding: 11px 14px;
+}
+.chat-fail-ic { flex: 0 0 auto; color: var(--orange); line-height: 0; margin-top: 1px; }
+.chat-fail-ic svg { width: 17px; height: 17px; stroke-width: 2; }
+.chat-fail-b { min-width: 0; }
+.chat-fail-t { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.chat-fail-d { font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.55; overflow-wrap: anywhere; }
+/* Separates 'the model failed' from 'the guardrail failed' — the first question an operator
+   asks about a turn with no answer. */
+.chat-fail-n {
+  margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--ink-green);
+  background: var(--tint-green); border-radius: 5px; padding: 3px 7px; display: inline-block;
+}
+.chat-fail-c {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
+}
+
+/* Verdict pill under a message. Clean scans are deliberately quiet — muted, no colour — so the
+   eye is only pulled by the ones that found something. */
+.chat-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 0 3px; }
+.chat-turn.is-user .chat-meta { justify-content: flex-end; }
+.chat-verdict {
+  display: inline-flex; align-items: center; gap: 5px;
+  font: inherit; font-size: 10px; font-weight: 600; color: var(--text-muted);
+  background: none; border: 1px solid var(--border); border-radius: 999px;
+  padding: 2px 8px; cursor: pointer;
+  transition: color var(--tr), border-color var(--tr), background var(--tr);
+}
+.chat-verdict:hover { color: var(--text); border-color: var(--text-muted); }
+.chat-verdict svg { width: 11px; height: 11px; stroke-width: 2.2; }
+.chat-verdict.is-mask {
+  color: var(--ink-orange); background: var(--tint-orange);
+  border-color: color-mix(in srgb, var(--orange) 35%, transparent);
+}
+.chat-verdict.is-block {
+  color: var(--ink-red); background: var(--tint-red);
+  border-color: color-mix(in srgb, var(--red) 38%, transparent);
+}
+/* Detected and forwarded anyway. Amber, not red, and never the block styling — the two states must
+   not be confusable at a glance, because one of them means enforcement is off. */
+.chat-verdict.is-flagged {
+  color: var(--ink-amber); background: var(--tint-orange);
+  border-color: color-mix(in srgb, var(--orange) 45%, transparent);
+}
+/* No guardrail on this call's path. Dashed, because the absence is the finding. */
+.chat-verdict.is-uninspected {
+  color: var(--text-secondary); border-style: dashed; border-color: var(--text-muted);
+}
+.chat-verdict.active { border-color: var(--accent); color: var(--accent); }
+.chat-time { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Scanning / thinking. Two states, because they are two different waits: the scan happens before
+   anything is sent upstream, and saying "thinking" during it would be a lie. */
+.chat-wait { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-muted); }
+.chat-dots { display: inline-flex; gap: 3px; }
+.chat-dots i {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--text-muted);
+  animation: chatBlink 1.25s infinite;
+}
+.chat-dots i:nth-child(2) { animation-delay: .18s; }
+.chat-dots i:nth-child(3) { animation-delay: .36s; }
+@keyframes chatBlink { 0%, 60%, 100% { opacity: .28; } 30% { opacity: 1; } }
+
+.chat-caret {
+  display: inline-block; width: 6px; height: 14px; margin-left: 2px;
+  background: var(--accent); border-radius: 1px; vertical-align: -2px;
+  animation: chatCaret 1s steps(1) infinite;
+}
+@keyframes chatCaret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+
+/* ── Empty state ────────────────────────────────────────────────────────────── */
+.chat-empty { padding: 46px 0 14px; text-align: center; }
+.chat-empty-ic {
+  width: 46px; height: 46px; margin: 0 auto 14px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--sb-active-bg); color: var(--accent);
+}
+.chat-empty-ic svg { width: 23px; height: 23px; stroke-width: 1.9; }
+.chat-empty-t { font-size: 17px; font-weight: 700; letter-spacing: -.02em; color: var(--text); }
+.chat-empty-d { font-size: 12.5px; color: var(--text-muted); margin-top: 6px; line-height: 1.6; }
+
+.chat-sugs { margin-top: 24px; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.chat-sug-h {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); margin-top: 6px;
+}
+.chat-sug {
+  display: flex; align-items: center; gap: 9px;
+  font: inherit; font-size: 12.5px; color: var(--text-secondary); text-align: left;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 12px; cursor: pointer; width: 100%;
+  transition: border-color var(--tr), color var(--tr);
+}
+.chat-sug:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.chat-sug-tag {
+  flex: 0 0 auto; font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  border-radius: 5px; padding: 2px 6px;
+  background: var(--surface-2); color: var(--text-muted);
+}
+.chat-sug-tag.is-risk { background: var(--tint-red); color: var(--ink-red); }
+
+/* ── Composer ───────────────────────────────────────────────────────────────── */
+.chat-composer { flex: 0 0 auto; padding: 8px 0 14px; background: var(--bg); }
+.chat-box {
+  display: flex; align-items: flex-end; gap: 9px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 15px; padding: 8px 8px 8px 14px;
+  transition: border-color var(--tr), box-shadow var(--tr);
+}
+.chat-box:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.chat-input {
+  flex: 1 1 auto; min-width: 0; resize: none; border: none; outline: none; background: none;
+  font-family: inherit; font-size: 13.5px; line-height: 1.6; color: var(--text);
+  max-height: 168px; padding: 5px 0;
+}
+.chat-input::placeholder { color: var(--text-muted); }
+.chat-send {
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 9px; border: none;
+  background: var(--accent); color: #fff; cursor: pointer; line-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity var(--tr);
+}
+.chat-send:hover { opacity: .88; }
+.chat-send:disabled { opacity: .32; cursor: not-allowed; }
+.chat-send svg { width: 16px; height: 16px; stroke-width: 2.2; }
+
+.chat-foot {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 7px; padding: 0 4px;
+  font-size: 10.5px; color: var(--text-muted);
+}
+.chat-foot kbd {
+  font-family: var(--font-mono); font-size: 9.5px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 4px;
+}
+
+/* ── Inspector ──────────────────────────────────────────────────────────────── */
+/* Anchored, not floating: the finding is read against the message that produced it, and a drawer
+   over the thread would hide exactly that. */
+.chat-inspect {
+  width: 336px; flex: 0 0 auto;
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); border-left: 1px solid var(--border);
+}
+.chat-inspect.is-hidden { display: none; }
+
+.chat-ins-h {
+  flex: 0 0 auto; display: flex; align-items: flex-start; gap: 9px;
+  padding: 11px 13px; border-bottom: 1px solid var(--border);
+}
+.chat-ins-t { font-size: 13px; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+.chat-ins-sub { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+.chat-ins-x {
+  margin-left: auto; border: none; background: none; cursor: pointer; color: var(--text-muted);
+  line-height: 0; padding: 2px;
+}
+.chat-ins-x:hover { color: var(--text); }
+.chat-ins-x svg { width: 15px; height: 15px; stroke-width: 2.2; }
+
+.chat-ins-b {
+  flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 12px 13px 24px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.chat-ins-b::-webkit-scrollbar { width: 4px; }
+.chat-ins-b::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.chat-ins-verdict {
+  display: flex; align-items: center; gap: 9px;
+  border-radius: 10px; padding: 10px 12px; margin-bottom: 13px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.chat-ins-verdict.is-mask    { background: var(--tint-orange); border-color: color-mix(in srgb, var(--orange) 32%, transparent); }
+.chat-ins-verdict.is-block   { background: var(--tint-red);    border-color: color-mix(in srgb, var(--red) 34%, transparent); }
+.chat-ins-verdict.is-flagged { background: var(--tint-orange); border-color: color-mix(in srgb, var(--orange) 45%, transparent); }
+.chat-ins-verdict.is-uninspected { background: var(--surface-2); border-style: dashed; border-color: var(--text-muted); }
+.chat-ins-verdict svg { width: 19px; height: 19px; stroke-width: 2; flex: 0 0 auto; }
+.chat-ins-verdict.is-allow   svg { color: var(--green); }
+.chat-ins-verdict.is-mask    svg { color: var(--orange); }
+.chat-ins-verdict.is-block   svg { color: var(--red); }
+.chat-ins-verdict.is-flagged svg { color: var(--orange); }
+.chat-ins-verdict.is-uninspected svg { color: var(--text-muted); }
+.chat-ins-vt { font-size: 13px; font-weight: 700; color: var(--text); }
+.chat-ins-vd { font-size: 10.5px; color: var(--text-secondary); margin-top: 1px; }
+
+.chat-ins-sec {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); margin: 15px 0 7px;
+}
+.chat-ins-sec:first-child { margin-top: 0; }
+
+.chat-kv { display: flex; align-items: baseline; gap: 10px; padding: 4px 0; font-size: 11.5px; }
+.chat-kv-k { flex: 0 0 96px; color: var(--text-muted); }
+.chat-kv-v { flex: 1 1 auto; min-width: 0; color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+.chat-kv-v.mono { font-family: var(--font-mono); font-weight: 400; font-size: 11px; }
+
+/* Every category the profile checks is listed, cleared ones included: an operator has to be able to
+   see that PII WAS looked for and found nothing, which a list of hits alone can never say. */
+.chat-cats { display: flex; flex-direction: column; gap: 1px; }
+.chat-cat {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px;
+  font-size: 11.5px; color: var(--text-muted);
+}
+.chat-cat.is-hit { background: var(--surface-2); color: var(--text); }
+.chat-cat-ic { flex: 0 0 auto; line-height: 0; color: var(--text-muted); opacity: .55; }
+.chat-cat.is-hit .chat-cat-ic { opacity: 1; }
+.chat-cat.is-hit.sev-block .chat-cat-ic { color: var(--red); }
+.chat-cat.is-hit.sev-mask  .chat-cat-ic { color: var(--orange); }
+.chat-cat-ic svg { width: 13px; height: 13px; stroke-width: 2.2; }
+.chat-cat-n { flex: 1 1 auto; min-width: 0; }
+.chat-cat.is-hit .chat-cat-n { font-weight: 600; }
+.chat-cat-v { flex: 0 0 auto; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.chat-cat.sev-block .chat-cat-v { color: var(--ink-red); }
+.chat-cat.sev-mask  .chat-cat-v { color: var(--ink-orange); }
+
+.chat-hit {
+  margin: 5px 0 9px 21px; padding: 8px 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+}
+.chat-hit-w { font-size: 11px; color: var(--text-secondary); line-height: 1.55; }
+.chat-hit-m { margin-top: 7px; display: flex; flex-direction: column; gap: 4px; }
+.chat-hit-i {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+  padding: 3px 6px; overflow-wrap: anywhere;
+}
+
+/* What actually left the appliance, when it is not what was typed. The point of the whole panel. */
+.chat-ins-out {
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.6; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
+  padding: 9px 11px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto;
+}
+.chat-ins-out mark {
+  background: var(--tint-orange); color: var(--ink-orange); border-radius: 3px;
+  padding: 0 2px; font-weight: 600;
+}
+
+.chat-ins-empty code {
+  font-family: var(--font-mono); font-size: 10.5px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px;
+}
+.chat-ins-empty {
+  font-size: 11.5px; color: var(--text-muted); text-align: center;
+  padding: 40px 16px; line-height: 1.6;
+}
+
+/* ── Narrow screens ─────────────────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .chat-inspect { width: 300px; }
+}
+@media (max-width: 980px) {
+  .chat-rail { position: absolute; z-index: 30; height: 100%; box-shadow: var(--shadow); }
+  .chat-rail.is-hidden { box-shadow: none; }
+  /* The inspector takes the whole band rather than squeezing the thread into a column of two
+     words per line. */
+  .chat-inspect { position: absolute; right: 0; top: 0; height: 100%; width: min(360px, 100%); z-index: 31; box-shadow: var(--shadow); }
+}
+
+/* ── Retrieval, shown before the answer ────────────────────────────────────────────────────────
+   Deliberately not styled like an answer bubble. This is evidence the reader is meant to weigh,
+   and a card that looked like a reply would invite skimming past it to the part that reads like
+   a conclusion. */
+.chat-rag {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2, var(--surface));
+  overflow: hidden;
+}
+.chat-rag.is-warn { border-color: var(--warn, #c98a2b); }
+
+.chat-rag-h {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px; font-weight: 600;
+  color: var(--text);
+}
+.chat-rag-h svg { opacity: .7; flex: none; }
+.chat-rag-h b { margin-left: auto; font-weight: 500; opacity: .55; font-size: 12px; }
+
+.chat-rag-d { padding: 10px 12px; font-size: 13px; color: var(--text-dim, var(--text)); opacity: .8; }
+.chat-rag-l { display: flex; flex-direction: column; }
+
+.chat-rag-i {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 12px;
+  text-decoration: none; color: inherit;
+  border-top: 1px solid var(--border);
+}
+.chat-rag-i:first-child { border-top: 0; }
+.chat-rag-i:hover { background: var(--hover, rgba(127,127,127,.07)); }
+
+/* The rank, which is what the citation markers in the answer refer back to. */
+.chat-rag-n {
+  flex: none; width: 20px; height: 20px; border-radius: 6px;
+  display: grid; place-items: center;
+  background: var(--accent-soft, rgba(127,127,127,.14));
+  font-size: 11px; font-weight: 600; opacity: .85;
+}
+.chat-rag-b { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.chat-rag-t {
+  font-size: 13px; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-rag-m { font-size: 11px; opacity: .55; }
+
+/* The handoff. A rule with a label, not a bubble: it marks a boundary in the turn rather than
+   adding another voice to it. */
+.chat-hand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 0; margin: 2px 0;
+}
+.chat-hand-l { flex: 1; height: 1px; background: var(--border); }
+.chat-hand-t { font-size: 11px; opacity: .5; white-space: nowrap; }
+
+/* Greyed rather than hidden when grounding is off — a control that vanishes teaches nothing
+   about why it went. */
+.chat-select.is-k { max-width: 132px; }
+.chat-select.is-k.is-off { opacity: .4; }

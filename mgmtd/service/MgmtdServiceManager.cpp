@@ -206,6 +206,52 @@ std::optional<std::string> MgmtdServiceManager::takeApiTestResult(std::uint32_t 
     return out;
 }
 
+void MgmtdServiceManager::setChatResult(std::uint32_t ticket, std::string resultJson)
+{
+    // A browser that navigated away never drains its ticket, so the map is bounded the same way
+    // the test results are: an answer nobody came back for is worth nothing.
+    if (m_chatResults.size() > 256)
+    {
+        m_chatResults.clear();
+    }
+    m_chatResults[ticket] = std::move(resultJson);
+}
+
+std::optional<std::string> MgmtdServiceManager::takeChatResult(std::uint32_t ticket)
+{
+    auto it = m_chatResults.find(ticket);
+    if (it == m_chatResults.end())
+    {
+        return std::nullopt;
+    }
+    std::string out = std::move(it->second);
+    m_chatResults.erase(it);
+    return out;
+}
+
+void MgmtdServiceManager::setRetrievalResult(std::uint32_t ticket, std::string resultJson)
+{
+    // Bounded like the others: a page that navigated away mid-turn leaves its passages
+    // behind, and a retrieval nobody came back for is worth nothing.
+    if (m_retrievalResults.size() > 256)
+    {
+        m_retrievalResults.clear();
+    }
+    m_retrievalResults[ticket] = std::move(resultJson);
+}
+
+std::optional<std::string> MgmtdServiceManager::takeRetrievalResult(std::uint32_t ticket)
+{
+    auto it = m_retrievalResults.find(ticket);
+    if (it == m_retrievalResults.end())
+    {
+        return std::nullopt;
+    }
+    std::string out = std::move(it->second);
+    m_retrievalResults.erase(it);
+    return out;
+}
+
 void MgmtdServiceManager::setSsoResult(std::uint32_t ticket, std::string resultJson)
 {
     if (m_ssoResults.size() > 256)
@@ -245,6 +291,11 @@ std::uint32_t MgmtdServiceManager::nextSsoTicket()
 std::uint32_t MgmtdServiceManager::nextApiTestTicket()
 {
     return m_apiTestTicket++;
+}
+
+std::uint32_t MgmtdServiceManager::nextChatTicket()
+{
+    return m_chatTicket++;
 }
 
 }

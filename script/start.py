@@ -14,7 +14,6 @@ import subprocess
 import time
 from script.utils import (
     ROOT_DIR, BUILD_DIR, CERT_DIR, SECRET_DIR, run_cmd, install_file,
-    PROMETHEUS_SRC_PATH, NODE_EXPORTER_SRC_PATH, POSTGRES_EXPORTER_SRC_PATH,
     PG_SERVICE, PG_DB_HOST, PG_DB_PORT, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
     PGADMIN_VENV, PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD,
 )
@@ -24,8 +23,8 @@ DAEMONS = [
     "pz-db-ready.service",
     "pz-ipcd.service", "pz-engined.service", "pz-authd.service", "pz-mgmtd.service",
     "pz-probed.service", "pz-collectord.service", "pz-topologyd.service", "pz-apid.service",
-    "pz-prometheus.service", "pz-node-exporter.service", "pz-postgres-exporter.service",
-    "pz-grafana.service", "pz-pgadmin.service",
+    "pz-inferd.service",
+    "pz-pgadmin.service",
 ]
 
 # Defines source and destination paths for deployment
@@ -46,13 +45,10 @@ SYSCTL_CORE_FILE = "/etc/sysctl.d/60-pretzel-core.conf"
 CREDENTIALS_KEY_NAME = "credentials.key"
 CREDENTIALS_KEY_PATH = os.path.join(ETC_ROOT_DIR, CREDENTIALS_KEY_NAME)
 
-PROMETHEUS_CONFIG_DIR = os.path.join(ETC_ROOT_DIR, "prometheus")
-PROMETHEUS_DATA_DIR = "/var/lib/pretzel/prometheus"
-GRAFANA_CONFIG_DIR = os.path.join(ETC_ROOT_DIR, "grafana")
 TARGET = "pretzel.target"
 
 # pgAdmin: canonical config lives under config/pgadmin/ (consistent with
-# grafana/prometheus). It is deployed both into the venv package dir (where pgAdmin
+# pgadmin). It is deployed both into the venv package dir (where pgAdmin
 # reads it) and into /etc/pretzel/pgadmin/ (for parity). PGADMIN_WRAPPER_PATH is the
 # generated launcher that pz-pgadmin.service execs.
 PGADMIN_CONFIG_SRC = os.path.join(ROOT_DIR, "config", "pgadmin", "config_local.py")
@@ -145,27 +141,116 @@ def deploy_startup_config() -> None:
     print(f"[*] Installed startup-config: {dst}")
 
 
-# postgres_exporter's DATA_SOURCE_NAME embeds the DB password, so it is generated
-# here (not hardcoded in the committed pz-postgres-exporter.service) into a 0600 env
-# file that the unit pulls in via EnvironmentFile. Keeps the exporter's password in
-# lockstep with PG_DB_PASSWORD and out of version control.
-EXPORTER_ENV_PATH = os.path.join(ETC_ROOT_DIR, "postgres-exporter.env")
+INFERD_ENV_PATH = os.path.join(ETC_ROOT_DIR, "inferd.env")
+
+# Where the AI gateway client key is read from, in order. The key is a credential and therefore
+# never lives in config/startup-config.json (committed) nor in the DB running_config — the same rule
+# the DB password follows. It is delivered as a 0600 EnvironmentFile the unit points at.
+#
+# PZ_PORTKEY_API_KEY in the deployer's environment wins. Failing that, the lab .env that the
+# gw-test.sh battery already uses is read, so a box that can run the battery can run the chatbot
+# without the key being copied to a second place and drifting.
+def _invoking_home() -> str:
+    """The home of the human who ran this, not root's.
+
+    start.py re-executes itself under sudo, so os.path.expanduser("~") is /root here and every
+    per-user path resolved that way silently points at a directory that does not exist.
+    """
+    user = os.environ.get("SUDO_USER")
+    if user:
+        try:
+            import pwd
+            return pwd.getpwnam(user).pw_dir
+        except (KeyError, ImportError):
+            pass
+    return os.path.expanduser("~")
 
 
-def deploy_exporter_env() -> None:
-    """Writes /etc/pretzel/postgres-exporter.env with the DATA_SOURCE_NAME DSN."""
-    dsn = (f"postgresql://{PG_DB_USER}:{PG_DB_PASSWORD}@{PG_DB_HOST}:{PG_DB_PORT}"
-           f"/{PG_DB_NAME}?sslmode=disable")
+PORTKEY_LAB_ENV = os.path.join(_invoking_home(), "prisma-airs", ".env")
+
+
+def _read_lab_key(path: str, name: str) -> str:
+    """One KEY=value out of a shell-style .env, unquoted. Returns '' when absent."""
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                if k.strip() == name:
+                    return v.strip().strip("'\"")
+    except OSError:
+        pass
+    return ""
+
+
+INFERD_LIB_DIR = "/opt/pretzel/lib/inferd"
+INFERD_VENV = "/opt/pretzel/venv/inferd"
+INFERD_LAUNCHER = os.path.join(INSTALL_BIN_DIR, "pz-inferd")
+
+
+def deploy_inferd() -> None:
+    """Deploys the inferd package and the launcher its unit execs.
+
+    inferd is Python, so there is no binary for install_file to copy out of build/bin.
+    The launcher exists so that is an implementation detail rather than an operational
+    one: the unit reads ExecStart=/opt/pretzel/bin/pz-inferd like every other daemon,
+    and anything that enumerates /opt/pretzel/bin still finds it. Same shape as the
+    pgAdmin launcher below, for the same reason.
+    """
+    src = os.path.join(ROOT_DIR, "inferd")
+    if not os.path.isdir(src):
+        sys.exit(f"[FATAL] inferd package not found at {src}")
+
+    shutil.rmtree(INFERD_LIB_DIR, ignore_errors=True)
+    shutil.copytree(src, INFERD_LIB_DIR,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+    with open(INFERD_LAUNCHER, "w") as f:
+        f.write("#!/bin/sh\n"
+                "# Generated by script/start.py — edit deploy_inferd() there, not here.\n"
+                f'exec "{INFERD_VENV}/bin/python" "{INFERD_LIB_DIR}/main.py" "$@"\n')
+    os.chmod(INFERD_LAUNCHER, 0o755)
+    print(f"[*] Deployed inferd package -> {INFERD_LIB_DIR} (launcher: {INFERD_LAUNCHER})")
+
+
+def deploy_inferd_env() -> None:
+    """Writes /etc/pretzel/inferd.env with inferd's two credentials.
+
+    The gateway client key, and — since retrieval moved into inferd — the database password for
+    the corpus. Both are credentials, so neither may live in startup-config.json (committed) nor
+    in the DB running_config (which needs one of them to reach).
+
+    Absent gateway key is not fatal: inferd answers NO_CREDENTIAL and the Assistant page says so,
+    which is the correct state for an appliance that has no gateway. A build must not require a
+    credential. An absent DB password is not fatal either — the turn proceeds ungrounded and
+    reports that the corpus is unreachable, rather than failing the whole assistant.
+    """
+    key = os.environ.get("PZ_PORTKEY_API_KEY", "").strip()
+    source = "PZ_PORTKEY_API_KEY"
+
+    if not key:
+        key = _read_lab_key(PORTKEY_LAB_ENV, "PORTKEY_API_KEY")
+        source = PORTKEY_LAB_ENV
+
     os.makedirs(ETC_ROOT_DIR, exist_ok=True)
-    tmp = EXPORTER_ENV_PATH + ".tmp"
+    tmp = INFERD_ENV_PATH + ".tmp"
     try:
         with open(tmp, "w") as f:
-            f.write(f"DATA_SOURCE_NAME={dsn}\n")
+            f.write(f"PZ_PORTKEY_API_KEY={key}\n")
+            f.write(f"PZ_PG_PASSWORD={PG_DB_PASSWORD}\n")
         os.chmod(tmp, 0o600)
-        os.replace(tmp, EXPORTER_ENV_PATH)
+        os.replace(tmp, INFERD_ENV_PATH)
     except OSError as e:
-        sys.exit(f"[FATAL] failed to write {EXPORTER_ENV_PATH}: {e}")
-    print(f"[*] Generated postgres-exporter env: {EXPORTER_ENV_PATH}")
+        sys.exit(f"[FATAL] failed to write {INFERD_ENV_PATH}: {e}")
+
+    if key:
+        print(f"[*] Generated inferd env: {INFERD_ENV_PATH} (key from {source})")
+    else:
+        print(f"[*] Generated inferd env: {INFERD_ENV_PATH} (no gateway key — "
+              f"set PZ_PORTKEY_API_KEY or populate {PORTKEY_LAB_ENV}; the Assistant "
+              f"will report 'not configured')")
 
 
 def ensure_certificates() -> None:
@@ -203,26 +288,6 @@ def pre_flight_checks():
     if not os.path.isdir(BUILD_BIN_DIR) or not os.listdir(BUILD_BIN_DIR):
         sys.exit("[ERROR] build/bin not found or empty. Run build first.")
         
-    # 2. Validate essential Prometheus files
-    required_prometheus = [
-        os.path.join(PROMETHEUS_SRC_PATH, "prometheus"),
-        os.path.join(ROOT_DIR, "config", "prometheus", "prometheus.yml")
-    ]
-    if not all(os.path.isfile(p) for p in required_prometheus):
-        sys.exit("[ERROR] Required prometheus files not found.")
-
-    # 3. Validate essential Node Exporter files
-    if not os.path.isfile(os.path.join(NODE_EXPORTER_SRC_PATH, "node_exporter")):
-        sys.exit("[ERROR] Required node_exporter binary not found.")
-
-    # 3b. Validate essential Postgres Exporter binary
-    if not os.path.isfile(os.path.join(POSTGRES_EXPORTER_SRC_PATH, "postgres_exporter")):
-        sys.exit("[ERROR] Required postgres_exporter binary not found.")
-
-    # 4. Validate Grafana binary installation (assumes installation via OS package manager)
-    if not any(os.path.exists(p) for p in ["/usr/share/grafana/bin/grafana", "/usr/sbin/grafana-server"]):
-        sys.exit("[ERROR] Grafana binary not found. Install first: sudo apt install -y grafana")
-
     # 5. Validate PostgreSQL is installed (server + client). Provisioned by install.
     if shutil.which("psql") is None:
         sys.exit("[ERROR] PostgreSQL not found. Install first: ./pretzel install")
@@ -471,9 +536,6 @@ def deploy_files():
 
     # Create required destination directories
     os.makedirs(INSTALL_BIN_DIR, exist_ok=True)
-    os.makedirs(PROMETHEUS_CONFIG_DIR, exist_ok=True)
-    os.makedirs(PROMETHEUS_DATA_DIR, exist_ok=True)
-    os.makedirs(GRAFANA_CONFIG_DIR, exist_ok=True)
 
     # Files are copied quietly and reported as one summary line per group (the
     # per-file detail is noise; counts are enough to confirm a successful deploy).
@@ -483,23 +545,6 @@ def deploy_files():
     for f in pz_bins:
         install_file(os.path.join(BUILD_BIN_DIR, f), os.path.join(INSTALL_BIN_DIR, f), 0o755, quiet=True)
     print(f"[*] Deployed {len(pz_bins)} pretzel binaries -> {INSTALL_BIN_DIR}")
-
-    # 2-3b. Deploy monitoring binaries (prometheus/promtool/exporters)
-    mon_bins = [
-        (os.path.join(PROMETHEUS_SRC_PATH, "prometheus"), "prometheus"),
-        (os.path.join(PROMETHEUS_SRC_PATH, "promtool"), "promtool"),
-        (os.path.join(NODE_EXPORTER_SRC_PATH, "node_exporter"), "node_exporter"),
-        (os.path.join(POSTGRES_EXPORTER_SRC_PATH, "postgres_exporter"), "postgres_exporter"),
-    ]
-    for src, name in mon_bins:
-        install_file(src, os.path.join(INSTALL_BIN_DIR, name), 0o755, quiet=True)
-    print(f"[*] Deployed {len(mon_bins)} monitoring binaries (prometheus, exporters)")
-
-    # 2/4. Deploy monitoring config files (prometheus + grafana)
-    install_file(os.path.join(ROOT_DIR, "config", "prometheus", "prometheus.yml"), os.path.join(PROMETHEUS_CONFIG_DIR, "prometheus.yml"), quiet=True)
-    install_file(os.path.join(ROOT_DIR, "config", "prometheus", "web.yml"), os.path.join(PROMETHEUS_CONFIG_DIR, "web.yml"), quiet=True)
-    install_file(os.path.join(ROOT_DIR, "config", "grafana", "grafana.ini"), os.path.join(GRAFANA_CONFIG_DIR, "grafana.ini"), quiet=True)
-    print("[*] Deployed monitoring configs (prometheus, grafana)")
 
     # 5. Deploy Systemd daemon service files
     units = [f for f in os.listdir(SERVICE_DIR) if f.endswith((".service", ".target"))]
@@ -526,9 +571,9 @@ def deploy_files():
     #    mgmtd syncs it into the DB at boot; all daemons read it for DB conn params.
     deploy_startup_config()
 
-    # 7b. Generate the postgres-exporter env file (DATA_SOURCE_NAME) referenced by
-    #     pz-postgres-exporter.service via EnvironmentFile.
-    deploy_exporter_env()
+    # 7b. inferd's package and launcher, then its two credentials.
+    deploy_inferd()
+    deploy_inferd_env()
 
     # 7c. Deploy the IEEE OUI lookup table (engined resolves host MAC -> vendor).
     #     Generated by script/fetch_oui.py; skipped with a warning if absent.

@@ -1,0 +1,40 @@
+[Unit]
+Description=PZ Inference Daemon
+
+# Both dependencies are real now that retrieval lives here: the corpus is in pretzel_rag,
+# and the gateway is off the box. A retrieval against an unreachable database and a turn
+# with no route out fail differently, and the operator reads both as "the assistant is broken".
+After=pz-ipcd.service pz-db-ready.service network-online.target
+Requires=pz-ipcd.service
+Wants=network-online.target
+PartOf=pretzel.target
+
+[Service]
+Type=simple
+
+# Two credentials, neither of which may live in config: startup-config.json is committed,
+# and the running config is stored in the database one of these passwords is needed to reach.
+# Generated 0600 by script/start.py.
+EnvironmentFile=-/etc/pretzel/inferd.env
+
+ExecStart=/opt/pretzel/bin/pz-inferd
+
+Restart=always
+RestartSec=3
+
+# Startup is dominated by loading the embedding model — seconds on CPU, read from disk on
+# every start, and the daemon does not accept work until it finishes. A slow disk must not
+# be read as a failed unit.
+TimeoutStartSec=180
+
+LimitNOFILE=65536
+
+# Python writes a traceback, not a core, so LimitCORE is left at the default here — unlike
+# the C++ daemons, where pz-core-handler is the only way to see what happened.
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pz-inferd
+
+[Install]
+WantedBy=pretzel.target

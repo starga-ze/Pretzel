@@ -18,9 +18,6 @@ from script.utils import (
     BOOST_VERSION, BOOST_VERSION_UNDERSCORE, BOOST_DIR, BOOST_INSTALL, BOOST_TAR, BOOST_SRC_PATH,
     JSON_VERSION, JSON_DIR, JSON_INSTALL, JSON_TAR, JSON_SRC_PATH,
     GTEST_VERSION, GTEST_DIR, GTEST_INSTALL, GTEST_TAR, GTEST_SRC_PATH,
-    PROMETHEUS_VERSION, PROMETHEUS_DIR, PROMETHEUS_TAR, PROMETHEUS_SRC_PATH,
-    NODE_EXPORTER_VERSION, NODE_EXPORTER_DIR, NODE_EXPORTER_TAR, NODE_EXPORTER_SRC_PATH,
-    POSTGRES_EXPORTER_VERSION, POSTGRES_EXPORTER_DIR, POSTGRES_EXPORTER_TAR, POSTGRES_EXPORTER_SRC_PATH,
     PG_SERVICE, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
     PGADMIN_VERSION, PGADMIN_VENV,
 )
@@ -114,92 +111,6 @@ def install_googletest():
     print("[*] googletest installation complete.")
 
 
-def install_prometheus():
-    """Downloads the Prometheus binary for monitoring (uses pre-compiled binary distribution)."""
-    if os.path.exists(os.path.join(PROMETHEUS_SRC_PATH, "prometheus")):
-        print("[*] Prometheus already downloaded and extracted, skipping...")
-        return
-
-    url = f"https://github.com/prometheus/prometheus/releases/download/v{PROMETHEUS_VERSION}/prometheus-{PROMETHEUS_VERSION}.linux-amd64.tar.gz"
-    download_and_extract(url, PROMETHEUS_TAR, PROMETHEUS_DIR, "Extracting Prometheus")
-    print("[*] Prometheus installation complete.")
-
-def install_node_exporter():
-    """Downloads the Node Exporter binary for host metrics collection (pre-compiled binary distribution)."""
-    if os.path.exists(os.path.join(NODE_EXPORTER_SRC_PATH, "node_exporter")):
-        print("[*] Node Exporter already downloaded and extracted, skipping...")
-        return
-
-    url = f"https://github.com/prometheus/node_exporter/releases/download/v{NODE_EXPORTER_VERSION}/node_exporter-{NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
-    download_and_extract(url, NODE_EXPORTER_TAR, NODE_EXPORTER_DIR, "Extracting Node Exporter")
-    print("[*] Node Exporter installation complete.")
-
-def install_postgres_exporter():
-    """Downloads the Postgres Exporter binary for PostgreSQL metrics collection (pre-compiled binary distribution)."""
-    if os.path.exists(os.path.join(POSTGRES_EXPORTER_SRC_PATH, "postgres_exporter")):
-        print("[*] Postgres Exporter already downloaded and extracted, skipping...")
-        return
-
-    url = f"https://github.com/prometheus-community/postgres_exporter/releases/download/v{POSTGRES_EXPORTER_VERSION}/postgres_exporter-{POSTGRES_EXPORTER_VERSION}.linux-amd64.tar.gz"
-    download_and_extract(url, POSTGRES_EXPORTER_TAR, POSTGRES_EXPORTER_DIR, "Extracting Postgres Exporter")
-    print("[*] Postgres Exporter installation complete.")
-
-def is_grafana_installed():
-    """Checks whether Grafana is already installed."""
-    candidates = [
-        "/usr/share/grafana/bin/grafana",
-        "/usr/sbin/grafana-server",
-    ]
-
-    return any(os.path.exists(path) for path in candidates)
-
-
-def install_grafana():
-    """Installs Grafana from the official APT repository."""
-    if is_grafana_installed():
-        print("[*] Grafana already installed, skipping...")
-        return
-
-    print("[*] Installing Grafana...")
-
-    run_cmd([
-        "sudo",
-        "apt",
-        "install",
-        "-y",
-        "apt-transport-https",
-        "software-properties-common",
-        "wget",
-        "gpg",
-    ])
-
-    keyring_path = "/usr/share/keyrings/grafana.gpg"
-    source_list_path = "/etc/apt/sources.list.d/grafana.list"
-
-    run_cmd([
-        "bash",
-        "-c",
-        f"wget -q -O - https://apt.grafana.com/gpg.key | "
-        f"sudo gpg --dearmor -o {keyring_path}"
-    ])
-
-    run_cmd([
-        "bash",
-        "-c",
-        f"echo 'deb [signed-by={keyring_path}] https://apt.grafana.com stable main' | "
-        f"sudo tee {source_list_path} > /dev/null"
-    ])
-
-    run_cmd(["sudo", "apt", "update"])
-    run_cmd(["sudo", "apt", "install", "-y", "grafana"])
-
-    if not is_grafana_installed():
-        print("[ERROR] Grafana installation failed.")
-        sys.exit(1)
-
-    print("[*] Grafana installation complete.")
-
-
 def is_postgresql_installed():
     """Checks whether the PostgreSQL client/server is already installed."""
     return shutil.which("psql") is not None
@@ -246,14 +157,6 @@ def provision_postgresql():
             ["sudo", "-u", "postgres", "createdb", "-O", PG_DB_USER, PG_DB_NAME],
             msg=f"Creating PostgreSQL database '{PG_DB_NAME}' (owner={PG_DB_USER})",
         )
-
-    # 3. Grant the built-in pg_monitor role so postgres_exporter (pz-postgres-exporter,
-    # connecting as this same role) can read the full pg_stat_* views for Grafana.
-    # Idempotent: GRANT on an already-granted role is a no-op.
-    run_cmd(
-        ["sudo", "-u", "postgres", "psql", "-c", f"GRANT pg_monitor TO {PG_DB_USER}"],
-        msg=f"Granting pg_monitor to '{PG_DB_USER}' (for postgres_exporter)",
-    )
 
 
 def is_libpq_dev_installed():
@@ -485,15 +388,11 @@ def install_test_deps():
 def install_runtime_deps():
     """
     Runtime services that the project needs to RUN but not to build: the monitoring
-    stack (Prometheus, node/postgres exporters, Grafana), the PostgreSQL server
-    (with role/database provisioning) and the pgAdmin web UI. These pull in apt
+    the PostgreSQL server (with role/database provisioning) and the pgAdmin web UI.
+    These pull in apt
     packages, download binaries and start systemd units, so they are kept out of the
     build path and only run on a full `./pretzel install`.
     """
-    install_prometheus()
-    install_node_exporter()
-    install_postgres_exporter()
-    install_grafana()
     install_postgresql()
     install_pgadmin()
 

@@ -60,6 +60,10 @@ const char* IpcProtocol::daemonToStr(IpcDaemon daemon) noexcept
         return "mgmtd";
     case IpcDaemon::Apid:
         return "apid";
+    case IpcDaemon::Inferd:
+        return "inferd";
+    case IpcDaemon::Ragd:
+        return "ragd";
     case IpcDaemon::Broadcast:
         return "broadcast";
     default:
@@ -161,6 +165,14 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "AuthSamlAcsRequest";
     case IpcCmd::AuthSamlAcsResponse:
         return "AuthSamlAcsResponse";
+    case IpcCmd::ChatRequest:
+        return "ChatRequest";
+    case IpcCmd::ChatResponse:
+        return "ChatResponse";
+    case IpcCmd::RetrieveRequest:
+        return "RetrieveRequest";
+    case IpcCmd::RetrieveResponse:
+        return "RetrieveResponse";
     default:
         return "Unknown";
     }
@@ -199,6 +211,10 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiSaseKeyStoreRequest:
     case IpcCmd::ApiCredentialStoreRequest:
     case IpcCmd::ApiConnectorTestResponse:
+    // Same shape, different kind of outside: mgmtd asks inferd to run one turn against the AI
+    // gateway. Not Read — nothing here queries a store; the answer is produced by the call.
+    case IpcCmd::ChatRequest:
+    case IpcCmd::ChatResponse:
         return CmdCategory::DeviceOp;
 
     // Mutate engined's store — dst must be Engined.
@@ -217,6 +233,10 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiCredentialStateResponse:
     case IpcCmd::TopologyRequest:
     case IpcCmd::TopologyResponse:
+    // Retrieval queries ragd's corpus. Read rather than DeviceOp: nothing outside the appliance is
+    // called, and unlike ChatRequest the answer is looked up rather than generated.
+    case IpcCmd::RetrieveRequest:
+    case IpcCmd::RetrieveResponse:
         return CmdCategory::Read;
 
     // Handshake, sync, runtime, heartbeat, transport error, and status replies — infra, not a
@@ -328,6 +348,11 @@ pz::ipc::IpcDaemon IpcProtocol::strToDaemon(const std::string& daemon) noexcept
     if (daemon == "mgmtd")
     {
         return IpcDaemon::Mgmtd;
+    }
+
+    if (daemon == "inferd")
+    {
+        return IpcDaemon::Inferd;
     }
 
     if (daemon == "apid")

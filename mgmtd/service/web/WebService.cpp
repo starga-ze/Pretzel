@@ -57,6 +57,12 @@ void WebService::handleIpcEvent(MgmtdServiceManager& sm, const WebIpcEvent& even
     case WebIpcEventType::ApiConnectorTestResponse:
         return m_apiController.onTestResponse(sm, *msg);
 
+    case WebIpcEventType::ChatResponse:
+        return m_chatController.onChatResponse(sm, *msg);
+
+    case WebIpcEventType::RetrieveResponse:
+        return m_chatController.onRetrieveResponse(sm, *msg);
+
     default:
         LOG_WARN("unhandled web IPC event (type={})", static_cast<std::uint32_t>(event.type()));
         return;
@@ -175,6 +181,19 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
         {"GET",  "/api/collection/sample",
             Match::Prefix, WebRoute::CollectionSample,   Access::Authenticated, false},
 
+        // Assistant. The POST is Exact and the poll is Prefix (it carries ?ticket=); they differ
+        // by method as well, so neither can shadow the other.
+        {"POST", "/api/chat",
+            Match::Exact,  WebRoute::ChatSend,          Access::Authenticated, false},
+        {"GET",  "/api/chat/result",
+            Match::Prefix, WebRoute::ChatResult,        Access::Authenticated, false},
+
+        // Corpus retrieval, the step before a turn reaches the model. Exact, and ordered after the
+        // poll so the Prefix above cannot swallow it — it would not (different method), but the
+        // ordering is what a reader checks first.
+        {"POST", "/api/chat/retrieve",
+            Match::Exact,  WebRoute::ChatRetrieve,      Access::Authenticated, false},
+
         // Logs.
         {"GET",  "/api/logs",
             Match::Prefix, WebRoute::Logs,               Access::Authenticated, false},
@@ -266,6 +285,10 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
     case WebRoute::CollectionOverview: return m_collectionController.overview(sm, req, resp);
     case WebRoute::CollectionSamples:  return m_collectionController.samples(sm, req, resp);
     case WebRoute::CollectionSample:   return m_collectionController.sample(sm, req, resp);
+
+    case WebRoute::ChatSend:           return m_chatController.send(sm, req, resp);
+    case WebRoute::ChatResult:         return m_chatController.result(sm, req, resp);
+    case WebRoute::ChatRetrieve:       return m_chatController.retrieve(sm, req, resp);
 
     case WebRoute::Logs:               return m_logsController.list(sm, req, resp);
 

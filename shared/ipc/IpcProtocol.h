@@ -21,6 +21,8 @@ enum class IpcDaemon : std::uint8_t
     Topologyd = 6,
     Mgmtd = 7,
     Apid = 8,
+    Inferd = 9,
+    Ragd = 10,
 
     Broadcast = 255
 };
@@ -122,6 +124,24 @@ enum class IpcCmd : std::uint16_t
     // memory — it is cheap to rebuild and never worth a table.
     TopologyRequest = 139,    // mgmtd → topologyd: compose this site (payload {site})
     TopologyResponse = 140,   // topologyd → mgmtd: the composed model
+
+    // ── Inference (mgmtd ↔ inferd) ──
+    // A chat turn on its way to an upstream model, through the AI gateway. It lives out here rather
+    // than in mgmtd for the same reason every other outbound call does: the exchange takes seconds,
+    // and mgmtd answers the console on the loop those seconds would be spent on.
+    //
+    // Correlated by seqNo, which is also the ticket the browser polls on — mgmtd never holds the
+    // HTTP response open (see ApiConnectorTestResponse for the same shape). That is deliberate
+    // beyond the first pass: streaming will deliver partial turns on this same edge without the
+    // request/response contract changing.
+    ChatRequest = 141,        // mgmtd → inferd: one turn (payload {model, message, ...})
+    ChatResponse = 142,       // inferd → mgmtd: the completed turn, or why it did not complete
+
+    // Corpus retrieval, the step before a turn reaches a model. Split from ChatRequest because the
+    // operator is meant to see the passages and judge them before anything goes upstream — an
+    // answer is only as good as what was retrieved, and a miss is worth catching there.
+    RetrieveRequest = 143,    // mgmtd → ragd: {query, k, docset?, version?}
+    RetrieveResponse = 144,   // ragd → mgmtd: {hits, took_ms, model, k}, or why there are none
 };
 
 // Coarse role of a command, orthogonal to its domain. Feeds IpcProtocol::isRoutingAllowed, which
@@ -132,7 +152,8 @@ enum class CmdCategory : std::uint8_t
     Lifecycle,   // transport, heartbeat, runtime — infra, not a feature edge
     Config,      // config reload/apply distribution
     Auth,        // mgmtd → authd delegated request/response
-    DeviceOp,    // ask a worker to act on a device (probe / scan / api test)
+    DeviceOp,    // ask a worker to act on something outside the appliance — a managed device
+                 // (probe / scan / api test) or an upstream service (a chat turn through the gateway)
     Write,       // mutate engined's store — dst must be Engined
     Read,        // query engined's store
 };

@@ -119,6 +119,16 @@
              <polyline points="9 22 9 12 15 12 15 22"/>`,
     },
 
+    { type: 'section', label: 'AI' },
+    {
+      // The internal assistant itself, not a view of it: the one page here that an ordinary
+      // employee would use rather than an operator. It sits above Insight because the security
+      // story on the pages below it starts with the traffic this page generates.
+      type: 'link', id: 'assistant', label: 'Assistant', href: 'chatbot',
+      icon: `<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>
+             <path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>`,
+    },
+
     { type: 'section', label: 'Insight' },
     {
       // The estate as a picture rather than a list: who connects, what they land on, where it exits.
@@ -192,6 +202,7 @@
   // page gets the same fixed header band (injected into #pageTopbar by buildTopbar).
   const PAGES = {
     'home':            { title: 'Home' },
+    'chatbot':         { title: 'Assistant' },
     // The group is chosen in the sidebar flyout (SETTINGS_GROUPS); the topbar shows that
     // group's name and one row of its tabs.
     'settings':        { title: 'Configuration', groups: SETTINGS_GROUPS },

@@ -26,7 +26,9 @@ enum class WebIpcEventType : std::uint32_t
     Unknown = 0,
     TopologyResponse = 1,        // topologyd composed a site      → TopologyController
     SettingsCommitStatus = 2,    // engined's commit queue moved   → SettingsController
-    ApiConnectorTestResponse = 3 // collectord ran a device call   → ApiController
+    ApiConnectorTestResponse = 3,// collectord ran a device call   → ApiController
+    ChatResponse = 4,            // inferd completed a turn        → ChatController
+    RetrieveResponse = 5         // inferd found the passages first → ChatController
 };
 
 class WebIpcEvent final : public MgmtdEvent
