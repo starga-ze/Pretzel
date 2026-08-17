@@ -59,9 +59,40 @@ def load_config():
     return _merge(DEFAULTS, raw)
 
 
+def milestone(log, msg, *args):
+    """Log a line that has to reach the journal as well as the log file.
+
+    Reserved for the handful of events that answer "is this daemon healthy" — started,
+    encoder ready, corpus attached, registered, stopped. Anything that answers "what did it
+    do" is an ordinary log.info() and stays in the file.
+    """
+    log.info(msg, *args, extra={"lifecycle": True})
+
+
+class _JournalFilter(logging.Filter):
+    """Selects the subset of the log that is worth putting in the journal.
+
+    `journalctl -u pz-inferd` is the first thing anyone runs, and it has one question behind
+    it: is this daemon up and working. Answering it with the full log would bury that in
+    per-turn detail; answering it with nothing — which is what happened before this existed —
+    left the command showing only whichever progress bar a third-party library had leaked to
+    stderr, rendered as "[229B blob data]" because of the carriage returns in it.
+
+    So: anything at WARNING or above, plus the lines milestone() marks, and nothing else.
+    """
+
+    def filter(self, record):
+        return record.levelno >= logging.WARNING or getattr(record, "lifecycle", False)
+
+
 def setup_logging(config, verbose=False):
-    """File when the log directory exists (deployed), stderr otherwise (dev, and
-    systemd's journal). Not both: duplicated lines make a log harder to read, not safer."""
+    """The full log goes to a file when its directory is writable, stderr otherwise.
+
+    Deployed, that means two sinks rather than one: the file gets everything, and the journal
+    gets the milestones and the failures through _JournalFilter. The duplication is deliberate
+    and bounded — an operator reading `systemctl status` must be able to tell a daemon that is
+    working from one that is wedged, without first being told which file to open.
+    """
     fmt = logging.Formatter("[%(asctime)s.%(msecs)03d][%(levelname)s][%(name)s] %(message)s",
                             datefmt="%H:%M:%S")
     root = logging.getLogger("inferd")
@@ -77,11 +108,22 @@ def setup_logging(config, verbose=False):
                 target, maxBytes=16 * 1024 * 1024, backupCount=5)
         except OSError:
             handler = None
+
     if handler is None:
+        # No usable file: stderr carries everything, and adding the filtered handler below
+        # would print each milestone twice.
         handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(fmt)
+        root.addHandler(handler)
+        return root
 
     handler.setFormatter(fmt)
     root.addHandler(handler)
+
+    journal = logging.StreamHandler(sys.stderr)
+    journal.setFormatter(fmt)
+    journal.addFilter(_JournalFilter())
+    root.addHandler(journal)
     return root
 
 

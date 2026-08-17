@@ -148,9 +148,14 @@ INFERD_ENV_PATH = os.path.join(ETC_ROOT_DIR, "inferd.env")
 # never lives in config/startup-config.json (committed) nor in the DB running_config — the same rule
 # the DB password follows. It is delivered as a 0600 EnvironmentFile the unit points at.
 #
-# PZ_PORTKEY_API_KEY in the deployer's environment wins. Failing that, the lab .env that the
-# gw-test.sh battery already uses is read, so a box that can run the battery can run the chatbot
-# without the key being copied to a second place and drifting.
+# PZ_PORTKEY_API_KEY in the deployer's environment wins. Failing that, a shell-style .env named
+# by PZ_PORTKEY_ENV_FILE is read, so a lab that already keeps the key in a file for its own test
+# battery can deploy without copying it to a second place and letting the two drift.
+#
+# That path is taken from the environment rather than hard-coded. It used to default to
+# ~/prisma-airs/.env — one developer's lab layout, compiled into the product — and on any other
+# machine the "no gateway key" message ended up telling the operator to populate a directory that
+# does not exist and never should. An appliance sets neither variable and is told so plainly.
 def _invoking_home() -> str:
     """The home of the human who ran this, not root's.
 
@@ -167,7 +172,18 @@ def _invoking_home() -> str:
     return os.path.expanduser("~")
 
 
-PORTKEY_LAB_ENV = os.path.join(_invoking_home(), "prisma-airs", ".env")
+def _portkey_env_file() -> str:
+    """The optional .env to fall back to, or '' when the deployer named none.
+
+    Expanded against the invoking user's home, not root's, so `PZ_PORTKEY_ENV_FILE=~/lab/.env`
+    means what the person who typed it thinks it means after the sudo re-exec.
+    """
+    raw = os.environ.get("PZ_PORTKEY_ENV_FILE", "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("~"):
+        return os.path.join(_invoking_home(), raw.lstrip("~/"))
+    return raw
 
 
 def _read_lab_key(path: str, name: str) -> str:
@@ -240,9 +256,10 @@ def deploy_inferd_env() -> None:
     key = os.environ.get("PZ_PORTKEY_API_KEY", "").strip()
     source = "PZ_PORTKEY_API_KEY"
 
-    if not key:
-        key = _read_lab_key(PORTKEY_LAB_ENV, "PORTKEY_API_KEY")
-        source = PORTKEY_LAB_ENV
+    env_file = _portkey_env_file()
+    if not key and env_file:
+        key = _read_lab_key(env_file, "PORTKEY_API_KEY")
+        source = env_file
 
     os.makedirs(ETC_ROOT_DIR, exist_ok=True)
     tmp = INFERD_ENV_PATH + ".tmp"
@@ -258,9 +275,13 @@ def deploy_inferd_env() -> None:
     if key:
         print(f"[*] Generated inferd env: {INFERD_ENV_PATH} (key from {source})")
     else:
-        print(f"[*] Generated inferd env: {INFERD_ENV_PATH} (no gateway key — "
-              f"set PZ_PORTKEY_API_KEY or populate {PORTKEY_LAB_ENV}; the Assistant "
-              f"will report 'not configured')")
+        # Names only what this machine can actually act on. Pointing at a file the deployer
+        # never asked for reads as a missing prerequisite rather than an unset option.
+        hint = "set PZ_PORTKEY_API_KEY"
+        if env_file:
+            hint += f" or populate {env_file}"
+        print(f"[*] Generated inferd env: {INFERD_ENV_PATH} (no gateway key — {hint}; "
+              f"the Assistant will report 'not configured')")
 
 
 def ensure_certificates() -> None:

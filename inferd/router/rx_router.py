@@ -8,6 +8,7 @@ a gap in the table rather than as a silently-taken else branch.
 import json
 import logging
 
+from process.inferd_process import milestone
 from transport.ipc_protocol import Cmd, Daemon, Flag, Header, Message
 
 log = logging.getLogger("inferd.router")
@@ -39,7 +40,7 @@ class RxRouter:
 
     def _on_server_hello(self, msg):
         self.registered = True
-        log.info("registered with ipcd")
+        milestone(log, "registered with ipcd")
 
     def _on_retrieve_request(self, msg):
         try:

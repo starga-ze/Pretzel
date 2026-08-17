@@ -14,6 +14,8 @@ deaf when it happens.
 import logging
 import time
 
+from process.inferd_process import milestone
+
 log = logging.getLogger("inferd.core")
 
 HELLO_RETRY_SEC = 3.0
@@ -39,7 +41,7 @@ class InferdCore:
         # loop below registers with ipcd immediately rather than 10s from now.
         self._retrieval.start()
         self._running = True
-        log.info("inferd running (retrieval warming up in the background)")
+        milestone(log, "inferd running (retrieval warming up in the background)")
 
         while self._running:
             if not self._client.connected:
@@ -59,7 +61,7 @@ class InferdCore:
                 self._rx.handle(msg)
 
         self._client.close()
-        log.info("inferd stopped")
+        milestone(log, "inferd stopped")
 
     def _maybe_say_hello(self):
         if self._rx.registered:

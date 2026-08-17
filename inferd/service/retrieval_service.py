@@ -21,6 +21,8 @@ from pathlib import Path
 
 import psycopg
 
+from process.inferd_process import milestone
+
 log = logging.getLogger("inferd.retrieval")
 
 DEFAULT_MODEL = "intfloat/multilingual-e5-small"
@@ -82,10 +84,10 @@ class RetrievalService:
             # far better outcome than a daemon that refuses to answer at all.
             log.exception("encoder failed to load — retrieval will be unavailable")
             return
-        log.info("encoder ready in %.1fs", time.perf_counter() - t0)
+        milestone(log, "encoder ready in %.1fs", time.perf_counter() - t0)
 
         rows = self.corpus_rows()
-        log.info("corpus: %s rows in %s", rows if rows is not None else "unreachable", self._table)
+        milestone(log, "corpus: %s rows in %s", rows if rows is not None else "unreachable", self._table)
         self._ready.set()
 
     def _dsn(self):

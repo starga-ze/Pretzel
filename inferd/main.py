@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from core.inferd_core import InferdCore
 from process.inferd_process import (PidFile, install_signal_handlers, load_config,
-                                    set_process_title, setup_logging)
+                                    milestone, set_process_title, setup_logging)
 from router.rx_router import RxRouter
 from router.tx_router import TxRouter
 from service.chat_service import ChatService
@@ -44,7 +44,7 @@ def main():
     config = load_config()
     log = setup_logging(config, args.verbose)
     set_process_title()
-    log.info("pz-inferd starting")
+    milestone(log, "pz-inferd starting")
 
     ipc_cfg = config["service"]["ipc"]
     client = IpcClient(ipc_cfg["socket_path"], Daemon.INFERD,

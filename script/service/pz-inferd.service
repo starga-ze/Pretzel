@@ -28,6 +28,12 @@ Environment=HF_HOME=/opt/pretzel/share/models
 # input delivered at install time, not something the appliance updates on its own.
 Environment=HF_HUB_OFFLINE=1
 
+# Progress bars are for a terminal, and this process only ever runs as a unit. Loading the
+# encoder draws one with carriage returns in it, which journald classifies as binary and
+# renders as "[229B blob data]" — so the one line `journalctl -u pz-inferd` showed was an
+# unreadable artefact of a library that thought someone was watching.
+Environment=TQDM_DISABLE=1
+
 ExecStart=/opt/pretzel/bin/pz-inferd
 
 Restart=always
