@@ -33,19 +33,6 @@ public:
     // GET /api/chat/result?ticket=<n> → {status:"pending"} until inferd answers, then the turn.
     void result(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 
-    // POST /api/chat/retrieve {query, k, docset?, version?} → {hits, took_ms, ...}
-    //
-    // The corpus lookup that precedes a turn, proxied to ragd. It is a separate call rather than a
-    // step folded into send() because the operator is meant to SEE what was retrieved and judge it
-    // before anything goes upstream — an answer is only as good as the passages behind it, and a
-    // retrieval that missed is the failure worth catching early.
-    //
-    // Unlike send(), this answers inline instead of handing back a ticket. The hop is loopback and
-    // costs tens of milliseconds, where a turn costs seconds; the ticket machinery exists for the
-    // latter and would only add a round trip here. If retrieval ever grows slow enough to be felt
-    // on the shared loop, it moves to the same pattern send() already uses.
-    void retrieve(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
-
     // inferd finished a turn. Correlated by seqNo, which is the ticket the browser is polling on.
     void onChatResponse(MgmtdServiceManager& sm, const pz::ipc::IpcMessage& msg);
 

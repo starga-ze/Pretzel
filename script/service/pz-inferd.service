@@ -17,6 +17,17 @@ Type=simple
 # Generated 0600 by script/start.py.
 EnvironmentFile=-/etc/pretzel/inferd.env
 
+# The embedding model, pre-populated by ./pretzel install. Pinned to a system path because
+# huggingface_hub otherwise caches under the invoking user's home — which for a unit is
+# root's, so a model a developer already fetched is downloaded a second time by the daemon.
+Environment=HF_HOME=/opt/pretzel/share/models
+
+# Offline on purpose. Left online, the library contacts HuggingFace on EVERY start to check
+# for a newer revision: pointless for a pinned model, and on a box with no route out it
+# turns each start into a wait for a connection that will not open. The model is a build
+# input delivered at install time, not something the appliance updates on its own.
+Environment=HF_HUB_OFFLINE=1
+
 ExecStart=/opt/pretzel/bin/pz-inferd
 
 Restart=always

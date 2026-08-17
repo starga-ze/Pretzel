@@ -16,6 +16,7 @@ from script.utils import (
     ROOT_DIR, BUILD_DIR, CERT_DIR, SECRET_DIR, run_cmd, install_file,
     PG_SERVICE, PG_DB_HOST, PG_DB_PORT, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
     PGADMIN_VENV, PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD,
+    INFERD_VENV,
 )
 
 # List of child systemd services targeted for start/restart
@@ -186,7 +187,6 @@ def _read_lab_key(path: str, name: str) -> str:
 
 
 INFERD_LIB_DIR = "/opt/pretzel/lib/inferd"
-INFERD_VENV = "/opt/pretzel/venv/inferd"
 INFERD_LAUNCHER = os.path.join(INSTALL_BIN_DIR, "pz-inferd")
 
 
@@ -202,6 +202,16 @@ def deploy_inferd() -> None:
     src = os.path.join(ROOT_DIR, "inferd")
     if not os.path.isdir(src):
         sys.exit(f"[FATAL] inferd package not found at {src}")
+
+    # Checked here, not left to systemd. The launcher is a shell script, so a missing
+    # interpreter is not an ExecStart failure systemd can name — sh starts, its exec
+    # fails, the unit exits 127 and Restart=always turns it into a silent 3s loop. And
+    # because pz-inferd is only WantedBy= the target, that failure never propagates:
+    # `./pretzel start` reports success while one daemon flaps unnoticed in the journal.
+    # Same guard, same reason, as the pgAdmin venv check in deploy_pgadmin().
+    if not os.path.isfile(os.path.join(INFERD_VENV, "bin", "python")):
+        sys.exit(f"[ERROR] inferd venv not found at {INFERD_VENV}. "
+                 f"Install first: ./pretzel install")
 
     shutil.rmtree(INFERD_LIB_DIR, ignore_errors=True)
     shutil.copytree(src, INFERD_LIB_DIR,

@@ -8,18 +8,20 @@ Installed libraries are isolated under the `3rd_party/install/` directory.
 import os
 import sys
 import glob
+import json
 import subprocess
 import shutil
 
 from script.utils import (
-    INSTALL_ROOT, NUM_CORES, MAKE_JOBS, run_cmd, download_and_extract, build_cmake_project,
+    ROOT_DIR, INSTALL_ROOT, NUM_CORES, MAKE_JOBS, run_cmd, download_and_extract, build_cmake_project,
     OPENSSL_VERSION, OPENSSL_DIR, OPENSSL_INSTALL, OPENSSL_TAR, OPENSSL_SRC_PATH,
     SPDLOG_VERSION, SPDLOG_DIR, SPDLOG_INSTALL, SPDLOG_TAR, SPDLOG_SRC_PATH,
     BOOST_VERSION, BOOST_VERSION_UNDERSCORE, BOOST_DIR, BOOST_INSTALL, BOOST_TAR, BOOST_SRC_PATH,
     JSON_VERSION, JSON_DIR, JSON_INSTALL, JSON_TAR, JSON_SRC_PATH,
     GTEST_VERSION, GTEST_DIR, GTEST_INSTALL, GTEST_TAR, GTEST_SRC_PATH,
-    PG_SERVICE, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
+    PG_SERVICE, PG_DB_NAME, PG_RAG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
     PGADMIN_VERSION, PGADMIN_VENV,
+    INFERD_VENV, INFERD_REQUIREMENTS, INFERD_MODEL_HOME, INFERD_DEFAULT_MODEL,
 )
 
 def install_openssl():
@@ -254,6 +256,163 @@ def install_postgresql():
     print("[*] PostgreSQL installation complete.")
 
 
+def _pg_server_major():
+    """The major version of the RUNNING server, which is what names the pgvector package.
+
+    Asked of the server rather than read from `psql --version`: the client in PATH is not
+    necessarily the one the cluster runs. On this project's own development box `psql` reports
+    14.23 from Ubuntu while the server is 14.24 from PGDG — same major by luck, but the client
+    is not the thing the extension has to match.
+    """
+    out = subprocess.run(
+        ["sudo", "-u", "postgres", "psql", "-tAc", "SHOW server_version_num"],
+        capture_output=True, text=True,
+    )
+    if out.returncode != 0:
+        return None
+    try:
+        return int(out.stdout.strip()) // 10000
+    except ValueError:
+        return None
+
+
+def _apt_candidate_exists(package):
+    """True if apt can resolve an installable version of `package` from the configured repos."""
+    out = subprocess.run(["apt-cache", "policy", package], capture_output=True, text=True)
+    if out.returncode != 0:
+        return False
+    for line in out.stdout.splitlines():
+        if line.strip().startswith("Candidate:"):
+            return line.split(":", 1)[1].strip() not in ("(none)", "")
+    return False
+
+
+def add_pgdg_repo():
+    """Adds the PostgreSQL project's own APT repository (apt.postgresql.org).
+
+    Needed because Ubuntu 22.04 ships no pgvector at any version — `apt-cache policy` on a
+    stock jammy box returns no candidate for postgresql-*-pgvector — and pgvector is not
+    optional here: without it `CREATE EXTENSION vector` fails, the `vector` column type does
+    not exist, and even restoring a prebuilt corpus dump dies in its schema step.
+
+    Deliberately added AFTER install_postgresql(). PGDG's `postgresql` metapackage tracks the
+    newest major release, so adding this first and then installing would put a much newer
+    server on the box than the distro one every other part of this script assumes.
+    """
+    run_cmd(["sudo", "apt", "install", "-y", "curl", "ca-certificates"])
+    run_cmd(["sudo", "install", "-d", "/usr/share/postgresql-common/pgdg"])
+    run_cmd(["sudo", "curl", "-fsSL", "-o",
+             "/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc",
+             "https://www.postgresql.org/media/keys/ACCC4CF8.asc"],
+            msg="Fetching the PGDG signing key")
+
+    codename = subprocess.run(["lsb_release", "-cs"], capture_output=True, text=True)
+    suite = codename.stdout.strip() or "jammy"
+    line = (f"deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] "
+            f"https://apt.postgresql.org/pub/repos/apt {suite}-pgdg main\n")
+
+    # Written through `sudo tee` rather than open(): this script is normally re-executed
+    # under sudo, but every other privileged step here goes through an explicit sudo, and a
+    # bare open() on /etc would be the one place that silently assumed otherwise.
+    written = subprocess.run(["sudo", "tee", "/etc/apt/sources.list.d/pgdg.list"],
+                             input=line, text=True, stdout=subprocess.DEVNULL)
+    if written.returncode != 0:
+        print("[WARN] could not write /etc/apt/sources.list.d/pgdg.list")
+        return
+
+    print(f"[*] Added PGDG repository ({suite}-pgdg)")
+    run_cmd(["sudo", "apt", "update"])
+
+
+def install_pgvector():
+    """Installs the pgvector extension for the running server's major version.
+
+    Not part of the corpus. The corpus — the rows in rag_chunk — is built elsewhere and
+    restored as data; this is the platform underneath it, in the same category as libpq-dev,
+    and it has to be on the appliance whether or not anyone has loaded a corpus yet.
+    """
+    major = _pg_server_major()
+    if major is None:
+        print("[WARN] could not determine the PostgreSQL server version; skipping pgvector.")
+        return False
+
+    package = f"postgresql-{major}-pgvector"
+
+    installed = subprocess.run(["dpkg", "-s", package],
+                               capture_output=True).returncode == 0
+    if installed:
+        print(f"[*] {package} already installed, skipping...")
+        return True
+
+    # Checked before reaching for PGDG: a future Ubuntu release may carry pgvector itself, and
+    # adding a third-party repo that the distro has made unnecessary is a cost with no benefit.
+    if not _apt_candidate_exists(package):
+        print(f"[*] {package} not available from the configured repositories.")
+        add_pgdg_repo()
+
+    if not _apt_candidate_exists(package):
+        print(f"[WARN] {package} is still unavailable after adding PGDG.")
+        return False
+
+    run_cmd(["sudo", "apt", "install", "-y", package],
+            msg=f"Installing {package}")
+    return True
+
+
+def provision_rag_database():
+    """Creates the empty corpus database and enables the vector extension in it.
+
+    Empty on purpose. What goes IN it — the crawl, the chunking, the embedding run — is a batch
+    job that lives in the corpus repository and takes minutes; it is not something an appliance
+    does to itself at install time, and on an airgapped box it could not. This creates the
+    container so that a corpus can be restored into it, and so that "no corpus loaded" is
+    distinguishable from "the install is broken".
+
+    CREATE EXTENSION runs as the postgres superuser because pgvector is not a trusted
+    extension: the pretzel role cannot enable it itself.
+    """
+    db = _configured_rag_db_name()
+
+    if _pg_row_exists(f"SELECT 1 FROM pg_database WHERE datname='{db}'"):
+        print(f"[*] PostgreSQL database '{db}' already exists, skipping...")
+    else:
+        run_cmd(["sudo", "-u", "postgres", "createdb", "-O", PG_DB_USER, db],
+                msg=f"Creating corpus database '{db}' (owner={PG_DB_USER})")
+
+    ext = subprocess.run(
+        ["sudo", "-u", "postgres", "psql", "-d", db, "-v", "ON_ERROR_STOP=1", "-q",
+         "-c", "CREATE EXTENSION IF NOT EXISTS vector"],
+        capture_output=True, text=True,
+    )
+    if ext.returncode != 0:
+        print(f"[WARN] could not enable the vector extension in '{db}': "
+              f"{ext.stderr.strip()}")
+        return False
+
+    print(f"[*] Corpus database '{db}' ready (vector extension enabled, no corpus loaded)")
+    return True
+
+
+def install_rag_store():
+    """pgvector + the empty corpus database.
+
+    Failure is a warning, never fatal — the same policy install_test_deps() follows. Nine
+    daemons and the whole web console do not touch this: without a corpus, inferd reports
+    retrieval as unavailable and answers every turn ungrounded, which is a running appliance
+    with one feature degraded rather than a failed install.
+    """
+    try:
+        if not install_pgvector():
+            print("[WARN] pgvector unavailable — the AI Assistant will answer ungrounded. "
+                  "The rest of the appliance is unaffected.")
+            return
+        provision_rag_database()
+    except (Exception, SystemExit) as e:
+        detail = f"exit status {e}" if isinstance(e, SystemExit) else str(e)
+        print(f"[WARN] corpus store setup failed ({detail}) — the AI Assistant will answer "
+              f"ungrounded. Re-run './pretzel install' to retry.")
+
+
 def is_pgadmin_installed():
     """Checks whether pgAdmin is already installed in its dedicated virtualenv."""
     return os.path.isfile(os.path.join(PGADMIN_VENV, "bin", "gunicorn")) and \
@@ -291,6 +450,158 @@ def install_pgadmin():
         sys.exit(1)
 
     print("[*] pgAdmin installation complete.")
+
+
+def _inferd_retrieval_config():
+    """inferd's retrieval block, read from the config the daemon itself reads.
+
+    Copying these literals here instead would create a second source of truth, and the two
+    drift silently: a prefetch that pulls one model while inferd loads another looks like a
+    clean install, then downloads 470MB on first start — or, on an airgapped appliance,
+    leaves retrieval permanently unavailable with nothing in the install log to explain it.
+    The corpus database name has the same problem: provisioning one name while the daemon
+    connects to another produces "corpus unreachable" on a box that was just installed.
+    """
+    cfg = os.path.join(ROOT_DIR, "config", "startup-config.json")
+    try:
+        with open(cfg) as f:
+            block = json.load(f)["inferd"]["service"]["retrieval"]
+        if isinstance(block, dict):
+            return block
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
+        print(f"[WARN] could not read inferd's retrieval config from {cfg} ({e}); "
+              f"using built-in defaults.")
+    return {}
+
+
+def _configured_embedding_model():
+    """The model inferd will load. See _inferd_retrieval_config() for why it is read."""
+    model = _inferd_retrieval_config().get("model")
+    if model:
+        return model
+    print(f"[WARN] falling back to {INFERD_DEFAULT_MODEL}; if inferd is configured for a "
+          f"different model it will download it on first start.")
+    return INFERD_DEFAULT_MODEL
+
+
+def _configured_rag_db_name():
+    """The corpus database inferd will connect to. Same reasoning as the model name."""
+    name = (_inferd_retrieval_config().get("database") or {}).get("name")
+    return name or PG_RAG_DB_NAME
+
+
+def is_inferd_venv_installed():
+    """True only if the venv can actually import what the daemon imports.
+
+    Checking for bin/python alone is not enough: an interrupted pip run leaves an
+    interpreter behind with half the dependencies, which passes a file-exists test and
+    then fails at startup with an ImportError systemd reports as a plain restart loop.
+    """
+    py = os.path.join(INFERD_VENV, "bin", "python")
+    if not os.path.isfile(py):
+        return False
+    probe = subprocess.run(
+        [py, "-c", "import psycopg, sentence_transformers, setproctitle"],
+        capture_output=True,
+    )
+    return probe.returncode == 0
+
+
+def prefetch_embedding_model():
+    """Downloads the embedding model at install time, into a system-wide HF_HOME.
+
+    Without this the daemon fetches ~470MB from HuggingFace on its FIRST start, which
+    makes a network outage look like a broken appliance and makes an airgapped install
+    impossible. Fetching here also puts the files where the unit reads them, rather than
+    in whichever home directory happened to be current.
+
+    Failure is a warning, never fatal — the same policy install_test_deps() follows. A
+    machine with no route to HuggingFace must still finish installing; retrieval reports
+    itself unavailable and every turn is answered ungrounded, which is a running
+    appliance rather than a failed install.
+    """
+    model = _configured_embedding_model()
+    py = os.path.join(INFERD_VENV, "bin", "python")
+    os.makedirs(INFERD_MODEL_HOME, exist_ok=True)
+
+    print(f"[*] Prefetching embedding model {model} -> {INFERD_MODEL_HOME} "
+          f"(~470MB, first run only)...")
+    result = subprocess.run(
+        [py, "-c",
+         "import sys\n"
+         "from sentence_transformers import SentenceTransformer\n"
+         "SentenceTransformer(sys.argv[1], device='cpu')\n",
+         model],
+        env=dict(os.environ, HF_HOME=INFERD_MODEL_HOME),
+    )
+    if result.returncode != 0:
+        print(f"[WARN] embedding model prefetch failed. inferd will start, but retrieval "
+              f"stays unavailable and every turn is answered ungrounded until "
+              f"{INFERD_MODEL_HOME} is populated. Re-run './pretzel install' with network "
+              f"access to retry.")
+        return
+    print(f"[*] Embedding model ready at {INFERD_MODEL_HOME}")
+
+
+def install_inferd_venv():
+    """
+    Creates the Python virtualenv that pz-inferd runs in, from inferd/requirements.txt.
+
+    inferd is the only daemon that is not compiled, so `./pretzel build` produces nothing
+    for it and there is no binary for start.py to copy out of build/bin — the unit execs a
+    generated launcher that runs this venv's interpreter. Nothing else creates it, so
+    without this step a bare machine deploys a launcher pointing at an interpreter that is
+    not there, and systemd restarts the unit every 3s forever.
+
+    Same pattern as install_pgadmin(), and kept out of install_build_deps() for the same
+    reason: this is a runtime dependency, and a plain `./pretzel build` must not have to
+    download a gigabyte of wheels to compile the C++ daemons.
+    """
+    # A development box has /opt/pretzel/venv/inferd symlinked to a checkout's .venv.
+    # os.path.isfile() follows the link and would report the venv as present and healthy,
+    # so the install would no-op and the appliance would keep depending on a directory
+    # that is not part of the deployment.
+    if os.path.islink(INFERD_VENV):
+        print(f"[*] Removing development symlink {INFERD_VENV} -> "
+              f"{os.readlink(INFERD_VENV)}")
+        os.unlink(INFERD_VENV)
+
+    if is_inferd_venv_installed():
+        print("[*] inferd venv already installed, skipping...")
+        prefetch_embedding_model()   # cheap no-op when the model is already cached
+        return
+
+    if not os.path.isfile(INFERD_REQUIREMENTS):
+        print(f"[ERROR] {INFERD_REQUIREMENTS} not found; cannot build the inferd venv.")
+        sys.exit(1)
+
+    print("[*] Installing inferd Python environment...")
+
+    # python3-venv is NOT part of a stock Ubuntu install, and python3-dev is needed for
+    # any dependency that has no wheel for this interpreter. install_pgadmin() also asks
+    # for these, but it may run after this function — neither may rely on the other.
+    run_cmd(["sudo", "apt", "install", "-y", "python3-venv", "python3-dev"])
+
+    # A half-built venv from an earlier failed run would otherwise be reused as-is.
+    if os.path.isdir(INFERD_VENV):
+        print(f"[*] Removing incomplete venv at {INFERD_VENV}")
+        shutil.rmtree(INFERD_VENV, ignore_errors=True)
+
+    os.makedirs(os.path.dirname(INFERD_VENV), exist_ok=True)
+    run_cmd(["python3", "-m", "venv", INFERD_VENV], msg="Creating inferd virtualenv")
+
+    pip = os.path.join(INFERD_VENV, "bin", "pip")
+    run_cmd([pip, "install", "--upgrade", "pip", "wheel"], msg="Upgrading pip in inferd venv")
+    run_cmd([pip, "install", "-r", INFERD_REQUIREMENTS],
+            msg="Installing inferd dependencies (CPU-only torch; several minutes)")
+
+    if not is_inferd_venv_installed():
+        print("[ERROR] inferd venv installation failed — the environment cannot import "
+              "psycopg / sentence_transformers / setproctitle.")
+        sys.exit(1)
+
+    prefetch_embedding_model()
+    print("[*] inferd Python environment complete.")
 
 
 def get_gpp_version():
@@ -387,14 +698,17 @@ def install_test_deps():
 
 def install_runtime_deps():
     """
-    Runtime services that the project needs to RUN but not to build: the monitoring
-    the PostgreSQL server (with role/database provisioning) and the pgAdmin web UI.
-    These pull in apt
-    packages, download binaries and start systemd units, so they are kept out of the
-    build path and only run on a full `./pretzel install`.
+    Runtime services the project needs to RUN but not to build: the PostgreSQL server (with
+    role/database provisioning), the pgvector extension and empty corpus database, the pgAdmin
+    web UI, and the Python environment pz-inferd executes in.
+
+    These pull in apt packages, download binaries and start systemd units, so they are kept out
+    of the build path and only run on a full `./pretzel install`.
     """
     install_postgresql()
+    install_rag_store()
     install_pgadmin()
+    install_inferd_venv()
 
 
 def run():

@@ -233,7 +233,7 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiCredentialStateResponse:
     case IpcCmd::TopologyRequest:
     case IpcCmd::TopologyResponse:
-    // Retrieval queries ragd's corpus. Read rather than DeviceOp: nothing outside the appliance is
+    // Retrieval queries inferd's corpus. Read rather than DeviceOp: nothing outside the appliance is
     // called, and unlike ChatRequest the answer is looked up rather than generated.
     case IpcCmd::RetrieveRequest:
     case IpcCmd::RetrieveResponse:

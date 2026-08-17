@@ -22,6 +22,11 @@ enum class IpcDaemon : std::uint8_t
     Mgmtd = 7,
     Apid = 8,
     Inferd = 9,
+    // Retired. Retrieval was briefly its own daemon; it lives in inferd now, because embedding the
+    // query and answering from it are the same concern and splitting them bought a serialisation
+    // hop and a second failure mode. The value is kept rather than reused: ids are a wire contract
+    // mirrored in inferd/transport/ipc_protocol.py, and handing 10 to a future daemon would make
+    // an old peer's frames route to it silently.
     Ragd = 10,
 
     Broadcast = 255
@@ -140,8 +145,8 @@ enum class IpcCmd : std::uint16_t
     // Corpus retrieval, the step before a turn reaches a model. Split from ChatRequest because the
     // operator is meant to see the passages and judge them before anything goes upstream — an
     // answer is only as good as what was retrieved, and a miss is worth catching there.
-    RetrieveRequest = 143,    // mgmtd → ragd: {query, k, docset?, version?}
-    RetrieveResponse = 144,   // ragd → mgmtd: {hits, took_ms, model, k}, or why there are none
+    RetrieveRequest = 143,    // mgmtd → inferd: {query, k, docset?, version?}
+    RetrieveResponse = 144,   // inferd → mgmtd: {hits, took_ms, model, k}, or why there are none
 };
 
 // Coarse role of a command, orthogonal to its domain. Feeds IpcProtocol::isRoutingAllowed, which

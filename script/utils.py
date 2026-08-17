@@ -88,6 +88,29 @@ PGADMIN_VENV             = os.path.join(INSTALL_ROOT, "pgadmin", "venv")
 PGADMIN_SETUP_EMAIL      = os.environ.get("PZ_PGADMIN_EMAIL", "admin@pretzel.io")
 PGADMIN_SETUP_PASSWORD   = os.environ.get("PZ_PGADMIN_PASSWORD", "padmin")
 
+# pz-inferd is the one daemon that is not a compiled binary, so it needs a Python
+# environment rather than a place in build/bin. These paths are deployment paths under
+# /opt/pretzel, NOT INSTALL_ROOT — 3rd_party/ holds sources the build links against,
+# while this is something the running appliance loads.
+#
+# They live here rather than in start.py because both scripts need them and they must
+# agree: install.py CREATES the venv, start.py writes the launcher that EXECS it. When
+# start.py owned the constant alone, nothing created what it pointed at and the unit
+# failed at exec on every box that was not the developer's.
+INFERD_VENV         = "/opt/pretzel/venv/inferd"
+INFERD_REQUIREMENTS = os.path.join(ROOT_DIR, "inferd", "requirements.txt")
+
+# HF_HOME for the embedding model, pinned to a system path. Left unset, huggingface_hub
+# caches under the invoking user's home — which for a systemd unit is root's, so a model
+# fetched by a developer is downloaded a second time by the daemon. Pre-populated at
+# install time and read offline at runtime (see pz-inferd.service).
+INFERD_MODEL_HOME   = "/opt/pretzel/share/models"
+
+# Fallback only. The authoritative model name is inferd.service.retrieval.model in
+# config/startup-config.json — the same value the daemon itself loads. See
+# _configured_embedding_model() in install.py for why it is read rather than copied.
+INFERD_DEFAULT_MODEL = "intfloat/multilingual-e5-small"
+
 # PostgreSQL is installed from the distro APT repo (not built from source) and
 # runs under its own systemd unit (postgresql.service). Pretzel provisions a
 # dedicated login role + database; pz-mgmtd connects over localhost TCP.
@@ -95,6 +118,15 @@ PGADMIN_SETUP_PASSWORD   = os.environ.get("PZ_PGADMIN_PASSWORD", "padmin")
 PG_SERVICE     = "postgresql"        # distro-managed systemd unit
 PG_DB_NAME     = "pretzel"
 PG_DB_USER     = "pretzel"
+
+# The corpus database, kept separate from PG_DB_NAME on purpose. The appliance's own tables
+# are factory-reset by ./pretzel reset, which drops them by name; the corpus is not pretzel's
+# data at all — it is a shipped artifact that costs a crawl and a nine-minute embedding run to
+# rebuild — so it lives in a database that reset never opens.
+#
+# Fallback only: the authoritative name is inferd.service.retrieval.database.name in
+# config/startup-config.json, which is what the daemon connects to.
+PG_RAG_DB_NAME = "pretzel_rag"
 # Single source of truth for the DB password. install.py uses it to CREATE the role;
 # start.py injects it into the deployed startup-config, so the role and mgmtd can never
 # drift apart. Override via PZ_PG_PASSWORD; the literal is a localhost-only dev default

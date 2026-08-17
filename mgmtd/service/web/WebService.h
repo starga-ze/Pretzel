@@ -78,7 +78,6 @@ enum class WebRoute
     // ChatController — the internal assistant.
     ChatSend,     // POST /api/chat
     ChatResult,   // GET  /api/chat/result?ticket=
-    ChatRetrieve, // POST /api/chat/retrieve
 
     // LogsController.
     Logs,   // GET  /api/logs?…

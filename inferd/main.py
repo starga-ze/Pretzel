@@ -10,7 +10,8 @@ someone who can read pz-mgmtd can read this. The layers are the same map; the ma
 is idiomatic Python, and there are no abstract bases with one implementation.
 
 Corpus construction (crawl, chunk, embed) is NOT here. Those are batch jobs that run to
-completion and exit, and they live in prisma-rag. inferd only reads what they produced.
+completion and exit, and they live in a separate corpus repository; their output reaches the
+appliance as a restored database. inferd only reads what they produced.
 """
 
 import argparse

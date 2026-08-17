@@ -188,12 +188,6 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
         {"GET",  "/api/chat/result",
             Match::Prefix, WebRoute::ChatResult,        Access::Authenticated, false},
 
-        // Corpus retrieval, the step before a turn reaches the model. Exact, and ordered after the
-        // poll so the Prefix above cannot swallow it — it would not (different method), but the
-        // ordering is what a reader checks first.
-        {"POST", "/api/chat/retrieve",
-            Match::Exact,  WebRoute::ChatRetrieve,      Access::Authenticated, false},
-
         // Logs.
         {"GET",  "/api/logs",
             Match::Prefix, WebRoute::Logs,               Access::Authenticated, false},
@@ -288,7 +282,6 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
 
     case WebRoute::ChatSend:           return m_chatController.send(sm, req, resp);
     case WebRoute::ChatResult:         return m_chatController.result(sm, req, resp);
-    case WebRoute::ChatRetrieve:       return m_chatController.retrieve(sm, req, resp);
 
     case WebRoute::Logs:               return m_logsController.list(sm, req, resp);
 

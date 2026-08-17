@@ -5,8 +5,11 @@ embedding model. Everything downstream (pgvector, ranking, filtering) a C++ daem
 could do perfectly well, but the query has to be embedded first, and that decides
 where the whole service lives.
 
-The corpus itself is built elsewhere — crawl, chunk and embed are batch jobs in
-prisma-rag, not daemon work. ragd only reads what they produced.
+The corpus itself is built elsewhere — crawl, chunk and embed are batch jobs that run to
+completion and exit, not daemon work. They produce the rows in `rag_chunk`, which reach the
+appliance as a restored database rather than as something built here; ./pretzel install
+provisions the empty database and the pgvector extension, and nothing in the running system
+writes to that table. This service only reads it.
 """
 
 import json
