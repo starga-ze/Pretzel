@@ -33,3 +33,7 @@ secret/*.key
 # in-tree ones such as a developer .env).
 .env
 *.env
+
+# Local copy of the boot config with a real IdP and lab addresses filled in.
+# The committed startup-config.json ships placeholders instead.
+config/startup-config.lab.json
