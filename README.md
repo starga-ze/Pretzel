@@ -44,7 +44,7 @@ flowchart LR
     E --> DB[(PostgreSQL)]
     P -.ICMP.-> FW[NGFW]
     C -.PAN-OS XML / REST.-> FW
-    C -.OAuth 2.0 + REST.-> SASE[Prisma Access]
+    C -.OAuth 2 bearer.-> SASE[Prisma Access]
 ```
 
 Every daemon is an event loop. Work arrives as an **event**, a service decides what to do, and the
