@@ -56,7 +56,14 @@ bool MgmtdCore::onInit()
 
     auto httpHandler = std::make_shared<pz::http::HttpHandler>();
 
-    m_txRouter = std::make_unique<MgmtdTxRouter>(m_ipcClient ? m_ipcClient->handler() : nullptr, httpHandler.get());
+    // The pretzel-ai inference service address. An env override for labs and split deploys; the
+    // loopback default is where the service runs when it is co-located with mgmtd.
+    const char* aiTargetEnv = std::getenv("PZ_PRETZEL_AI_TARGET");
+    const std::string aiTarget = (aiTargetEnv && *aiTargetEnv) ? aiTargetEnv : "127.0.0.1:50051";
+    m_grpcClientHandler = std::make_unique<GrpcClientHandler>(aiTarget);
+
+    m_txRouter = std::make_unique<MgmtdTxRouter>(m_ipcClient ? m_ipcClient->handler() : nullptr,
+                                                 httpHandler.get(), m_grpcClientHandler.get());
 
     m_serviceManager =
         std::make_unique<MgmtdServiceManager>(m_eventFactory.get(), m_actionFactory.get(), m_txRouter.get());
@@ -66,6 +73,13 @@ bool MgmtdCore::onInit()
         LOG_ERROR("failed to initialize service manager");
         return false;
     }
+
+    // File a completed turn under its ticket, the same slot the old IPC ChatResponse handler wrote.
+    // Invoked only from GrpcClientHandler::drain(), on this loop thread, so the ServiceManager stays
+    // single-threaded exactly as it was under IPC.
+    m_grpcClientHandler->setResultSink(
+        [sm = m_serviceManager.get()](std::uint32_t ticket, std::string resultJson)
+        { sm->setChatResult(ticket, std::move(resultJson)); });
 
     if (!loadAuthConfig())
     {
@@ -94,7 +108,8 @@ bool MgmtdCore::onInit()
         return false;
     }
 
-    m_process = std::make_unique<MgmtdProcess>(m_ipcClient.get(), m_httpServer.get(), m_serviceManager.get());
+    m_process = std::make_unique<MgmtdProcess>(m_ipcClient.get(), m_httpServer.get(),
+                                               m_grpcClientHandler.get(), m_serviceManager.get());
     if (!m_process)
     {
         LOG_ERROR("failed to initialize process");

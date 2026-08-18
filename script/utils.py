@@ -63,6 +63,17 @@ GTEST_INSTALL = os.path.join(INSTALL_ROOT, "googletest")
 GTEST_TAR = os.path.join(GTEST_DIR, f"googletest-{GTEST_VERSION}.tar.gz")
 GTEST_SRC_PATH = os.path.join(GTEST_DIR, f"googletest-{GTEST_VERSION}")
 
+# gRPC (+ its bundled protobuf / abseil / re2 / c-ares / zlib / BoringSSL) — the transport
+# between mgmtd and the external pretzel-ai inference service that replaced the inferd daemon.
+# Unlike the others this is a git clone WITH submodules, not a release tarball: GitHub's
+# auto-generated source archives omit the third_party/ submodules gRPC's own CMake build
+# compiles in-tree, so download_and_extract() cannot be used. Keep GRPC_VERSION in lockstep
+# with pretzel-ai's requirements.txt so the protobuf runtime and wire format match on both ends.
+GRPC_VERSION = "1.62.1"
+GRPC_DIR = os.path.join(THIRD_PARTY_DIR, "grpc")
+GRPC_INSTALL = os.path.join(INSTALL_ROOT, "grpc")
+GRPC_SRC_PATH = os.path.join(GRPC_DIR, f"grpc-{GRPC_VERSION}")
+
 # pgAdmin 4 — web-based PostgreSQL admin GUI. Installed via pip into a dedicated
 # virtualenv (NOT the apt pgadmin4-web package, which pulls in Apache and an
 # interactive setup-web.sh) and run headless via gunicorn under pz-pgadmin.service,
@@ -97,20 +108,6 @@ PGADMIN_SETUP_PASSWORD   = os.environ.get("PZ_PGADMIN_PASSWORD", "padmin")
 # agree: install.py CREATES the venv, start.py writes the launcher that EXECS it. When
 # start.py owned the constant alone, nothing created what it pointed at and the unit
 # failed at exec on every box that was not the developer's.
-INFERD_VENV         = "/opt/pretzel/venv/inferd"
-INFERD_REQUIREMENTS = os.path.join(ROOT_DIR, "inferd", "requirements.txt")
-
-# HF_HOME for the embedding model, pinned to a system path. Left unset, huggingface_hub
-# caches under the invoking user's home — which for a systemd unit is root's, so a model
-# fetched by a developer is downloaded a second time by the daemon. Pre-populated at
-# install time and read offline at runtime (see pz-inferd.service).
-INFERD_MODEL_HOME   = "/opt/pretzel/share/models"
-
-# Fallback only. The authoritative model name is inferd.service.retrieval.model in
-# config/startup-config.json — the same value the daemon itself loads. See
-# _configured_embedding_model() in install.py for why it is read rather than copied.
-INFERD_DEFAULT_MODEL = "intfloat/multilingual-e5-small"
-
 # PostgreSQL is installed from the distro APT repo (not built from source) and
 # runs under its own systemd unit (postgresql.service). Pretzel provisions a
 # dedicated login role + database; pz-mgmtd connects over localhost TCP.

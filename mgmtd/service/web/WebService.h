@@ -4,6 +4,7 @@
 #include "service/web/controller/AuthController.h"
 #include "service/web/controller/ChatController.h"
 #include "service/web/controller/CollectionController.h"
+#include "service/web/controller/GatewayController.h"
 #include "service/web/controller/LogsController.h"
 #include "service/web/controller/SettingsController.h"
 #include "service/web/controller/SsoController.h"
@@ -74,6 +75,10 @@ enum class WebRoute
     CollectionOverview,   // GET  /api/collection/overview?window=
     CollectionSamples,    // GET  /api/collection/samples?connector=&endpoint=&status=&before=&limit=
     CollectionSample,     // GET  /api/collection/sample?oid=
+
+    // GatewayController — the AI gateway credential.
+    GatewayCredential, // POST /api/gateway/credential
+    GatewayStatus,     // GET  /api/gateway/status?id=
 
     // ChatController — the internal assistant.
     ChatSend,     // POST /api/chat
@@ -157,6 +162,7 @@ private:
     StatusController m_statusController;
     TopologyController m_topologyController;
     ApiController m_apiController;
+    GatewayController m_gatewayController;
     ChatController m_chatController;
     CollectionController m_collectionController;
     LogsController m_logsController;

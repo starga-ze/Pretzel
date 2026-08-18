@@ -127,6 +127,12 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "ApiSaseKeyStoreRequest";
     case IpcCmd::ApiCredentialStoreRequest:
         return "ApiCredentialStoreRequest";
+    case IpcCmd::GatewayCredentialStoreRequest:
+        return "GatewayCredentialStoreRequest";
+    case IpcCmd::GatewayCredentialStoreResponse:
+        return "GatewayCredentialStoreResponse";
+    case IpcCmd::GatewayCredentialStateUpdate:
+        return "GatewayCredentialStateUpdate";
     case IpcCmd::ApiConnectorTestResponse:
         return "ApiConnectorTestResponse";
     case IpcCmd::ApiCredentialStateRequest:
@@ -165,14 +171,6 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "AuthSamlAcsRequest";
     case IpcCmd::AuthSamlAcsResponse:
         return "AuthSamlAcsResponse";
-    case IpcCmd::ChatRequest:
-        return "ChatRequest";
-    case IpcCmd::ChatResponse:
-        return "ChatResponse";
-    case IpcCmd::RetrieveRequest:
-        return "RetrieveRequest";
-    case IpcCmd::RetrieveResponse:
-        return "RetrieveResponse";
     default:
         return "Unknown";
     }
@@ -210,11 +208,9 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiTlsProbeRequest:
     case IpcCmd::ApiSaseKeyStoreRequest:
     case IpcCmd::ApiCredentialStoreRequest:
+    case IpcCmd::GatewayCredentialStoreRequest:
+    case IpcCmd::GatewayCredentialStoreResponse:
     case IpcCmd::ApiConnectorTestResponse:
-    // Same shape, different kind of outside: mgmtd asks inferd to run one turn against the AI
-    // gateway. Not Read — nothing here queries a store; the answer is produced by the call.
-    case IpcCmd::ChatRequest:
-    case IpcCmd::ChatResponse:
         return CmdCategory::DeviceOp;
 
     // Mutate engined's store — dst must be Engined.
@@ -223,6 +219,7 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ProbeResult:
     case IpcCmd::ScanResult:
     case IpcCmd::ApiCredentialStateUpdate:
+    case IpcCmd::GatewayCredentialStateUpdate:
     case IpcCmd::ApiCollectionSample:
     case IpcCmd::SaseApiKeyUpdate:
     case IpcCmd::SaseHealthResult:
@@ -233,10 +230,6 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiCredentialStateResponse:
     case IpcCmd::TopologyRequest:
     case IpcCmd::TopologyResponse:
-    // Retrieval queries inferd's corpus. Read rather than DeviceOp: nothing outside the appliance is
-    // called, and unlike ChatRequest the answer is looked up rather than generated.
-    case IpcCmd::RetrieveRequest:
-    case IpcCmd::RetrieveResponse:
         return CmdCategory::Read;
 
     // Handshake, sync, runtime, heartbeat, transport error, and status replies — infra, not a

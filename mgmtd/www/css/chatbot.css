@@ -334,6 +334,14 @@ body.page-chatbot .content-body {
 }
 .chat-sug-tag.is-risk { background: var(--tint-red); color: var(--ink-red); }
 
+/* Empty state: no conversation yet. The top bar stays pinned, and only the [greeting + composer]
+   group centers in the space below it — the two auto margins (above the thread, below the
+   composer) split the free space equally, which centers the pair without moving the bar. The
+   first turn removes .is-empty and the composer drops back to the bottom. */
+.chat-main.is-empty .chat-thread { flex: 0 0 auto; overflow: visible; padding-bottom: 0; margin-top: auto; }
+.chat-main.is-empty .chat-composer { margin-bottom: auto; }
+.chat-main.is-empty .chat-empty { padding-top: 0; }
+
 /* ── Composer ───────────────────────────────────────────────────────────────── */
 .chat-composer { flex: 0 0 auto; padding: 8px 0 14px; background: var(--bg); }
 .chat-box {

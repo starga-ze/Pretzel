@@ -33,6 +33,16 @@ void ApiCredentialService::handleEvent(EnginedServiceManager& serviceManager, co
         return;
     }
 
+    if (event.type() == ApiCredentialEventType::ReceiveGatewayCredential)
+    {
+        if (in && !in->getPayload().empty())
+        {
+            const auto& pl = in->getPayload();
+            storeGatewayCredential(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
+        }
+        return;
+    }
+
     if (event.type() != ApiCredentialEventType::ReceiveStateUpdate)
     {
         return;
@@ -142,6 +152,56 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
                  secretEnc.empty() ? "unchanged" : "new", (idEnc.empty() && pwEnc.empty()) ? "unchanged" : "new");
     else
         LOG_WARN("api_credential_state write failed (oid={})", oid);
+}
+
+// inferd sealed the operator's gateway key and handed it over. Stored by id ('portkey' today) so a
+// second gateway — a failover endpoint, a direct-to-provider key for the bypass path — is a new row
+// rather than a schema change.
+void ApiCredentialService::storeGatewayCredential(const std::string& payloadJson)
+{
+    nlohmann::json root;
+    try
+    {
+        root = nlohmann::json::parse(payloadJson);
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("malformed GatewayCredentialStateUpdate ({}) — dropping", e.what());
+        return;
+    }
+
+    const std::string id = root.value("id", "");
+    if (id.empty())
+    {
+        LOG_WARN("GatewayCredentialStateUpdate without id — dropping");
+        return;
+    }
+
+    const std::string keyEnc = root.value("key_enc", "");
+    // Same distinction the device path draws: `ok` present means a test ran and this is its verdict;
+    // absent means "just store the key" and the last_test_* columns keep what a real test left.
+    const bool hasTest = root.contains("ok");
+    const bool ok = root.value("ok", false);
+    const std::string note = root.value("note", "");
+
+    const bool wrote = pz::db::Database::instance().exec(
+        "INSERT INTO ai_gateway_credential_state (id, key_enc, last_test_at, last_test_ok, last_test_note) "
+        "VALUES ($1, NULLIF($2,''), CASE WHEN $5::boolean THEN now() END, "
+        "CASE WHEN $5::boolean THEN $3::boolean END, CASE WHEN $5::boolean THEN $4 END) "
+        "ON CONFLICT (id) DO UPDATE SET "
+        "key_enc = COALESCE(EXCLUDED.key_enc, ai_gateway_credential_state.key_enc), "
+        "last_test_at = COALESCE(EXCLUDED.last_test_at, ai_gateway_credential_state.last_test_at), "
+        "last_test_ok = COALESCE(EXCLUDED.last_test_ok, ai_gateway_credential_state.last_test_ok), "
+        "last_test_note = COALESCE(EXCLUDED.last_test_note, ai_gateway_credential_state.last_test_note), "
+        "updated_at = now()",
+        {id, keyEnc, ok ? "true" : "false", note, hasTest ? "true" : "false"});
+
+    // The key is never logged, and neither is its length — that alone narrows a guess.
+    if (wrote)
+        LOG_INFO("gateway credential stored (id={}, test={}, key={})", id,
+                 hasTest ? (ok ? "ok" : "failed") : "none", keyEnc.empty() ? "unchanged" : "new");
+    else
+        LOG_WARN("ai_gateway_credential_state write failed (id={})", id);
 }
 
 void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,

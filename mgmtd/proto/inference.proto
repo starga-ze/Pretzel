@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package pretzel.ai.v1;
+
+// MIRROR of pretzel-ai/proto/inference.proto — the source of truth lives in the pretzel-ai repo.
+// This copy exists so mgmtd's build can generate C++ stubs without reaching into a sibling
+// checkout. The two must be changed together; if they disagree the wire silently breaks, the
+// same hazard the IPC protocol's Python mirror carries (see inferd/transport/ipc_protocol.py).
+service Inference {
+  rpc Chat(ChatRequest) returns (stream ChatChunk);
+}
+
+message ChatRequest {
+  string model = 1;
+  string message = 2;
+  string system_prompt = 3;
+}
+
+message ChatChunk {
+  string delta = 1;
+  bool   done = 2;
+  string error = 3;
+  string result_json = 4;  // final chunk only: complete turn document (reply, scan, usage, ok/code)
+}

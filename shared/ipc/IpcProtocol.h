@@ -130,23 +130,19 @@ enum class IpcCmd : std::uint16_t
     TopologyRequest = 139,    // mgmtd → topologyd: compose this site (payload {site})
     TopologyResponse = 140,   // topologyd → mgmtd: the composed model
 
-    // ── Inference (mgmtd ↔ inferd) ──
-    // A chat turn on its way to an upstream model, through the AI gateway. It lives out here rather
-    // than in mgmtd for the same reason every other outbound call does: the exchange takes seconds,
-    // and mgmtd answers the console on the loop those seconds would be spent on.
-    //
-    // Correlated by seqNo, which is also the ticket the browser polls on — mgmtd never holds the
-    // HTTP response open (see ApiConnectorTestResponse for the same shape). That is deliberate
-    // beyond the first pass: streaming will deliver partial turns on this same edge without the
-    // request/response contract changing.
-    ChatRequest = 141,        // mgmtd → inferd: one turn (payload {model, message, ...})
-    ChatResponse = 142,       // inferd → mgmtd: the completed turn, or why it did not complete
+    // ── Inference ──
+    // 141–144 (ChatRequest/ChatResponse/RetrieveRequest/RetrieveResponse) retired: chat moved off
+    // the IPC fabric onto the pretzel-ai gRPC transport (see mgmtd/grpc/). The numbers are left
+    // unused rather than reassigned so an old peer's frame is rejected, not silently misrouted.
 
-    // Corpus retrieval, the step before a turn reaches a model. Split from ChatRequest because the
-    // operator is meant to see the passages and judge them before anything goes upstream — an
-    // answer is only as good as what was retrieved, and a miss is worth catching there.
-    RetrieveRequest = 143,    // mgmtd → inferd: {query, k, docset?, version?}
-    RetrieveResponse = 144,   // inferd → mgmtd: {hits, took_ms, model, k}, or why there are none
+    // The gateway client credential. Same three-hop shape as an API Key's account credential
+    // (ApiCredentialStoreRequest/StateUpdate above): the operator's key crosses the socket once, in
+    // plaintext, on the way in. NOTE: still routed to the (now-retired) inferd daemon — the sealed-
+    // storage credential path has not been re-homed onto pretzel-ai yet, so this feature is dormant
+    // (the AI Gateway console page has no live daemon to seal the key). Kept pending that work.
+    GatewayCredentialStoreRequest = 145,   // mgmtd → (inferd): {id, api_key} — seal and persist
+    GatewayCredentialStoreResponse = 146,  // → mgmtd: outcome, on the seqNo the browser polls
+    GatewayCredentialStateUpdate = 147,    // → engined: {id, key_enc, ...} — already sealed
 };
 
 // Coarse role of a command, orthogonal to its domain. Feeds IpcProtocol::isRoutingAllowed, which

@@ -1,5 +1,6 @@
 #include "process/MgmtdProcess.h"
 
+#include "grpc/GrpcClientHandler.h"
 #include "http/HttpServer.h"
 #include "ipc/IpcClient.h"
 #include "service/MgmtdServiceManager.h"
@@ -14,8 +15,9 @@ constexpr int kIpcClientTimeoutMs = 10;
 }
 
 MgmtdProcess::MgmtdProcess(pz::ipc::IpcClient* ipcClient, pz::http::HttpServer* httpServer,
-                           MgmtdServiceManager* serviceManager)
-    : m_ipcClient(ipcClient), m_httpServer(httpServer), m_serviceManager(serviceManager)
+                           GrpcClientHandler* grpcClient, MgmtdServiceManager* serviceManager)
+    : m_ipcClient(ipcClient), m_httpServer(httpServer), m_grpcClient(grpcClient),
+      m_serviceManager(serviceManager)
 {
 }
 
@@ -47,6 +49,13 @@ void MgmtdProcess::tick()
     if (m_httpServer)
     {
         m_httpServer->poll();
+    }
+
+    // The pretzel-ai gRPC transport, pumped the same way as IPC and HTTP: any chat turn a worker
+    // finished since the last tick is delivered to the ServiceManager here, on this thread.
+    if (m_grpcClient)
+    {
+        m_grpcClient->poll();
     }
 
     if (m_serviceManager)

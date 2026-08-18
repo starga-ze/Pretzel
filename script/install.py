@@ -19,9 +19,9 @@ from script.utils import (
     BOOST_VERSION, BOOST_VERSION_UNDERSCORE, BOOST_DIR, BOOST_INSTALL, BOOST_TAR, BOOST_SRC_PATH,
     JSON_VERSION, JSON_DIR, JSON_INSTALL, JSON_TAR, JSON_SRC_PATH,
     GTEST_VERSION, GTEST_DIR, GTEST_INSTALL, GTEST_TAR, GTEST_SRC_PATH,
+    GRPC_VERSION, GRPC_DIR, GRPC_INSTALL, GRPC_SRC_PATH,
     PG_SERVICE, PG_DB_NAME, PG_RAG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
     PGADMIN_VERSION, PGADMIN_VENV,
-    INFERD_VENV, INFERD_REQUIREMENTS, INFERD_MODEL_HOME, INFERD_DEFAULT_MODEL,
 )
 
 def install_openssl():
@@ -111,6 +111,75 @@ def install_googletest():
         extra_args=["-DBUILD_GMOCK=OFF", "-DINSTALL_GTEST=ON"],
     )
     print("[*] googletest installation complete.")
+
+
+def install_grpc():
+    """Builds gRPC + protobuf (and their bundled deps) from source into 3rd_party/install/grpc.
+
+    This is the mgmtd <-> pretzel-ai transport, and a build-time dependency: mgmtd links
+    libgrpc++ and the generated stubs, and its build needs protoc + grpc_cpp_plugin from here.
+
+    Cloned WITH submodules rather than fetched as a tarball because GitHub's auto-generated
+    source archives do not include gRPC's third_party/ submodules (abseil, protobuf, re2,
+    c-ares, BoringSSL, zlib), all of which its CMake build compiles in-tree.
+
+    SSL comes from our vendored OpenSSL (gRPC_SSL_PROVIDER=package), NOT gRPC's bundled BoringSSL.
+    BoringSSL exports the same symbol names as OpenSSL, so its libcrypto.a and ours multiply-define
+    every EVP_*/RSA_* at static link and mgmtd fails to link. One OpenSSL for the whole process is
+    the fix — and cleaner than the bundled route. zlib/protobuf/abseil/re2/c-ares stay bundled;
+    their symbols collide with nothing mgmtd links.
+
+    Heavy: the clone is large and the from-source build of the whole stack takes many minutes.
+    Kept in install_build_deps() (unprivileged, no apt/root) — the clone and CMake build only
+    touch the repo-owned 3rd_party/ tree.
+    """
+    plugin = os.path.join(GRPC_INSTALL, "bin", "grpc_cpp_plugin")
+    config = os.path.join(GRPC_INSTALL, "lib", "cmake", "grpc", "gRPCConfig.cmake")
+    if os.path.exists(plugin) and os.path.exists(config):
+        print("[*] gRPC already built and installed, skipping...")
+        return
+
+    if not os.path.isdir(os.path.join(GRPC_SRC_PATH, ".git")):
+        os.makedirs(GRPC_DIR, exist_ok=True)
+        run_cmd(
+            ["git", "clone", "--depth", "1", "--branch", f"v{GRPC_VERSION}",
+             "--recurse-submodules", "--shallow-submodules",
+             "https://github.com/grpc/grpc", GRPC_SRC_PATH],
+            msg=f"Cloning gRPC v{GRPC_VERSION} with submodules (large; several minutes)",
+        )
+
+    build_cmake_project(
+        src_path=GRPC_SRC_PATH,
+        install_prefix=GRPC_INSTALL,
+        extra_args=[
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DgRPC_INSTALL=ON",
+            "-DgRPC_BUILD_TESTS=OFF",
+            "-DABSL_PROPAGATE_CXX_STD=ON",
+            # SSL comes from OUR vendored OpenSSL, not gRPC's bundled BoringSSL. BoringSSL exports
+            # the same OpenSSL symbol names (EVP_*, RSA_*), so its libcrypto.a and ours multiply-
+            # define every one of them at static link time and mgmtd fails to link. Pointing gRPC
+            # at the one OpenSSL the process already uses keeps a single crypto stack — cleaner
+            # than the earlier bundled attempt, and it also removes the runtime interposition risk.
+            "-DgRPC_SSL_PROVIDER=package",
+            # ROOT_DIR alone is not enough here: the box has a system static libcrypto.a in
+            # /usr/lib that FindOpenSSL picks first, which would reintroduce the very duplicate it
+            # is meant to avoid. Name the exact libraries — the same ones the top-level CMakeLists
+            # pins for every daemon — so gRPC links the one OpenSSL the rest of mgmtd links.
+            f"-DOPENSSL_ROOT_DIR={OPENSSL_INSTALL}",
+            f"-DOPENSSL_INCLUDE_DIR={OPENSSL_INSTALL}/include",
+            f"-DOPENSSL_CRYPTO_LIBRARY={OPENSSL_INSTALL}/lib64/libcrypto.a",
+            f"-DOPENSSL_SSL_LIBRARY={OPENSSL_INSTALL}/lib64/libssl.a",
+            "-DOPENSSL_USE_STATIC_LIBS=TRUE",
+            # The rest stay bundled: their symbols do not collide with anything mgmtd links.
+            "-DgRPC_ZLIB_PROVIDER=module",
+            "-DgRPC_PROTOBUF_PROVIDER=module",
+            "-DgRPC_ABSL_PROVIDER=module",
+            "-DgRPC_RE2_PROVIDER=module",
+            "-DgRPC_CARES_PROVIDER=module",
+        ],
+    )
+    print("[*] gRPC installation complete.")
 
 
 def is_postgresql_installed():
@@ -371,7 +440,10 @@ def provision_rag_database():
     CREATE EXTENSION runs as the postgres superuser because pgvector is not a trusted
     extension: the pretzel role cannot enable it itself.
     """
-    db = _configured_rag_db_name()
+    # The corpus DB name is the fixed default now that inferd (which used to own the
+    # retrieval config this was read from) is gone. Retrieval is not yet ported to
+    # pretzel-ai, so this provisions an empty substrate for a future consumer.
+    db = PG_RAG_DB_NAME
 
     if _pg_row_exists(f"SELECT 1 FROM pg_database WHERE datname='{db}'"):
         print(f"[*] PostgreSQL database '{db}' already exists, skipping...")
@@ -452,158 +524,6 @@ def install_pgadmin():
     print("[*] pgAdmin installation complete.")
 
 
-def _inferd_retrieval_config():
-    """inferd's retrieval block, read from the config the daemon itself reads.
-
-    Copying these literals here instead would create a second source of truth, and the two
-    drift silently: a prefetch that pulls one model while inferd loads another looks like a
-    clean install, then downloads 470MB on first start — or, on an airgapped appliance,
-    leaves retrieval permanently unavailable with nothing in the install log to explain it.
-    The corpus database name has the same problem: provisioning one name while the daemon
-    connects to another produces "corpus unreachable" on a box that was just installed.
-    """
-    cfg = os.path.join(ROOT_DIR, "config", "startup-config.json")
-    try:
-        with open(cfg) as f:
-            block = json.load(f)["inferd"]["service"]["retrieval"]
-        if isinstance(block, dict):
-            return block
-    except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
-        print(f"[WARN] could not read inferd's retrieval config from {cfg} ({e}); "
-              f"using built-in defaults.")
-    return {}
-
-
-def _configured_embedding_model():
-    """The model inferd will load. See _inferd_retrieval_config() for why it is read."""
-    model = _inferd_retrieval_config().get("model")
-    if model:
-        return model
-    print(f"[WARN] falling back to {INFERD_DEFAULT_MODEL}; if inferd is configured for a "
-          f"different model it will download it on first start.")
-    return INFERD_DEFAULT_MODEL
-
-
-def _configured_rag_db_name():
-    """The corpus database inferd will connect to. Same reasoning as the model name."""
-    name = (_inferd_retrieval_config().get("database") or {}).get("name")
-    return name or PG_RAG_DB_NAME
-
-
-def is_inferd_venv_installed():
-    """True only if the venv can actually import what the daemon imports.
-
-    Checking for bin/python alone is not enough: an interrupted pip run leaves an
-    interpreter behind with half the dependencies, which passes a file-exists test and
-    then fails at startup with an ImportError systemd reports as a plain restart loop.
-    """
-    py = os.path.join(INFERD_VENV, "bin", "python")
-    if not os.path.isfile(py):
-        return False
-    probe = subprocess.run(
-        [py, "-c", "import psycopg, sentence_transformers, setproctitle"],
-        capture_output=True,
-    )
-    return probe.returncode == 0
-
-
-def prefetch_embedding_model():
-    """Downloads the embedding model at install time, into a system-wide HF_HOME.
-
-    Without this the daemon fetches ~470MB from HuggingFace on its FIRST start, which
-    makes a network outage look like a broken appliance and makes an airgapped install
-    impossible. Fetching here also puts the files where the unit reads them, rather than
-    in whichever home directory happened to be current.
-
-    Failure is a warning, never fatal — the same policy install_test_deps() follows. A
-    machine with no route to HuggingFace must still finish installing; retrieval reports
-    itself unavailable and every turn is answered ungrounded, which is a running
-    appliance rather than a failed install.
-    """
-    model = _configured_embedding_model()
-    py = os.path.join(INFERD_VENV, "bin", "python")
-    os.makedirs(INFERD_MODEL_HOME, exist_ok=True)
-
-    print(f"[*] Prefetching embedding model {model} -> {INFERD_MODEL_HOME} "
-          f"(~470MB, first run only)...")
-    result = subprocess.run(
-        [py, "-c",
-         "import sys\n"
-         "from sentence_transformers import SentenceTransformer\n"
-         "SentenceTransformer(sys.argv[1], device='cpu')\n",
-         model],
-        env=dict(os.environ, HF_HOME=INFERD_MODEL_HOME),
-    )
-    if result.returncode != 0:
-        print(f"[WARN] embedding model prefetch failed. inferd will start, but retrieval "
-              f"stays unavailable and every turn is answered ungrounded until "
-              f"{INFERD_MODEL_HOME} is populated. Re-run './pretzel install' with network "
-              f"access to retry.")
-        return
-    print(f"[*] Embedding model ready at {INFERD_MODEL_HOME}")
-
-
-def install_inferd_venv():
-    """
-    Creates the Python virtualenv that pz-inferd runs in, from inferd/requirements.txt.
-
-    inferd is the only daemon that is not compiled, so `./pretzel build` produces nothing
-    for it and there is no binary for start.py to copy out of build/bin — the unit execs a
-    generated launcher that runs this venv's interpreter. Nothing else creates it, so
-    without this step a bare machine deploys a launcher pointing at an interpreter that is
-    not there, and systemd restarts the unit every 3s forever.
-
-    Same pattern as install_pgadmin(), and kept out of install_build_deps() for the same
-    reason: this is a runtime dependency, and a plain `./pretzel build` must not have to
-    download a gigabyte of wheels to compile the C++ daemons.
-    """
-    # A development box has /opt/pretzel/venv/inferd symlinked to a checkout's .venv.
-    # os.path.isfile() follows the link and would report the venv as present and healthy,
-    # so the install would no-op and the appliance would keep depending on a directory
-    # that is not part of the deployment.
-    if os.path.islink(INFERD_VENV):
-        print(f"[*] Removing development symlink {INFERD_VENV} -> "
-              f"{os.readlink(INFERD_VENV)}")
-        os.unlink(INFERD_VENV)
-
-    if is_inferd_venv_installed():
-        print("[*] inferd venv already installed, skipping...")
-        prefetch_embedding_model()   # cheap no-op when the model is already cached
-        return
-
-    if not os.path.isfile(INFERD_REQUIREMENTS):
-        print(f"[ERROR] {INFERD_REQUIREMENTS} not found; cannot build the inferd venv.")
-        sys.exit(1)
-
-    print("[*] Installing inferd Python environment...")
-
-    # python3-venv is NOT part of a stock Ubuntu install, and python3-dev is needed for
-    # any dependency that has no wheel for this interpreter. install_pgadmin() also asks
-    # for these, but it may run after this function — neither may rely on the other.
-    run_cmd(["sudo", "apt", "install", "-y", "python3-venv", "python3-dev"])
-
-    # A half-built venv from an earlier failed run would otherwise be reused as-is.
-    if os.path.isdir(INFERD_VENV):
-        print(f"[*] Removing incomplete venv at {INFERD_VENV}")
-        shutil.rmtree(INFERD_VENV, ignore_errors=True)
-
-    os.makedirs(os.path.dirname(INFERD_VENV), exist_ok=True)
-    run_cmd(["python3", "-m", "venv", INFERD_VENV], msg="Creating inferd virtualenv")
-
-    pip = os.path.join(INFERD_VENV, "bin", "pip")
-    run_cmd([pip, "install", "--upgrade", "pip", "wheel"], msg="Upgrading pip in inferd venv")
-    run_cmd([pip, "install", "-r", INFERD_REQUIREMENTS],
-            msg="Installing inferd dependencies (CPU-only torch; several minutes)")
-
-    if not is_inferd_venv_installed():
-        print("[ERROR] inferd venv installation failed — the environment cannot import "
-              "psycopg / sentence_transformers / setproctitle.")
-        sys.exit(1)
-
-    prefetch_embedding_model()
-    print("[*] inferd Python environment complete.")
-
-
 def get_gpp_version():
     """Extracts the major version of the currently installed g++ compiler."""
     try:
@@ -669,6 +589,7 @@ def install_build_deps():
     install_spdlog()
     install_boost()
     install_json()
+    install_grpc()
 
 
 def install_test_deps():
@@ -699,8 +620,8 @@ def install_test_deps():
 def install_runtime_deps():
     """
     Runtime services the project needs to RUN but not to build: the PostgreSQL server (with
-    role/database provisioning), the pgvector extension and empty corpus database, the pgAdmin
-    web UI, and the Python environment pz-inferd executes in.
+    role/database provisioning), the pgvector extension and empty corpus database, and the pgAdmin
+    web UI.
 
     These pull in apt packages, download binaries and start systemd units, so they are kept out
     of the build path and only run on a full `./pretzel install`.
@@ -708,7 +629,6 @@ def install_runtime_deps():
     install_postgresql()
     install_rag_store()
     install_pgadmin()
-    install_inferd_venv()
 
 
 def run():

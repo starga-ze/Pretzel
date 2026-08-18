@@ -27,8 +27,9 @@ enum class WebIpcEventType : std::uint32_t
     TopologyResponse = 1,        // topologyd composed a site      → TopologyController
     SettingsCommitStatus = 2,    // engined's commit queue moved   → SettingsController
     ApiConnectorTestResponse = 3,// collectord ran a device call   → ApiController
-    ChatResponse = 4,            // inferd completed a turn        → ChatController
-    RetrieveResponse = 5         // inferd found the passages first → ChatController
+    // 4, 5 (ChatResponse, RetrieveResponse) retired: chat moved to the pretzel-ai gRPC transport,
+    // whose answers arrive inline via GrpcClientHandler, not as inbound IPC events.
+    GatewayCredentialStoreResponse = 6  // sealed+stored the gateway key → GatewayController
 };
 
 class WebIpcEvent final : public MgmtdEvent

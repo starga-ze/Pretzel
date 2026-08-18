@@ -414,11 +414,13 @@ void BootstrapService::initProcessMap()
     m_processMap[pz::ipc::IpcDaemon::Probed] = {false, 0, 0};
     m_processMap[pz::ipc::IpcDaemon::Collectord] = {false, 0, 0};
     m_processMap[pz::ipc::IpcDaemon::Topologyd] = {false, 0, 0};
+    m_processMap[pz::ipc::IpcDaemon::Apid] = {false, 0, 0};
     // inferd converges with the rest of the fleet. It consumes the running config like any other
     // service daemon (its gateway settings live there), so RuntimeStart must not be sent until it
     // has reported the target version — otherwise it would run one cycle against whatever it read
     // at boot while everyone else has already moved on.
-    m_processMap[pz::ipc::IpcDaemon::Inferd] = {false, 0, 0};
+    
+    //m_processMap[pz::ipc::IpcDaemon::Inferd] = {false, 0, 0};
 
     m_targetVersion = pz::config::Config::runningConfigVersion();
 
@@ -541,8 +543,7 @@ void BootstrapService::dumpProcessMap() const
         pz::ipc::IpcDaemon::Probed,
         pz::ipc::IpcDaemon::Collectord,
         pz::ipc::IpcDaemon::Topologyd,
-        pz::ipc::IpcDaemon::Apid,
-        pz::ipc::IpcDaemon::Inferd
+        pz::ipc::IpcDaemon::Apid
     };
 
     std::string dump;

@@ -16,7 +16,6 @@ from script.utils import (
     ROOT_DIR, BUILD_DIR, CERT_DIR, SECRET_DIR, run_cmd, install_file,
     PG_SERVICE, PG_DB_HOST, PG_DB_PORT, PG_DB_NAME, PG_DB_USER, PG_DB_PASSWORD,
     PGADMIN_VENV, PGADMIN_SETUP_EMAIL, PGADMIN_SETUP_PASSWORD,
-    INFERD_VENV,
 )
 
 # List of child systemd services targeted for start/restart
@@ -24,7 +23,6 @@ DAEMONS = [
     "pz-db-ready.service",
     "pz-ipcd.service", "pz-engined.service", "pz-authd.service", "pz-mgmtd.service",
     "pz-probed.service", "pz-collectord.service", "pz-topologyd.service", "pz-apid.service",
-    "pz-inferd.service",
     "pz-pgadmin.service",
 ]
 
@@ -142,146 +140,6 @@ def deploy_startup_config() -> None:
     print(f"[*] Installed startup-config: {dst}")
 
 
-INFERD_ENV_PATH = os.path.join(ETC_ROOT_DIR, "inferd.env")
-
-# Where the AI gateway client key is read from, in order. The key is a credential and therefore
-# never lives in config/startup-config.json (committed) nor in the DB running_config — the same rule
-# the DB password follows. It is delivered as a 0600 EnvironmentFile the unit points at.
-#
-# PZ_PORTKEY_API_KEY in the deployer's environment wins. Failing that, a shell-style .env named
-# by PZ_PORTKEY_ENV_FILE is read, so a lab that already keeps the key in a file for its own test
-# battery can deploy without copying it to a second place and letting the two drift.
-#
-# That path is taken from the environment rather than hard-coded. It used to default to
-# ~/prisma-airs/.env — one developer's lab layout, compiled into the product — and on any other
-# machine the "no gateway key" message ended up telling the operator to populate a directory that
-# does not exist and never should. An appliance sets neither variable and is told so plainly.
-def _invoking_home() -> str:
-    """The home of the human who ran this, not root's.
-
-    start.py re-executes itself under sudo, so os.path.expanduser("~") is /root here and every
-    per-user path resolved that way silently points at a directory that does not exist.
-    """
-    user = os.environ.get("SUDO_USER")
-    if user:
-        try:
-            import pwd
-            return pwd.getpwnam(user).pw_dir
-        except (KeyError, ImportError):
-            pass
-    return os.path.expanduser("~")
-
-
-def _portkey_env_file() -> str:
-    """The optional .env to fall back to, or '' when the deployer named none.
-
-    Expanded against the invoking user's home, not root's, so `PZ_PORTKEY_ENV_FILE=~/lab/.env`
-    means what the person who typed it thinks it means after the sudo re-exec.
-    """
-    raw = os.environ.get("PZ_PORTKEY_ENV_FILE", "").strip()
-    if not raw:
-        return ""
-    if raw.startswith("~"):
-        return os.path.join(_invoking_home(), raw.lstrip("~/"))
-    return raw
-
-
-def _read_lab_key(path: str, name: str) -> str:
-    """One KEY=value out of a shell-style .env, unquoted. Returns '' when absent."""
-    try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, _, v = line.partition("=")
-                if k.strip() == name:
-                    return v.strip().strip("'\"")
-    except OSError:
-        pass
-    return ""
-
-
-INFERD_LIB_DIR = "/opt/pretzel/lib/inferd"
-INFERD_LAUNCHER = os.path.join(INSTALL_BIN_DIR, "pz-inferd")
-
-
-def deploy_inferd() -> None:
-    """Deploys the inferd package and the launcher its unit execs.
-
-    inferd is Python, so there is no binary for install_file to copy out of build/bin.
-    The launcher exists so that is an implementation detail rather than an operational
-    one: the unit reads ExecStart=/opt/pretzel/bin/pz-inferd like every other daemon,
-    and anything that enumerates /opt/pretzel/bin still finds it. Same shape as the
-    pgAdmin launcher below, for the same reason.
-    """
-    src = os.path.join(ROOT_DIR, "inferd")
-    if not os.path.isdir(src):
-        sys.exit(f"[FATAL] inferd package not found at {src}")
-
-    # Checked here, not left to systemd. The launcher is a shell script, so a missing
-    # interpreter is not an ExecStart failure systemd can name — sh starts, its exec
-    # fails, the unit exits 127 and Restart=always turns it into a silent 3s loop. And
-    # because pz-inferd is only WantedBy= the target, that failure never propagates:
-    # `./pretzel start` reports success while one daemon flaps unnoticed in the journal.
-    # Same guard, same reason, as the pgAdmin venv check in deploy_pgadmin().
-    if not os.path.isfile(os.path.join(INFERD_VENV, "bin", "python")):
-        sys.exit(f"[ERROR] inferd venv not found at {INFERD_VENV}. "
-                 f"Install first: ./pretzel install")
-
-    shutil.rmtree(INFERD_LIB_DIR, ignore_errors=True)
-    shutil.copytree(src, INFERD_LIB_DIR,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-
-    with open(INFERD_LAUNCHER, "w") as f:
-        f.write("#!/bin/sh\n"
-                "# Generated by script/start.py — edit deploy_inferd() there, not here.\n"
-                f'exec "{INFERD_VENV}/bin/python" "{INFERD_LIB_DIR}/main.py" "$@"\n')
-    os.chmod(INFERD_LAUNCHER, 0o755)
-    print(f"[*] Deployed inferd package -> {INFERD_LIB_DIR} (launcher: {INFERD_LAUNCHER})")
-
-
-def deploy_inferd_env() -> None:
-    """Writes /etc/pretzel/inferd.env with inferd's two credentials.
-
-    The gateway client key, and — since retrieval moved into inferd — the database password for
-    the corpus. Both are credentials, so neither may live in startup-config.json (committed) nor
-    in the DB running_config (which needs one of them to reach).
-
-    Absent gateway key is not fatal: inferd answers NO_CREDENTIAL and the Assistant page says so,
-    which is the correct state for an appliance that has no gateway. A build must not require a
-    credential. An absent DB password is not fatal either — the turn proceeds ungrounded and
-    reports that the corpus is unreachable, rather than failing the whole assistant.
-    """
-    key = os.environ.get("PZ_PORTKEY_API_KEY", "").strip()
-    source = "PZ_PORTKEY_API_KEY"
-
-    env_file = _portkey_env_file()
-    if not key and env_file:
-        key = _read_lab_key(env_file, "PORTKEY_API_KEY")
-        source = env_file
-
-    os.makedirs(ETC_ROOT_DIR, exist_ok=True)
-    tmp = INFERD_ENV_PATH + ".tmp"
-    try:
-        with open(tmp, "w") as f:
-            f.write(f"PZ_PORTKEY_API_KEY={key}\n")
-            f.write(f"PZ_PG_PASSWORD={PG_DB_PASSWORD}\n")
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, INFERD_ENV_PATH)
-    except OSError as e:
-        sys.exit(f"[FATAL] failed to write {INFERD_ENV_PATH}: {e}")
-
-    if key:
-        print(f"[*] Generated inferd env: {INFERD_ENV_PATH} (key from {source})")
-    else:
-        # Names only what this machine can actually act on. Pointing at a file the deployer
-        # never asked for reads as a missing prerequisite rather than an unset option.
-        hint = "set PZ_PORTKEY_API_KEY"
-        if env_file:
-            hint += f" or populate {env_file}"
-        print(f"[*] Generated inferd env: {INFERD_ENV_PATH} (no gateway key — {hint}; "
-              f"the Assistant will report 'not configured')")
 
 
 def ensure_certificates() -> None:
@@ -602,11 +460,7 @@ def deploy_files():
     #    mgmtd syncs it into the DB at boot; all daemons read it for DB conn params.
     deploy_startup_config()
 
-    # 7b. inferd's package and launcher, then its two credentials.
-    deploy_inferd()
-    deploy_inferd_env()
-
-    # 7c. Deploy the IEEE OUI lookup table (engined resolves host MAC -> vendor).
+    # 7b. Deploy the IEEE OUI lookup table (engined resolves host MAC -> vendor).
     #     Generated by script/fetch_oui.py; skipped with a warning if absent.
     oui_src = os.path.join(ROOT_DIR, "shared", "data", "oui.tsv")
     if os.path.isfile(oui_src):

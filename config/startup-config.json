@@ -174,55 +174,5 @@
                 "tls_enabled": false
             }
         }
-    },
-    "inferd": {
-        "daemon_name": "pz-inferd",
-        "system": {
-            "logger": {
-                "name": "pz-inferd",
-                "file": "/var/log/pretzel/inferd.log"
-            }
-        },
-        "service": {
-            "gateway": {
-                "host": "aigw.portkey.ai",
-                "port": 443,
-                "path": "/v1/chat/completions",
-                "api_key_env": "PZ_PORTKEY_API_KEY",
-                "api_key_header": "x-portkey-api-key",
-                "models": [
-                    {
-                        "id": "gpt-4o",
-                        "provider": "openai",
-                        "label": "GPT-4o"
-                    },
-                    {
-                        "id": "claude-sonnet-5",
-                        "provider": "anthropic",
-                        "label": "Claude Sonnet 5"
-                    }
-                ],
-                "default_model": "gpt-4o",
-                "headers": {},
-                "system_prompt": "You are the internal assistant for this company. Answer questions about company policy, attendance, expenses and account issues. Answer in the language the user writes in. If you do not know, say so rather than guessing.",
-                "max_tokens": 512,
-                "timeout_sec": 45,
-                "max_inflight": 8
-            },
-            "retrieval": {
-                "model": "intfloat/multilingual-e5-small",
-                "table": "rag_chunk",
-                "database": {
-                    "host": "127.0.0.1",
-                    "port": 5432,
-                    "name": "pretzel_rag",
-                    "user": "pretzel"
-                }
-            },
-            "ipc": {
-                "socket_path": "/run/pretzel/ipcd.sock",
-                "poll_timeout_sec": 1.0
-            }
-        }
     }
 }

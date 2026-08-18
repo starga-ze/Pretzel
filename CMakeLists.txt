@@ -18,6 +18,11 @@ list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/openssl)
 list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/boost)
 list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/nlohmann_json)
 list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/googletest)
+# gRPC + its bundled protobuf, for the mgmtd <-> pretzel-ai transport. Only mgmtd links it, so
+# find_package(gRPC/protobuf CONFIG) lives in mgmtd/CMakeLists.txt rather than here — a checkout
+# building only the other daemons must not be forced to have gRPC installed. Vendored by
+# script/install.py install_grpc() into 3rd_party/install/grpc.
+list(APPEND CMAKE_PREFIX_PATH ${THIRD_PARTY_INSTALL_DIR}/grpc)
 
 find_package(Threads REQUIRED)
 find_package(spdlog REQUIRED)

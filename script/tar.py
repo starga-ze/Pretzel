@@ -9,7 +9,7 @@ import tarfile
 import os
 
 # List of target directories to include in the packaging
-TARGET_ITEMS = ['authd', 'probed', 'mgmtd', 'collectord', 'shared', 'topologyd', 'apid', 'inferd', 'engined',
+TARGET_ITEMS = ['authd', 'probed', 'mgmtd', 'collectord', 'shared', 'topologyd', 'apid', 'engined',
                 'ipcd']
 TAR_FILENAME = "pretzel.tar.gz"
 

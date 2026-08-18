@@ -5,6 +5,7 @@
 #include "action/MgmtdActionFactory.h"
 #include "config/ConfigTypes.h"
 #include "event/MgmtdEventFactory.h"
+#include "grpc/GrpcClientHandler.h"
 #include "http/HttpServer.h"
 #include "ipc/IpcClient.h"
 #include "process/MgmtdProcess.h"
@@ -59,6 +60,7 @@ private:
     std::unique_ptr<pz::ipc::IpcClient> m_ipcClient;
     std::unique_ptr<MgmtdEventFactory> m_eventFactory;
     std::unique_ptr<MgmtdActionFactory> m_actionFactory;
+    std::unique_ptr<GrpcClientHandler> m_grpcClientHandler;
     std::unique_ptr<MgmtdTxRouter> m_txRouter;
     std::unique_ptr<MgmtdServiceManager> m_serviceManager;
     std::unique_ptr<MgmtdRxRouter> m_rxRouter;
