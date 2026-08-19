@@ -6,19 +6,19 @@ find_package(protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 
 # Generate the C++ stubs from the mirrored proto into the build tree.
-set(PA_PROTO ${CMAKE_CURRENT_SOURCE_DIR}/proto/inference.proto)
+set(PA_PROTO ${CMAKE_CURRENT_SOURCE_DIR}/grpc/pretzel_ai.proto)
 set(PA_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/pa_gen)
 file(MAKE_DIRECTORY ${PA_GEN_DIR})
 
-set(PA_PB_CC   ${PA_GEN_DIR}/inference.pb.cc)
-set(PA_PB_H    ${PA_GEN_DIR}/inference.pb.h)
-set(PA_GRPC_CC ${PA_GEN_DIR}/inference.grpc.pb.cc)
-set(PA_GRPC_H  ${PA_GEN_DIR}/inference.grpc.pb.h)
+set(PA_PB_CC   ${PA_GEN_DIR}/pretzel_ai.pb.cc)
+set(PA_PB_H    ${PA_GEN_DIR}/pretzel_ai.pb.h)
+set(PA_GRPC_CC ${PA_GEN_DIR}/pretzel_ai.grpc.pb.cc)
+set(PA_GRPC_H  ${PA_GEN_DIR}/pretzel_ai.grpc.pb.h)
 
 add_custom_command(
     OUTPUT ${PA_PB_CC} ${PA_PB_H} ${PA_GRPC_CC} ${PA_GRPC_H}
     COMMAND $<TARGET_FILE:protobuf::protoc>
-            --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/proto
+            --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/grpc
             --cpp_out=${PA_GEN_DIR}
             --grpc_out=${PA_GEN_DIR}
             --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>

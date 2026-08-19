@@ -3,6 +3,7 @@
 #include "service/web/controller/ApiController.h"
 #include "service/web/controller/AuthController.h"
 #include "service/web/controller/ChatController.h"
+#include "service/web/controller/TechDocController.h"
 #include "service/web/controller/CollectionController.h"
 #include "service/web/controller/GatewayController.h"
 #include "service/web/controller/LogsController.h"
@@ -84,6 +85,14 @@ enum class WebRoute
     ChatSend,     // POST /api/chat
     ChatResult,   // GET  /api/chat/result?ticket=
 
+    // TechDocController — the tech-doc knowledge base behind the assistant.
+    TechDocStatus,    // GET  /api/techdoc/status
+    TechDocCheck,     // POST /api/techdoc/check   {scope}
+    TechDocResult,    // GET  /api/techdoc/result?ticket=
+    TechDocRefresh,   // POST /api/techdoc/refresh {scope}
+    TechDocProgress,  // GET  /api/techdoc/progress
+    TechDocCancel,    // POST /api/techdoc/cancel
+
     // LogsController.
     Logs,   // GET  /api/logs?…
 };
@@ -164,6 +173,7 @@ private:
     ApiController m_apiController;
     GatewayController m_gatewayController;
     ChatController m_chatController;
+    TechDocController m_techDocController;
     CollectionController m_collectionController;
     LogsController m_logsController;
 };

@@ -1,6 +1,7 @@
 #include "router/MgmtdRxRouter.h"
 
 #include "service/web/WebEvent.h"
+#include "service/web/WebGrpcEvent.h"
 
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -40,6 +41,20 @@ void MgmtdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 void MgmtdRxRouter::handleHttpMessage(pz::http::HttpRequest req, pz::http::SessionId id)
 {
     m_serviceManager->postEvent(std::make_unique<WebEvent>(std::move(req), id));
+}
+
+void MgmtdRxRouter::handleGrpcMessage(GrpcCmd cmd, std::uint32_t ticket, std::string json)
+{
+    LOG_TRACE("recv (rpc={}, ticket={})", grpcCmdToStr(cmd), ticket);
+
+    const WebGrpcEventType type = webGrpcEventFor(cmd);
+    if (type == WebGrpcEventType::Unknown)
+    {
+        LOG_WARN("no event maps to rpc {} (ticket={})", grpcCmdToStr(cmd), ticket);
+        return;
+    }
+
+    m_serviceManager->postEvent(std::make_unique<WebGrpcEvent>(type, ticket, std::move(json)));
 }
 
 }

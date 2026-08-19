@@ -4,6 +4,7 @@
 #include "service/web/WebUtil.h"
 
 #include "router/MgmtdTxRouter.h"
+#include "grpc/GrpcMessage.h"
 
 #include "http/HttpMessage.h"
 #include "util/Logger.h"
@@ -57,7 +58,7 @@ void ChatController::send(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
     // fire-and-forget: the answer is filed under `ticket` when it lands (GrpcClientHandler), and
     // result() below hands it back on the next poll. No system prompt is sent; the gateway uses
     // its configured default.
-    sm.txRouter().handleGrpcMessage(ticket, model, message, std::string());
+    sm.txRouter().handleGrpcMessage(GrpcMessage::chat(ticket, model, message, std::string()));
 
     // The message itself is not logged. It is whatever an employee typed, and this log is read by
     // people who have no business reading that; the ticket is enough to follow a turn through.

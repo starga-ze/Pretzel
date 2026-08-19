@@ -185,6 +185,22 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
         {"GET",  "/api/chat/result",
             Match::Prefix, WebRoute::ChatResult,        Access::Authenticated, false},
 
+        // Tech-doc knowledge base. /result and /progress are Prefix (the first carries ?ticket=);
+        // /status, /check and /refresh are Exact, and every pair differs by method or by path, so
+        // none of them can shadow another.
+        {"GET",  "/api/techdoc/status",
+            Match::Exact,  WebRoute::TechDocStatus,     Access::Authenticated, false},
+        {"POST", "/api/techdoc/check",
+            Match::Exact,  WebRoute::TechDocCheck,      Access::Authenticated, false},
+        {"GET",  "/api/techdoc/result",
+            Match::Prefix, WebRoute::TechDocResult,     Access::Authenticated, false},
+        {"POST", "/api/techdoc/refresh",
+            Match::Exact,  WebRoute::TechDocRefresh,    Access::Authenticated, false},
+        {"GET",  "/api/techdoc/progress",
+            Match::Exact,  WebRoute::TechDocProgress,   Access::Authenticated, false},
+        {"POST", "/api/techdoc/cancel",
+            Match::Exact,  WebRoute::TechDocCancel,     Access::Authenticated, false},
+
         // AI gateway credential. The secret is write-only: it goes in through the POST and never
         // comes back out, so there is no GET that returns it — only the status row.
         {"POST", "/api/gateway/credential",
@@ -289,6 +305,13 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
 
     case WebRoute::ChatSend:           return m_chatController.send(sm, req, resp);
     case WebRoute::ChatResult:         return m_chatController.result(sm, req, resp);
+
+    case WebRoute::TechDocStatus:      return m_techDocController.status(sm, req, resp);
+    case WebRoute::TechDocCheck:       return m_techDocController.check(sm, req, resp);
+    case WebRoute::TechDocResult:      return m_techDocController.result(sm, req, resp);
+    case WebRoute::TechDocRefresh:     return m_techDocController.refresh(sm, req, resp);
+    case WebRoute::TechDocProgress:    return m_techDocController.progress(sm, req, resp);
+    case WebRoute::TechDocCancel:      return m_techDocController.cancel(sm, req, resp);
 
     case WebRoute::Logs:               return m_logsController.list(sm, req, resp);
 

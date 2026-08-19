@@ -40,8 +40,7 @@ void MgmtdTxRouter::handleHttpMessage(pz::http::HttpResponse response, pz::http:
     m_httpHandler->egress(std::move(response), id);
 }
 
-void MgmtdTxRouter::handleGrpcMessage(std::uint32_t ticket, std::string model, std::string message,
-                                      std::string systemPrompt)
+void MgmtdTxRouter::handleGrpcMessage(GrpcMessage message)
 {
     if (!m_grpcClientHandler)
     {
@@ -49,7 +48,7 @@ void MgmtdTxRouter::handleGrpcMessage(std::uint32_t ticket, std::string model, s
         return;
     }
 
-    m_grpcClientHandler->egress(ticket, std::move(model), std::move(message), std::move(systemPrompt));
+    m_grpcClientHandler->egress(std::move(message));
 }
 
 }

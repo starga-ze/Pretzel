@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package pretzel.ai.v1;
+
+// MIRROR of pretzel-ai/grpc/pretzel_ai.proto — the source of truth lives in the pretzel-ai repo.
+// This copy exists so mgmtd's build can generate C++ stubs without reaching into a sibling
+// checkout. The two must be changed together; if they disagree the wire silently breaks, the
+// same hazard the IPC protocol's Python mirror carries (see inferd/transport/ipc_protocol.py).
+service PretzelAi {
+  rpc Chat(ChatRequest) returns (stream ChatChunk);
+
+  // Tech-doc knowledge base. Check is cheap (one sitemap fetch) and tells the console what a
+  // refresh would do; Refresh streams progress because it runs for minutes.
+  rpc CheckCorpus(CheckCorpusRequest) returns (CorpusCheck);
+  rpc RefreshCorpus(RefreshCorpusRequest) returns (stream RefreshProgress);
+  rpc GetCorpusStatus(CorpusStatusRequest) returns (CorpusStatus);
+}
+
+message ChatRequest {
+  string model = 1;
+  string message = 2;
+  string system_prompt = 3;
+}
+
+message ChatChunk {
+  string delta = 1;
+  bool   done = 2;
+  string error = 3;
+  string result_json = 4;  // final chunk only: complete turn document (reply, scan, usage, ok/code)
+}
+
+// --- Tech-doc corpus ---------------------------------------------------------------------
+
+message CheckCorpusRequest {
+  string scope = 1;   // one product ("ngfw"); "" -> the whole sitemap
+}
+
+message DocChange {
+  string url = 1;
+  string kind = 2;   // added | changed | retry | removed    // added | changed | removed
+  string product = 3;
+  string version = 4;
+  string docset = 5;
+  string lastmod = 6;
+  string previous_lastmod = 7;
+  string title = 8;   // "" for a page never fetched, which is every newly added one
+}
+
+// Changes folded onto the product/docset tree the URLs imply.
+//
+// The sitemap itself is 22,519 flat <loc> entries with a timestamp and nothing else — no titles,
+// no hierarchy, no grouping. Listing it back to an operator as URLs asks them to read structure out
+// of path strings. The grouping is derived here so the console can show "PAN-OS / Administration:
+// 12 changed" and let the URLs stay underneath it.
+message ChangeGroup {
+  string product = 1;
+  string docset  = 2;
+  string version = 3;
+  int32 added    = 4;
+  int32 changed  = 5;
+  int32 removed  = 6;
+  int32 retry    = 7;
+}
+
+message CorpusCheck {
+  int32 total_in_scope = 1;
+  int32 added   = 2;
+  int32 changed = 3;
+  int32 removed = 4;
+  // Pages the last crawl could not read, not pages that changed. Counted apart because they are a
+  // different fact about the appliance: "we owe these a retry", not "the documentation moved".
+  int32 retry   = 9;
+  repeated DocChange changes = 5;   // capped sample; the counts above are the whole answer
+  bool truncated = 6;
+  string error = 7;
+  repeated ChangeGroup groups = 8;   // complete; `changes` is only a sample
+}
+
+message RefreshCorpusRequest {
+  string scope = 1;
+}
+
+message RefreshProgress {
+  string stage = 1;   // start | tombstone | fetch | done | failed
+  int32 done  = 2;
+  int32 total = 3;
+
+  int32 fetched          = 4;
+  int32 added            = 5;
+  int32 changed          = 6;
+  int32 removed          = 7;
+  int32 skipped_304      = 8;
+  int32 skipped_same_sha = 9;
+  int32 failed           = 10;
+  int32 skipped_alias    = 14;   // resolved from a redirect target already fetched this run
+
+  bool   final = 11;   // true exactly once, on the last message
+  string error = 12;
+  int64  run_id = 13;
+}
+
+message CorpusStatusRequest {}
+
+// One row of the product/docset tree the corpus actually contains.
+//
+// The sitemap has no hierarchy — 22,519 flat URLs — so this is derived from the URL paths, and it
+// is the only structured view of the corpus that exists anywhere. 64 products, 321 docsets: small
+// enough to send whole, which is what lets the console render a browsable tree instead of a count.
+message ProductStat {
+  string product   = 1;
+  string docset    = 2;
+  int32  documents = 3;
+  int32  bodies    = 4;
+  int64  chars     = 5;
+  int32  versions  = 6;
+  int32  failed    = 7;
+}
+
+message CorpusStatus {
+  int32  documents  = 1;   // live, excluding tombstones
+  int32  tombstoned = 2;
+  int32  bodies     = 3;
+  int64  chars      = 4;
+  string last_run_at     = 5;
+  string last_run_status = 6;
+  int64  last_run_id     = 7;
+  string error = 8;
+  repeated ProductStat products = 9;
+}

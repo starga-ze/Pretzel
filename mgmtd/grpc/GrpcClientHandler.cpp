@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -33,14 +34,11 @@ const char* stateName(int s)
     }
 }
 
-// A turn whose stream never reached the server's final chunk (the process is down, the connection
-// dropped) still has to resolve the ticket the browser is polling — so synthesize the same
-// document shape the gateway would have returned for an unreachable upstream.
-std::string unreachableDoc(const std::string& reason)
+std::string jsonEscape(const std::string& raw)
 {
     std::string escaped;
-    escaped.reserve(reason.size());
-    for (char c : reason)
+    escaped.reserve(raw.size());
+    for (char c : raw)
     {
         if (c == '"' || c == '\\')
             escaped += '\\';
@@ -49,21 +47,26 @@ std::string unreachableDoc(const std::string& reason)
         else
             escaped += c;
     }
-    return R"({"ok":false,"code":"UNREACHABLE","error":")" + escaped + R"("})";
+    return escaped;
+}
+
+// A call whose stream never reached the server's answer (the process is down, the connection
+// dropped) still has to resolve whatever the browser is waiting on — so synthesize the document
+// shape that call's controller already knows how to read.
+std::string unreachableDoc(GrpcCmd cmd, const std::string& reason)
+{
+    const std::string escaped = jsonEscape(reason);
+    if (cmd == GrpcCmd::Chat)
+        return R"({"ok":false,"code":"UNREACHABLE","error":")" + escaped + R"("})";
+    if (cmd == GrpcCmd::CorpusRefresh)
+        return R"({"stage":"failed","final":true,"error":")" + escaped + R"("})";
+    return R"({"error":")" + escaped + R"("})";
 }
 
 }
 
 struct GrpcClientHandler::Impl
 {
-    struct Task
-    {
-        std::uint32_t ticket;
-        std::string model;
-        std::string message;
-        std::string systemPrompt;
-    };
-
     // target is copied for the log line before it is moved into the client.
     explicit Impl(std::string t) : target(t), client(std::move(t)) {}
 
@@ -72,21 +75,124 @@ struct GrpcClientHandler::Impl
 
     std::mutex taskMutex;
     std::condition_variable taskCv;
-    std::deque<Task> tasks;
+    std::deque<GrpcMessage> tasks;
     std::atomic<bool> stopping{false};
 
     std::mutex doneMutex;
-    std::deque<std::pair<std::uint32_t, std::string>> done;
+    std::deque<std::tuple<GrpcCmd, std::uint32_t, std::string>> done;
 
     ResultSink sink;
     std::vector<std::thread> workers;
     std::thread monitor;
 
+    // Streaming calls get their own thread: one runs for minutes, and letting it occupy a worker
+    // would starve the turns the console is waiting on.
+    std::thread streamThread;
+    std::atomic<bool> streaming{false};
+
+    void report(GrpcCmd cmd, std::uint32_t ticket, std::string json)
+    {
+        std::lock_guard<std::mutex> lock(doneMutex);
+        done.emplace_back(cmd, ticket, std::move(json));
+    }
+
+    void runUnary(const GrpcMessage& task)
+    {
+        std::string error;
+        std::string json;
+
+        switch (task.cmd)
+        {
+        case GrpcCmd::Chat:
+        {
+            // Deltas are dropped for now — the poll-based console reads only the final document.
+            // The callback is where the future browser-side SSE stream will hook in.
+            auto outcome = client.chat(task.model, task.message, task.systemPrompt,
+                                       [](const std::string&) {});
+            json = std::move(outcome.resultJson);
+            error = std::move(outcome.error);
+            break;
+        }
+        case GrpcCmd::CorpusCheck:
+            json = client.checkCorpus(task.message, error);
+            break;
+        case GrpcCmd::CorpusStatus:
+            json = client.corpusStatus(error);
+            break;
+        default:
+            error = "unroutable command";
+            break;
+        }
+
+        // Reaching pretzel-ai at all (even to be told the call failed) is routine; not reaching it
+        // is the connection-level event worth a warning.
+        if (json.empty())
+        {
+            LOG_WARN("pretzel-ai {} unreachable (ticket={}): {}", grpcCmdToStr(task.cmd),
+                     task.ticket, error.empty() ? "no result" : error);
+            json = unreachableDoc(task.cmd,
+                                  error.empty() ? "pretzel-ai returned no result" : error);
+        }
+        else
+        {
+            LOG_DEBUG("pretzel-ai {} answered (ticket={}, {} bytes)", grpcCmdToStr(task.cmd),
+                      task.ticket, json.size());
+        }
+
+        report(task.cmd, task.ticket, std::move(json));
+    }
+
+    void runStream(GrpcMessage task)
+    {
+        std::string error;
+        bool sawFinal = false;
+
+        client.refreshCorpus(task.message,
+                             [this, &task, &sawFinal](const std::string& json)
+                             {
+                                 if (json.find("\"final\":true") != std::string::npos)
+                                     sawFinal = true;
+                                 report(task.cmd, task.ticket, json);
+                             },
+                             error);
+
+        // Only synthesize a terminal message when the server never sent one; otherwise the
+        // server's own final message is the more accurate account of what happened.
+        if (!sawFinal)
+        {
+            // A cancelled stream also ends without a final message, but it is not a failure — the
+            // operator asked for it, and the pages already written stay written. Reported as its
+            // own stage so the card can say so instead of showing an error nobody caused.
+            const bool cancelled = error.find("CANCELLED") != std::string::npos
+                                   || error.find("Cancelled") != std::string::npos;
+            if (cancelled)
+            {
+                LOG_INFO("tech-doc refresh cancelled");
+                report(task.cmd, task.ticket,
+                       R"({"stage":"cancelled","final":true})");
+            }
+            else
+            {
+                LOG_WARN("tech-doc refresh ended without a final message: {}",
+                         error.empty() ? "stream closed" : error);
+                report(task.cmd, task.ticket,
+                       unreachableDoc(task.cmd,
+                                      error.empty() ? "the refresh stream closed" : error));
+            }
+        }
+        else
+        {
+            LOG_INFO("tech-doc refresh finished");
+        }
+
+        streaming.store(false);
+    }
+
     void run()
     {
         for (;;)
         {
-            Task task;
+            GrpcMessage task;
             {
                 std::unique_lock<std::mutex> lock(taskMutex);
                 taskCv.wait(lock, [this] { return stopping.load() || !tasks.empty(); });
@@ -95,31 +201,7 @@ struct GrpcClientHandler::Impl
                 task = std::move(tasks.front());
                 tasks.pop_front();
             }
-
-            // Deltas are dropped for now — the poll-based console reads only the final document.
-            // The callback is where the future browser-side SSE stream will hook in.
-            auto outcome = client.chat(task.model, task.message, task.systemPrompt,
-                                       [](const std::string&) {});
-
-            // A turn either reached the server (resultJson set — even a gateway failure is a
-            // reply) or did not (transport failure). The latter is the connection-level event
-            // worth a warning; the former is routine and stays at debug.
-            if (outcome.resultJson.empty())
-                LOG_WARN("pretzel-ai unreachable (ticket={}): {}", task.ticket,
-                         outcome.error.empty() ? "no result" : outcome.error);
-            else
-                LOG_DEBUG("pretzel-ai answered (ticket={}, {} bytes)", task.ticket,
-                          outcome.resultJson.size());
-
-            std::string doc = !outcome.resultJson.empty()
-                                  ? std::move(outcome.resultJson)
-                                  : unreachableDoc(outcome.error.empty()
-                                                       ? "pretzel-ai returned no result"
-                                                       : outcome.error);
-            {
-                std::lock_guard<std::mutex> lock(doneMutex);
-                done.emplace_back(task.ticket, std::move(doc));
-            }
+            runUnary(task);
         }
     }
 
@@ -167,6 +249,8 @@ GrpcClientHandler::~GrpcClientHandler()
             t.join();
     if (m_impl->monitor.joinable())
         m_impl->monitor.join();
+    if (m_impl->streamThread.joinable())
+        m_impl->streamThread.join();
 }
 
 void GrpcClientHandler::setResultSink(ResultSink sink)
@@ -174,22 +258,49 @@ void GrpcClientHandler::setResultSink(ResultSink sink)
     m_impl->sink = std::move(sink);
 }
 
-void GrpcClientHandler::egress(std::uint32_t ticket,
-                               std::string model,
-                               std::string message,
-                               std::string systemPrompt)
+void GrpcClientHandler::egress(GrpcMessage message)
 {
+    // Cancel does not queue. Every other command waits its turn behind the worker pool, but a
+    // cancel that waited would be a cancel that arrives after the thing it was cancelling — and
+    // the operator pressed it because they want the crawl to stop now.
+    if (message.cmd == GrpcCmd::CorpusCancel)
+    {
+        LOG_INFO("cancelling the in-flight tech-doc refresh");
+        m_impl->client.cancelRefresh();
+        return;
+    }
+
+    if (grpcCmdStreams(message.cmd))
+    {
+        // Whether a second refresh is allowed was already decided by the ServiceManager; this
+        // guard is only here so a bug there cannot leave two threads crawling at once.
+        bool expected = false;
+        if (!m_impl->streaming.compare_exchange_strong(expected, true))
+        {
+            LOG_WARN("refusing a second {} while one is in flight", grpcCmdToStr(message.cmd));
+            m_impl->report(message.cmd, message.ticket,
+                           unreachableDoc(message.cmd, "a refresh is already running"));
+            return;
+        }
+        // The previous stream's thread has finished its work but may not have been joined yet.
+        if (m_impl->streamThread.joinable())
+            m_impl->streamThread.join();
+        m_impl->streamThread =
+            std::thread([this, message = std::move(message)]() mutable
+                        { m_impl->runStream(std::move(message)); });
+        return;
+    }
+
     {
         std::lock_guard<std::mutex> lock(m_impl->taskMutex);
-        m_impl->tasks.push_back(
-            {ticket, std::move(model), std::move(message), std::move(systemPrompt)});
+        m_impl->tasks.push_back(std::move(message));
     }
     m_impl->taskCv.notify_one();
 }
 
 void GrpcClientHandler::poll()
 {
-    // Idle fast path: a cheap peek, no work when no worker has completed a turn since the last
+    // Idle fast path: a cheap peek, no work when no worker has produced an answer since the last
     // tick. Only when the queue is non-empty do we take the delivery path.
     {
         std::lock_guard<std::mutex> lock(m_impl->doneMutex);
@@ -201,18 +312,18 @@ void GrpcClientHandler::poll()
 
 void GrpcClientHandler::drain()
 {
-    // Swap the queue out under the lock, then run the sink outside it: the sink writes the
-    // ServiceManager on this (main loop) thread, and holding the worker lock across it would
-    // serialise workers against the loop for no reason.
-    std::deque<std::pair<std::uint32_t, std::string>> ready;
+    // Swap the queue out under the lock, then run the sink outside it: the sink posts events on
+    // this (main loop) thread, and holding the worker lock across it would serialise workers
+    // against the loop for no reason.
+    std::deque<std::tuple<GrpcCmd, std::uint32_t, std::string>> ready;
     {
         std::lock_guard<std::mutex> lock(m_impl->doneMutex);
         ready.swap(m_impl->done);
     }
     if (ready.empty() || !m_impl->sink)
         return;
-    for (auto& [ticket, doc] : ready)
-        m_impl->sink(ticket, std::move(doc));
+    for (auto& [cmd, ticket, json] : ready)
+        m_impl->sink(cmd, ticket, std::move(json));
 }
 
 }

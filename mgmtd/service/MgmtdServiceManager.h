@@ -92,6 +92,18 @@ public:
     void setRetrievalResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeRetrievalResult(std::uint32_t ticket);
 
+    // The tech-doc refresh: one live slot, not a ticket.
+    //
+    // A refresh reports progress for minutes and is read by every poll for the duration, so there
+    // is nothing to "take" — the browser wants the state now, repeatedly, and a page reloaded
+    // mid-crawl has to be able to find it again. Single-flight is decided here rather than in the
+    // transport because "is a refresh running" is state, and state on the loop thread lives in the
+    // service manager; a handler that owned the answer would be a handler holding domain truth.
+    bool beginCorpusRefresh();                      // false: one is already running
+    void setCorpusProgress(std::string json, bool finished);
+    const std::string& corpusProgress() const;
+    bool corpusRefreshing() const;
+
     // The composed site topology, as topologyd last answered. mgmtd owns no topology logic — it asks
     // and it serves. Kept rather than awaited because an HTTP response here is built synchronously:
     // holding one open for a cross-daemon round trip would block the loop every other daemon's
@@ -141,6 +153,8 @@ private:
     std::unordered_map<std::uint32_t, std::string> m_apiTestResults;
 
     std::unordered_map<std::uint32_t, std::string> m_chatResults;
+    std::string m_corpusProgress;
+    bool m_corpusRefreshing{false};
     std::unordered_map<std::uint32_t, std::string> m_retrievalResults;
 
     // site oid ('' = every site) -> last composed model. One entry per site the operator has looked

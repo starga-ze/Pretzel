@@ -1,10 +1,12 @@
 #include "grpc/GrpcClient.h"
 
 #include <grpcpp/grpcpp.h>
+#include <google/protobuf/util/json_util.h>
 
-#include "inference.grpc.pb.h"
+#include "pretzel_ai.grpc.pb.h"
 
 #include <chrono>
+#include <mutex>
 
 namespace pz::mgmtd
 {
@@ -14,14 +16,19 @@ namespace v1 = ::pretzel::ai::v1;
 struct GrpcClient::Impl
 {
     std::shared_ptr<grpc::Channel> channel;
-    std::unique_ptr<v1::Inference::Stub> stub;
+    std::unique_ptr<v1::PretzelAi::Stub> stub;
+
+    // The in-flight refresh's context, so another thread can cancel it. Guarded because the
+    // cancelling thread and the streaming thread are different by definition.
+    std::mutex refreshMutex;
+    grpc::ClientContext* activeRefresh = nullptr;
 };
 
 GrpcClient::GrpcClient(const std::string& target)
     : m_impl(std::make_unique<Impl>())
 {
     m_impl->channel = grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
-    m_impl->stub = v1::Inference::NewStub(m_impl->channel);
+    m_impl->stub = v1::PretzelAi::NewStub(m_impl->channel);
 }
 
 GrpcClient::~GrpcClient() = default;
@@ -63,6 +70,104 @@ GrpcClient::Outcome GrpcClient::chat(const std::string& model,
         out.error = "gRPC transport error: " + status.error_message();
 
     return out;
+}
+
+namespace
+{
+
+// Proto -> JSON for the console. always_print_primitive_fields matters: a count that has fallen
+// back to zero must still appear, or the card would render "—" where the answer is "none".
+std::string toJson(const google::protobuf::Message& message)
+{
+    google::protobuf::util::JsonPrintOptions options;
+    options.always_print_primitive_fields = true;
+    options.preserve_proto_field_names = true;
+    std::string out;
+    if (!google::protobuf::util::MessageToJsonString(message, &out, options).ok())
+        return "{}";
+    return out;
+}
+
+}
+
+std::string GrpcClient::checkCorpus(const std::string& scope, std::string& error)
+{
+    v1::CheckCorpusRequest request;
+    request.set_scope(scope);
+
+    grpc::ClientContext ctx;
+    v1::CorpusCheck reply;
+    const grpc::Status status = m_impl->stub->CheckCorpus(&ctx, request, &reply);
+    if (!status.ok())
+    {
+        error = "gRPC transport error: " + status.error_message();
+        return {};
+    }
+    if (!reply.error().empty())
+        error = reply.error();
+    return toJson(reply);
+}
+
+std::string GrpcClient::corpusStatus(std::string& error)
+{
+    grpc::ClientContext ctx;
+    v1::CorpusStatusRequest request;
+    v1::CorpusStatus reply;
+    const grpc::Status status = m_impl->stub->GetCorpusStatus(&ctx, request, &reply);
+    if (!status.ok())
+    {
+        error = "gRPC transport error: " + status.error_message();
+        return {};
+    }
+    if (!reply.error().empty())
+        error = reply.error();
+    return toJson(reply);
+}
+
+void GrpcClient::refreshCorpus(const std::string& scope,
+                               const std::function<void(const std::string&)>& on_progress,
+                               std::string& error)
+{
+    v1::RefreshCorpusRequest request;
+    request.set_scope(scope);
+
+    grpc::ClientContext ctx;
+    {
+        std::lock_guard<std::mutex> lock(m_impl->refreshMutex);
+        m_impl->activeRefresh = &ctx;
+    }
+    // Cleared before ctx goes out of scope, whatever path leaves this function.
+    struct Clear
+    {
+        Impl* impl;
+        ~Clear()
+        {
+            std::lock_guard<std::mutex> lock(impl->refreshMutex);
+            impl->activeRefresh = nullptr;
+        }
+    } clear{m_impl.get()};
+
+    std::unique_ptr<grpc::ClientReader<v1::RefreshProgress>> reader(
+        m_impl->stub->RefreshCorpus(&ctx, request));
+
+    v1::RefreshProgress progress;
+    while (reader->Read(&progress))
+    {
+        on_progress(toJson(progress));
+        if (progress.final() && !progress.error().empty())
+            error = progress.error();
+    }
+
+    const grpc::Status status = reader->Finish();
+    if (!status.ok() && error.empty())
+        error = "gRPC transport error: " + status.error_message();
+}
+
+void GrpcClient::cancelRefresh()
+{
+    std::lock_guard<std::mutex> lock(m_impl->refreshMutex);
+    if (m_impl->activeRefresh)
+        m_impl->activeRefresh->TryCancel();
 }
 
 int GrpcClient::connectivityState(bool tryToConnect)

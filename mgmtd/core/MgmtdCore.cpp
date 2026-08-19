@@ -74,19 +74,21 @@ bool MgmtdCore::onInit()
         return false;
     }
 
-    // File a completed turn under its ticket, the same slot the old IPC ChatResponse handler wrote.
-    // Invoked only from GrpcClientHandler::drain(), on this loop thread, so the ServiceManager stays
-    // single-threaded exactly as it was under IPC.
-    m_grpcClientHandler->setResultSink(
-        [sm = m_serviceManager.get()](std::uint32_t ticket, std::string resultJson)
-        { sm->setChatResult(ticket, std::move(resultJson)); });
-
     if (!loadAuthConfig())
     {
         return false;
     }
 
     m_rxRouter = std::make_unique<MgmtdRxRouter>(m_eventFactory.get(), m_serviceManager.get());
+
+    // pretzel-ai's answers enter through the rx router, exactly as an inbound IPC message does:
+    // the transport reports (cmd, ticket, json) and the event it becomes decides what it means.
+    // Invoked only from GrpcClientHandler::drain(), on this loop thread, so the ServiceManager
+    // stays single-threaded — and every write to it now happens inside an event handler rather
+    // than in a lambda wired up here.
+    m_grpcClientHandler->setResultSink(
+        [rx = m_rxRouter.get()](GrpcCmd cmd, std::uint32_t ticket, std::string json)
+        { rx->handleGrpcMessage(cmd, ticket, std::move(json)); });
 
     if (m_ipcClient)
     {

@@ -88,9 +88,14 @@
 
           ${msg ? `<div class="op-msg ${msg.err ? 'err' : 'ok'}">${esc(msg.text)}</div>` : ''}
         </div>
+
+        <!-- techdoc.js owns this card. Mounted rather than inlined because the render above
+             replaces #contentBody wholesale, which would wipe anything it rendered itself. -->
+        <div id="techdocMount"></div>
       </div>`;
 
     wire();
+    if (window.NMS.techdoc) window.NMS.techdoc.mount();
   }
 
   function setMsg(text, err) { msg = { text, err: !!err }; render(); }

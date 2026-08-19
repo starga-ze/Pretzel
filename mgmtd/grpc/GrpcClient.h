@@ -41,6 +41,31 @@ public:
                  const std::string& systemPrompt,
                  const std::function<void(const std::string&)>& on_delta);
 
+    // --- The tech-doc knowledge base ---------------------------------------------------------
+    //
+    // These return the server's reply already rendered as JSON rather than as a struct. mgmtd has
+    // no opinion about a crawl: it shows the operator what pretzel-ai reported and posts back what
+    // the operator decided, so a field added on the pretzel-ai side reaches the console without a
+    // change here. It is the same reason ChatController serves result_json verbatim.
+
+    // What a refresh would do. Seconds — one sitemap fetch, no page bodies.
+    std::string checkCorpus(const std::string& scope, std::string& error);
+
+    // What the store holds right now, for the card's resting state.
+    std::string corpusStatus(std::string& error);
+
+    // Runs the crawl, calling on_progress once per progress message. Blocks for as long as the
+    // crawl takes, so callers run it on a worker thread. Returning early from on_progress is not
+    // how this is cancelled — dropping the reader is, which the caller does by destroying it.
+    void refreshCorpus(const std::string& scope,
+                       const std::function<void(const std::string&)>& on_progress,
+                       std::string& error);
+
+    // Cancels the refresh currently in flight, from another thread. A no-op when none is running.
+    // The server sees the cancelled stream and stops crawling (its generator checks is_active), so
+    // this stops work on the appliance rather than merely stopping us listening to it.
+    void cancelRefresh();
+
     // Channel connectivity, for connection logging. The state is grpc_connectivity_state as a
     // plain int (IDLE=0, CONNECTING=1, READY=2, TRANSIENT_FAILURE=3, SHUTDOWN=4) so the header
     // stays free of gRPC types. tryToConnect nudges an idle channel to start connecting.

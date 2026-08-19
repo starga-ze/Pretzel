@@ -293,6 +293,38 @@ std::uint32_t MgmtdServiceManager::nextApiTestTicket()
     return m_apiTestTicket++;
 }
 
+bool MgmtdServiceManager::beginCorpusRefresh()
+{
+    if (m_corpusRefreshing)
+    {
+        return false;
+    }
+    m_corpusRefreshing = true;
+    // Cleared rather than kept: the previous run's final message would otherwise be served to the
+    // first poll of this one, which reads as a refresh that finished before it started.
+    m_corpusProgress.clear();
+    return true;
+}
+
+void MgmtdServiceManager::setCorpusProgress(std::string json, bool finished)
+{
+    m_corpusProgress = std::move(json);
+    if (finished)
+    {
+        m_corpusRefreshing = false;
+    }
+}
+
+const std::string& MgmtdServiceManager::corpusProgress() const
+{
+    return m_corpusProgress;
+}
+
+bool MgmtdServiceManager::corpusRefreshing() const
+{
+    return m_corpusRefreshing;
+}
+
 std::uint32_t MgmtdServiceManager::nextChatTicket()
 {
     return m_chatTicket++;
