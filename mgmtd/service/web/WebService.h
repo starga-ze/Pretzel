@@ -87,11 +87,11 @@ enum class WebRoute
 
     // TechDocController — the tech-doc knowledge base behind the assistant.
     TechDocStatus,    // GET  /api/techdoc/status
-    TechDocCheck,     // POST /api/techdoc/check   {scope}
     TechDocResult,    // GET  /api/techdoc/result?ticket=
     TechDocRefresh,   // POST /api/techdoc/refresh {scope}
     TechDocProgress,  // GET  /api/techdoc/progress
     TechDocCancel,    // POST /api/techdoc/cancel
+    TechDocDocuments, // GET  /api/techdoc/documents?product=&docset=
 
     // LogsController.
     Logs,   // GET  /api/logs?…

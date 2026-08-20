@@ -85,6 +85,15 @@ public:
     void setChatResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeChatResult(std::uint32_t ticket);
 
+    // The answer as it is being written, for the poll to show before the turn resolves.
+    //
+    // Read rather than taken: a poll every 400ms would otherwise consume the text it just showed,
+    // and the next one would start again from empty. The slot is dropped by takeChatResult —
+    // the final document carries the whole reply, and a partial surviving past it is only a
+    // second, staler copy of the same words.
+    void appendChatPartial(std::uint32_t ticket, const std::string& delta);
+    std::string chatPartial(std::uint32_t ticket) const;
+
     // A grounded turn answers twice on one ticket: the passages as soon as they are found,
     // the answer when the model returns. Kept in its own slot so the second does not
     // overwrite the first — the page shows what was retrieved while the model is still
@@ -153,6 +162,7 @@ private:
     std::unordered_map<std::uint32_t, std::string> m_apiTestResults;
 
     std::unordered_map<std::uint32_t, std::string> m_chatResults;
+    std::unordered_map<std::uint32_t, std::string> m_chatPartials;
     std::string m_corpusProgress;
     bool m_corpusRefreshing{false};
     std::unordered_map<std::uint32_t, std::string> m_retrievalResults;

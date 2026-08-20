@@ -20,13 +20,13 @@ enum class GrpcCmd : std::uint16_t
     Chat = 1,
 
     // ── The tech-doc knowledge base ──
-    CorpusCheck = 2,     // what a refresh would do; one sitemap fetch
     CorpusStatus = 3,    // what the store holds now
     CorpusRefresh = 4,   // apply it; streams progress for minutes
     // Not a call — it cancels the streaming one already in flight. Routed as a command anyway so
     // the transport keeps its single entry point: a controller that reached past the router to
     // cancel would be the first thing to know a transport detail.
     CorpusCancel = 5,
+    CorpusDocuments = 6,   // the documents under one product/book, for the corpus browser
 };
 
 const char* grpcCmdToStr(GrpcCmd cmd) noexcept;

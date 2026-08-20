@@ -23,9 +23,9 @@ enum class WebGrpcEventType : std::uint32_t
 {
     Unknown = 0,
     ChatResponse = 1,           // a turn came back            → ChatController
-    CorpusCheckResponse = 2,    // check finished              → TechDocController
     CorpusStatusResponse = 3,   // store snapshot read         → TechDocController
     CorpusRefreshProgress = 4,  // one progress message        → TechDocController
+    CorpusDocumentList = 5,     // one book's documents        → TechDocController
 };
 
 // Maps the call that was made to the answer it produces. Kept beside the enum so adding a call

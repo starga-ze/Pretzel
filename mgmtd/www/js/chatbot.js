@@ -47,7 +47,12 @@
   const esc = (s) => window.NMS.utils.esc(s);
   const fmtTs = (v) => window.NMS.utils.fmtTs(v);
 
+  // Threads live in this browser only — there is no server-side thread store. That makes them the
+  // signed-in person's data sitting on a shared appliance console, so the key is registered for
+  // clearing at logout; without that, the next person to sign in on this machine opens the rail
+  // and reads the previous one's conversations, scan verdicts and all.
   const STORE_KEY = 'pz.chat.v1';
+  window.NMS.clearOnLogout(STORE_KEY);
   // The mock's own profile name. Deliberately not a plausible-looking real one: an inspector
   // that named a corporate profile under a browser regex would be inventing provenance.
   const PROFILE = 'local-mock';
@@ -58,15 +63,28 @@
   const POLL_MS = 400;
   const POLL_TIMEOUT_MS = 90000;
 
+  // How fast an answer is written onto the screen. 55 characters a second sits just above a
+  // comfortable Korean reading pace (~15-25/s) and inside the range a model streaming live would
+  // produce (~30-80/s), so the two are indistinguishable to read.
+  //
+  // MAX_STREAM_MS is the ceiling: past roughly a thousand characters, holding the base rate would
+  // make the reader wait longer for the end of the answer than the gateway took to produce it, so
+  // longer answers speed up to land inside it. FRAME_MS is one animation frame.
+  const READ_CPS = 55;
+  const MAX_STREAM_MS = 18000;
+  const FRAME_MS = 16;
+
   // Model choice belongs to the gateway, not to the app — the app names a model and the gateway
   // decides which provider and key serve it. Listed here so the demo can show that the same
   // conversation is portable across providers while the scan profile stays put.
-  // Must mirror inferd's `models` allowlist: the daemon rejects anything outside it, so offering a
-  // model here that the gateway will refuse is a picker that produces errors on purpose. Each entry
-  // is one gateway integration — switching model switches upstream account.
+  // Must mirror pretzel-ai's `models` allowlist (prisma-airs/config.json): the daemon rejects
+  // anything outside it, so offering a model here that the gateway will refuse is a picker that
+  // produces errors on purpose. Each entry is one gateway integration — switching model switches
+  // upstream account. The id is Portkey's own routing syntax, @<integration-slug>/<model>; a bare
+  // model name is refused by the gateway itself ("x-portkey-config or x-portkey-provider header is
+  // required"), so the slug is not decoration.
   const MODELS = [
-    { id: 'gpt-4o',          label: 'GPT-4o',          provider: 'OpenAI'    },
-    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5', provider: 'Anthropic' },
+    { id: '@openai/gpt-4o-2024-11-20', label: 'GPT-4o', provider: 'OpenAI' },
   ];
 
   // ── Scan profile ───────────────────────────────────────────────────────────
@@ -375,11 +393,61 @@
 
   const activeConvo = () => state.convos.find(c => c.id === state.activeId) || null;
 
+  // A conversation's id is also its AIRS session id: it is sent as session_id on every turn, and
+  // pretzel-ai forwards it to the gateway as the scan's tr_id. So it is minted once, here, and
+  // never regenerated for the life of the thread — a new id mid-conversation splits one exchange
+  // into two unrelated sessions in the AIRS console, which is exactly what "new chat" is for and
+  // exactly what must not happen otherwise.
   function newConvo(makeActive) {
     const c = { id: randId('cv_', 10), title: '', createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
     state.convos.unshift(c);
     if (makeActive !== false) state.activeId = c.id;
     return c;
+  }
+
+  // "New chat" is a security control as much as a UI affordance: it is the only way to start a
+  // session AIRS will not correlate with what came before. Reusing the empty thread already open
+  // rather than stacking a second one keeps the rail from filling with blank sessions that were
+  // never sent — and an unsent thread has no scans behind it, so there is nothing to separate.
+  function startNewChat() {
+    const cur = activeConvo();
+    if (cur && !cur.messages.length) {
+      state.activeId = cur.id;
+    } else {
+      newConvo();
+    }
+    state.inspectId = '';
+    save();
+    renderRail();
+    renderThread();
+    const input = document.getElementById('chatInput');
+    if (input) input.focus();
+  }
+
+  function deleteConvo(id) {
+    const i = state.convos.findIndex(c => c.id === id);
+    if (i < 0) return;
+    state.convos.splice(i, 1);
+    // Deleting the open thread has to leave one open. Falling back to the neighbour rather than
+    // always minting a fresh conversation avoids burning a session id on a click that was about
+    // tidying the rail, not about starting something new.
+    if (state.activeId === id) {
+      const next = state.convos[i] || state.convos[i - 1] || null;
+      state.activeId = next ? next.id : (newConvo().id);
+    }
+    state.inspectId = '';
+    save();
+    renderRail();
+    renderThread();
+  }
+
+  function selectConvo(id) {
+    if (!state.convos.some(c => c.id === id) || state.activeId === id) return;
+    state.activeId = id;
+    state.inspectId = '';
+    save();
+    renderRail();
+    renderThread();
   }
 
   function findMessage(id) {
@@ -390,20 +458,24 @@
     return null;
   }
 
+  // The open conversation only. A running total across every thread in the browser answers a
+  // question nobody is asking — "how much has this laptop ever sent" — and it moves for reasons
+  // that have nothing to do with what is on screen, so a block from a thread three days ago sits
+  // in the count under a conversation where nothing was blocked. Per conversation the numbers
+  // describe the thing the reader is looking at, and reset when they start a new one.
   function stats() {
     let scanned = 0, masked = 0, blocked = 0, flagged = 0, uninspected = 0;
-    for (const c of state.convos) {
-      for (const m of c.messages) {
-        if (!m.scan) continue;
-        // A prompt-block card carries the same scan as the user message above it — count the turn
-        // once. A response-block card is the only carrier of ITS scan, so it does count.
-        if (m.kind === 'block' && m.scan.direction === 'prompt') continue;
-        scanned++;
-        if (m.scan.verdict === 'mask') masked++;
-        else if (m.scan.verdict === 'block') blocked++;
-        else if (m.scan.verdict === 'flagged') flagged++;
-        else if (m.scan.verdict === 'uninspected') uninspected++;
-      }
+    const c = activeConvo();
+    for (const m of (c ? c.messages : [])) {
+      if (!m.scan) continue;
+      // A prompt-block card carries the same scan as the user message above it — count the turn
+      // once. A response-block card is the only carrier of ITS scan, so it does count.
+      if (m.kind === 'block' && m.scan.direction === 'prompt') continue;
+      scanned++;
+      if (m.scan.verdict === 'mask') masked++;
+      else if (m.scan.verdict === 'block') blocked++;
+      else if (m.scan.verdict === 'flagged') flagged++;
+      else if (m.scan.verdict === 'uninspected') uninspected++;
     }
     return { scanned, masked, blocked, flagged, uninspected };
   }
@@ -427,6 +499,7 @@
     panel:   svg('<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/>'),
     spark:   svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>'),
     check:   svg('<polyline points="4 12 9 17 20 6"/>'),
+    copy:    svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'),
     shieldOff: svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="4" y1="4" x2="20" y2="20"/>'),
     alert:   svg('<path d="M12 3l9.5 16.5H2.5z"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="12" y1="17" x2="12.01" y2="17"/>'),
   };
@@ -436,16 +509,143 @@
   // first — the text on this page is by definition untrusted, half of it comes back from a model,
   // and the whole point of the page is that hostile input reaches it.
 
+  // Markdown, because that is what a model emits whether or not anyone asked it to: headings,
+  // numbered steps, tables, fenced code. Rendered here rather than shown raw — a reader looking at
+  // literal `###` and `|---|` is reading the model's formatting instructions, not its answer.
+  //
+  // Written out rather than pulled from a library on purpose. This page renders text that came back
+  // from a third-party model through a security gateway, which is the definition of untrusted
+  // input; every branch below starts from esc()'d text and only ever re-introduces tags this
+  // function itself wrote. Nothing here can emit an attribute from the source string, so there is
+  // no path from model output to script execution.
+  // A fenced block written inside a list item arrives indented by whatever the list needed, and
+  // that indentation is markdown's, not the code's — rendered as-is it shows a shell command sitting
+  // four spaces in for no reason a reader can see. The common prefix is removed and the relative
+  // shape kept, so a nested if/else still reads as nested. Blank lines are ignored when measuring:
+  // one stray empty line would otherwise make the common prefix zero.
+  function dedent(code) {
+    const lines = String(code).split('\n');
+    let pad = Infinity;
+    for (const l of lines) {
+      if (!l.trim()) continue;
+      pad = Math.min(pad, l.length - l.replace(/^[ \t]+/, '').length);
+      if (!pad) return String(code);
+    }
+    if (!isFinite(pad) || pad === 0) return String(code);
+    return lines.map(l => l.slice(pad)).join('\n');
+  }
+
   function renderText(s) {
-    let html = esc(s);
-    html = html.replace(/```\w*\n([\s\S]*?)```/g, (_, body) =>
-      `<pre><code>${body.replace(/\n$/, '')}</code></pre>`);
-    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    html = html.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
-    // Redaction tokens are marked wherever they survive into a delivered message, so a reader can
-    // see at a glance that the text in front of them is not the text that was typed.
-    html = html.replace(TOKEN_RE, m => `<span class="chat-redact">${m}</span>`);
-    return html;
+    const src = String(s == null ? '' : s);
+
+    // Fenced code is lifted out first and parked behind a placeholder, so the inline rules below
+    // cannot reach inside it — a shell script full of ** and _ is code, not emphasis.
+    const blocks = [];
+    let text = src.replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (_, lang, body) => {
+      // The header is real markup rather than a ::before, because it holds a button now. The
+      // button carries no copy of the code: the handler reads it back out of the <code> element,
+      // so what lands on the clipboard cannot drift from what is on screen.
+      blocks.push(
+        `<div class="chat-code">` +
+          `<div class="chat-code-h">` +
+            `<span class="chat-code-l">${esc(lang || 'code')}</span>` +
+            `<button class="chat-code-c" type="button" data-codecopy="1" data-tip="Copy">` +
+              `${IC.copy}<span class="chat-copy-t">복사</span></button>` +
+          `</div>` +
+          `<pre><code>${esc(dedent(body.replace(/\n+$/, '')))}</code></pre>` +
+        `</div>`);
+      return `\uE000CODE${blocks.length - 1}\uE001`;
+    });
+
+    // Inline rules run on escaped text, so a literal <b> in the answer stays literal.
+    const inline = (t) => {
+      let h = esc(t);
+      h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+      h = h.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+      h = h.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?]|$)/g, '$1<i>$2</i>');
+      h = h.replace(/~~([^~\n]+)~~/g, '<s>$1</s>');
+      // Only http(s). javascript: and data: URLs are the reason this is a whitelist and not a
+      // general link rule — the href here is written by whatever answered the prompt.
+      h = h.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+        (_, label, href) => `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+      h = h.replace(TOKEN_RE, m => `<span class="chat-redact">${m}</span>`);
+      return h;
+    };
+
+    const lines = text.split('\n');
+    const out = [];
+    let list = null;      // 'ul' | 'ol' while one is open
+    let para = [];
+
+    const flushPara = () => {
+      if (para.length) { out.push(`<p>${para.map(inline).join('<br>')}</p>`); para = []; }
+    };
+    const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      if (/^\uE000CODE\d+\uE001$/.test(line.trim())) {
+        flushPara(); closeList();
+        out.push(line.trim());
+        continue;
+      }
+      if (!line.trim()) { flushPara(); closeList(); continue; }
+
+      const h = line.match(/^(#{1,6})\s+(.*)$/);
+      if (h) {
+        flushPara(); closeList();
+        const lvl = Math.min(6, Math.max(3, h[1].length + 2));   // never h1/h2: the page owns those
+        out.push(`<h${lvl} class="chat-md-h">${inline(h[2])}</h${lvl}>`);
+        continue;
+      }
+
+      if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+        flushPara(); closeList();
+        out.push('<hr class="chat-hr">');
+        continue;
+      }
+
+      // A table needs its separator row to be a table at all; without it these are just lines
+      // that happen to contain pipes, and rendering them as a grid would invent structure.
+      if (line.includes('|') && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1] || '')) {
+        flushPara(); closeList();
+        const cells = (row) => row.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|');
+        const head = cells(line).map(c => `<th>${inline(c.trim())}</th>`).join('');
+        const body = [];
+        let j = i + 2;
+        for (; j < lines.length && lines[j].includes('|'); j++) {
+          body.push('<tr>' + cells(lines[j]).map(c => `<td>${inline(c.trim())}</td>`).join('') + '</tr>');
+        }
+        out.push(`<div class="chat-tablewrap"><table class="chat-table">` +
+                 `<thead><tr>${head}</tr></thead><tbody>${body.join('')}</tbody></table></div>`);
+        i = j - 1;
+        continue;
+      }
+
+      const q = line.match(/^>\s?(.*)$/);
+      if (q) {
+        flushPara(); closeList();
+        out.push(`<blockquote class="chat-quote">${inline(q[1])}</blockquote>`);
+        continue;
+      }
+
+      const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      const ul = line.match(/^\s*[-*+]\s+(.*)$/);
+      if (ol || ul) {
+        flushPara();
+        const want = ol ? 'ol' : 'ul';
+        if (list !== want) { closeList(); out.push(`<${want} class="chat-list">`); list = want; }
+        out.push(`<li>${inline((ol || ul)[1])}</li>`);
+        continue;
+      }
+
+      closeList();
+      para.push(line);
+    }
+    flushPara(); closeList();
+
+    return out.join('').replace(/\uE000CODE(\d+)\uE001/g, (_, n) => blocks[Number(n)]);
   }
 
   // ── Shell ──────────────────────────────────────────────────────────────────
@@ -454,6 +654,13 @@
     const root = document.getElementById('contentBody');
     root.innerHTML = `
       <div class="chat-page">
+        <div class="chat-rail${state.railOpen ? '' : ' is-hidden'}" id="chatRail">
+          <div class="chat-rail-h">
+            <button class="chat-new" type="button" id="chatNew">${IC.plus}<span>새 대화</span></button>
+          </div>
+          <div class="chat-rail-list" id="chatList"></div>
+          <div class="chat-rail-f" id="chatStats"></div>
+        </div>
         <div class="chat-main">
           <div class="chat-bar">
             <select class="chat-select" id="chatModel">
@@ -462,6 +669,11 @@
           </div>
 
           <div class="chat-thread" id="chatThread"><div class="chat-col" id="chatCol"></div></div>
+
+          <!-- The scan panel. Rendered empty and hidden until a verdict is opened; renderInspector
+               fills it. Previously absent from this markup, which is why "검사 결과 보기" did
+               nothing — the renderer looked for an element that was never on the page. -->
+          <div class="chat-inspect is-hidden" id="chatInspect"></div>
 
           <div class="chat-composer">
             <div class="chat-col">
@@ -480,6 +692,7 @@
 
     window.NMS.utils.enhanceSelect(document.getElementById('chatModel'));
     wire();
+    renderRail();
     renderThread();
   }
 
@@ -515,6 +728,7 @@
     // guardrail not being on the path at all. Both look like a quiet, healthy chat from anywhere else.
     const s = stats();
     document.getElementById('chatStats').innerHTML = `
+      <div class="chat-stat-h">이 대화</div>
       <div class="chat-stat"><b>${s.scanned}</b><span>turns scanned</span></div>
       ${s.masked ? `<div class="chat-stat is-mask"><b>${s.masked}</b><span>redacted before egress</span></div>` : ''}
       <div class="chat-stat is-block"><b>${s.blocked}</b><span>blocked</span></div>
@@ -581,12 +795,53 @@
   function verdictPill(m) {
     if (!state.badges || !m.scan) return '';
     const v = m.scan.verdict;
-    const cls = v === 'allow' ? '' : ' is-' + v;
+    // A clean turn says nothing. The badge exists to mark the exceptions — blocked, redacted,
+    // flagged-and-sent, never inspected — and printing "clean" on every ordinary message buries
+    // those four under a wall of green that nobody reads by the third turn. The scan is still
+    // there for anyone who wants it; it just no longer interrupts a normal conversation.
+    if (v === 'allow') return '';
+    const cls = ' is-' + v;
     const active = state.inspectId === m.id ? ' active' : '';
     return `<button class="chat-verdict${cls}${active}" type="button" data-scan="${m.id}"
               data-tip="Open the scan for this message">
               ${VERDICT_ICON[v]}<span>AIRS · ${VERDICT_LABEL[v]}</span>
             </button>`;
+  }
+
+  // The markdown source is copied, not the rendered text: what the reader wants on the clipboard
+  // is the answer as the model wrote it, tables and code fences intact.
+  //
+  // The async clipboard API needs a secure context, and this console is served over HTTPS with a
+  // self-signed certificate on some appliances — where the browser declines, the textarea fallback
+  // is the only thing that works, so it is kept rather than assumed unnecessary.
+  async function copyText(btn, text) {
+    let ok = true;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(String(text || ''));
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = String(text || '');
+        ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    } catch (_) { ok = false; }
+
+    // Confirmed on the button itself. A toast for something this small is more interruption than
+    // the action deserves, and the reader is already looking here.
+    const label = btn.querySelector('.chat-copy-t');
+    if (!label) return;
+    const prev = label.textContent;
+    label.textContent = ok ? '복사됨' : '복사 실패';
+    btn.classList.add(ok ? 'is-done' : 'is-fail');
+    setTimeout(() => {
+      label.textContent = prev;
+      btn.classList.remove('is-done', 'is-fail');
+    }, 1400);
   }
 
   function renderTurn(m) {
@@ -695,10 +950,15 @@
 
     const who = m.role === 'user' ? 'You' : 'Assistant';
     const body = m.typing ? '' : renderText(m.text);
+    // Offered only once the text is final. A copy button on a message still streaming in would
+    // hand over half an answer, which is worse than no button at all.
+    const copy = m.typing ? '' :
+      `<button class="chat-copy" type="button" data-copy="${m.id}"
+               data-tip="Copy">${IC.copy}<span class="chat-copy-t">복사</span></button>`;
     return `<div class="chat-turn is-${m.role === 'user' ? 'user' : 'bot'}" data-msg="${m.id}">
       <div class="chat-who">${who}</div>
       <div class="chat-bubble" data-body="${m.id}">${body}</div>
-      <div class="chat-meta">${verdictPill(m)}${time}</div>
+      <div class="chat-meta">${verdictPill(m)}${time}${copy}</div>
     </div>`;
   }
 
@@ -938,14 +1198,33 @@
   // Returns the finished turn document from inferd — ok or not — because the interesting failures
   // carry a scan too. A blocked prompt and a provider that ran out of credit are both `ok:false`,
   // and both were inspected; only a missing gateway throws, so the mock can take over.
-  async function askServer(text, model, onRetrieval) {
+  // The turns already on screen, in the shape pretzel-ai's ChatRequest.history expects. Only the
+  // plain text ones: block cards, enforcement notices and retrieval cards are this console's own
+  // furniture, and replaying them as things the person or the model said would put words in both
+  // their mouths. A turn the guardrail denied never reached the model, so the model must not be
+  // told it did.
+  function historyFor(c) {
+    if (!c || !Array.isArray(c.messages)) return [];
+    return c.messages
+      .filter(m => m.kind === 'text' && (m.role === 'user' || m.role === 'assistant') && m.text)
+      .map(m => ({ role: m.role, content: String(m.text) }));
+  }
+
+  async function askServer(text, model, onRetrieval, history, sessionId, onDelta) {
     let res;
     try {
       res = await fetch(CHAT_URL, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, message: text, rag: state.rag, k: state.topK }),
+        body: JSON.stringify({
+          model, message: text, rag: state.rag, k: state.topK,
+          history: history || [],
+          // The conversation id doubles as the AIRS session id — pretzel-ai forwards it to the
+          // gateway, which passes it to Prisma AIRS as tr_id. Sent per turn because it is what
+          // makes a thread one session in the AIRS console rather than N unrelated scans.
+          session_id: sessionId || '',
+        }),
       });
     } catch (_) {
       throw gwError('mgmtd could not be reached', 'OFFLINE', true);
@@ -973,6 +1252,11 @@
       // moment they arrive: the reader is meant to judge what was retrieved while the model is
       // still working, not to have it appear retroactively underneath a finished answer.
       if (d && d.retrieval && onRetrieval) { onRetrieval(d.retrieval); onRetrieval = null; }
+
+      // The answer as far as it has been written. Cumulative, so this replaces rather than
+      // appends — a dropped poll then costs one beat of latency, where appending would silently
+      // lose whatever that poll was carrying and leave a hole mid-sentence.
+      if (d && d.status === 'pending' && d.text && onDelta) onDelta(d.text);
 
       if (!d || d.status !== 'done') continue;
 
@@ -1066,6 +1350,9 @@
     if (!c) { c = newConvo(); renderRail(); }
 
     const now = Date.now();
+    // Snapshotted BEFORE this turn joins the thread: history is what came before, and pushing
+    // first would send the question twice — once as the last history entry and once as the turn.
+    const history = historyFor(c);
     const userMsg = { id: randId('m_', 10), role: 'user', kind: 'text', text, ts: now };
     c.messages.push(userMsg);
     c.updatedAt = now;
@@ -1085,6 +1372,11 @@
     // decides whether anything needs masking, and a prompt pre-chewed by a browser heuristic would
     // hide from the scanner the very thing the scanner exists to find.
     let turn = null;
+    // Declared out here so the catch below can clear a half-streamed answer too: a turn that died
+    // mid-sentence must not leave its fragment sitting above the failure notice as if it were one.
+    let liveMsg = null;
+    let streamer = null;
+    let streamed = false;   // kept for the catch path below
     try {
       // Fires once, the moment the passages land — before the model has answered. The wait
       // bubble is re-pointed rather than removed: the turn is still in flight, just in a
@@ -1105,9 +1397,41 @@
         save();
       };
 
-      turn = await askServer(text, state.model, state.rag ? onRetrieval : null);
+      // The answer as it is written. The wait bubble is replaced by a real assistant turn the
+      // first time text arrives — from then on the reader is watching the answer appear, which is
+      // the point of streaming it. It stays `typing` until the turn resolves, so neither the copy
+      // button nor the verdict pill offers itself over a half-finished answer.
+      const onDelta = (soFar) => {
+        if (!liveMsg) {
+          drop();
+          streamed = true;
+          liveMsg = { id: randId('m_', 10), role: 'assistant', kind: 'text',
+                      text: '', ts: Date.now(), typing: true };
+          c.messages.push(liveMsg);
+          renderThread();                      // creates the bubble the streamer writes into
+          streamer = streamInto(liveMsg);
+        }
+        streamer.push(soFar);
+      };
+
+      turn = await askServer(text, state.model, state.rag ? onRetrieval : null, history, c.id, onDelta);
+
+      // A turn that streamed but did not end with an answer — blocked on the response side, or an
+      // upstream error after the first tokens — must not leave its fragment on screen. The branch
+      // below replaces it with the card that says what actually happened.
+      if (liveMsg && !(turn.ok && typeof turn.reply === 'string')) {
+        const i = c.messages.indexOf(liveMsg);
+        if (i >= 0) c.messages.splice(i, 1);
+        liveMsg = null;
+        streamer = null;
+        streamed = false;
+      }
       state.gateway = turn.ok ? 'live' : (turn.code === 'BLOCKED' ? 'live' : 'error');
     } catch (e) {
+      // Whatever had streamed goes with the failure. Half an answer left above an error card
+      // reads as an answer that was given and then retracted, which is not what happened.
+      if (liveMsg) { const i = c.messages.indexOf(liveMsg); if (i >= 0) c.messages.splice(i, 1); }
+      liveMsg = null;
       if (!e.fallback) {
         drop();
         state.gateway = 'error';
@@ -1153,20 +1477,35 @@
       }
 
       const respScan = airsScan(turn.scan, 'response');
+      const route = {
+        model: state.model,
+        tokensIn: turn.tokens_in | 0,
+        tokensOut: turn.tokens_out | 0,
+        latencyMs: (turn.latency_ms | 0) || (Date.now() - t0),
+        source: 'gateway',
+      };
+      // A response-direction scan only exists if the gateway ran one; when after_request_hooks is
+      // empty there is nothing to show, and an empty verdict pill would imply a check that never ran.
+      const scanOrNull = respScan.present ? respScan : null;
+
+      // The message that streamed is the message that stays. Finishing it in place — rather than
+      // dropping it and pushing an identical one — is what keeps the answer from flickering out
+      // and back at the exact moment the reader reaches the end of it.
+      if (liveMsg && streamer) {
+        liveMsg.scan = scanOrNull;
+        liveMsg.route = route;
+        await streamer.end(String(turn.reply || ''));
+        renderThread(true);        // repaint once, now that the pill and copy button apply
+        finish(c);
+        return;
+      }
+
       const botMsg = {
         id: randId('m_', 10), role: 'assistant', kind: 'text',
         text: String(turn.reply || ''), ts: Date.now(),
-        // A response-direction scan only exists if the gateway ran one; when after_request_hooks is
-        // empty there is nothing to show, and an empty verdict pill would imply a check that never ran.
-        scan: respScan.present ? respScan : null,
+        scan: scanOrNull,
         typing: true,
-        route: {
-          model: state.model,
-          tokensIn: turn.tokens_in | 0,
-          tokensOut: turn.tokens_out | 0,
-          latencyMs: (turn.latency_ms | 0) || (Date.now() - t0),
-          source: 'gateway',
-        },
+        route,
       };
       c.messages.push(botMsg);
       renderThread();
@@ -1243,6 +1582,89 @@
 
   // Reveal the answer progressively. Not decoration: a wall of text appearing whole reads as a
   // canned page, and the pace is what tells the reader the answer is arriving rather than stuck.
+  // A live answer, written the way every chat UI writes one: text appears as it arrives, and when
+  // the source runs ahead the display catches up smoothly instead of jumping. One renderer covers
+  // both cases on purpose — a source that trickles and a source that dumps its whole answer at
+  // once produce the same reading experience, so how fast the gateway happens to answer is not
+  // something the reader has to look at.
+  //
+  // The bubble is written directly rather than through renderThread(): a full thread repaint every
+  // 16ms would re-render every earlier message to animate the last one.
+  function streamInto(msg, onGrow) {
+    let full = '';
+    let done = false;
+    let resolveEnd = null;
+    let timer = null;
+    let carry = 0;   // fractional characters owed from the previous frame
+    const instant = !!(window.matchMedia &&
+                       window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    const paint = () => {
+      const el = document.querySelector(`[data-body="${msg.id}"]`);
+      if (!el) return;
+      const pinned = atBottom();
+      el.innerHTML = renderText(msg.text) +
+                     (msg.text.length < full.length || !done ? '<span class="chat-caret"></span>' : '');
+      if (pinned) scrollToEnd();
+      if (onGrow) onGrow();
+    };
+
+    const tick = () => {
+      const backlog = full.length - msg.text.length;
+      if (backlog > 0) {
+        // Paced by reading speed, not by how much text is waiting.
+        //
+        // The obvious rule — drain a fixed share of the backlog each frame — is wrong here, and
+        // measurably so: it makes a long answer appear FASTER than a short one (3,000 characters
+        // came out at ~3,300/s, which is not reading, it is a page-load). Rate is derived from the
+        // answer's length instead, so every answer arrives at a speed a person can follow.
+        //
+        // Be clear about what this is. The gateway call is not streaming — the response-side
+        // guardrail has to see the whole answer to rule on it, so by the time the first character
+        // is drawn the last one already exists. This paces a finished answer. It is presentation,
+        // not transport, and the honest reason to do it is that the alternative is a four-second
+        // blank followed by a wall of text.
+        // Someone who has asked their system not to animate things gets the answer, not a show.
+        const cps = instant ? Infinity
+                            : Math.max(READ_CPS, full.length / (MAX_STREAM_MS / 1000));
+        carry += cps * (FRAME_MS / 1000);
+        const step = Math.min(backlog, Math.max(1, Math.floor(carry)));
+        carry -= step;
+        msg.text = full.slice(0, msg.text.length + step);
+        paint();
+      } else if (done) {
+        msg.typing = false;
+        timer = null;
+        paint();
+        if (resolveEnd) { const r = resolveEnd; resolveEnd = null; r(); }
+        return;
+      }
+      timer = setTimeout(tick, 16);
+    };
+
+    return {
+      // Cumulative text from the server: the newest snapshot replaces the target outright, so a
+      // dropped poll costs a beat of latency and never a hole in the middle of a sentence.
+      push(soFar) {
+        if (typeof soFar !== 'string' || soFar.length <= full.length) return;
+        full = soFar;
+        if (!timer) timer = setTimeout(tick, 0);
+      },
+      // Called with the final text once the turn resolves. Anything the display has not caught up
+      // to yet is still drained rather than snapped in, so the answer never ends with a lurch.
+      end(finalText) {
+        if (typeof finalText === 'string' && finalText.length >= full.length) full = finalText;
+        done = true;
+        if (!timer) timer = setTimeout(tick, 0);
+        return new Promise(resolve => {
+          if (!timer && msg.text.length >= full.length) { msg.typing = false; paint(); return resolve(); }
+          resolveEnd = resolve;
+        });
+      },
+      get text() { return full; },
+    };
+  }
+
   function typeOut(msg) {
     return new Promise(resolve => {
       const el = document.querySelector(`[data-body="${msg.id}"]`);
@@ -1311,12 +1733,46 @@
         submit();
         return;
       }
+      // Read out of the DOM rather than from a stored copy: what lands on the clipboard is then,
+      // by construction, the code the reader is looking at.
+      const cc = e.target.closest('[data-codecopy]');
+      if (cc) {
+        const wrap = cc.closest('.chat-code');
+        const code = wrap && wrap.querySelector('code');
+        if (code) copyText(cc, code.textContent);
+        return;
+      }
+      const cp = e.target.closest('[data-copy]');
+      if (cp) {
+        const msg = findMessage(cp.dataset.copy);
+        if (msg) copyText(cp, msg.text);
+        return;
+      }
       const pill = e.target.closest('[data-scan]');
       if (pill) {
         const id = pill.dataset.scan;
         state.inspectId = (state.inspectId === id) ? '' : id;
         renderThread(true);
       }
+    });
+
+    document.getElementById('chatNew').addEventListener('click', () => {
+      if (state.sending) return;   // a turn in flight belongs to the thread that sent it
+      startNewChat();
+    });
+
+    document.getElementById('chatList').addEventListener('click', (e) => {
+      if (state.sending) return;
+      // Delete is checked first: its button sits inside the row, so a click on it is also a click
+      // on the row, and selecting a thread on the way to removing it would repaint twice.
+      const del = e.target.closest('[data-del]');
+      if (del) {
+        e.stopPropagation();
+        deleteConvo(del.dataset.del);
+        return;
+      }
+      const row = e.target.closest('[data-convo]');
+      if (row) selectConvo(row.dataset.convo);
     });
 
     // The topbar's refresh means "repaint from what is stored" here; there is nothing to re-fetch.

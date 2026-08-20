@@ -36,12 +36,24 @@ GrpcClient::~GrpcClient() = default;
 GrpcClient::Outcome GrpcClient::chat(const std::string& model,
                                               const std::string& message,
                                               const std::string& systemPrompt,
+                                              const std::vector<GrpcMessage::Turn>& history,
+                                              const std::string& sessionId,
                                               const std::function<void(const std::string&)>& on_delta)
 {
     v1::ChatRequest request;
     request.set_model(model);
     request.set_message(message);
     request.set_system_prompt(systemPrompt);
+    request.set_session_id(sessionId);
+
+    // Oldest first, and `message` is not among them: the server appends this turn after the ones
+    // sent here, so including it would ask the question twice.
+    for (const auto& turn : history)
+    {
+        v1::ChatTurn* out = request.add_history();
+        out->set_role(turn.role);
+        out->set_content(turn.content);
+    }
 
     grpc::ClientContext ctx;
     std::unique_ptr<grpc::ClientReader<v1::ChatChunk>> reader(
@@ -90,14 +102,12 @@ std::string toJson(const google::protobuf::Message& message)
 
 }
 
-std::string GrpcClient::checkCorpus(const std::string& scope, std::string& error)
+std::string GrpcClient::corpusStatus(std::string& error)
 {
-    v1::CheckCorpusRequest request;
-    request.set_scope(scope);
-
     grpc::ClientContext ctx;
-    v1::CorpusCheck reply;
-    const grpc::Status status = m_impl->stub->CheckCorpus(&ctx, request, &reply);
+    v1::CorpusStatusRequest request;
+    v1::CorpusStatus reply;
+    const grpc::Status status = m_impl->stub->GetCorpusStatus(&ctx, request, &reply);
     if (!status.ok())
     {
         error = "gRPC transport error: " + status.error_message();
@@ -108,12 +118,16 @@ std::string GrpcClient::checkCorpus(const std::string& scope, std::string& error
     return toJson(reply);
 }
 
-std::string GrpcClient::corpusStatus(std::string& error)
+std::string GrpcClient::corpusDocuments(const std::string& product, const std::string& docset,
+                                        std::string& error)
 {
+    v1::ListDocumentsRequest request;
+    request.set_product(product);
+    request.set_docset(docset);
+
     grpc::ClientContext ctx;
-    v1::CorpusStatusRequest request;
-    v1::CorpusStatus reply;
-    const grpc::Status status = m_impl->stub->GetCorpusStatus(&ctx, request, &reply);
+    v1::DocumentList reply;
+    const grpc::Status status = m_impl->stub->ListDocuments(&ctx, request, &reply);
     if (!status.ok())
     {
         error = "gRPC transport error: " + status.error_message();

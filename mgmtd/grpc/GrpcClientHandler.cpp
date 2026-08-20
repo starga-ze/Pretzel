@@ -4,6 +4,8 @@
 
 #include "util/Logger.h"
 
+#include <nlohmann/json.hpp>
+
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -105,19 +107,41 @@ struct GrpcClientHandler::Impl
         {
         case GrpcCmd::Chat:
         {
-            // Deltas are dropped for now — the poll-based console reads only the final document.
-            // The callback is where the future browser-side SSE stream will hook in.
+            // Deltas are reported as they arrive so the poll can show the answer being written.
+            // They are NOT forwarded one per chunk: pretzel-ai re-streams word by word, and a
+            // queue entry (plus a JSON document, plus a lock) per word would cost more than the
+            // answer. Batched to roughly a poll interval's worth instead — the browser reads
+            // every 400ms, so anything finer is invisible to it and pure overhead.
+            //
+            // Note what this is and is not. The gateway call itself is deliberately
+            // non-streaming: the response-side guardrail has to see the whole answer to rule on
+            // it. So the text arriving here has already been scanned and cleared, and this
+            // streams a decided answer rather than raw tokens. A turn the guardrail blocks
+            // produces no deltas at all, which is the correct behaviour — a blocked answer must
+            // never appear on screen even briefly.
+            std::string pending;
+            auto flush = [&](bool force)
+            {
+                if (pending.empty() || (!force && pending.size() < 24))
+                    return;
+                report(GrpcCmd::Chat, task.ticket,
+                       nlohmann::json{{"partial", true}, {"text", pending}}.dump());
+                pending.clear();
+            };
             auto outcome = client.chat(task.model, task.message, task.systemPrompt,
-                                       [](const std::string&) {});
+                                       task.history, task.sessionId,
+                                       [&](const std::string& delta)
+                                       { pending += delta; flush(false); });
+            flush(true);
             json = std::move(outcome.resultJson);
             error = std::move(outcome.error);
             break;
         }
-        case GrpcCmd::CorpusCheck:
-            json = client.checkCorpus(task.message, error);
-            break;
         case GrpcCmd::CorpusStatus:
             json = client.corpusStatus(error);
+            break;
+        case GrpcCmd::CorpusDocuments:
+            json = client.corpusDocuments(task.message, task.docset, error);
             break;
         default:
             error = "unroutable command";
@@ -150,8 +174,13 @@ struct GrpcClientHandler::Impl
         client.refreshCorpus(task.message,
                              [this, &task, &sawFinal](const std::string& json)
                              {
-                                 if (json.find("\"final\":true") != std::string::npos)
+                                 // The serializer puts a space after the colon ("final": true),
+                                 // so a pattern without one never matches and every completed
+                                 // crawl reported itself as a stream that died.
+                                 if (json.find("\"final\"") != std::string::npos
+                                     && json.find("true", json.find("\"final\"")) != std::string::npos)
                                      sawFinal = true;
+                                 LOG_DEBUG("tech-doc progress: {}", json.substr(0, 160));
                                  report(task.cmd, task.ticket, json);
                              },
                              error);

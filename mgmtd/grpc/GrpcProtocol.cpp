@@ -8,10 +8,10 @@ const char* grpcCmdToStr(GrpcCmd cmd) noexcept
     switch (cmd)
     {
     case GrpcCmd::Chat:          return "Chat";
-    case GrpcCmd::CorpusCheck:   return "CorpusCheck";
     case GrpcCmd::CorpusStatus:  return "CorpusStatus";
     case GrpcCmd::CorpusRefresh: return "CorpusRefresh";
     case GrpcCmd::CorpusCancel:  return "CorpusCancel";
+    case GrpcCmd::CorpusDocuments: return "CorpusDocuments";
     case GrpcCmd::Unknown:       break;
     }
     return "Unknown";

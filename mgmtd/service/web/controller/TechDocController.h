@@ -29,11 +29,7 @@ public:
     // GET  /api/techdoc/status            → 202 {ticket, status:"pending"}
     void status(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 
-    // POST /api/techdoc/check {scope}     → 202 {ticket, status:"pending"}
-    void check(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
-
     // GET  /api/techdoc/result?ticket=<n> → {status:"pending"} until pretzel-ai answers.
-    // Shared by status and check: both resolve to one JSON document under a ticket.
     void result(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 
     // POST /api/techdoc/refresh {scope}   → 202 {started:true}, or 409 when one is already running
@@ -44,6 +40,9 @@ public:
 
     // POST /api/techdoc/cancel            → 202; stops the crawl on the appliance, not just here
     void cancel(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // GET  /api/techdoc/documents?product=&docset=  → 202 {ticket}; the corpus browser's list
+    void documents(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 };
 
 }

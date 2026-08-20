@@ -66,19 +66,20 @@ void TechDocController::status(MgmtdServiceManager& sm, const pz::http::HttpRequ
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 
-void TechDocController::check(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+void TechDocController::documents(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
+                                  pz::http::HttpResponse& resp)
 {
-    bool bad = false;
-    const std::string scope = scopeOf(req, bad);
-    if (bad)
-        return fill(resp, 400, R"({"error":"invalid scope"})");
+    const std::string product = queryParam(req.target, "product");
+    const std::string docset = queryParam(req.target, "docset");
+    if (!validScope(product))
+        return fill(resp, 400, R"({"error":"invalid product"})");
+    // The docset is a path segment like the product, and reaches the same SQL filter.
+    if (!validScope(docset))
+        return fill(resp, 400, R"({"error":"invalid docset"})");
 
     const std::uint32_t ticket = sm.nextChatTicket();
-    sm.txRouter().handleGrpcMessage(GrpcMessage::corpus(GrpcCmd::CorpusCheck, ticket, scope));
-
-    LOG_INFO("tech-doc check delegated to pretzel-ai (ticket={}, scope={})", ticket,
-             scope.empty() ? "all" : scope);
-
+    sm.txRouter().handleGrpcMessage(
+        GrpcMessage::corpus(GrpcCmd::CorpusDocuments, ticket, product, docset));
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 
@@ -136,6 +137,7 @@ void TechDocController::progress(MgmtdServiceManager& sm, const pz::http::HttpRe
 {
     const std::string& latest = sm.corpusProgress();
     const bool running = sm.corpusRefreshing();
+    LOG_DEBUG("tech-doc progress poll: running={} slot={}b", running, latest.size());
 
     // No refresh has run in this process. Distinct from "running with nothing to report": the
     // card renders its resting state for one and a progress bar for the other.

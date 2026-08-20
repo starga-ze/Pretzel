@@ -15,8 +15,8 @@ WebGrpcEventType webGrpcEventFor(GrpcCmd cmd) noexcept
     switch (cmd)
     {
     case GrpcCmd::Chat:          return WebGrpcEventType::ChatResponse;
-    case GrpcCmd::CorpusCheck:   return WebGrpcEventType::CorpusCheckResponse;
     case GrpcCmd::CorpusStatus:  return WebGrpcEventType::CorpusStatusResponse;
+    case GrpcCmd::CorpusDocuments: return WebGrpcEventType::CorpusDocumentList;
     case GrpcCmd::CorpusRefresh: return WebGrpcEventType::CorpusRefreshProgress;
     case GrpcCmd::Unknown:       break;
     }
@@ -47,11 +47,27 @@ void WebGrpcEvent::dispatch(MgmtdServiceManager& serviceManager)
 {
     switch (m_type)
     {
-    // Unary answers resolve the ticket the browser is polling. Chat, check and status share the
-    // one ticket store: all three are "one JSON document, collected once by whoever asked".
+    // A chat turn reports twice on one ticket: the answer as it is being written, then the turn
+    // document. A partial must never resolve the ticket — a poll that collected one would end the
+    // turn on a fragment, and the real answer would arrive with nobody waiting for it. The
+    // transport marks them rather than this handler guessing from shape: the payload contains a
+    // model's own words, and any field name is something it could have written.
     case WebGrpcEventType::ChatResponse:
-    case WebGrpcEventType::CorpusCheckResponse:
+    {
+        const nlohmann::json body = nlohmann::json::parse(m_json, nullptr, false);
+        if (!body.is_discarded() && body.value("partial", false))
+        {
+            serviceManager.appendChatPartial(m_ticket, body.value("text", std::string()));
+            return;
+        }
+        serviceManager.setChatResult(m_ticket, std::move(m_json));
+        return;
+    }
+
+    // Unary answers resolve the ticket the browser is polling. These share the chat ticket store:
+    // both are "one JSON document, collected once by whoever asked".
     case WebGrpcEventType::CorpusStatusResponse:
+    case WebGrpcEventType::CorpusDocumentList:
         serviceManager.setChatResult(m_ticket, std::move(m_json));
         return;
 
@@ -69,6 +85,7 @@ void WebGrpcEvent::dispatch(MgmtdServiceManager& serviceManager)
         {
             LOG_WARN("unparseable refresh progress from pretzel-ai; ending the run");
         }
+        LOG_DEBUG("tech-doc progress event (final={}): {}", finished, m_json.substr(0, 120));
         serviceManager.setCorpusProgress(std::move(m_json), finished);
         return;
     }

@@ -226,7 +226,26 @@ std::optional<std::string> MgmtdServiceManager::takeChatResult(std::uint32_t tic
     }
     std::string out = std::move(it->second);
     m_chatResults.erase(it);
+    // The turn is over; whatever was accumulating for it is now dead weight.
+    m_chatPartials.erase(ticket);
     return out;
+}
+
+void MgmtdServiceManager::appendChatPartial(std::uint32_t ticket, const std::string& delta)
+{
+    // Bounded like the result map, and for the same reason — a browser that closed mid-answer
+    // leaves a partial nobody will ever poll for.
+    if (m_chatPartials.size() > 256)
+    {
+        m_chatPartials.clear();
+    }
+    m_chatPartials[ticket] += delta;
+}
+
+std::string MgmtdServiceManager::chatPartial(std::uint32_t ticket) const
+{
+    const auto it = m_chatPartials.find(ticket);
+    return it == m_chatPartials.end() ? std::string() : it->second;
 }
 
 void MgmtdServiceManager::setRetrievalResult(std::uint32_t ticket, std::string resultJson)

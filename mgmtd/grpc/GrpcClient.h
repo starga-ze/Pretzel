@@ -1,8 +1,11 @@
 #pragma once
 
+#include "grpc/GrpcMessage.h"
+
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace pz::mgmtd
 {
@@ -36,9 +39,16 @@ public:
     };
 
     // Streams one chat turn. on_delta is called once per non-empty chunk, in order.
+    //
+    // `history` is the conversation before this turn, oldest first and excluding `message`;
+    // `sessionId` is the thread it belongs to, which pretzel-ai forwards to Prisma AIRS as the
+    // scan's tr_id. Both may be empty — that is the single-turn, one-session-per-scan behaviour
+    // this call had before they existed.
     Outcome chat(const std::string& model,
                  const std::string& message,
                  const std::string& systemPrompt,
+                 const std::vector<GrpcMessage::Turn>& history,
+                 const std::string& sessionId,
                  const std::function<void(const std::string&)>& on_delta);
 
     // --- The tech-doc knowledge base ---------------------------------------------------------
@@ -48,11 +58,13 @@ public:
     // the operator decided, so a field added on the pretzel-ai side reaches the console without a
     // change here. It is the same reason ChatController serves result_json verbatim.
 
-    // What a refresh would do. Seconds — one sitemap fetch, no page bodies.
-    std::string checkCorpus(const std::string& scope, std::string& error);
-
     // What the store holds right now, for the card's resting state.
     std::string corpusStatus(std::string& error);
+
+    // Titles and URLs under one product/book. Bodies are not returned: they run to megabytes and
+    // nothing in the browser reads them.
+    std::string corpusDocuments(const std::string& product, const std::string& docset,
+                                std::string& error);
 
     // Runs the crawl, calling on_progress once per progress message. Blocks for as long as the
     // crawl takes, so callers run it on a worker thread. Returning early from on_progress is not

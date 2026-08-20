@@ -4001,43 +4001,19 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 }
 
 /* ── Tech Documentation card (techdoc.js) ──────────────────────────────────────
-   Sits under Running Configuration on the Operation tab. The pending-change list and the
-   progress block are the two states that carry real information; everything else reuses the
-   card/toolbar vocabulary already established above. */
+   Two numbers and two buttons. The detail lives at /tech-doc.html; this only has to say whether
+   there is a corpus and when it was collected. */
 .td-card { margin-top: 14px; }
 
-/* Counts first, list second: the counts are the complete answer, the list is a sample of it. */
-.td-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
-.td-chip {
-  font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
-}
-.td-chip.td-added   { color: var(--green);  border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
-.td-chip.td-changed { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 40%, var(--border)); }
-.td-chip.td-removed { color: var(--red);    border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+/* Shown beside the date only when the last run did not end "ok" — a green tick next to a
+   timestamp is decoration, an interrupted crawl is information. */
+.td-state { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
+.td-state-running   { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.td-state-failed    { color: var(--red);    background: color-mix(in srgb, var(--red) 12%, transparent); }
+.td-state-cancelled { color: var(--text-muted); background: var(--surface-2); }
 
-.td-list {
-  max-height: 260px; overflow-y: auto;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);
-}
-.td-row {
-  display: grid; grid-template-columns: 74px 1fr auto; align-items: center; gap: 10px;
-  padding: 6px 10px; font-size: 12px; border-bottom: 1px solid var(--border);
-}
-.td-row:last-child { border-bottom: none; }
-.td-kind { font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
-.td-kind.td-added   { color: var(--green); }
-.td-kind.td-changed { color: var(--orange); }
-.td-kind.td-removed { color: var(--red); }
-/* The URL is the one field that can be arbitrarily long; it truncates rather than wrapping so
-   every row stays one line and the list keeps a scannable rhythm. */
-.td-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
-.td-when { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-
-.td-clean { color: var(--green); }
-
-/* The window-holding warning. Deliberately loud: the refresh belongs to this browser session and
-   closing the page stops it, which the operator has to know before they start, not after. */
+/* The window-holding warning. Deliberately loud: the crawl belongs to this browser session and
+   closing the page stops it, which the operator has to know before starting, not after. */
 .td-warning {
   margin-top: 12px; padding: 8px 11px; font-size: 12px; font-weight: 600;
   color: var(--orange); background: color-mix(in srgb, var(--orange) 8%, transparent);
@@ -4047,82 +4023,69 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .td-progress { margin-top: 14px; }
 .td-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--border); }
 .td-bar-fill { height: 100%; background: var(--accent); transition: width .3s ease; }
-.td-prog-meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
-/* Skipped counts sit beside fetched on purpose: together they are the evidence that a refresh
-   reporting a handful of changes still looked at everything in scope. */
-.td-counts { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
-.td-counts b { color: var(--text); font-variant-numeric: tabular-nums; }
-.td-counts .td-fail b { color: var(--red); }
-
-/* Change grouping. The counts per product/docset are the answer an operator acts on; the URL list
-   is evidence, folded away behind a disclosure so it does not dominate the card. */
-.td-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 14px; margin: 10px 0; }
-.td-grp { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
-.td-grp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.td-grp-n { font-weight: 600; font-variant-numeric: tabular-nums; }
-.td-detail { margin-top: 6px; }
-.td-detail > summary { cursor: pointer; font-size: 12px; color: var(--text-muted); padding: 4px 0; }
-.td-detail > summary:hover { color: var(--text); }
-
-/* ── Tech Documentation viewer (techdoc.js, shared modal) ──────────────────────
-   The corpus browsed rather than counted: product → docset, with the deduplication ratio beside
-   each product because that number varies enormously between them and is the one that explains
-   why 21,770 documents are 13,835 bodies. */
-.tdv-top { display: flex; flex-wrap: wrap; gap: 10px 26px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-.tdv-top > div { display: flex; flex-direction: column; gap: 2px; }
-.tdv-k { font-size: 11px; color: var(--text-muted); }
-.tdv-v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.tdv-note { margin: 10px 0 6px; font-size: 11px; color: var(--text-muted); }
-
-.tdv-tree { max-height: 52vh; overflow-y: auto; }
-.tdv-prod { border-bottom: 1px solid var(--border); }
-.tdv-prod > summary {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
-  cursor: pointer; padding: 7px 2px; font-size: 13px;
-}
-.tdv-prod > summary::-webkit-details-marker { display: none; }
-.tdv-prod > summary:hover { background: var(--surface-2); }
-.tdv-name { font-weight: 600; }
-.tdv-name::before { content: '▸ '; color: var(--text-muted); }
-.tdv-prod[open] .tdv-name::before { content: '▾ '; }
-.tdv-sum { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-
-/* One grid for the header and every row, so the columns line up without a table. */
-.tdv-head, .tdv-row {
-  display: grid; grid-template-columns: 1fr 78px 78px 72px; gap: 8px;
-  padding: 3px 2px 3px 18px; font-size: 12px; font-variant-numeric: tabular-nums;
-}
-.tdv-head { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
-.tdv-head > span:not(:first-child), .tdv-row > span:not(:first-child) { text-align: right; }
-.tdv-doc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tdv-dim { color: var(--text-muted); }
-.tdv-fail { color: var(--red); }
-
-/* Retry is not a change: the page did not move, we failed to read it. */
-.td-chip.td-retry { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 40%, var(--border)); }
-
-/* Change list inside the Check window: title first, URL under it. The title is what an operator
-   recognises; the URL is what they verify against, so both are shown rather than one or the other. */
-.tdc-list { max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
-.tdc-row {
-  display: grid; grid-template-columns: 74px 1fr auto; align-items: center; gap: 12px;
-  padding: 7px 10px; border-bottom: 1px solid var(--border);
-}
-.tdc-row:last-child { border-bottom: none; }
-.tdc-kind { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-.tdc-doc { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.tdc-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tdc-url { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tdc-when { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-
-/* The crawl-state badge on the card. Only rendered when the state is not "ok" — a green tick
-   beside a timestamp is decoration, an interrupted crawl is information. */
-.td-state { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
-.td-state-running   { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.td-state-failed    { color: var(--red);    background: color-mix(in srgb, var(--red) 12%, transparent); }
-.td-state-cancelled { color: var(--text-muted); background: var(--surface-2); }
-
-.td-cancel { color: var(--red); }
 /* A bar that is still moving should look like it, so a stalled crawl is visibly stalled. */
 .td-bar-live { background-image: linear-gradient(90deg, transparent 0 40%, rgba(255,255,255,.35) 50%, transparent 60% 100%); background-size: 200% 100%; animation: tdSweep 1.4s linear infinite; }
 @keyframes tdSweep { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.td-prog-meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+/* What the HEAD pass found. Shown because the difference between "21,916 listed" and "17,300 to
+   fetch" is otherwise an unexplained gap between the sitemap and the result. */
+.td-survey { margin-top: 8px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.td-counts { display: flex; gap: 16px; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
+.td-counts b { color: var(--text); font-variant-numeric: tabular-nums; }
+.td-cancel { color: var(--red); }
+
+/* ── The corpus browser (tech-doc.js, /tech-doc.html) ──────────────────────────
+   Product → book → documents, each document linking back to the page it was collected from.
+   The corpus is a copy; the original is what you check it against. */
+.tdp-stats { display: flex; flex-wrap: wrap; gap: 12px 30px; padding: 4px 0 16px; border-bottom: 1px solid var(--border); }
+.tdp-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.tdp-k { font-size: 11px; color: var(--text-muted); }
+.tdp-v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.tdp-search {
+  width: 100%; margin: 14px 0 6px; padding: 8px 11px; font-size: 13px; font-family: inherit;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg, var(--surface)); color: var(--text);
+}
+.tdp-search:focus { outline: none; border-color: var(--accent); }
+
+.tdp-prod { border-bottom: 1px solid var(--border); }
+.tdp-prod > summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  cursor: pointer; padding: 9px 2px; font-size: 13px; list-style: none;
+}
+.tdp-prod > summary::-webkit-details-marker { display: none; }
+.tdp-prod > summary:hover { background: var(--surface-2); }
+.tdp-name { font-weight: 600; }
+.tdp-name::before { content: '▸ '; color: var(--text-muted); }
+.tdp-prod[open] .tdp-name::before { content: '▾ '; }
+.tdp-sum { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.tdp-books { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 10px 18px; }
+.tdp-book {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; cursor: pointer;
+  font-family: inherit; font-size: 12px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
+}
+.tdp-book:hover { border-color: var(--accent); color: var(--accent); }
+.tdp-book-n { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+.tdp-docs { margin: 0 0 14px 18px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.tdp-doc-head {
+  display: flex; justify-content: space-between; padding: 7px 11px; font-size: 11px;
+  color: var(--text-muted); background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.tdp-doc-cols { display: flex; gap: 22px; }
+.tdp-doc {
+  display: grid; grid-template-columns: 1fr 80px 92px; gap: 12px; align-items: center;
+  padding: 7px 11px; border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.tdp-doc:last-of-type { border-bottom: none; }
+.tdp-doc-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tdp-doc-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tdp-doc-url {
+  font-size: 11px; color: var(--text-muted); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tdp-doc-url:hover { color: var(--accent); text-decoration: underline; }
+.tdp-doc-n, .tdp-doc-when { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tdp-more { display: block; width: 100%; border: none; border-top: 1px solid var(--border); border-radius: 0; padding: 8px; }

@@ -212,6 +212,9 @@
     'collection':      { title: 'API Collection' },
     'log-viewer':      { title: 'System Log' },
     'laboratory':      { title: 'Laboratory' },
+    // Reached from the Tech Documentation card, not from the sidebar: it is a view of one
+    // appliance dataset rather than a place an operator navigates to on their own.
+    'tech-doc':        { title: 'Tech Documentation' },
   };
 
   // The flyout is rebuilt from the toggle's data-subitems each time it opens, so marking the
@@ -784,6 +787,13 @@
       .catch(() => { if (nameEl) nameEl.textContent = '—'; });
 
     document.getElementById('navLogout')?.addEventListener('click', async () => {
+      // Cleared before the request, not after: the redirect below may win the race with a slow
+      // POST, and a logout that ends the server session while leaving the person's chat threads
+      // in this browser is the failure worth avoiding. Clearing twice would be harmless; not
+      // clearing at all is what leaves one user's conversations for the next one to read.
+      for (const key of window.NMS._userStoreKeys || []) {
+        try { localStorage.removeItem(key); } catch (_) { /* private mode — nothing stored anyway */ }
+      }
       try {
         await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
       } catch (_) { /* logout is best-effort; redirect regardless */ }
@@ -853,6 +863,16 @@
   // Register how the current page re-renders itself when the topbar Refresh is clicked.
   // Unregistered pages fall back to a full reload.
   window.NMS.onRefresh = function (fn) { window.NMS._onRefresh = fn; };
+
+  // localStorage keys that belong to the signed-in person and must not outlive their session.
+  // Logging out ends a session on the server; anything a page kept in this browser is still here
+  // afterwards, and the next person to sign in on this machine sees it. Registered by name rather
+  // than cleared wholesale so a page's genuinely device-level preferences (theme, rail width) are
+  // not thrown away with the data.
+  window.NMS._userStoreKeys = [];
+  window.NMS.clearOnLogout = function (key) {
+    if (key && !window.NMS._userStoreKeys.includes(key)) window.NMS._userStoreKeys.push(key);
+  };
 
   // Only one custom-select dropdown is open at a time; opening a second closes the first.
   let csActiveClose = null;
