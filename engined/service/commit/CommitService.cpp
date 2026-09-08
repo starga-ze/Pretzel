@@ -1,6 +1,7 @@
 #include "service/commit/CommitService.h"
 
 #include "service/EnginedServiceManager.h"
+#include "service/apicredential/ApiCredentialService.h"
 #include "service/commit/CommitAction.h"
 #include "service/commit/CommitEvent.h"
 
@@ -275,6 +276,16 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager, const Co
         }
 
         pz::config::Config::invalidateConfigCache();
+
+        // State that has nothing left to be about, dropped now that the new document is live.
+        // AFTER invalidateConfigCache and not before: the prune reads the committed configuration
+        // to decide what survives, and the cached copy above this line is the one it replaced.
+        //
+        // Here rather than in each editor's own path because engined is the sole database writer
+        // and this is where a version becomes real. A console that deleted the row and the key in
+        // two steps would leave the second one undone whenever a publish half-failed.
+        serviceManager.apiCredentialService().pruneAiCredentials();
+
         serviceManager.bootstrapService().scheduleServiceReload();
         break;
     }

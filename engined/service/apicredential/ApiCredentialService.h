@@ -34,6 +34,11 @@ public:
 
     void handleEvent(EnginedServiceManager& serviceManager, const ApiCredentialEvent& event);
 
+    // Drops sealed AI keys the committed running_config no longer references. Called by
+    // CommitService once a new version is live — see the definition for why it lives here and why
+    // it runs on every commit rather than only on the ones that touched pretzel-ai.
+    void pruneAiCredentials();
+
 private:
     void storeState(const std::string& payloadJson);
 

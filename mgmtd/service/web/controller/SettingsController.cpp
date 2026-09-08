@@ -412,20 +412,33 @@ bool validateAiProviders(const json& values, std::string& error)
     return true;
 }
 
-// pretzel-ai.guardrail — one entry per engine pretzel-ai runs, and how its turns are inspected.
-//   { list: [{ service, guardrail, checkpoints{...}, airs{...}, gateway{...}, shape{...} }] }
+// pretzel-ai.route — one entry per engine pretzel-ai runs: how its turns reach a model, and who
+// inspects them. Renamed from pretzel-ai.guardrail on 2026-09-07; Config::seedStore migrates the
+// stored key, so nothing here reads the old spelling.
+//   { list: [{ service, transport, guardrail, checkpoints{...}, airs{...}, gateway{...}, shape{...} }] }
 //
 // Two engines, each configurable once. Chat calls a model and returns; Agent loops through tool
 // calls. They are separate entries because the question "what should be inspected here" has
 // different answers — Agent has two checkpoints Chat does not.
 //
-// No api_key anywhere in here: both subscriptions are sealed in ai_guardrail_credential_state and
+// No api_key anywhere in here: both subscriptions are sealed in ai_route_credential_state and
 // a commit carrying one is refused by rejectSecrets, same as a vendor's.
 //
 // No endpoint either, and that is not an omission the operator can correct: each is a fact about
 // the service being called, compiled into pretzel-ai, which has to speak its dialect anyway.
 constexpr const char* kAiServices[] = {"chat", "agent"};
-constexpr const char* kGuardrailKinds[] = {"none", "api_application", "ai_gateway"};
+
+// TWO axes, and two fields since 2026-09-07. Which transport carries the completion and who
+// inspects the turn were one string — "ai_gateway" named a route and an inspector at once — and
+// that single field could say neither "the gateway for its routing with the scanning held on the
+// appliance" nor "the gateway purely for routing, nothing inspecting". Both are deployments
+// customers ask for. The two now multiply out with no unreachable pair between them.
+//
+// One word for one concept: pretzel-ai's config, its builders and its logs all say `transport`,
+// and a console that called the same axis something else would make the two impossible to read
+// against each other.
+constexpr const char* kTransports[] = {"direct", "ai_gateway"};
+constexpr const char* kGuardrailKinds[] = {"none", "api_application"};
 
 bool inList(const std::string& v, const char* const* list, std::size_t n)
 {
@@ -452,17 +465,28 @@ bool validateServiceEntry(const json& e, const std::string& at, std::string& err
         return false;
     }
 
-    // The one field with a fixed vocabulary that decides whether anything inspects at all. Checked
-    // here because a typo that fell through would reach pretzel-ai as an unbuildable configuration
-    // and refuse the whole push — which reports as "the assistant stopped working" rather than as
-    // "guardrail is misspelt".
+    // The two fields with a fixed vocabulary, and the one pair of them that is not a deployment.
+    // Checked here because a value that fell through would reach pretzel-ai as an unbuildable
+    // configuration and refuse the whole push — which reports as "the assistant stopped working"
+    // rather than as "guardrail is misspelt".
     const std::string guardrail = e.value("guardrail", std::string());
     if (!inList(guardrail, kGuardrailKinds, std::size(kGuardrailKinds)))
     {
-        error = at + ".guardrail must be one of none, api_application, ai_gateway — got '"
+        error = at + ".guardrail must be one of none, api_application — got '"
               + guardrail + "'";
         return false;
     }
+
+    // Required, with no default read in for it. An absent transport is a row nobody has answered
+    // the question for, and answering it here — "direct", say — would be mgmtd deciding which path
+    // a customer's turns take.
+    const std::string transport = e.value("transport", std::string());
+    if (!inList(transport, kTransports, std::size(kTransports)))
+    {
+        error = at + ".transport must be one of direct, ai_gateway — got '" + transport + "'";
+        return false;
+    }
+
 
     if (const auto cp = e.find("checkpoints"); cp != e.end())
     {
@@ -536,13 +560,13 @@ bool validateServiceEntry(const json& e, const std::string& at, std::string& err
 
 bool validateAiServices(const json& values, std::string& error)
 {
-    if (!rejectSecrets(values, "guardrail", error))
+    if (!rejectSecrets(values, "route", error))
         return false;
     if (!values.contains("list"))
         return true;
     if (!values["list"].is_array())
     {
-        error = "guardrail.list must be an array";
+        error = "route.list must be an array";
         return false;
     }
 
@@ -550,7 +574,7 @@ bool validateAiServices(const json& values, std::string& error)
     std::size_t idx = 0;
     for (const auto& e : values["list"])
     {
-        const std::string at = "guardrail.list[" + std::to_string(idx++) + "]";
+        const std::string at = "route.list[" + std::to_string(idx++) + "]";
         if (!validateServiceEntry(e, at, error))
             return false;
         // One entry per engine. A second would leave which of the two is deployed to whichever the
@@ -727,7 +751,7 @@ bool validateCommitShape(const std::string& scopeName, const std::string& domain
     if (scopeName == pz::config::scope::kPretzelAi && domain == "providers")
         return validateAiProviders(values, error);
 
-    if (scopeName == pz::config::scope::kPretzelAi && domain == "guardrail")
+    if (scopeName == pz::config::scope::kPretzelAi && domain == "route")
         return validateAiServices(values, error);
 
     if (scopeName == pz::config::scope::kPretzel && domain == "user")

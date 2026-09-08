@@ -92,7 +92,7 @@
   // describes the estate it manages — two words a letter apart doing entirely different jobs.
   //
   //   AI Service     AI Provider       which vendors serve a turn (the pretzel-ai deployment)
-  //                  AI Guardrail      who inspects a turn, and at which of its four points
+  //                  AI Route          how a turn reaches a model, and who inspects it on the way
   //   Infra Service  Site Management   where things are, and what is there (a Site is one customer)
   //                  API Profile       the reusable definitions a connector references
   //                  API Connector     binding a device + credential + endpoints on a schedule
@@ -105,13 +105,13 @@
   //
   // AI comes first because it is the half that configures this appliance's own outbound behaviour:
   // the infra groups describe the estate being managed, these two decide who the appliance itself
-  // talks to on the operator's behalf, and who looks at what it says. System comes last because it
+  // talks to on the operator's behalf, how it gets there and who looks at what it says. System comes last because it
   // is the one an operator visits least.
   const SETTINGS_GROUPS = [
     { id: 'ai-provider', label: 'AI Provider', section: 'ai', tabs: [
         { id: 'ai-provider', label: 'AI Provider' } ] },
-    { id: 'ai-guardrail', label: 'AI Guardrail', section: 'ai', tabs: [
-        { id: 'ai-guardrail', label: 'AI Guardrail' } ] },
+    { id: 'ai-route', label: 'AI Route', section: 'ai', tabs: [
+        { id: 'ai-route', label: 'AI Route' } ] },
     { id: 'site-management', label: 'Site Management', section: 'infra', tabs: [
         { id: 'sites',        label: 'Sites'        },
         { id: 'devices',      label: 'Devices'      } ] },

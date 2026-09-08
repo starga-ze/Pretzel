@@ -65,11 +65,11 @@ std::map<std::string, std::string> unsealedKeys()
         return out;
     }
 
-    // Two stores, one map. The vendors are keyed by their own slug and the guardrail's row is
-    // 'airs', so they cannot collide — and the callers below pick the one they mean by name rather
+    // Two stores, one map. The vendors are keyed by their own slug and the route's rows are
+    // 'airs' and 'portkey', so they cannot collide — and the callers below pick the one they mean by name rather
     // than by knowing which table it came from.
     unsealInto(out, "ai_provider_credential_state");
-    unsealInto(out, "ai_guardrail_credential_state");
+    unsealInto(out, "ai_route_credential_state");
 
     return out;
 }
@@ -102,8 +102,14 @@ json serviceDoc(const json& entry)
     const json gw = entry.value("gateway", json::object());
     const json shape = entry.value("shape", json::object());
 
+    // The two axes, forwarded as the row states them. Not defaulted here and not corrected here:
+    // pretzel-ai refuses a value on either axis that it does not recognise, and that refusal is the
+    // useful outcome. A default invented on this side would be mgmtd deciding what an unreadable
+    // row meant — and on the guardrail axis the plausible default is "none", which would turn a
+    // service configured to be inspected into one that serves turns uninspected.
     return {{"service", entry.value("service", std::string())},
-            {"guardrail", entry.value("guardrail", std::string("none"))},
+            {"transport", entry.value("transport", std::string())},
+            {"guardrail", entry.value("guardrail", std::string())},
             // Absent means the console did not store the point, and it does not store one this
             // service and guardrail cannot reach — so absent is `false` on the wire, not `true`.
             // Defaulting the other way put "tool_call: true" in a chat push, which pretzel-ai then
@@ -116,7 +122,6 @@ json serviceDoc(const json& entry)
             {"airs_profile_name", airs.value("profile_name", std::string())},
             {"airs_timeout_sec", airs.value("timeout_sec", 30.0)},
             {"airs_fail_open", airs.value("fail_open", false)},
-            {"gateway_require_verdict", gw.value("require_verdict", false)},
             {"gateway_timeout_sec", gw.value("timeout_sec", 45.0)},
             {"system_prompt", shape.value("system_prompt", std::string())},
             {"max_tokens", shape.value("max_tokens", 4096)}};
@@ -139,8 +144,23 @@ std::string describeService(const json& svc)
         if (cp.value(field, false))
             points += (points.empty() ? "" : "+") + std::string(name);
     }
-    return svc.value("service", std::string("?")) + "=" + svc.value("guardrail", std::string("?"))
-           + "(" + (points.empty() ? "none" : points) + ")";
+    // transport/guardrail, in that order and separated, because they are two answers now. A line
+    // naming only the inspector could no longer say which path the turns take.
+    const std::string transport = svc.value("transport", std::string());
+    std::string line = svc.value("service", std::string("?")) + "="
+                     + (transport.empty() ? std::string("unset") : transport) + "/"
+                     + svc.value("guardrail", std::string("?"))
+                     + "(" + (points.empty() ? "none" : points) + ")";
+
+    // The other thing an api_application service refuses to build without. Named only where it is
+    // read, so a deployment that never scans here is not reporting a profile nobody uses.
+    if (svc.value("guardrail", std::string()) == "api_application")
+    {
+        const std::string profile = svc.value("airs_profile_name", std::string());
+        line += " profile=" + (profile.empty() ? std::string("UNSET") : profile);
+    }
+
+    return line;
 }
 
 // The body of both entry points. `override` is empty for the ordinary push; when it names a
@@ -177,16 +197,16 @@ void push(MgmtdServiceManager& sm, const char* reason, const std::string* overri
     if (const auto it = keys.find(kGatewayCredentialId); it != keys.end())
         doc["gateway_api_key"] = it->second;
 
-    // The running-config domain is `guardrail` and the proto field is `services`, and the
-    // difference is deliberate. A domain is named for the page an operator opens — they come here
-    // to configure the guardrail — while the field is named for what it carries: one entry per
+    // The running-config domain is `route` and the proto field is `services`, and the difference
+    // is deliberate. A domain is named for the page an operator opens — they come here to
+    // configure a service's route — while the field is named for what it carries: one entry per
     // engine. Naming both the same would have made one of the two read wrong.
     //
     // In a fixed order, not the order the list happens to be stored in: the push is compared
     // against the last one by eye in a log, and a document whose entries move around is one nobody
     // can diff. An entry naming neither service is dropped rather than forwarded — pretzel-ai has
     // no engine to give it to.
-    const json& services = pz::config::Config::section(pz::config::scope::kPretzelAi, "guardrail");
+    const json& services = pz::config::Config::section(pz::config::scope::kPretzelAi, "route");
     for (const auto* want : kServices)
     {
         for (const auto& entry : services.value("list", json::array()))

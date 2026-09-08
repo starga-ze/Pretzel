@@ -292,9 +292,14 @@ html, body {
   background: none;
   border: none;
   /* Inherit the family only — `font: inherit` here reset font-size back to the body size, making
-     this group toggle (Configuration) larger than the sibling .nav-item links. Keep it in step. */
+     this group toggle (Configuration) larger than the sibling .nav-item links. Keep it in step.
+     line-height has to come back by hand for the same reason: dropping the `font` shorthand left
+     the button on the UA's `normal` (~1.2) while every sibling <a> inherits body's 1.5, so this
+     one row sat ~3px shorter than the rest and the Configuration ▸ System Operation step read as
+     a break in the rhythm. */
   font-family: inherit;
   font-size: 12px;
+  line-height: inherit;
   font-weight: 500;
   text-align: left;
 }
@@ -4204,20 +4209,33 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .btn-sm.danger { color: var(--ink-red); }
 .btn-sm.danger:hover { background: var(--tint-red); }
 
-/* ── AI Guardrail (www/js/ai-guardrail.js) ─────────────────────────────────────
+/* ── AI Route (www/js/ai-route.js) ─────────────────────────────────────────────
    A Configuration table like the others: rows, an Add button, a slideover editor. The rows are the
    two engines pretzel-ai runs, and each says who inspects its turns and where. */
-.cfg-table-aiguard { table-layout: fixed; width: 100%; }
-.cfg-table-aiguard th { font-size: 9.5px; padding: 8px 12px; }
-.cfg-table-aiguard td { font-size: 11px; padding: 7px 12px; vertical-align: middle; }
-.cfg-table-aiguard .muted { color: var(--text-muted); opacity: .6; }
-.cfg-table-aiguard .col-name   { width: 20%; }
-.cfg-table-aiguard .col-guard  { width: 26%; }
-.cfg-table-aiguard .col-points { width: auto; }
-.cfg-table-aiguard .col-key    { width: 16%; }
-.cfg-table-aiguard .col-act    { width: 8%; text-align: right; white-space: nowrap; }
-.cfg-table-aiguard td.col-act .icon-btn { width: 26px; height: 26px; margin-left: 6px; }
-.cfg-table-aiguard td.col-act .icon-btn svg { width: 13px; height: 13px; }
+.cfg-table-airoute { table-layout: fixed; width: 100%; }
+.cfg-table-airoute th { font-size: 9.5px; padding: 8px 12px; }
+.cfg-table-airoute td { font-size: 11px; padding: 7px 12px; vertical-align: middle; }
+.cfg-table-airoute .muted { color: var(--text-muted); opacity: .6; }
+/* Rebalanced when the one Guardrail column became two — Transport and Inspection, the two axes.
+   The table is `table-layout: fixed`, so these are shares and not minimums. Both new columns carry
+   a short name and nothing else now, which is what lets them be narrow: while they each carried an
+   endpoint URL underneath, an unbroken 50-character string in a 19% column had nowhere to wrap and
+   painted straight over the cell beside it.
+   Checkpoints takes what is left — it holds four pills and is the part a scan report is read
+   against, so it is the column that must not be the one to run out of room. */
+.cfg-table-airoute .col-name      { width: 14%; }
+.cfg-table-airoute .col-transport { width: 13%; }
+.cfg-table-airoute .col-guard     { width: 16%; }
+.cfg-table-airoute .col-points    { width: auto; }
+.cfg-table-airoute .col-key       { width: 17%; }
+.cfg-table-airoute .col-act       { width: 7%; text-align: right; white-space: nowrap; }
+
+/* A fixed-layout table gives a cell no more room than its share, and nothing in this table is
+   allowed to paint outside it. Belt to the braces above: a long profile name or a label this file
+   has not anticipated wraps rather than overlapping its neighbour. */
+.cfg-table-airoute td { overflow-wrap: anywhere; }
+.cfg-table-airoute td.col-act .icon-btn { width: 26px; height: 26px; margin-left: 6px; }
+.cfg-table-airoute td.col-act .icon-btn svg { width: 13px; height: 13px; }
 
 /* A row's checkpoints, as four pills in the order a turn passes through them. Pills rather than
    "2 of 4": which two is the fact a scan report has to be read against, and a count does not say. */
@@ -4243,9 +4261,22 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
   margin: -4px 0 13px; padding: 9px 11px; border-radius: 8px;
   font-size: 11.5px; line-height: 1.55; color: var(--ink-orange); background: var(--tint-orange);
 }
+/* A notice that sits UNDER a group rather than above a field wants the margin the other way, and
+   its lead sentence set apart from the explanation behind it. */
+.gr-kinds + .gr-notice { margin: 10px 0 0; }
+.gr-notice b { display: block; margin-bottom: 3px; font-weight: 700; }
 
 /* Guardrail type. Cards rather than a dropdown: each option carries a consequence worth reading
    before it is chosen, and a select hides two of the three at the moment of choosing. */
+/* `.field-row` carries its rhythm as margin-BOTTOM only, so anything that is not a field-row leaves
+   the next label sitting flush against it. Two places in this editor do exactly that — the option
+   cards above Endpoint, and the Fail open block above the AIRS key — and both read as though the
+   label belonged to the block above rather than to the field below it. Stated as sibling pairs
+   rather than a blanket margin-bottom on the blocks themselves: `.gr-kinds` is the LAST thing in
+   the Inspection section, and a bottom margin there would only pad the section's own border. */
+.gr-kinds + .field-row,
+.gr-check + .field-row { margin-top: 14px; }
+
 .gr-kinds { display: flex; flex-direction: column; gap: 7px; }
 .gr-kind {
   position: relative;          /* the radio is hidden inside it and must not escape the card */
@@ -4259,6 +4290,20 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .gr-kind-t { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .gr-kind-n { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
 
+/* Two short choices side by side rather than stacked. The Transport cards carry a name and nothing
+   else, so a full-width column of them left most of the panel empty and pushed Inspection — which
+   does carry a sentence each — below the fold. */
+.gr-kinds.is-row { flex-direction: row; }
+.gr-kinds.is-row .gr-kind { flex: 1 1 0; justify-content: center; }
+
+/* One line per credential a row draws on. A row through the gateway that also scans here needs
+   two, and they can be in different states, so they stack instead of folding into one word.
+   `.gr-keyname` and not `.ai-fam`: that class prepends a "·" separator, which is right after a
+   value and wrong as the first thing in the cell. */
+.gr-keyline { display: flex; align-items: baseline; gap: 6px; line-height: 1.45; }
+.gr-keyline + .gr-keyline { margin-top: 2px; }
+.gr-keyname { color: var(--text-muted); font-size: 10px; font-weight: 400; flex: none; }
+
 /* One checkbox with its consequence spelled out beside it. The <em> is the sentence that keeps an
    operator from flipping it on the strength of the label alone. */
 .gr-check { display: flex; align-items: flex-start; gap: 9px; margin-top: 4px; cursor: pointer; }
@@ -4271,7 +4316,13 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 
 /* The four points, in the order a turn passes through them. */
 .gr-sec-note { margin: -4px 0 10px; font-size: 11.5px; color: var(--text-muted); line-height: 1.55; }
-.gr-unit { margin-left: 8px; font-size: 11.5px; color: var(--text-muted); }
+/* `.field-row input` is width:100%, so a unit written after one used to be pushed onto its own
+   line and read as a stray word under the box. The row that carries a unit is a flex line: the
+   input takes the space left over, and "seconds" sits against it. */
+.field-row.has-unit { display: flex; align-items: center; flex-wrap: wrap; }
+.field-row.has-unit > label { flex: 1 0 100%; }
+.field-row.has-unit input { flex: 1 1 auto; width: auto; min-width: 0; }
+.gr-unit { margin-left: 8px; font-size: 11.5px; color: var(--text-muted); flex: none; }
 .gr-points { display: flex; flex-direction: column; gap: 1px; }
 .gr-point {
   display: flex; align-items: flex-start; gap: 10px;

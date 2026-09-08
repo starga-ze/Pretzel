@@ -1,6 +1,10 @@
-/* ai-guardrail.js — Configuration ▸ AI Guardrail.
+/* ai-route.js — Configuration ▸ AI Route.
  *
- * One row per engine pretzel-ai runs, and how that engine's turns are inspected.
+ * One row per engine pretzel-ai runs: how its turns reach a model, and who inspects them.
+ *
+ * Named AI Route and not AI Guardrail since 2026-09-07. The page grew a second axis — the
+ * transport — and a title naming only the inspector stopped describing half of what it
+ * configures. The running_config domain and the sealed-key table were renamed with it.
  *
  * Two engines, configured apart. Chat calls a model and returns; Agent loops through tool calls.
  * They are separate rows and not one setting because the question "what should be inspected here"
@@ -23,21 +27,36 @@
  * setting an operator is being denied:
  *
  *   Chat has no tools at all, so the two tool checkpoints are not off — they do not exist.
- *   The AI gateway cannot see tools either. It builds its scan request from a completion's text
- *   `content`, and `tool_calls` is a sibling of `content` that never reaches the scanner. Measured
- *   on the appliance: the same injection blocks as a user message and passes inside a tool call.
+ *
+ * The transport does NOT narrow them. API Application builds its scan request here from the turn,
+ * so all four points are reachable whichever transport carries the completion.
  *
  * So the editor shows all four and greys out what the chosen combination cannot serve, with the
  * reason. An operator who wonders where a checkpoint went gets the answer in the place they looked.
  *
- * Guardrail type decides the completion leg too, and that is not a hidden side effect — it is what
- * the choice means. There is no gateway on the direct path to defer inspection to, so choosing the
- * gateway moves the completion onto it:
+ * TWO axes, and they are two questions. Which transport carries the completion and who inspects
+ * the turn were one picker until 2026-09-07, and "AI Gateway" sat in it as a value — a field
+ * labelled "guardrail" whose answer was a piece of infrastructure. That picker could say neither
+ * of the two shapes customers actually ask for: the gateway for its routing with the scanning held
+ * HERE, and the gateway purely for routing with nothing inspecting at all.
  *
- *   No guardrail       vendors called directly, nobody inspects
- *   API Application    vendors called directly, this appliance calls the Prisma AIRS scan API and
- *                      holds the enforcement point
- *   AI Gateway         the gateway routes the completion AND its configuration governs inspection
+ *   Transport     Direct | AI Gateway
+ *   Inspection    None | API Application
+ *
+ * They multiply out — four rows, all four meaningful — because neither constrains the other.
+ *
+ * `transport` is the word pretzel-ai's config, builders and logs all use for this axis, so it is
+ * the word here too — down to the running_config field name and the column header. A console that
+ * called it something else would make a log line and a review diff impossible to read against
+ * each other.
+ *
+ * Five of the six combinations are deployments. The sixth — direct path, delegate to the gateway —
+ * is not one: there is no gateway on the direct path whose verdict could be read, so that choice is
+ * disabled where it is offered rather than refused after the fact.
+ *
+ * Each axis carries its own key, and which one is needed follows from the axis rather than from the
+ * row: the gateway key belongs to the TRANSPORT, because that is what cannot connect without it,
+ * and the AIRS key belongs to INSPECTION. A row through the gateway that scans here needs both.
  *
  * Neither endpoint is configurable. Each is a fact about the service being called and is compiled
  * into pretzel-ai, which has to speak its dialect anyway — a console field for either only bought
@@ -47,7 +66,7 @@
  * Two stores, one Publish — the same split as AI Provider, for the same reason:
  *
  *   running_config   the service rows: guardrail type, checkpoints, profile, timeouts, turn shape
- *   sealed keys      the AIRS and gateway subscription keys, in ai_guardrail_credential_state.
+ *   sealed keys      the AIRS and gateway subscription keys, in ai_route_credential_state.
  *                    They cannot go in running_config: that document is append-versioned, rendered
  *                    verbatim in the review diff and written out by Save-to-file.
  *
@@ -59,11 +78,14 @@
 
   window.NMS = window.NMS || {};
 
-  const TAB = 'ai-guardrail';
-  const DRAFT_KEY = 'ai-guardrail';
-  const SECRET_KEY = 'ai-guardrail-key';
+  const TAB = 'ai-route';
+  const DRAFT_KEY = 'ai-route';
+  const SECRET_KEY = 'ai-route-key';
   const SCOPE = 'pretzel-ai';
-  const DOMAIN = 'guardrail';
+  // Renamed with the page. The stored key moved too — Config::seedStore rewrites every
+  // running_config row on the boot after the upgrade — so there is one spelling everywhere:
+  // here, in mgmtd's reader (AiConfig.cpp), and in the review diff an operator reads.
+  const DOMAIN = 'route';
 
   const activeTab = () => new URLSearchParams(location.search).get('tab') || window.NMS.settingsDefaultTab;
   const { esc } = window.NMS.utils;
@@ -81,26 +103,45 @@
                  + 'when it does.' },
   ];
 
-  // ── The three guardrails ─────────────────────────────────────────────────────
-  // "No guardrail" is on the list on purpose: customers run the appliance pointed straight at a
-  // vendor with nothing in between, and that shape needs a name here so the reports it produces say
-  // "nothing looked at this" instead of going silent.
+  // ── The credentials ──────────────────────────────────────────────
+  // Two subscriptions, appliance-wide. Named here rather than inline on the axes so the label an
+  // operator reads is the same one in the editor, the table and the publish summary.
+  const CREDENTIALS = {
+    airs:    { id: 'airs',    label: 'AIRS API key',    short: 'AIRS' },
+    portkey: { id: 'portkey', label: 'Gateway API key', short: 'Gateway' },
+  };
+  const credLabel = (id) => (CREDENTIALS[id] || {}).label || id;
+  // For the table, where the full label does not fit beside a state word in one column.
+  const credShort = (id) => (CREDENTIALS[id] || {}).short || id;
+
+  // ── Axis 1: which transport carries the completion ────────────────────────
+  // The gateway key hangs here and not on the inspector. It is the transport that cannot connect
+  // without it — a row routed through the gateway needs the key whether or not anything inspects.
+  const TRANSPORTS = [
+    { id: 'direct', label: 'Direct', short: 'Direct', key: null, endpoint: null },
+    { id: 'ai_gateway', label: 'AI Gateway', short: 'Gateway',
+      key: 'portkey', endpoint: 'https://aigw.portkey.ai:443/v1/chat/completions' },
+  ];
+
+  // ── Axis 2: who inspects the turn ─────────────────────────────────────────
+  // "None" is on the list on purpose: customers run the appliance with nothing in between, and
+  // that shape needs a name here so the reports it produces say "nothing looked at this" instead
+  // of going silent.
+  //
+  // Two entries, not three. Reading a verdict off a completion an AI gateway had already annotated
+  // was a third, and it is gone: it bought inspection this console could not describe or configure
+  // — profile, detectors and thresholds all lived in the gateway's own console — and it could not
+  // see tool calls at all. API Application reaches all four checkpoints on EITHER transport,
+  // because the scan request is built from the turn rather than read off a completion.
   const GUARDRAILS = [
-    { id: 'none', label: 'No Guardrail', short: 'None',
-      note: 'Vendors called directly. Nothing inspects — every checkpoint reports not inspected.',
+    { id: 'none', label: 'None', short: 'None',
+      note: 'Nothing inspects. Every checkpoint reports not inspected.',
       points: [], key: null, endpoint: null },
-    { id: 'api_application', label: 'API Application', short: 'API App',
+    { id: 'api_application', label: 'API Application', short: 'AIRS',
       note: 'This appliance calls the Prisma AIRS scan API and holds the enforcement point.',
       points: ['prompt', 'response', 'tool_call', 'tool_result'],
-      key: 'airs', keyLabel: 'AIRS API key',
+      key: 'airs',
       endpoint: 'https://service.api.aisecurity.paloaltonetworks.com' },
-    { id: 'ai_gateway', label: 'AI Gateway', short: 'Gateway',
-      note: 'The gateway routes the completion and its own configuration governs inspection.',
-      points: ['prompt', 'response'],
-      pointsNote: 'The gateway scans a completion’s text content. Tool calls are a sibling of '
-                + 'content and never reach the scanner.',
-      key: 'portkey', keyLabel: 'Gateway API key',
-      endpoint: 'https://aigw.portkey.ai:443/v1/chat/completions' },
   ];
 
   const POINTS = [
@@ -113,7 +154,14 @@
   ];
 
   const serviceOf  = (id) => SERVICES.find(s => s.id === id) || SERVICES[0];
+  const transportOf = (id) => TRANSPORTS.find(t => t.id === id) || TRANSPORTS[0];
   const guardOf    = (id) => GUARDRAILS.find(g => g.id === id) || GUARDRAILS[0];
+
+  // Which subscriptions this row draws on, in the order the editor shows them. One per axis, and a
+  // row can need both: through the gateway, scanned here.
+  const keysFor = (e) => [transportOf(e.transport).key, guardOf(e.guardrail).key].filter(Boolean);
+
+
   // Where all three agree: the operator asked, the service has it, the guardrail can serve it.
   // pretzel-ai intersects the same three on receipt — this is the console saying the same thing in
   // the place the switch is, not the enforcement.
@@ -126,7 +174,9 @@
   let sealingAvailable = true;
   let editIdx = null;
   let draft = null;
-  let keyDraft = '';
+  // One typed value per credential id, not one for the panel: an operator configuring a row that
+  // goes through the gateway AND scans here has two key fields open at once.
+  let keyDraft = {};
   let saveNote = '';
   let banner = null;
 
@@ -159,6 +209,13 @@
   function normalizeEntry(e) {
     const src = (e && typeof e === 'object') ? e : {};
     const service = SERVICES.some(s => s.id === src.service) ? src.service : SERVICES[0].id;
+
+    // The two axes. Unlike pretzel-ai, which refuses a value it does not recognise, the console
+    // falls back — it is an editor, and a row it cannot render is a row an operator cannot fix.
+    // What it must never do is fall back QUIETLY on the inspection axis, so an unreadable guardrail
+    // lands on 'none' and the page then shows, in the checkpoint pills and the publish problem
+    // list, that this row inspects nothing.
+    const transport = TRANSPORTS.some(t => t.id === src.transport) ? src.transport : 'direct';
     const guardrail = GUARDRAILS.some(g => g.id === src.guardrail) ? src.guardrail : 'none';
     const cp = (src.checkpoints && typeof src.checkpoints === 'object') ? src.checkpoints : {};
     const airs = (src.airs && typeof src.airs === 'object') ? src.airs : {};
@@ -174,7 +231,7 @@
     //
     // Load and save produce the same shape on purpose: a normaliser that defaulted absent points to
     // `true` on the way in and dropped them on the way out would make every entry look dirty.
-    const out = { service, guardrail, checkpoints: {} };
+    const out = { service, transport, guardrail, checkpoints: {} };
     availablePoints(service, guardrail).forEach(id => {
       out.checkpoints[id] = cp[id] === undefined ? true : !!cp[id];
     });
@@ -183,10 +240,7 @@
       timeout_sec: num(airs.timeout_sec, 30),
       fail_open: !!airs.fail_open,
     };
-    out.gateway = {
-      require_verdict: !!gw.require_verdict,
-      timeout_sec: num(gw.timeout_sec, 45),
-    };
+    out.gateway = { timeout_sec: num(gw.timeout_sec, 45) };
     out.shape = {
       system_prompt: String(shape.system_prompt || ''),
       max_tokens: num(shape.max_tokens, 4096),
@@ -203,10 +257,10 @@
   const takenIds = (exceptIdx) => state.list.filter((_, i) => i !== exceptIdx).map(e => e.service);
   const freeServices = (exceptIdx) => SERVICES.filter(s => !takenIds(exceptIdx).includes(s.id));
 
-  // Which credential ids the current rows actually reference. A key for a guardrail nothing
+  // Which credential ids the current rows actually reference, across both axes. A key nothing
   // selects is not a problem worth reporting.
   const usedKeyIds = () =>
-    [...new Set(state.list.map(e => guardOf(e.guardrail).key).filter(Boolean))];
+    [...new Set(state.list.flatMap(keysFor))];
 
   // ── Staging ──────────────────────────────────────────────────────────────────
   const stage = () => { window.NMS.draft.set(DRAFT_KEY, state.list); window.NMS.staging.refresh(); };
@@ -244,11 +298,12 @@
   // difference and not two identical lines.
   const keyStateView = (staged) => {
     const out = {};
-    GUARDRAILS.filter(g => g.key).forEach(g => {
-      const sealed = keySealed(g.key);
-      if (!staged || !pending.has(g.key)) { out[g.keyLabel] = sealed ? 'sealed' : 'not set'; return; }
-      const value = pending.get(g.key);
-      out[g.keyLabel] = value === null ? 'not set' : (sealed ? 'sealed (replaced)' : 'sealed');
+    Object.keys(CREDENTIALS).forEach(id => {
+      const label = credLabel(id);
+      const sealed = keySealed(id);
+      if (!staged || !pending.has(id)) { out[label] = sealed ? 'sealed' : 'not set'; return; }
+      const value = pending.get(id);
+      out[label] = value === null ? 'not set' : (sealed ? 'sealed (replaced)' : 'sealed');
     });
     return out;
   };
@@ -259,8 +314,8 @@
     // the operator entered sits in the browser until something else happens to be dirty.
     dirty: () => JSON.stringify(state.list) !== JSON.stringify(deployed) || pending.any(),
     payload: commitPayload,
-    before: () => ({ ai_guardrail: deployed, api_keys: keyStateView(false) }),
-    after: () => ({ ai_guardrail: state.list, api_keys: keyStateView(true) }),
+    before: () => ({ ai_route: deployed, api_keys: keyStateView(false) }),
+    after: () => ({ ai_route: state.list, api_keys: keyStateView(true) }),
     onPublished() {
       deployed = clone(state.list);
       window.NMS.draft.clear(DRAFT_KEY);
@@ -277,11 +332,16 @@
         const s = serviceOf(e.service);
         if (g.id === 'api_application' && !e.airs.profile_name.trim())
           out.push(`${s.label} has no AIRS profile name — pretzel-ai will refuse the deployment.`);
-        // Judged against what Publish will leave behind, not what is stored now: a key entered in
-        // this same batch is about to be sealed.
-        if (g.key && creds && !keyEffective(g.key))
-          out.push(`${s.label} uses ${g.label} but no ${g.keyLabel} is stored — pretzel-ai will `
+        // Both axes, each naming the thing that actually needs the key. Judged against what Publish
+        // will leave behind, not what is stored now: a key entered in this same batch is about to
+        // be sealed.
+        if (creds) keysFor(e).forEach(id => {
+          if (keyEffective(id)) return;
+          const why = transportOf(e.transport).key === id
+            ? transportOf(e.transport).label : g.label;
+          out.push(`${s.label} uses ${why} but no ${credLabel(id)} is stored — pretzel-ai will `
                  + 'refuse the deployment.');
+        });
       });
       return out;
     },
@@ -316,7 +376,7 @@
     // silently on the next unrelated Publish — the operator is told, and re-enters it if they mean
     // to. Keeping it would make a later Publish do something nobody asked for.
     pending.clear();
-    keyDraft = '';
+    keyDraft = {};
     await loadCreds();
     banner = failed.length
       ? { bad: true, text: `Could not store ${failed.length} key: ${failed.join('; ')}` }
@@ -341,28 +401,41 @@
     }).join('')}<span class="gr-pill-n">${on.length}/${avail.length}</span></div>`;
   }
 
+  // One state per key this row draws on. A row through the gateway that also scans here needs two,
+  // and they can be in different states — so they are listed rather than folded into one word that
+  // would have to pick which of the two to be wrong about.
   function keyCell(e) {
-    const g = guardOf(e.guardrail);
+    const ids = keysFor(e);
     const dot = (cls, label) => `<span class="ai-key ${cls}"><i></i>${esc(label)}</span>`;
-    if (!g.key) return '<span class="muted">not needed</span>';
-    if (pending.has(g.key)) {
-      return pending.get(g.key) === null
-        ? dot('is-drop', 'Removing on publish')
-        : dot('is-staged', 'Staged for publish');
-    }
-    if (creds === null) return dot('is-unknown', 'Unknown');
-    if (!keySealed(g.key)) return dot('is-none', 'Not set');
-    const at = (creds[g.key] || {}).updated_at;
-    return `<span title="${esc(at ? 'Sealed ' + window.NMS.utils.fmtTs(at) : 'Sealed')}">${
-      dot('is-set', 'Sealed')}</span>`;
+    if (!ids.length) return '<span class="muted">not needed</span>';
+
+    return ids.map(id => {
+      const prefix = ids.length > 1 ? `<span class="gr-keyname">${esc(credShort(id))}</span>` : '';
+      let state;
+      if (pending.has(id)) {
+        state = pending.get(id) === null
+          ? dot('is-drop', 'Removing on publish')
+          : dot('is-staged', 'Staged for publish');
+      } else if (creds === null) {
+        state = dot('is-unknown', 'Unknown');
+      } else if (!keySealed(id)) {
+        state = dot('is-none', 'Not set');
+      } else {
+        const at = (creds[id] || {}).updated_at;
+        state = `<span title="${esc(at ? 'Sealed ' + window.NMS.utils.fmtTs(at) : 'Sealed')}">${
+          dot('is-set', 'Sealed')}</span>`;
+      }
+      return `<div class="gr-keyline">${prefix}${state}</div>`;
+    }).join('');
   }
 
   const table = window.NMS.table.create({
-    id: 'cfg.aiGuardrail',
-    tableClass: 'cfg-table-aiguard',
-    searchPlaceholder: 'Search guardrails…',
-    empty: `<div class="cfg-empty">No service is configured — click <b>Add Guardrail</b> to add one.
-              A row says which engine it configures, who inspects its turns, and at which points.
+    id: 'cfg.aiRoute',
+    tableClass: 'cfg-table-airoute',
+    searchPlaceholder: 'Search routes…',
+    empty: `<div class="cfg-empty">No service is configured — click <b>Add Route</b> to add one.
+              A row says which engine it configures, how its turns reach a model, and who
+              inspects them.
               Configure <b>AI Provider</b> first: a service with no models cannot serve a turn.</div>`,
     onRows: (tbody) => {
       tbody.querySelectorAll('[data-edit]').forEach(b =>
@@ -380,24 +453,36 @@
             ? '<span class="gr-tag" title="' + esc(s.unsupported) + '">not served yet</span>' : ''}
             <span class="ai-fam">${esc(s.note)}</span></div>`;
         } },
-      { key: 'guardrail', label: 'Guardrail', cls: 'col-guard', filter: 'enum',
+      { key: 'transport', label: 'Transport', cls: 'col-transport', filter: 'enum',
+        text: (e) => transportOf(e.transport).label,
+        searchText: (e) => `${transportOf(e.transport).label} ${e.transport}`,
+        // The name and nothing else. The endpoint used to hang here as a second line, and it is a
+        // compiled-in constant that reads the same on every row — so it bought no information and
+        // cost the column its width: `table-layout: fixed` cannot wrap an unbroken URL, so it
+        // spilled over the neighbouring cell. It is shown, read-only, in the editor instead.
+        cell: (e) => `<div class="cell-name">${esc(transportOf(e.transport).label)}</div>` },
+      { key: 'guardrail', label: 'Inspection', cls: 'col-guard', filter: 'enum',
         text: (e) => guardOf(e.guardrail).label,
         searchText: (e) => `${guardOf(e.guardrail).label} ${e.guardrail}`,
-        cell: (e) => {
-          const g = guardOf(e.guardrail);
-          return `<div class="cell-name">${esc(g.label)}${
-            g.id === 'none' ? '' : `<span class="ai-fam mono-val">${esc(g.endpoint)}</span>`}</div>`;
-        } },
+        cell: (e) => `<div class="cell-name">${esc(guardOf(e.guardrail).label)}</div>` },
       { key: 'points', label: 'Checkpoints', cls: 'col-points', sort: false,
         searchText: (e) => POINTS.filter(p => e.checkpoints[p.id]).map(p => p.label).join(' '),
         cell: checkpointsCell },
       { key: 'key', label: 'API Key', cls: 'col-key', filter: 'enum',
         text: (e) => {
-          const g = guardOf(e.guardrail);
-          if (!g.key) return 'Not needed';
-          if (pending.has(g.key)) return pending.get(g.key) === null ? 'Removing' : 'Staged';
-          if (creds === null) return 'Unknown';
-          return keySealed(g.key) ? 'Sealed' : 'Not set';
+          const ids = keysFor(e);
+          if (!ids.length) return 'Not needed';
+          // The worst state of the ones this row needs, so filtering by "Not set" finds a row that
+          // has one key and is missing the other.
+          const rank = (id) => {
+            if (pending.has(id)) return pending.get(id) === null ? 'Removing' : 'Staged';
+            if (creds === null) return 'Unknown';
+            return keySealed(id) ? 'Sealed' : 'Not set';
+          };
+          const states = ids.map(rank);
+          for (const worst of ['Not set', 'Removing', 'Unknown', 'Staged'])
+            if (states.includes(worst)) return worst;
+          return 'Sealed';
         },
         cell: keyCell },
       { key: 'act', label: '', cls: 'col-act', sort: false,
@@ -427,8 +512,8 @@
     const e = state.list[idx];
     if (!e) return;
     const ok = await window.NMS.confirm({
-      title: 'Remove guardrail',
-      message: `Remove the ${serviceOf(e.service).label} guardrail?`,
+      title: 'Remove route',
+      message: `Remove the ${serviceOf(e.service).label} route?`,
       detail: "Its turns fall back to pretzel-ai's defaults, which inspect everything.",
     });
     if (!ok) return;
@@ -438,7 +523,30 @@
   }
 
   // ── Editor ───────────────────────────────────────────────────────────────────
+
+  // Scanning HERE while the completion also goes through the gateway. Not wrong and not blocked —
+  // it is a deployment somebody chooses on purpose, to hold the enforcement point on the appliance
+  // while still routing through the gateway — but it is worth saying once, at the switch, because
+  // whether it doubles up depends on something this console cannot see: the gateway's own plugin
+  // configuration lives in the gateway's console.
+  //
+  // A caution and not a `problems()` entry. That list is what would publish BROKEN, and training
+  // an operator to publish through it is how it stops working the day it means something.
+  function duplicateScanNotice() {
+    if (draft.transport !== 'ai_gateway' || draft.guardrail !== 'api_application') return '';
+    return `<div class="gr-notice">
+        <b>Turns may be scanned twice.</b>
+        If the AI Gateway also runs a guardrail plugin, the prompt and the response are inspected
+        once there and again here.
+        Tool checkpoints are not scanned twice by the gateway — it never sees a tool call — but a
+        tool result re-enters the next request as part of the prompt, so the gateway scans it then.
+        Check the gateway\u2019s own configuration, or set Inspection to None to leave it to the
+        gateway.
+      </div>`;
+  }
+
   function editorForm() {
+    const t = transportOf(draft.transport);
     const g = guardOf(draft.guardrail);
     const s = serviceOf(draft.service);
     const taken = takenIds(editIdx);
@@ -464,28 +572,47 @@
       ${s.unsupported ? `<div class="gr-notice">${esc(s.unsupported)}</div>` : ''}
 
       <div class="ed-sec">
-        <div class="ed-sec-h">Guardrail type</div>
+        <div class="ed-sec-h">Transport</div>
+        <div class="gr-kinds is-row">
+          ${TRANSPORTS.map(k => `
+            <label class="gr-kind${draft.transport === k.id ? ' on' : ''}">
+              <input type="radio" name="grTransport" value="${esc(k.id)}"${
+                draft.transport === k.id ? ' checked' : ''}>
+              <span class="gr-kind-t">${esc(k.label)}</span>
+            </label>`).join('')}
+        </div>
+        ${t.endpoint ? `
+        <div class="field-row"><label>Endpoint</label>
+          <input type="text" value="${esc(t.endpoint)}" readonly></div>
+        <div class="field-row has-unit"><label>Timeout</label>
+          <input type="number" data-f="gateway.timeout_sec" min="1" step="1"
+                 value="${esc(String(draft.gateway.timeout_sec))}"><span class="gr-unit">seconds</span></div>
+        <div class="field-row"><label>${esc(credLabel(t.key))}</label>${keyBlock(t.key)}</div>` : ''}
+      </div>
+
+      <div class="ed-sec">
+        <div class="ed-sec-h">Inspection</div>
         <div class="gr-kinds">
           ${GUARDRAILS.map(k => `
             <label class="gr-kind${draft.guardrail === k.id ? ' on' : ''}">
-              <input type="radio" name="grKind" value="${esc(k.id)}"${draft.guardrail === k.id ? ' checked' : ''}>
+              <input type="radio" name="grGuard" value="${esc(k.id)}"${
+                draft.guardrail === k.id ? ' checked' : ''}>
               <span class="gr-kind-t">${esc(k.label)}</span>
               <span class="gr-kind-n">${esc(k.note)}</span>
             </label>`).join('')}
         </div>
+        ${duplicateScanNotice()}
       </div>
 
-      ${g.endpoint ? `
+      ${g.id === 'api_application' ? `
       <div class="ed-sec">
-        <div class="ed-sec-h">${esc(g.label)}</div>
+        <div class="ed-sec-h">Prisma AIRS</div>
         <div class="field-row"><label>Endpoint</label>
-          <input type="text" value="${esc(g.endpoint)}" readonly>
-        </div>
-        ${g.id === 'api_application' ? `
+          <input type="text" value="${esc(g.endpoint)}" readonly></div>
         <div class="field-row"><label>Profile name</label>
           <input type="text" data-f="airs.profile_name" spellcheck="false"
                  value="${esc(draft.airs.profile_name)}" placeholder="AIRS_Security_Profile"></div>
-        <div class="field-row"><label>Timeout</label>
+        <div class="field-row has-unit"><label>Timeout</label>
           <input type="number" data-f="airs.timeout_sec" min="1" step="1"
                  value="${esc(String(draft.airs.timeout_sec))}"><span class="gr-unit">seconds</span></div>
         <label class="gr-check">
@@ -493,23 +620,13 @@
           <span><b>Fail open</b>
             <em>A scan that cannot be reached lets the turn through. Off is the safe reading: a
             guardrail that cannot rule stops the turn.</em></span>
-        </label>` : `
-        <div class="field-row"><label>Timeout</label>
-          <input type="number" data-f="gateway.timeout_sec" min="1" step="1"
-                 value="${esc(String(draft.gateway.timeout_sec))}"><span class="gr-unit">seconds</span></div>
-        <label class="gr-check">
-          <input type="checkbox" data-f="gateway.require_verdict"${draft.gateway.require_verdict ? ' checked' : ''}>
-          <span><b>Require a verdict</b>
-            <em>Fail a turn the gateway did not inspect. Without this, deferring means trusting
-            that something over there was configured to look.</em></span>
-        </label>`}
-        <div class="field-row"><label>${esc(g.keyLabel)}</label>${keyBlock(g)}</div>
+        </label>
+        <div class="field-row"><label>${esc(credLabel(g.key))}</label>${keyBlock(g.key)}</div>
       </div>` : ''}
 
       ${g.points.length ? `
       <div class="ed-sec">
         <div class="ed-sec-h">Checkpoints</div>
-        ${g.pointsNote ? `<p class="gr-sec-note">${esc(g.pointsNote)}</p>` : ''}
         <div class="gr-points">${POINTS.map(pointRow).join('')}</div>
       </div>` : ''}
 
@@ -527,12 +644,10 @@
   function pointRow(p) {
     const avail = availablePoints(draft.service, draft.guardrail).includes(p.id);
     const on = avail && !!draft.checkpoints[p.id];
-    // Why it is unavailable, said where it is missing. The two reasons are different and an
-    // operator debugging a gap needs to know which one they are looking at.
+    // Why it is missing, said where it is missing. One reason now that the transport no longer
+    // narrows the points: the service simply has no such step in its turn.
     const why = !avail
-      ? (!serviceOf(draft.service).points.includes(p.id)
-          ? `${serviceOf(draft.service).label} has no tools, so this point does not exist in a turn.`
-          : `The ${guardOf(draft.guardrail).label} cannot see tool calls.`)
+      ? `${serviceOf(draft.service).label} has no tools, so this point does not exist in a turn.`
       : '';
     return `<label class="gr-point${avail ? (on ? '' : ' is-off') : ' is-na'}">
         <input type="checkbox" data-point="${p.id}"${on ? ' checked' : ''}${avail ? '' : ' disabled'}>
@@ -545,26 +660,29 @@
       </label>`;
   }
 
-  function keyBlock(g) {
+  // Takes a credential id rather than an axis. The editor can show two of these at once — the
+  // gateway key for the path and the AIRS key for the inspector — so every id in the markup is
+  // carried on the element instead of being implied by which panel it sits in.
+  function keyBlock(id) {
     if (!sealingAvailable) {
       return `<div class="gr-key-off">This appliance has no <code>credentials.key</code> — a key
         cannot be sealed here.</div>`;
     }
-    if (pending.has(g.key)) {
-      const removing = pending.get(g.key) === null;
+    if (pending.has(id)) {
+      const removing = pending.get(id) === null;
       return `<div class="gr-key-staged">
           <span class="ai-key ${removing ? 'is-drop' : 'is-staged'}"><i></i>${
             removing ? 'Removing on publish' : 'Staged for publish'}</span>
-          <button class="btn-sm" id="grKeyUndo" type="button">Undo</button>
+          <button class="btn-sm" data-key-undo="${esc(id)}" type="button">Undo</button>
         </div>`;
     }
-    const sealed = keySealed(g.key);
-    const at = sealed ? (creds[g.key] || {}).updated_at : '';
+    const sealed = keySealed(id);
+    const at = sealed ? (creds[id] || {}).updated_at : '';
     return `<div class="gr-key">
-        <input type="password" data-key="${esc(g.key)}" autocomplete="off" spellcheck="false"
+        <input type="password" data-key="${esc(id)}" autocomplete="off" spellcheck="false"
                placeholder="${sealed ? 'Sealed — type to replace' : 'Paste the API key'}"
-               value="${esc(keyDraft)}">
-        ${sealed ? '<button class="btn-sm danger" id="grKeyClear" type="button">Remove</button>' : ''}
+               value="${esc(keyDraft[id] || '')}">
+        ${sealed ? `<button class="btn-sm danger" data-key-clear="${esc(id)}" type="button">Remove</button>` : ''}
       </div>
       ${sealed && at ? `<div class="gr-hint">Sealed ${esc(window.NMS.utils.fmtTs(at))}</div>` : ''}`;
   }
@@ -594,9 +712,9 @@
     } else {
       draft = clone(state.list[idx]);
     }
-    keyDraft = ''; saveNote = '';
+    keyDraft = {}; saveNote = '';
 
-    document.getElementById('grTitle').textContent = idx == null ? 'Add Guardrail' : 'Edit Guardrail';
+    document.getElementById('grTitle').textContent = idx == null ? 'Add Route' : 'Edit Route';
     document.getElementById('grFoot').innerHTML = `
       <span class="ed-foot-note" id="grSaveNote"></span>
       <button class="btn-sm" id="grCancel" type="button">Cancel</button>
@@ -611,7 +729,7 @@
   }
 
   const closeEditor = () => {
-    editIdx = null; draft = null; keyDraft = ''; saveNote = '';
+    editIdx = null; draft = null; keyDraft = {}; saveNote = '';
     document.getElementById('grOverlay').classList.remove('open');
     document.getElementById('grPanel').classList.remove('open');
   };
@@ -628,18 +746,25 @@
       return mark('Both services are already configured — edit one of them instead.', '[data-f="service"]');
 
     const g = guardOf(draft.guardrail);
+
     if (g.id === 'api_application' && !draft.airs.profile_name.trim())
       return mark('Enter the AIRS profile name.', '[data-f="airs.profile_name"]');
 
-    // A guardrail with no key would be committed and then refused by pretzel-ai, and the operator
-    // is standing in the one panel where they can fix it.
-    if (g.key && !keyDraft.trim() && !keyEffective(g.key))
-      return mark(`Enter the ${g.keyLabel}.`, '[data-key]');
+    // Either axis missing its key would be committed and then refused by pretzel-ai, and the
+    // operator is standing in the one panel where they can fix it.
+    const needed = keysFor(draft);
+    for (const id of needed) {
+      if (!(keyDraft[id] || '').trim() && !keyEffective(id))
+        return mark(`Enter the ${credLabel(id)}.`, `[data-key="${id}"]`);
+    }
 
-    // The key leaves the panel the same way the rest of it does — staged, not applied. It goes to
-    // its own store rather than into the entry, so it cannot reach the commit payload even by
-    // accident, but it is committed to by the same button.
-    if (g.key && keyDraft.trim()) pending.set(g.key, keyDraft.trim());
+    // The keys leave the panel the same way the rest of it does — staged, not applied. They go to
+    // their own store rather than into the entry, so they cannot reach the commit payload even by
+    // accident, but they are committed to by the same button.
+    needed.forEach(id => {
+      const typed = (keyDraft[id] || '').trim();
+      if (typed) pending.set(id, typed);
+    });
 
     // Normalised on the way out: a cleared number field reads back as 0 or NaN, and mgmtd refuses
     // a non-positive timeout — better fixed here than surfaced as a rejected commit.
@@ -661,9 +786,16 @@
       paintEditor();
     });
 
-    body.querySelectorAll('input[name="grKind"]').forEach(r => r.addEventListener('change', (e) => {
+    // The two axes are independent, so switching one cannot invalidate the other. Repainted all
+    // the same: the gateway key field appears and disappears with the transport.
+    body.querySelectorAll('input[name="grTransport"]').forEach(r => r.addEventListener('change', (e) => {
+      draft.transport = e.target.value;
+      saveNote = '';
+      paintEditor();
+    }));
+
+    body.querySelectorAll('input[name="grGuard"]').forEach(r => r.addEventListener('change', (e) => {
       draft.guardrail = e.target.value;
-      keyDraft = '';
       saveNote = '';
       paintEditor();
     }));
@@ -691,23 +823,27 @@
       paintEditor();
     }));
 
-    const key = body.querySelector('input[data-key]');
-    key?.addEventListener('input', () => { keyDraft = key.value; });
+    // Every key control carries the credential id it belongs to, because two of them can be on
+    // screen at once and neither is "the" key of the panel any more.
+    body.querySelectorAll('input[data-key]').forEach(inp =>
+      inp.addEventListener('input', () => { keyDraft[inp.dataset.key] = inp.value; }));
 
     // Removal is an intent, not an action: staged like everything else, taking effect on Publish.
     // Pressing Undo withdraws the intent.
-    document.getElementById('grKeyClear')?.addEventListener('click', () => {
-      pending.set(guardOf(draft.guardrail).key, null);
-      keyDraft = '';
-      paintEditor();
-      paintTable();
-    });
-    document.getElementById('grKeyUndo')?.addEventListener('click', () => {
-      pending.drop(guardOf(draft.guardrail).key);
-      keyDraft = '';
-      paintEditor();
-      paintTable();
-    });
+    body.querySelectorAll('[data-key-clear]').forEach(btn =>
+      btn.addEventListener('click', () => {
+        pending.set(btn.dataset.keyClear, null);
+        delete keyDraft[btn.dataset.keyClear];
+        paintEditor();
+        paintTable();
+      }));
+    body.querySelectorAll('[data-key-undo]').forEach(btn =>
+      btn.addEventListener('click', () => {
+        pending.drop(btn.dataset.keyUndo);
+        delete keyDraft[btn.dataset.keyUndo];
+        paintEditor();
+        paintTable();
+      }));
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -719,10 +855,10 @@
       <div class="cfg-page">
         <div class="cfg-toolbar">
           <div class="cfg-toolbar-meta">
-            <span class="cfg-h">AI Guardrail</span>
+            <span class="cfg-h">AI Route</span>
             <span class="cfg-h-sub" id="grMeta"></span>
           </div>
-          <button class="btn-primary btn-sm" id="grAdd">+ Add Guardrail</button>
+          <button class="btn-primary btn-sm" id="grAdd">+ Add Route</button>
         </div>
 
         ${banner ? `<div class="ai-banner${banner.bad ? ' bad' : ''}">${esc(banner.text)}</div>` : ''}
@@ -734,7 +870,7 @@
       <div class="slideover-overlay" id="grOverlay"></div>
       <aside class="slideover" id="grPanel">
         <div class="slideover-head">
-          <span class="slideover-title" id="grTitle">Guardrail</span>
+          <span class="slideover-title" id="grTitle">Route</span>
           <button class="slideover-close" id="grClose" type="button">&times;</button>
         </div>
         <div class="slideover-body" id="grBody"></div>
@@ -762,7 +898,7 @@
   document.addEventListener('DOMContentLoaded', async () => {
     await load();
     if (activeTab() === TAB) activate();
-    document.dispatchEvent(new Event('nms:ai-guardrail-ready'));
+    document.dispatchEvent(new Event('nms:ai-route-ready'));
   });
 
   document.addEventListener('nms:tab-change', (e) => {

@@ -2,6 +2,7 @@
 
 #include "service/EnginedServiceManager.h"
 
+#include "config/Config.h"
 #include "db/Database.h"
 #include "ipc/IpcMessage.h"
 #include "util/Logger.h"
@@ -10,6 +11,17 @@
 
 namespace pz::engined
 {
+
+namespace
+{
+
+// The two ids ai_route_credential_state may hold. The schema is the authority — its CHECK
+// enumerates the same pair — and they are spelled out here rather than derived from the config,
+// because a route row names the axis it needs, not the credential the axis draws on.
+constexpr const char* kAirsCredentialId = "airs";
+constexpr const char* kGatewayCredentialId = "portkey";
+
+}
 
 void ApiCredentialService::handleEvent(EnginedServiceManager& serviceManager, const ApiCredentialEvent& event)
 {
@@ -154,17 +166,94 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
         LOG_WARN("api_credential_state write failed (oid={})", oid);
 }
 
+// The sealed AI keys the committed configuration still references. Everything else in the two
+// stores is dropped.
+//
+// A key is state, not configuration — that is why it is in its own table rather than in
+// running_config. But it is state ABOUT something the configuration declares, and when that
+// declaration goes the state has nothing left to be about: a vendor removed from the provider list
+// leaves a sealed key nothing can spend, and the console cannot show it because it filters the
+// credential endpoint by the same whitelist that no longer contains it. Invisible key material that
+// no operator action can reach is the thing this exists to prevent.
+//
+// The same shape as ProbeService::projectInventory, and for the same reason: config declares the
+// set, engined writes the table, and the delete is what keeps them the same set. Written as one
+// statement per store with the surviving ids passed in, so the database does the comparison and
+// there is no read-then-write window for a concurrent store to fall into.
+//
+// EVERY commit, not just the ones carrying a pretzel-ai change. The document this reads is the
+// whole committed configuration, so a commit that touched nothing here simply finds nothing to do —
+// and an appliance that drifted for any other reason (an interrupted publish, a hand-edited
+// document, a restore) is brought back into line by the next commit rather than staying wrong until
+// somebody happens to edit the right page.
+void ApiCredentialService::pruneAiCredentials()
+{
+    const auto& ai = pz::config::Config::scopeConfig(pz::config::scope::kPretzelAi);
+    auto& db = pz::db::Database::instance();
+
+    // The vendors, by the id their credential row is keyed under.
+    nlohmann::json providerIds = nlohmann::json::array();
+    for (const auto& p : ai.value("providers", nlohmann::json::object())
+                           .value("list", nlohmann::json::array()))
+    {
+        if (!p.is_object())
+            continue;
+        const std::string id = p.value("id", std::string());
+        if (!id.empty())
+            providerIds.push_back(id);
+    }
+
+    // The route's two subscriptions, each kept only while something still needs it. Which one a
+    // row needs follows from the axis it sits on — the gateway key belongs to the TRANSPORT,
+    // because that is what cannot connect without it, and the AIRS key to the INSPECTOR. The
+    // console draws exactly this pair per row; the two must agree or a Publish would delete the key
+    // the page had just told the operator it was keeping.
+    bool needsAirs = false;
+    bool needsGateway = false;
+    for (const auto& r : ai.value("route", nlohmann::json::object())
+                           .value("list", nlohmann::json::array()))
+    {
+        if (!r.is_object())
+            continue;
+        if (r.value("guardrail", std::string()) == "api_application")
+            needsAirs = true;
+        if (r.value("transport", std::string()) == "ai_gateway")
+            needsGateway = true;
+    }
+
+    nlohmann::json routeIds = nlohmann::json::array();
+    if (needsAirs)
+        routeIds.push_back(kAirsCredentialId);
+    if (needsGateway)
+        routeIds.push_back(kGatewayCredentialId);
+
+    const std::string providerKeep = providerIds.dump();
+    const std::string routeKeep = routeIds.dump();
+
+    if (!db.exec("DELETE FROM ai_provider_credential_state "
+                 "WHERE id <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+                 {providerKeep}))
+        LOG_WARN("ai_provider_credential_state prune failed");
+
+    if (!db.exec("DELETE FROM ai_route_credential_state "
+                 "WHERE id <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+                 {routeKeep}))
+        LOG_WARN("ai_route_credential_state prune failed");
+
+    LOG_DEBUG("ai credentials pruned (providers_kept={}, route_kept={})", providerKeep, routeKeep);
+}
+
 // mgmtd sealed one of the assistant's API keys and handed it over.
 //
 // Two stores, one path. `scope` picks between them: "provider" is the vendors' table, keyed by id —
 // 'openai', 'google', 'anthropic' — one row per vendor, because a key is issued by the vendor and
-// works for every model they serve; "guardrail" is the scan service's, a singleton the schema
-// enforces. They are the same shape and are written identically, so they share this handler rather
-// than a second command that would differ only in a table name — but they are separate tables
-// because a vendor row is one of a set an operator adds to, and the guardrail is a single fact
-// about this appliance.
+// works for every model they serve; "route" is the AI Route page's pair — the scan service and the
+// gateway — which the schema holds as singletons. They are the same shape and are written
+// identically, so they share this handler rather than a second command that would differ only in a
+// table name — but they are separate tables because a vendor row is one of a set an operator adds
+// to, and each of these is a single fact about this appliance.
 //
-// An unknown scope is dropped rather than defaulted. Defaulting would write a guardrail key into
+// An unknown scope is dropped rather than defaulted. Defaulting would write a scan-service key into
 // the vendor table on a typo, where the next push would hand it to a model provider.
 void ApiCredentialService::storeAiCredential(const std::string& payloadJson)
 {
@@ -190,8 +279,8 @@ void ApiCredentialService::storeAiCredential(const std::string& payloadJson)
     const char* table = nullptr;
     if (scope == "provider")
         table = "ai_provider_credential_state";
-    else if (scope == "guardrail")
-        table = "ai_guardrail_credential_state";
+    else if (scope == "route")
+        table = "ai_route_credential_state";
     else
     {
         LOG_WARN("AiCredentialStateUpdate with unknown scope '{}' (id={}) — dropping", scope, id);

@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS api_credential_state (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE IF NOT EXISTS ai_provider_credential_state (
-    id             TEXT PRIMARY KEY,
+    id             TEXT PRIMARY KEY CHECK (id IN ('openai', 'google', 'anthropic')),
     key_enc        TEXT,            -- AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext)
     last_test_at   TIMESTAMPTZ,
     last_test_ok   BOOLEAN,
@@ -76,21 +76,74 @@ CREATE TABLE IF NOT EXISTS ai_provider_credential_state (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- The guardrail's API key, sealed the same way and for the same reasons as the providers' above.
+-- Upgrade path for the CHECK above, and for two constraint names left behind by earlier renames.
+--
+-- The vendor list is closed the same way the route's pair is: a provider whose endpoint is not
+-- compiled into pretzel-ai cannot serve a turn, so a row for one is key material nothing can spend.
+-- One such row was found on 2026-09-07 — 'claude', left over from before the provider was renamed
+-- to 'anthropic' — and it was invisible to the console, which filters the credential endpoint by
+-- the same list. engined now prunes these on every commit; the constraint is what stops one being
+-- written in the first place, and it is the asymmetry with the table below that let it happen.
+--
+-- Violating rows are DELETEd rather than left for the ALTER to trip over. A constraint that cannot
+-- be added fails ensureSchema, which fails engined's preflight, which stops the appliance booting —
+-- and the rows it would trip over are, by the definition the constraint states, meaningless.
+DO $ai_provider_cred_upgrade$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ai_gateway_credential_state_pkey') THEN
+        ALTER TABLE ai_provider_credential_state
+            RENAME CONSTRAINT ai_gateway_credential_state_pkey TO ai_provider_credential_state_pkey;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                    WHERE conname = 'ai_provider_credential_state_id_check') THEN
+        DELETE FROM ai_provider_credential_state WHERE id NOT IN ('openai', 'google', 'anthropic');
+        ALTER TABLE ai_provider_credential_state
+            ADD CONSTRAINT ai_provider_credential_state_id_check
+            CHECK (id IN ('openai', 'google', 'anthropic'));
+    END IF;
+END
+$ai_provider_cred_upgrade$;
+
+-- Renamed from ai_guardrail_credential_state on 2026-09-07, when the console page it belongs to
+-- became AI Route. RENAME rather than a new table plus a copy: the rows hold sealed key material,
+-- and a migration that re-inserts them is a migration that can half-succeed and leave an appliance
+-- with a key it can no longer open. Guarded both ways so it is a no-op on a fresh database (no old
+-- table) and on one already migrated (new table present), and it must stay AHEAD of the CREATE
+-- below — running that first would make an empty table for the rename to refuse.
+DO $ai_route_cred_rename$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = current_schema() AND table_name = 'ai_guardrail_credential_state')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                        WHERE table_schema = current_schema() AND table_name = 'ai_route_credential_state')
+    THEN
+        ALTER TABLE ai_guardrail_credential_state RENAME TO ai_route_credential_state;
+        -- RENAME TO does not carry the constraint names with it, and a table whose primary key
+        -- still says ai_guardrail_ reads in \\d as though the rename half happened.
+        ALTER TABLE ai_route_credential_state
+            RENAME CONSTRAINT ai_guardrail_credential_state_pkey TO ai_route_credential_state_pkey;
+        ALTER TABLE ai_route_credential_state
+            RENAME CONSTRAINT ai_guardrail_credential_state_id_check TO ai_route_credential_state_id_check;
+    END IF;
+END
+$ai_route_cred_rename$;
+
+-- The route's API keys, sealed the same way and for the same reasons as the providers' above.
 --
 -- Its own table rather than a reserved id in that one. The two are the same shape and could have
 -- shared, but they are not the same kind of thing: a provider row is one of a set an operator adds
--- to and removes from, and the guardrail is a single fact about this appliance — there is one scan
--- service, and a second row here would not mean anything. Sharing would also have made every query
--- that means "the vendors" carry a filter to exclude the one row that is not a vendor, which is the
--- shape of bug that gets written once and found much later.
+-- to and removes from, and these are single facts about this appliance — there is one scan service
+-- and one gateway account, and a second row for either would not mean anything. Sharing would also
+-- have made every query that means "the vendors" carry a filter to exclude the rows that are not
+-- vendors, which is the shape of bug that gets written once and found much later.
 --
 -- Two rows at most, and the check says which: 'airs' is the scan service's subscription, 'portkey'
 -- the AI gateway's. Both are configured on the same console page and both are a single fact about
 -- this appliance rather than one of a set, which is what separates them from the vendors next door.
 -- Enumerated rather than left open so a caller that thought it was writing a keyed store cannot
 -- invent a third id nothing downstream reads.
-CREATE TABLE IF NOT EXISTS ai_guardrail_credential_state (
+CREATE TABLE IF NOT EXISTS ai_route_credential_state (
     id             TEXT PRIMARY KEY CHECK (id IN ('airs', 'portkey')),
     key_enc        TEXT,            -- AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext)
     last_test_at   TIMESTAMPTZ,

@@ -290,6 +290,45 @@ bool Config::seedStore()
         return false;
     }
 
+    // Rename pretzel-ai.guardrail -> pretzel-ai.route.
+    //
+    // The console page became AI Route when it grew a second axis — the transport — and a domain
+    // named after the inspector alone stopped describing half of what it holds. The stored key had
+    // to move with it: mgmtd reads this section by name (AiConfig.cpp), and a console writing
+    // `route` beside a reader looking for `guardrail` would leave an operator editing a section
+    // nothing pushes.
+    //
+    // BEFORE the back-fill below, and that order is load-bearing. startup-config now ships `route`,
+    // so a back-fill running first would add an empty one — and this rename refuses to overwrite a
+    // `route` that already exists, which is what makes it idempotent. It would then be a no-op, and
+    // the operator's rows would sit under `guardrail` where nothing reads them.
+    //
+    // EVERY row, not just the active one. History is otherwise append-only here, and rewriting it
+    // is normally the wrong instinct — but this changes no configuration, only the spelling of a
+    // key. A superseded version left saying `guardrail` would be a version this build cannot read,
+    // which is what a reset or a rollback would land on. The record of WHAT was configured is
+    // untouched.
+    //
+    // In place, with no version bump: no daemon's behaviour changes, so there is nothing for the
+    // fleet to converge on, and a bump would restart it to deliver a renamed key.
+    {
+        auto& renameDb = pz::db::Database::instance();
+        if (renameDb.exec(
+                "UPDATE running_config SET config_json = jsonb_set("
+                "  config_json, '{pretzel-ai}',"
+                "  (config_json -> 'pretzel-ai') - 'guardrail'"
+                "    || jsonb_build_object('route', config_json -> 'pretzel-ai' -> 'guardrail')) "
+                "WHERE config_json -> 'pretzel-ai' ? 'guardrail' "
+                "  AND NOT (config_json -> 'pretzel-ai' ? 'route')"))
+        {
+            // Silent when it matched nothing, which is every start after the first.
+        }
+        else
+        {
+            std::cerr << "seedStore: pretzel-ai.guardrail -> route rename failed" << std::endl;
+        }
+    }
+
     // Back-fill daemon sections that the running config has never heard of.
     //
     // The seed above only fires on an empty table, which is right: the running config is the

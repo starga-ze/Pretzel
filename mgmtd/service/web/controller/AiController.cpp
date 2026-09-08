@@ -58,16 +58,17 @@ bool knownProvider(const std::string& id)
 
 // Every id the credential endpoints accept, and which store it lives in.
 //
-// One endpoint pair, two tables. The vendors and the guardrail hold the same kind of secret and are
-// sealed, stored and pushed identically, so a second pair of handlers would have differed only in a
-// table name. They are separate tables because a vendor row is one of a set an operator adds to and
-// removes from, while the guardrail is a single fact about this appliance.
+// One endpoint pair, two tables. The vendors and the route's own subscriptions hold the same kind of
+// secret and are sealed, stored and pushed identically, so a second pair of handlers would have
+// differed only in a table name. They are separate tables because a vendor row is one of a set an
+// operator adds to and removes from, while each route credential is a single fact about this
+// appliance.
 const char* credentialScope(const std::string& id)
 {
     if (knownProvider(id))
         return "provider";
     if (id == kAirsCredentialId || id == kGatewayCredentialId)
-        return "guardrail";
+        return "route";
     return nullptr;
 }
 
@@ -105,7 +106,7 @@ void AiController::credentials(MgmtdServiceManager& sm, const pz::http::HttpRequ
                  "COALESCE(to_char(updated_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
                  "COALESCE(to_char(last_test_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), ''), "
                  "COALESCE(last_test_ok::int::text, ''), COALESCE(last_test_note, '') "
-                 "FROM ai_guardrail_credential_state"))
+                 "FROM ai_route_credential_state"))
             rows.push_back(std::move(r));
 
         for (const auto& r : rows)

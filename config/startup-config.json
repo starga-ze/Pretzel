@@ -117,15 +117,17 @@
         "providers": {
             "list": []
         },
-        "//guardrail": "One entry per engine pretzel-ai runs: chat and agent. Separate because the",
-        "//guardrail2": "question \"what should be inspected here\" has different answers \u2014 agent has two",
-        "//guardrail3": "checkpoints chat does not, and the AI gateway can see neither of them.",
-        "//guardrail4": "guardrail: none | api_application (Prisma AIRS, called from here) | ai_gateway",
-        "//guardrail5": "(the gateway routes the completion AND governs inspection). Endpoints are not",
-        "//guardrail6": "here \u2014 both are compiled into pretzel-ai. Neither are the API keys: they are",
-        "//guardrail7": "sealed in ai_guardrail_credential_state under 'airs' and 'portkey', because this",
-        "//guardrail8": "document is append-versioned and rendered verbatim in a review diff.",
-        "guardrail": {
+        "//route": "One entry per engine pretzel-ai runs: chat and agent. Separate because the",
+        "//route2": "question \"what should be inspected here\" has different answers \u2014 agent has two",
+        "//route3": "checkpoints chat does not.",
+        "//route4": "TWO axes per entry, and neither constrains the other:",
+        "//route5": "transport: direct | ai_gateway \u2014 which leg carries the completion.",
+        "//route6": "guardrail: none | api_application (Prisma AIRS, called from here). It reaches",
+        "//route7": "all four checkpoints on either transport. Endpoints are not here \u2014 both are",
+        "//route8": "compiled into pretzel-ai. Neither are the API keys: they are sealed in",
+        "//route9": "ai_route_credential_state under 'airs' and 'portkey', because this document is",
+        "//route10": "append-versioned and rendered verbatim in a review diff.",
+        "route": {
             "list": []
         }
     }
