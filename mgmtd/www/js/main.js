@@ -317,7 +317,13 @@
   // Every group, not just Configuration by name. There is one flyout onto the settings page today,
   // but a selector that named it was a selector that would go quietly wrong the next time there
   // were two — which there briefly was.
-  function syncFlyoutActive(tabId) {
+  //
+  // Groups are not the only way onto the settings page, which is why this judges the plain links
+  // too: System Operation sits beside Configuration as an ordinary link to `settings?tab=operation`.
+  // A click on a link navigates, and a navigation rebuilds the whole sidebar — but a flyout subitem
+  // switches the tab in place underneath it, and nothing then re-judged the link. So the highlight
+  // it was built with survived next to the group's, and both read as the current page.
+  function syncSidebarActive(tabId) {
     document.querySelectorAll('.nav-group .nav-group-toggle').forEach(toggle => {
       let subs;
       try { subs = JSON.parse(toggle.dataset.subitems || '[]'); } catch (_) { return; }
@@ -329,6 +335,14 @@
       toggle.dataset.subitems = JSON.stringify(subs);
       // The toggle carries the highlight while the flyout is shut, which is almost always.
       toggle.classList.toggle('active', any);
+    });
+
+    // Same rule buildSidebar applies, on the tab being switched to rather than the one in the URL
+    // bar: a link that pins no tab owns the whole page, one that pins a tab owns only that tab.
+    document.querySelectorAll('a.nav-item[data-page]').forEach(a => {
+      const h = parseHref(a.dataset.page);
+      if (h.page !== 'settings') return;
+      a.classList.toggle('active', !h.tab || h.tab === tabId);
     });
   }
 
@@ -438,10 +452,10 @@
           el.classList.remove('has-tabs');
         }
 
-        // Keep the sidebar's flyout highlight in step. Only the stored subitem state is
-        // rewritten — rebuilding the sidebar would mean re-running initFlyouts, whose
+        // Keep the sidebar highlight in step. Only the stored subitem state and the links'
+        // classes are rewritten — rebuilding the sidebar would mean re-running initFlyouts, whose
         // document/window listeners would then accumulate on every switch.
-        syncFlyoutActive(tabId);
+        syncSidebarActive(tabId);
 
         document.dispatchEvent(new CustomEvent('nms:tab-change', { detail: { tab: tabId, group: group.id } }));
       }

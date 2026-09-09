@@ -3415,8 +3415,9 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .api-badge.dev-sase { background: rgba(22,163,74,.14); color: var(--ink-green); }
 /* SASE subtypes (the cloud products). */
 .api-badge.ztna { background: rgba(22,163,74,.14); color: var(--ink-green); }
-.api-badge.pab,
-.api-badge.scm  { background: var(--surface-2); color: var(--text-muted); }
+.api-badge.scm  { background: rgba(180,83,9,.14);  color: var(--ink-amber); }
+/* Not selectable yet — greyed so the badge reads as a placeholder if a legacy record shows one. */
+.api-badge.pab  { background: var(--surface-2); color: var(--text-muted); }
 
 /* Values derived from another field and shown read-only beside it — host and path, split out of the
    pasted URL. Presented as output, not as inputs an operator might try to correct. */

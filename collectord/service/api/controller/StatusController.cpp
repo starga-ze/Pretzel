@@ -27,6 +27,14 @@ namespace
 
 constexpr auto kInterval = std::chrono::seconds(60);
 
+// A device whose api-key has not arrived yet is not a device that has been probed. The keys come
+// from engined over IPC moments after start, and a config commit RESTARTS this daemon — so the
+// first cycle after adding a SASE device routinely fires before its key exists, skips the device,
+// and leaves it unprobed for a full interval. The topology page then has a tenant with no
+// infrastructure and says so, on a device the operator has just finished configuring. When that
+// happens the next cycle comes in seconds instead.
+constexpr auto kKeyRetry = std::chrono::seconds(3);
+
 // Split "https://host[:port]/path" into its parts. Requires https; defaults port 443, path "/".
 struct ParsedUrl
 {
@@ -98,6 +106,28 @@ StatusController::StatusController(boost::asio::io_context& ioc) : m_ioc(ioc)
 {
 }
 
+// This is the SASE counterpart of probed's ProbeResult — a target is in exactly one of alive/down
+// once probed; unconfigured ones are in neither, so engined leaves their status untouched.
+void StatusController::report(CollectordServiceManager& sm) const
+{
+    json payload;
+    payload["sase_alive"] = aliveTargets();
+    payload["sase_down"] = downTargets();
+    json egress = json::object();
+    for (const auto& [target, result] : m_egress)
+        egress[target] = result;
+    payload["sase_egress"] = std::move(egress);
+
+    const std::string payloadStr = payload.dump();
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Collectord);
+    msg->setDst(pz::ipc::IpcDaemon::Engined);
+    msg->setCmd(pz::ipc::IpcCmd::SaseHealthResult);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response));
+    msg->setPayload(reinterpret_cast<const std::uint8_t*>(payloadStr.data()), payloadStr.size());
+    sm.txRouter().handleIpcMessage(std::move(msg));
+}
+
 void StatusController::tick(std::chrono::steady_clock::time_point now, const ApiService& api, 
         CollectordServiceManager& sm)
 {
@@ -105,32 +135,14 @@ void StatusController::tick(std::chrono::steady_clock::time_point now, const Api
         return;
     m_lastRun = now;
 
-    // Report the previous cycle's outcome to engined before firing the new probes (which complete
-    // asynchronously and are reported on the next tick). This is the SASE counterpart of probed's
-    // ProbeResult — a target is in exactly one of alive/down once probed; unconfigured ones are in
-    // neither, so engined leaves their status untouched.
-    {
-        json payload;
-        payload["sase_alive"] = aliveTargets();
-        payload["sase_down"] = downTargets();
-        json egress = json::object();
-        for (const auto& [target, result] : m_egress)
-            egress[target] = result;
-        payload["sase_egress"] = std::move(egress);
-
-        const std::string payloadStr = payload.dump();
-        auto msg = std::make_unique<pz::ipc::IpcMessage>();
-        msg->setSrc(pz::ipc::IpcDaemon::Collectord);
-        msg->setDst(pz::ipc::IpcDaemon::Engined);
-        msg->setCmd(pz::ipc::IpcCmd::SaseHealthResult);
-        msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response));
-        msg->setPayload(reinterpret_cast<const std::uint8_t*>(payloadStr.data()), payloadStr.size());
-        sm.txRouter().handleIpcMessage(std::move(msg));
-    }
+    // Whatever is already known, before firing this cycle's probes. A cycle that finds nothing new
+    // still re-states the last verdicts, which is what keeps a target from ageing out of the answer.
+    report(sm);
 
     const auto& site = pz::config::Config::section(pz::config::scope::kPretzel, "site");
     const auto devices = site.value("sase_devices", json::array());
 
+    bool deferred = false;   // at least one configured device is still waiting for its key
     for (const auto& d : devices)
     {
         if (!d.is_object())
@@ -146,8 +158,15 @@ void StatusController::tick(std::chrono::steady_clock::time_point now, const Api
         // The api-key is not in config — it comes sealed from engined, opened into ApiService's cache
         // keyed by the device oid (same fetch as issued keys).
         const std::string apiKey = api.issuedKey(oid);
-        if (url.empty() || apiKey.empty())
-            continue;   // not configured for health yet, or the key fetch has not landed — unknown
+        if (url.empty())
+            continue;   // not configured for health — unknown, and nothing to wait for
+        if (apiKey.empty())
+        {
+            // Configured, but the key is not here yet. That is a wait, not a verdict: leaving it
+            // unprobed is right, waiting a full interval to try again is not.
+            deferred = true;
+            continue;
+        }
 
         if (m_inFlight[target])
             continue;   // a probe from a previous slow cycle is still running
@@ -177,9 +196,11 @@ void StatusController::tick(std::chrono::steady_clock::time_point now, const Api
         req.timeout = std::chrono::seconds(25);
 
         m_inFlight[target] = true;
-        LOG_DEBUG("sase probe start (target={}, host={})", target, u.host);
+        LOG_TRACE("sase probe start (target={}, host={})", target, u.host);
 
-        pz::http::requestAsync(m_ioc, std::move(req), [this, target](pz::http::ClientResponse res) {
+        // `sm` outlives every probe — the service manager is owned by the core for the life of the
+        // process, the same lifetime the collector jobs rely on for their back-pointers.
+        pz::http::requestAsync(m_ioc, std::move(req), [this, target, sm = &sm](pz::http::ClientResponse res) {
             m_inFlight[target] = false;
             bool ok = false;
             if (res.status == 200)
@@ -190,9 +211,24 @@ void StatusController::tick(std::chrono::steady_clock::time_point now, const Api
                     m_egress[target] = parsed;   // cache the egress-IP payload for engined to store
             }
             m_result[target] = ok;
-            LOG_DEBUG("sase probe result (target={}, status={}, ok={})", target, res.status, ok);
+            LOG_TRACE("sase probe result (target={}, status={}, ok={})", target, res.status, ok);
+
+            // Report as soon as the cycle is done, not on the next tick. A commit restarts this
+            // daemon, so a newly added SASE device is probed within a second — but its egress
+            // document used to sit in this cache until the following tick, a full interval later.
+            // For the whole of that minute the topology page had a tenant with no infrastructure and
+            // said so, on a device the operator had just finished configuring. Nothing was broken;
+            // the answer simply had not been handed over yet.
+            for (const auto& [t, running] : m_inFlight)
+                if (running)
+                    return;   // siblings still out; the last one home does the reporting
+            report(*sm);
         });
     }
+
+    // Rewind the clock so the next cycle lands in kKeyRetry rather than kInterval.
+    if (deferred)
+        m_lastRun = now - (kInterval - kKeyRetry);
 }
 
 std::vector<std::string> StatusController::aliveTargets() const
@@ -316,9 +352,16 @@ void StatusController::runSaseTest(ApiService& api, CollectordServiceManager& sm
             ctx->out["egress_raw"] = res.body;
 
         // A key the operator just entered is proven by this call, so persist it now. One that came
-        // from the store is already there.
-        if (ok && keyFromOperator && !sealAndStoreApiKey(*ctx->sm, oid, apiKey))
-            ctx->out["message"] = "health check passed, but the credential store is unavailable to save the key";
+        // from the store is already there. Cache it locally in the same breath: the fetch from engined
+        // happens once at startup, so a key that only made the round trip would be invisible to the
+        // next test and to the periodic probe until collectord restarts.
+        if (ok && keyFromOperator)
+        {
+            if (sealAndStoreApiKey(*ctx->sm, oid, apiKey))
+                ctx->api->rememberIssuedKey(oid, apiKey);
+            else
+                ctx->out["message"] = "health check passed, but the credential store is unavailable to save the key";
+        }
 
         sendTestResponse(*ctx->sm, ctx->seqNo, ctx->out);
     });
@@ -339,7 +382,8 @@ void StatusController::runSaseTest(ApiService& api, CollectordServiceManager& sm
 // press Test, and it must never reach running_config (append-versioned and shown verbatim in the
 // review diff). So it is sealed here and stored in sase_device.api_key_enc, the same column a passing
 // test writes — engined upserts, so this works before the device projection exists.
-void StatusController::storeApiKey(CollectordServiceManager& sm, std::uint32_t seqNo, const json& input)
+void StatusController::storeApiKey(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
+                                   const json& input)
 {
     json out;
     out["steps"] = json::object();
@@ -362,6 +406,10 @@ void StatusController::storeApiKey(CollectordServiceManager& sm, std::uint32_t s
         }
         else
         {
+            // engined now owns the durable copy, but collectord fetches the issued keys only once at
+            // startup: without this the key the operator just saved cannot be found by the test they
+            // press two seconds later, nor by the periodic probe.
+            api.rememberIssuedKey(oid, apiKey);
             LOG_INFO("sase api-key sealed and sent to engined (oid={})", oid);   // never log the key
             out["ok"] = true;
             out["message"] = "api-key saved";

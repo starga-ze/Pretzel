@@ -44,7 +44,8 @@
  * a direct lane from the browser rows, and a chained hop from the gateway group to the proxy group.
  *
  * Prisma Access is Mobile Users + Remote Networks + Service Connections. This API sees only the
- * first. RN and SC are therefore drawn as real lanes in the picture but marked "API pending" — the
+ * first, and the SCM deployment read adds the Service Connections. RN is therefore drawn as a real
+ * lane in the picture but marked "API pending" — the
  * shape is already correct, so when the IPsec / routing / ZTNA-connector reads land they fill lanes
  * that already exist rather than forcing the page to be redrawn.
  *
@@ -84,18 +85,26 @@
   // serviceType → how it is drawn. `flow` decides which lane an inbound link belongs to.
   const SVC = {
     gp_gateway: { label: 'MU-SPN · GlobalProtect', sub: 'GlobalProtect Gateway', tone: 'gw', flow: 'mu',
-                  note: 'L4 tunnel termination', egress: true },
+                  note: '', egress: true },
     swg_proxy:  { label: 'MU-SPN · Explicit Proxy', sub: 'Secure Web Gateway', tone: 'swg', flow: 'swg',
-                  note: 'L7 proxy — PAB and PAC sessions', egress: true },
+                  note: '', egress: true },
     gp_portal:  { label: 'GP Portal', sub: 'agent config + gateway list', tone: 'portal', flow: 'ctl',
                   note: 'control plane', egress: false },
     // Remote networks are onboarded to a Prisma Access location like any other service, and this same
     // API reports them — service_ip is where the branch's IPsec tunnel lands, plus the egress IPs.
     remote_network: { label: 'RN-SPN · Remote Network', sub: 'branch IPsec termination', tone: 'rn',
-                      flow: 'rn', note: 'service IP + egress for branch traffic', egress: true },
+                      flow: 'rn', note: '', egress: true },
   };
   const svcOf = (k) => SVC[k] || { label: k || 'unknown service', sub: '', tone: 'other', flow: 'mu',
                                    note: 'unrecognised serviceType', egress: false };
+
+  // The three ways user traffic can land in a traffic region. Which of them a tenant has bought is
+  // one of the questions this picture gets asked, and a region that answers with only one of the
+  // three used to be drawn as though the other two were not part of the vocabulary. They are always
+  // drawn now — an absent one as the empty slot it is, in the same hatched "not configured"
+  // treatment the endpoint cards already use, so "no proxy in Hong Kong" reads as a fact about the
+  // tenant rather than as a region that happens to look shorter than its neighbour.
+  const BASELINE_SVC = ['gp_gateway', 'swg_proxy', 'remote_network'];
 
   // `active` in this API means "an in-service egress address for this location" — it does not say
   // which node is currently carrying a session, and nothing in the payload does. Per-node liveness
@@ -115,7 +124,29 @@
     globe:  '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/>',
     shield: '<path d="M12 3l7.5 3v5.5c0 4.6-3.1 8.3-7.5 9.5-4.4-1.2-7.5-4.9-7.5-9.5V6z"/>',
     server: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="16.5" x2="7.01" y2="16.5"/>',
+    // The four Prisma Access cards. Each says what the card IS rather than decorating it: the control
+    // plane is the knobs and not the traffic; the data plane is the layers traffic moves through; a
+    // Service Connection is a link built into your network; a ZTNA connector is a thing that plugs in
+    // from the inside and dials out.
+    sliders: '<line x1="3.5" y1="8" x2="20.5" y2="8"/><circle cx="9" cy="8" r="2.3"/>' +
+             '<line x1="3.5" y1="16" x2="20.5" y2="16"/><circle cx="15" cy="16" r="2.3"/>',
+    layers:  '<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="M3 13 12 17.5 21 13"/>',
+    link:    '<path d="M10.5 13.2a5 5 0 0 0 7.4.4l2.4-2.4a5 5 0 0 0-7-7l-1.4 1.3"/>' +
+             '<path d="M13.5 10.8a5 5 0 0 0-7.4-.4l-2.4 2.4a5 5 0 0 0 7 7l1.4-1.3"/>',
+    plug:    '<path d="M9 2.5v5M15 2.5v5"/><path d="M6 7.5h12v3.2a6 6 0 0 1-12 0V7.5z"/><path d="M12 17v4.5"/>',
+    // A page being read: what the drawer holds is the list behind whatever the card summarises.
+    detail: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5"/><path d="M8 8h6M8 12h4"/>' +
+            '<circle cx="16.5" cy="15.5" r="3.2"/><path d="m19 18 2.2 2.2"/>',
   };
+
+  // Every card opens its detail the same way: this button, in the same corner, and nothing else.
+  // A card that is itself clickable teaches nothing about which parts of a drawing are clickable —
+  // the reader has to try. One mark, repeated, is a rule the eye learns once.
+  const detailBtn = (kind, key, label) =>
+    `<button class="topo-det" type="button" data-det="${esc(kind)}" data-detk="${esc(key == null ? '' : key)}"
+             title="${esc(label || 'Detail')}" aria-label="${esc(label || 'Detail')}">
+       <svg viewBox="0 0 24 24">${ICONS.detail}</svg>
+     </button>`;
 
   const state = {
     site: '',           // '' = Overview; otherwise the scope being drawn
@@ -131,7 +162,6 @@
     siteList: [],       // sites as topologyd knows them — the selector no longer infers them
     sources: {},        // per-source counts, so the decks can say WHICH input is missing
     planeOpen: true,    // the data-plane frame — collapsed, the regions fold into one summary row
-    egressOpen: false,  // the egress address list — the rest are one click away
     view: 'fabric',     // which deck is on screen: 'fabric' | 'ngfw'
     links: [],          // NGFW → fabric/peer edges, composed by topologyd
     shape: {},          // which end is the hub — {kind, tenants, ...}, also from topologyd
@@ -222,6 +252,17 @@
 
       const list = Object.values(groups).sort((a, b) => order(a.svc) - order(b.svc));
       const dataplane = list.some(g => g.spec.egress && (g.nodes.length || g.lbs.length));
+      // Read before the placeholders go in: both are statements about what the tenant ANSWERED
+      // with, and a slot standing in for something absent must not change either of them.
+      const auxOnly = list.every(g => !g.nodes.length && !g.lbs.length && g.aux.length);
+
+      // Only in the regions that carry traffic. A portal region has no MU-SPN to be missing.
+      if (dataplane) {
+        BASELINE_SVC.forEach((svc) => {
+          if (!groups[svc]) list.push({ svc, spec: SVC[svc], nodes: [], lbs: [], aux: [], absent: true });
+        });
+        list.sort((a, b) => order(a.svc) - order(b.svc));
+      }
       return {
         zi,
         name: z.zone || 'unnamed zone',
@@ -232,7 +273,12 @@
         v6: (z.address_details_v6 || []).slice(),
         groups: list,
         dataplane,
-        auxOnly: list.every(g => !g.nodes.length && !g.lbs.length && g.aux.length),
+        auxOnly,
+        // How much of a region there is to see. Collapsed, the frame shows exactly one region, and
+        // which one it picks is the whole impression a viewer gets of the fabric — alphabetical put
+        // a one-lane region in front of a three-lane one and made the tenant look emptier than it is.
+        lanes: list.filter(g => !g.absent && (g.nodes.length || g.lbs.length)).length,
+        addrs: list.reduce((a, g) => a + g.nodes.length + g.lbs.length + g.aux.length, 0),
         raw: z,
       };
     });
@@ -253,8 +299,11 @@
       prevSvc[(z.zone || '') + '|' + (a.address || '')] = a.serviceType || 'unknown';
     }));
 
-    // Data-plane regions first — that is where user traffic actually lands.
-    zones.sort((a, b) => (b.dataplane - a.dataplane) || (a.auxOnly - b.auxOnly) || a.name.localeCompare(b.name));
+    // Data-plane regions first — that is where user traffic actually lands — and among those, the
+    // most populated first. Name order is the last tie-break, not the first: it is stable, which is
+    // all it was ever doing here.
+    zones.sort((a, b) => (b.dataplane - a.dataplane) || (a.auxOnly - b.auxOnly) ||
+                         (b.lanes - a.lanes) || (b.addrs - a.addrs) || a.name.localeCompare(b.name));
     zones.forEach((z, i) => { z.zi = i; });
 
     const counts = { gw: 0, swg: 0, portal: 0, rn: 0, lb: 0, egressIps: [] };
@@ -299,7 +348,7 @@
 
     const t = tenantsForSite();
     const fw = ngfwForSite();
-    const scope = `${t.length} SASE tenant${t.length === 1 ? '' : 's'} · ${fw.length} NGFW`;
+    const scope = `${t.length} SASE · ${fw.length} NGFW`;
 
     return `<div class="topo-bar">
         <div class="topo-bar-group">
@@ -343,13 +392,39 @@
   }
 
   // ── Render: the two outer columns ───────────────────────────────────────────
-  function endCard(id, tone, icon, name, sub, body, pending) {
+  // How many, not which. These four cards all describe things a tenant will have several of, and a
+  // card that lists them becomes a table that grows with the estate — at four Service Connections it
+  // is already taller than the picture can afford, and it still cannot show a connection's subnets,
+  // its tunnel or its region without becoming taller again. So the card answers the one question it
+  // can answer at a glance — is there any, and how many — and the detail mark opens everything else.
+  // Counts also age well: they are the same height on the day the tenant has forty.
+  // A line of figures, not a row of boxes. Each count is already sitting inside a card with a border
+  // and a title, so putting every number in a pill of its own was a third frame around a single
+  // digit — chrome competing with the one thing worth reading. The number takes the card's own
+  // colour and the word after it stays quiet, which is the whole hierarchy this needs.
+  const cnt = (n, one, many) =>
+    `<span class="topo-stat"><b>${n}</b>${esc(n === 1 ? one : (many || one + 's'))}</span>`;
+  const cntHealth = (up, total, word) => total
+    ? `<span class="topo-stat is-health"><span class="topo-dot ${up === total ? 'ok' : 'bad'}"></span>
+         <b>${up}/${total}</b>${esc(word)}</span>`
+    : '';
+  const cnts = (...items) => `<div class="topo-stats">${items.filter(Boolean).join('')}</div>`;
+
+  // Icon, title, subtitle — the same block on every card, so a heading is a heading wherever it
+  // appears. The icon takes the card's own tone; the words never do.
+  const cardHead = (icon, title, sub) => `<div class="topo-hd">
+      <span class="topo-hd-ic"><svg viewBox="0 0 24 24">${icon}</svg></span>
+      <span class="topo-hd-x">
+        <span class="topo-hd-t">${esc(title)}</span>
+        ${sub ? `<span class="topo-hd-s">${esc(sub)}</span>` : ''}
+      </span>
+    </div>`;
+
+  function endCard(id, tone, icon, name, sub, body, pending, det) {
     return `<div class="topo-end ${pending ? 'is-pending' : ''}" id="${id}"
                  style="--topo-tone:var(--tc-${tone})">
-        <div class="topo-end-h">
-          <span class="topo-end-ic"><svg viewBox="0 0 24 24">${icon}</svg></span>
-          <span><span class="topo-end-nm">${esc(name)}</span><div class="topo-end-sub">${esc(sub)}</div></span>
-        </div>
+        ${det ? detailBtn(det, '', name) : ''}
+        ${cardHead(icon, name, sub)}
         <div class="topo-end-body">${body}</div>
       </div>`;
   }
@@ -364,68 +439,41 @@
         <div class="topo-lane" id="ep-pab"><span class="topo-mini-dot" style="--topo-tone:var(--tc-swg)"></span>
           <span class="topo-lane-nm">Prisma Access Browser</span><span class="topo-lane-l">L7</span></div>
         <div class="topo-lane" id="ep-pac"><span class="topo-mini-dot" style="--topo-tone:var(--tc-swg)"></span>
-          <span class="topo-lane-nm">Browser + PAC</span><span class="topo-lane-l">L7</span></div>
-        <div class="topo-note">In full tunnel the browser session rides the L4 tunnel first and is
-          proxied by the SWG behind it. Under split tunnel it reaches the SWG directly.</div>`);
+          <span class="topo-lane-nm">Browser + PAC</span><span class="topo-lane-l">L7</span></div>`,
+        false, 'mu');
 
     // Remote networks are NOT waiting on another API: this one reports serviceType remote_network for
     // every region a branch is onboarded to, and those show up as RN-SPN inside the regions. With
     // none onboarded there is no RN-SPN to draw and no traffic to imply, so the endpoint sits here
     // disabled and unconnected rather than as a lane that looks like it is waiting for something.
     const rn = c.rn
-      ? endCard('end-rn', 'rn', ICONS.branch, 'Remote Users', 'RN · users behind a branch IPsec tunnel', `
+      ? endCard('end-rn', 'rn', ICONS.branch, 'Remote Users', 'RN · users behind a branch', `
           <div class="topo-end-line"><span class="topo-mini-dot" style="--topo-tone:var(--tc-rn)"></span>
-            RN-SPN addresses <b>${c.rn}</b></div>
-          <div class="topo-note">Each branch tunnel lands on its region's service IP. BGP routes and
-            per-branch bandwidth still need the remote-network read.</div>`)
-      : endCard('end-rn', 'pending', ICONS.branch, 'Remote Users', 'RN · users behind a branch IPsec tunnel', `
-          <div class="topo-end-line"><span class="topo-tag pending">not configured</span></div>
-          <div class="topo-note">No remote network is onboarded in this tenant, so no RN-SPN exists to
-            draw.</div>`, true);
+            RN-SPN addresses <b>${c.rn}</b></div>`, false, 'rn')
+      : endCard('end-rn', 'pending', ICONS.branch, 'Remote Users', 'RN · users behind a branch', `
+          <div class="topo-end-line"><span class="topo-tag pending">not configured</span></div>`, true, 'rn');
 
-    return `<div class="topo-col">${mu}${rn}</div>`;
+    return `<div class="topo-col topo-col-edge">${mu}${rn}</div>`;
   }
 
   function destColumn(m) {
     // An allow-list is written per region as often as it is written whole, so each address says where
-    // it egresses from. The list folds like the data-plane frame: a few, then the rest on request.
+    // it egresses from. Not folded: this column is one card in a full-height lane, so the fold was
+    // hiding most of the answer in a card that had the room for all of it — and the answer to "which
+    // source IPs must my allow-list carry" is the list, not its first four. The list takes the
+    // column's slack and scrolls inside itself only for a tenant with more addresses than the column
+    // is tall, which keeps the card's height a property of the layout rather than of the estate.
     const ips = m.counts.egressIps;
-    const LIMIT = 4;
-    const list = state.egressOpen ? ips : ips.slice(0, LIMIT);
-    const rows = list.map(x => `<span class="topo-ip">${esc(x.address)}
+    const rows = ips.map(x => `<span class="topo-ip">${esc(x.address)}
         <em>(${esc(x.zone)})</em></span>`).join('');
-    const more = ips.length > LIMIT
-      ? `<button class="topo-more" id="egressMore" type="button">${state.egressOpen
-          ? '− show fewer' : '+ ' + (ips.length - LIMIT) + ' more'}</button>`
-      : '';
     const net = endCard('dst-net', 'ok', ICONS.globe, 'Internet & SaaS', 'egress from the fabric', `
         <div class="topo-end-line">Egress addresses <b>${ips.length}</b></div>
-        <div class="topo-ips">${rows}</div>${more}
-        <div class="topo-note">The source IPs a SaaS allow-list must carry.</div>`);
+        <div class="topo-ips">${rows}</div>`, false, 'net');
 
-    const fw = ngfwForSite().map(d => `<button class="topo-fw" type="button" data-fw="${esc(d.oid)}"
-          title="${esc((d.name || d.target) + ' · ' + (d.target || '') + (d.site_name ? ' · ' + d.site_name : ''))}">
-        <span class="topo-fw-dot ${d.status === 'active' ? 'ok' : d.status === 'down' ? 'bad' : ''}"></span>
-        <span class="topo-fw-nm">${esc(d.name || d.target || 'unnamed')}</span>
-        <span class="topo-fw-t">${esc(d.target || '')}</span>
-      </button>`).join('');
-
-    // Both destinations are targets, so they sit at the top of the destination column with the
-    // other target.
-    return `<div class="topo-col">
-        ${net}
-        <div class="topo-priv-group">
-          ${endCard('dst-fw', 'ok', ICONS.shield, 'On-premise NGFW', 'where private-app policy is enforced', `
-            ${fw ? `<div class="topo-fw-list">${fw}</div>`
-                 : '<div class="topo-note">No NGFW is managed in this scope.</div>'}
-            <div class="topo-note">Which Service Connection or connector reaches which firewall is
-              not readable yet, so no link is drawn between them.</div>`)}
-          ${endCard('dst-apps', 'pending', ICONS.server, 'Private apps & Data Center', 'behind the firewall', `
-            <div class="topo-end-line"><span class="topo-tag pending">not configured</span></div>
-            <div class="topo-note">Applications, servers and segments the firewall fronts. What each
-              Service Connection or connector publishes is not readable from this API.</div>`, true)}
-        </div>
-      </div>`;
+    // Only the destination that is NOT the customer's own estate. Everything private — the two
+    // hand-offs, the firewall, and what sits behind it — stacks in the middle column, so the private
+    // half of the picture reads top to bottom in one place instead of jumping a column mid-thought.
+    return `<div class="topo-col topo-col-dest">${net}</div>`;
   }
 
   // ── Render: a zone lane ─────────────────────────────────────────────────────
@@ -452,16 +500,37 @@
       </button>`;
   }
 
+  // An address the tenant stopped answering with, shown once in the lane it used to sit in.
+  const goneCardsOf = (g) => (g.goneNodes || []).map(x =>
+    `<span class="topo-node is-gone"><span class="topo-node-ip">${esc(x.address)}</span>
+       <span class="topo-node-sub">withdrawn</span></span>`).join('');
+
   function svcGroup(z, g, gi) {
+    // A slot the tenant has not bought. It keeps its lane's tone and its id, so it still occupies
+    // the row a configured service would — but it carries no NLB/Nodes columns to imply an empty
+    // inventory, and edgeSpecs draws nothing into it. The one thing it does carry is a withdrawal:
+    // a lane becomes an empty slot exactly when its last address went away, which is the moment
+    // worth seeing rather than the moment to go quiet.
+    if (g.absent) {
+      const gone = goneCardsOf(g);
+      return `<div class="topo-svc tone-${g.spec.tone} is-absent" id="svc-${z.zi}-${gi}">
+          <div class="topo-svc-h">
+            <div class="topo-svc-nm" title="${esc(g.spec.label)}">${esc(g.spec.label)}</div>
+            <div class="topo-svc-sub">${esc(g.spec.sub)}</div>
+            ${g.spec.note ? `<div class="topo-svc-note">${esc(g.spec.note)}</div>` : ''}
+          </div>
+          <div class="topo-slot"><span class="topo-tag pending">not configured</span></div>
+          ${gone ? `<div class="topo-nodes">${gone}</div>` : '<span></span>'}
+        </div>`;
+    }
+
     const lbCards = g.lbs.map(n => nodeCard(n, 'is-lb' + (n.lbActive === false ? ' is-standby' : '') +
                                                (n.isNew ? ' is-new' : ''))).join('')
       || '<span class="topo-empty-slot">direct</span>';
 
     const nodeCards = g.nodes.map(n => nodeCard(n, n.isNew ? 'is-new' : '')).join('');
     const auxCards = g.aux.map(n => nodeCard(n, 'is-aux' + (n.isNew ? ' is-new' : ''))).join('');
-    const goneCards = (g.goneNodes || []).map(x =>
-      `<span class="topo-node is-gone"><span class="topo-node-ip">${esc(x.address)}</span>
-         <span class="topo-node-sub">withdrawn</span></span>`).join('');
+    const goneCards = goneCardsOf(g);
 
     const body = (nodeCards || auxCards || goneCards)
       ? nodeCards + auxCards + goneCards
@@ -470,19 +539,14 @@
     // A group with nothing but auxiliary addresses is not a regional service — the tenant's global
     // auth cache arrives under swg_proxy, and calling it "proxy nodes" would be wrong.
     const auxOnly = !g.nodes.length && !g.lbs.length && g.aux.length;
-    // With no NLB carrying traffic there is no active/standby pair to show: every listed address is
-    // in service, and it is the portal's gateway list plus the app's own selection that decides
-    // which one a given client lands on. Saying so is the only honest reading of this payload.
-    const idleLb = g.svc === 'gp_gateway' && g.lbs.some(n => n.lbActive === false);
-    const note = auxOnly ? 'shared global service, not a regional node'
-               : idleLb ? 'no NLB in path — the app picks from the portal gateway list'
-               : g.spec.note;
+    const note = auxOnly ? 'shared global service, not a regional node' : g.spec.note;
 
     return `<div class="topo-svc tone-${auxOnly ? 'other' : g.spec.tone}" id="svc-${z.zi}-${gi}">
         <div class="topo-svc-h">
-          <div class="topo-svc-nm">${esc(auxOnly ? (ADDR_LABEL[g.aux[0].addressType] || g.spec.label) : g.spec.label)}</div>
+          <div class="topo-svc-nm" title="${esc(auxOnly ? (ADDR_LABEL[g.aux[0].addressType] || g.spec.label) : g.spec.label)}">${
+            esc(auxOnly ? (ADDR_LABEL[g.aux[0].addressType] || g.spec.label) : g.spec.label)}</div>
           ${g.spec.sub && !auxOnly ? `<div class="topo-svc-sub">${esc(g.spec.sub)}</div>` : ''}
-          <div class="topo-svc-note">${esc(note)}</div>
+          ${note ? `<div class="topo-svc-note">${esc(note)}</div>` : ''}
         </div>
         <div class="topo-slot"><span class="topo-slot-l">NLB</span>${lbCards}</div>
         <div class="topo-slot"><span class="topo-slot-l">Nodes · ${g.nodes.length + g.aux.length}</span>
@@ -491,10 +555,10 @@
   }
 
   function zoneLane(z) {
-    const gw = z.groups.find(g => g.svc === 'gp_gateway');
-    const swg = z.groups.find(g => g.svc === 'swg_proxy');
-    const kind = z.dataplane ? (gw ? 'gateway region' : 'proxy region') : (z.auxOnly ? 'shared service' : 'portal region');
-
+    // Not the absent slots: a region whose GlobalProtect lane is a placeholder is a proxy region,
+    // and its header must not count nodes that are not there.
+    const gw = z.groups.find(g => g.svc === 'gp_gateway' && !g.absent);
+    const swg = z.groups.find(g => g.svc === 'swg_proxy' && !g.absent);
     const counts = [
       gw ? `<span class="topo-count"><span class="topo-mini-dot" style="--topo-tone:var(--tc-gw)"></span>GW <b>${gw.nodes.length}</b></span>` : '',
       swg ? `<span class="topo-count"><span class="topo-mini-dot" style="--topo-tone:var(--tc-swg)"></span>SWG <b>${swg.nodes.length}</b></span>` : '',
@@ -510,14 +574,9 @@
                  id="zone-${z.zi}" data-zone="${esc(z.name)}">
         <div class="topo-zone-h">
           <span class="topo-zone-nm">${esc(z.name)}</span>
-          <span class="topo-zone-kind">${esc(kind)}</span>${delta}
+          ${delta}
           <span class="topo-zone-counts">${counts}</span>
         </div>
-        <!-- \`ep_\` in the API means Explicit Proxy, not endpoint: this is the tenant-wide proxy
-             geo-LB name, which is why every region reports the same one. The per-region name is
-             ep_regional_fqdn, on the proxy NLB itself. -->
-        ${z.geoFqdn ? `<div class="topo-geo">proxy geo-LB <code>${esc(z.geoFqdn)}</code>
-             <span class="topo-geo-note">tenant-wide</span></div>` : ''}
         <div class="topo-zone-body">${z.groups.map((g, gi) => svcGroup(z, g, gi)).join('')}</div>
       </div>`;
   }
@@ -528,60 +587,133 @@
   // The two ways into the customer's own estate — a tenant may run either or both. They belong at
   // the foot of the fabric column: the last thing inside Prisma Access before the picture crosses to
   // on-premise.
-  // The private-application hand-off. The Service Connection half is still unread — no API reports
-  // it yet — but the ZTNA half is now real: the connectors the tenant actually has, and whether each
-  // one's tunnel and control plane are up.
+  // The private-application hand-off. Both halves are now real: the Service Connections the tenant
+  // has declared, and the ZTNA connectors it runs with whether each one's tunnel and control plane
+  // are up.
+  //
+  // The two are read from different APIs and mean different things. The ZTNA read reports HEALTH —
+  // it is why that half carries dots. The Service Connection read is SCM's deployment config: it
+  // says which connections exist and how each is built, and nothing about whether one is carrying
+  // traffic. That half therefore carries no dots; inventing a green one would be the worst kind of
+  // wrong, since a Service Connection is exactly the thing an operator checks when the data centre
+  // has gone unreachable.
   //
   // A connector is drawn as its own endpoint, not as something hanging off a firewall. They run on
   // hosts behind the customer's network and dial OUT to the fabric themselves; the firewall they sit
   // behind is not a peer and there is no link to draw between them.
-  function privLanes(tenant) {
+  // The ZTNA half. It sits beside the Service Connection because a tenant may run either or both and
+  // the pair is the answer to one question — how does the fabric reach the private estate. What sets
+  // them apart is not where they are drawn but what is drawn FROM them: the Service Connection lands
+  // on the firewall, and the connector does not. That difference is carried entirely by its link,
+  // which leaves the stack sideways rather than dropping through it.
+  function ztnaLane(tenant) {
     const z = (tenant && tenant.ztna) || {};
     const groups = Array.isArray(z.groups) ? z.groups : [];
     const conns = Array.isArray(z.connectors) ? z.connectors : [];
-    const names = z.group_names || {};
 
     const healthy = conns.filter(c => (c.flags || {}).tunnel_up && (c.flags || {}).control_plane_up).length;
     const have = groups.length || conns.length;
 
-    const connRows = conns.slice(0, 8).map(c => {
-      const f = c.flags || {};
-      const up = f.tunnel_up && f.control_plane_up;
-      const why = !f.tunnel_up ? 'tunnel down' : !f.control_plane_up ? 'control plane down' : 'up';
-      return `<div class="topo-ztna-row" title="${esc((c.cgnx_location || '') + ' · ' + why)}">
-          <span class="topo-dot ${up ? 'ok' : 'bad'}"></span>
-          <span class="topo-ztna-nm">${esc(c.name || c.oid || 'connector')}</span>
-          <span class="topo-ztna-sub">${esc(names[c.group] || '')}</span>
-          <span class="topo-ztna-ip">${esc(c.cgnx_vion_ip || '')}</span>
-        </div>`;
-    }).join('');
-
     const ztnaBody = have
-      ? `<div class="topo-ztna-list">${connRows}</div>
-         ${conns.length > 8 ? `<div class="topo-note">+ ${conns.length - 8} more</div>` : ''}
-         <span class="topo-tag ${healthy === conns.length ? '' : 'pending'}">${
-           groups.length} group${groups.length === 1 ? '' : 's'} · ${healthy}/${conns.length} up</span>`
-      : `<div class="topo-note">connector VMs dial out to Zero Trust Tunnel termination points in the
-           region — no routing from your network, so overlapping app subnets are fine, and the app can
-           be reached without crossing the firewall</div>
-         <span class="topo-tag pending">not collected</span>`;
+      ? cnts(cnt(conns.length, 'connector'), cnt(groups.length, 'group'),
+             cntHealth(healthy, conns.length, 'up'))
+      : `<span class="topo-tag pending">not configured</span>`;
 
-    return `<div class="topo-priv-split" id="priv-stack">
-        <div class="topo-half is-pending" id="dst-sc">
-          <div class="topo-half-nm">Service Connection</div>
-          <div class="topo-half-sub">SC-CAN · data plane</div>
-          <div class="topo-note">user traffic reaches the data centre over the fabric and lands on a
-            Corporate Access Node — which does no inspection of its own; that already happened on the
-            SPN the session came from</div>
-          <span class="topo-tag pending">API pending</span>
-        </div>
-        <div class="topo-half ${have ? '' : 'is-pending'}" id="dst-ztna">
-          <div class="topo-half-nm">ZTNA Connector</div>
-          <div class="topo-half-sub">ZTT · data plane${
-            z.collected_at ? ` · read ${esc(relStamp(z.collected_at))}` : ''}</div>
-          ${ztnaBody}
-        </div>
+    return `<div class="topo-half topo-pa ${have ? '' : 'is-pending'}" id="dst-ztna">
+        ${detailBtn('ztna', '', 'ZTNA Connector')}
+        ${cardHead(ICONS.plug, 'ZTNA Connector', 'ZTT · dials out from your network')}
+        ${ztnaBody}
       </div>`;
+  }
+
+  // The private estate, top to bottom: the two hand-offs side by side, the firewall the IPsec one
+  // lands on, and what sits behind that.
+  function handoffSplit(tenant) {
+    const s = (tenant && tenant.sc) || {};
+
+    const scConns = Array.isArray(s.connections) ? s.connections : [];
+    // Names, not counts, for this one. A Service Connection is the thing an operator asks for by
+    // name when the data centre has gone quiet, and its region is the other half of that name — two
+    // values that identify it, where "1 connection" identifies nothing. Two chips is the budget:
+    // enough to name a small tenant outright, and past that the count in the overflow chip says how
+    // much more the drawer holds. Everything else about them — tunnel, subnets, SNAT, BGP — is a
+    // list, and lists live in the drawer.
+    // A connection is BUILT when the peer address on its IKE gateway is an address configured on a
+    // firewall we manage — the two ends naming each other, each from the side that owns the fact.
+    // topologyd resolves that (service-connection → ipsec_tunnel → ike gateway → peer_address) and
+    // matches it; the page is handed the answer.
+    //
+    // "built" and not "up". Nothing collected here reports tunnel state, IKE phase or a byte
+    // counter, so this says traffic CAN flow, not that it IS flowing. On the one card an operator
+    // opens when the data centre has gone quiet, that distinction is the whole value of the card.
+    const scBody = scConns.length
+      ? `<div class="topo-chips">${scConns.slice(0, 2).map((c) => {
+            const nm = c.name || c.id || 'connection';
+            const where = c.region || c.region_tag || '';
+            const why = c.linked
+              ? 'built — peer ' + c.peer_ip + ' is ' + (c.linked_device_name || 'a managed firewall') +
+                ' ' + (c.linked_interface || '')
+              : c.peer_ip ? 'peer ' + c.peer_ip + ' is not an address on any firewall in this scope'
+              : c.peer_fqdn ? 'peer is an FQDN (' + c.peer_fqdn + '), which cannot be matched'
+              : c.peer_dynamic ? 'peer address is dynamic, so there is nothing to match'
+              : 'no peer address resolved from this connection';
+            return `<span class="topo-chip" title="${esc(nm + (where ? ' · ' + where : '') + ' · ' + why)}">
+                <span class="topo-mini-dot" style="--topo-tone:var(${
+                  c.linked ? '--tc-ok' : '--tc-faint'})"></span>
+                <span class="topo-chip-nm">${esc(nm)}</span>
+                ${where ? `<span class="topo-chip-z">${esc(where)}</span>` : ''}
+              </span>`;
+          }).join('')}${
+          scConns.length > 2 ? `<span class="topo-chip is-more">+${scConns.length - 2}</span>` : ''}</div>`
+      : `<span class="topo-tag pending">not configured</span>`;
+
+    // No wrapper. The three of these are cards in the middle column exactly as the two bands above
+    // them are, and nesting them in a stack of their own gave that stack its own spacing — so the
+    // column ran at one rhythm down to the hand-offs and a different one below them. Flattened, one
+    // gap governs the whole column and every card in it is spaced like every other.
+    return `<div class="topo-priv-split">
+        <div class="topo-half topo-pa ${scConns.length ? '' : 'is-pending'}" id="dst-sc">
+          ${detailBtn('sc', '', 'Service Connection')}
+          ${cardHead(ICONS.link, 'Service Connection', 'SC-CAN · IPsec into your network')}
+          ${scBody}
+        </div>
+        ${ztnaLane(tenant)}
+      </div>`;
+  }
+
+  // The customer's own estate: the firewall a Service Connection lands on, and what sits behind it.
+  // Outside the Prisma Access band above, because that boundary is the one fact this deck is most
+  // often asked for — whose kit is this, and where does someone else's service end.
+  function onPremCards() {
+    // Named, like the Service Connection above it — and for the same reason. A firewall is the one
+    // thing on this deck the operator configured themselves, under a name they chose in the console,
+    // and "1 firewall" tells them nothing they did not already know. The name, the address it is
+    // reached at, and whether the last probe answered: that is the card. Everything else — ports,
+    // tunnels, IKE gateways, peers — is a list, and lists are in the drawer.
+    //
+    // The dot is the ICMP probe's verdict and nothing more. Green means the box answered; amber
+    // means it did not; grey means it has not been probed yet, which is not the same as down and
+    // must not be drawn as if it were.
+    const devs = ngfwForSite();
+    const fwTone = (d) => d.status === 'active' ? 'var(--tc-ok)'
+                        : d.status === 'down' ? 'var(--tc-warn)' : 'var(--tc-faint)';
+    const fwWord = (d) => d.status === 'active' ? 'reachable'
+                        : d.status === 'down' ? 'unreachable' : 'not probed yet';
+    const fwBody = devs.length
+      ? `<div class="topo-chips">${devs.slice(0, 2).map(d => {
+            const nm = d.name || d.target || 'unnamed';
+            return `<span class="topo-chip" title="${esc(nm + ' · ' + (d.target || '') + ' · ' + fwWord(d))}">
+                <span class="topo-mini-dot" style="--topo-tone:${fwTone(d)}"></span>
+                <span class="topo-chip-nm">${esc(nm)}</span>
+                ${d.target ? `<span class="topo-chip-z">${esc(d.target)}</span>` : ''}
+              </span>`;
+          }).join('')}${
+          devs.length > 2 ? `<span class="topo-chip is-more">+${devs.length - 2}</span>` : ''}</div>`
+      : `<span class="topo-tag pending">none in scope</span>`;
+
+    return `${endCard('dst-fw', 'ok', ICONS.shield, 'On-premise NGFW', '', fwBody, false, 'fwcard')}
+      ${endCard('dst-apps', 'pending', ICONS.server, 'Private apps & Data Center', '', `
+        <div class="topo-end-line"><span class="topo-tag pending">not configured</span></div>`, true, 'apps')}`;
   }
 
   // Collapsed does not mean empty: one region stays on screen so the shape of a region is still
@@ -592,23 +724,26 @@
   // comparing regions at the summary level does not always want all of it. Collapsed, the frame keeps
   // its counts and its links — it simply stops listing every node.
   function planeFrame(m) {
-    const gw = m.counts.gw, swg = m.counts.swg;
-    const nlb = m.dataZones.reduce((a, z) => a + z.groups.reduce((b, g) => b + g.lbs.length, 0), 0);
     const open = state.planeOpen;
     const shown = shownZones(m);
     const hidden = m.dataZones.length - shown.length;
 
-    return `<div class="topo-plane ${open ? '' : 'is-closed'}" id="data-plane">
-        <button class="topo-plane-h" id="planeToggle" type="button" aria-expanded="${open}">
-          <svg class="topo-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-               stroke-linecap="round"><polyline points="9 6 15 12 9 18"/></svg>
-          <span class="topo-plane-t">Data plane · traffic regions</span>
-          <span class="topo-plane-sum">${m.dataZones.length} region${m.dataZones.length === 1 ? '' : 's'}
-            · GW ${gw} · SWG ${swg} · NLB ${nlb}</span>
+    // What the frame is hiding is said once, in the header, beside the control that reveals it — a
+    // second row at the foot repeating it was the same sentence twice and cost the drawing a line.
+    // The census that used to sit at the right is in the detail panel; on the canvas it was four
+    // numbers nobody was reading against anything.
+    const rest = m.dataZones.slice(shown.length).map(z => z.name).join(', ');
+
+    return `<div class="topo-plane topo-pa ${open ? '' : 'is-closed'}" id="data-plane">
+        ${detailBtn('plane', '', 'Data plane · traffic regions')}
+        <button class="topo-plane-h" id="planeToggle" type="button" aria-expanded="${open}"
+                title="${esc(open ? 'Show one region' : rest ? 'Show ' + rest : '')}">
+          ${cardHead(ICONS.layers, 'Data Plane', 'traffic regions · where user sessions land')}
+          ${m.dataZones.length > 1 ? `<span class="topo-plane-more">
+              <span class="topo-more-x" aria-hidden="true">${open ? '−' : '+'}</span>${
+              open ? 'show one region' : 'view all regions'}</span>` : ''}
         </button>
         <div class="topo-plane-b">${shown.map(zoneLane).join('')}</div>
-        ${hidden ? `<button class="topo-more" id="planeMore" type="button">+ ${hidden} more
-          region${hidden === 1 ? '' : 's'} · ${esc(m.dataZones.slice(1).map(z => z.name).join(', '))}</button>` : ''}
       </div>`;
   }
 
@@ -619,18 +754,21 @@
     const chips = m.ctlZones.map((z, i) => z.groups.map((g, gi) => {
       const n = g.nodes.length + g.aux.length;
       const aux = !g.nodes.length && g.aux.length;
-      return `<button class="topo-ctl-chip" type="button" id="ctl-${i}-${gi}"
-                data-ctl="${esc(z.name)}" title="${esc(z.name + ' · ' + g.svc)}">
+      return `<span class="topo-chip" id="ctl-${i}-${gi}" title="${esc(z.name + ' · ' + g.svc)}">
           <span class="topo-mini-dot" style="--topo-tone:var(--tc-${aux ? 'other' : 'portal'})"></span>
-          <span class="topo-ctl-nm">${esc(aux ? 'Auth cache' : 'GP Portal')}</span>
-          <span class="topo-ctl-z">${esc(z.name)}</span>
+          <span class="topo-chip-nm">${esc(aux ? 'Auth cache' : 'GP Portal')}</span>
+          <span class="topo-chip-z">${esc(z.name)}</span>
           <b>${n}</b>
-        </button>`;
+        </span>`;
     }).join('')).join('');
 
-    return `<div class="topo-ctl" id="ctl-strip">
-        <span class="topo-ctl-t">Control plane &amp; shared services</span>
-        <div class="topo-ctl-row">${chips}</div>
+    // Headed like the data-plane frame below it, down to where the label starts: the two are the
+    // same kind of thing — a band of the fabric with a name on it — and reading them as a pair
+    // depends on them being titled identically rather than merely similarly.
+    return `<div class="topo-ctl topo-pa" id="ctl-strip">
+        ${detailBtn('ctl', '', 'Control plane & shared services')}
+        ${cardHead(ICONS.sliders, 'Control Plane', 'portals and auth · carries no user traffic')}
+        <div class="topo-chips">${chips}</div>
       </div>`;
   }
 
@@ -715,15 +853,23 @@
         <div class="topo-deck-h">
           <span class="topo-deck-t">SASE Infrastructure</span>
           <span class="topo-deck-sum">${esc(m.tenant.name || m.tenant.target || 'tenant')}
-            · <b>${regions}</b> traffic region${regions === 1 ? '' : 's'}
-            · <b>${ips}</b> egress address${ips === 1 ? '' : 'es'}</span>
+            · <b>${regions}</b> data plane region${regions === 1 ? '' : 's'}
+            · <b>${ips}</b> egress IP address${ips === 1 ? '' : 'es'}</span>
         </div>
         <div class="topo-cols">
           ${edgeColumn(m)}
           <div class="topo-col">
-            ${ctlStrip(m)}
-            ${planeFrame(m)}
-            ${privLanes(m.tenant)}
+            <!-- The band is the answer to the question this deck is asked most: whose kit is this?
+                 Everything inside it is a service Palo Alto runs and an operator cannot log into;
+                 everything below it is in the customer's own racks. The four cards already carried
+                 that in their colours, but a colour has to be learned — a named ground states it. -->
+            <div class="topo-pa-zone">
+              <span class="topo-pa-zone-t">Prisma Access</span>
+              ${ctlStrip(m)}
+              ${planeFrame(m)}
+              ${handoffSplit(m.tenant)}
+            </div>
+            ${onPremCards()}
           </div>
           ${destColumn(m)}
         </div>
@@ -808,6 +954,7 @@
     };
 
     return `<div class="topo-dest ${hub ? 'is-hub' : ''}" id="ndest-${esc(g.key)}">
+        ${detailBtn('dest', g.key, g.key === 'unknown' ? 'Prisma Access tenant' : g.key)}
         <div class="topo-dest-h">
           <span class="topo-dest-ic"><svg viewBox="0 0 24 24">${ICONS.cloud}</svg></span>
           <span>
@@ -831,6 +978,7 @@
     list.forEach(l => { if (!byPeer.has(l.peer)) byPeer.set(l.peer, l); });
 
     return `<div class="topo-dest is-ext" id="ndest-external">
+        ${detailBtn('ext', '', 'External peers')}
         <div class="topo-dest-h">
           <span class="topo-dest-ic"><svg viewBox="0 0 24 24">${ICONS.globe}</svg></span>
           <span>
@@ -937,7 +1085,7 @@
                Add the ethernet-interfaces endpoint to its
                <a href="settings?tab=api-connector">API Connector</a>.</div>`}
         ${sum}
-        <button class="topo-fwb-more" type="button" data-fwdetail="${esc(d.oid)}">Open detail</button>
+        ${detailBtn('fw', d.oid, d.name || d.target || 'firewall')}
       </div>`;
   }
 
@@ -1031,6 +1179,7 @@
     const pools = gateways.reduce((n, x) => n + ((x.g.pools || []).length), 0);
 
     return `<div class="topo-acc" id="ngp">
+        ${detailBtn('gp', '', 'GlobalProtect — on-premise')}
         <div class="topo-acc-h">
           <span class="topo-acc-ic"><svg viewBox="0 0 24 24">${ICONS.mobile}</svg></span>
           <span>
@@ -1145,8 +1294,26 @@
 
 
   // The control that moves between the two decks. It names the destination, and its arrow points the
-  // way the screen will travel. It lives on the canvas frame rather than inside a deck: a deck can be
-  // taller than the frame and scroll, and a control that scrolls away is a control you cannot find.
+  // way the screen will travel. It sits on the side of the drawing it points at: below when it leads down to the NGFW
+  // deck, above when it leads back up to the fabric. The arrow then says the same thing twice — its
+  // direction and its position — and the two decks stop feeling like one page with a button on the
+  // bottom, which is the thing they are deliberately not.
+  const deckBarHtml = () =>
+    `<div class="topo-deck-bar" id="deckBar">${deckBtn(state.view === 'fabric' ? 'ngfw' : 'fabric')}</div>`;
+
+  // Moved rather than re-rendered when the deck changes: a full render would restage both decks to
+  // relocate one control, and the slide between them is the whole effect.
+  function placeDeckBar() {
+    const bar = document.getElementById('deckBar');
+    const canvas = document.getElementById('topoCanvas');
+    if (!bar || !canvas || !canvas.parentNode)
+        return;
+    if (state.view === 'ngfw')
+      canvas.parentNode.insertBefore(bar, canvas);
+    else
+      canvas.parentNode.insertBefore(bar, canvas.nextSibling);
+  }
+
   function deckBtn(to) {
     const down = to === 'ngfw';
     return `<button class="topo-deck-btn" id="deckSwitch" type="button">
@@ -1156,37 +1323,6 @@
                  : '<path d="M12 19V5"/><polyline points="6 11 12 5 18 11"/>'}
         </svg>
       </button>`;
-  }
-
-  // Per deck: the two draw different relationships and a combined key would ask the operator to
-  // ignore half of it. The colours themselves are shared, so a pink line means branch IPsec on
-  // either screen — which is the point of keeping one palette across both.
-  function legendHtml() {
-    const lg = (color, text) => `<span class="topo-lg"><i style="background:${color}"></i>${esc(text)}</span>`;
-
-    if (state.view === 'ngfw') {
-      return `<div class="topo-legend">
-          ${lg('#2dd4bf', 'Service Connection → Prisma Access')}
-          ${lg('#f472b6', 'Remote Network → Prisma Access')}
-          ${lg('#34d399', 'IPsec to an external peer')}
-          ${lg('#38bdf8', 'GlobalProtect — remote users on-premise')}
-          ${lg('#2dd4bf', 'Port badge VPN — an IKE gateway terminates here')}
-          ${lg('#f472b6', 'Port role WAN — a public address')}
-          ${lg('#fbbf24', 'Port role EDGE — private, but a VPN/GP endpoint terminates here')}
-          ${lg('#34d399', 'Port role LAN — RFC1918, nothing external')}
-        </div>`;
-    }
-
-    return `<div class="topo-legend">
-        ${lg('#38bdf8', 'GP tunnel → MU-SPN')}
-        ${lg('#f472b6', 'Branch IPsec → RN-SPN')}
-        ${lg('#a78bfa', 'Explicit Proxy → MU-SPN')}
-        ${lg('#c084fc', 'full tunnel → SWG (L4→L7)')}
-        ${lg('#fbbf24', 'Portal (control plane)')}
-        ${lg('#22d3ee', 'NLB → node')}
-        ${lg('#34d399', 'Egress to Internet / SaaS')}
-        ${lg('#6b7280', 'RN-SPN / SC-CAN — API pending')}
-      </div>`;
   }
 
   // Shown while topologyd is composing. The stages are the real pipeline — mgmtd asks, topologyd
@@ -1300,6 +1436,7 @@
 
     root.className = 'content-body topo-page';
     root.innerHTML = barHtml() +
+      (scopeChosen && !composing && state.view === 'ngfw' ? deckBarHtml() : '') +
       `<div class="topo-canvas ${state.flow ? '' : 'no-flow'}" id="topoCanvas">
         <div class="topo-viewport" id="topoViewport">
           <div class="topo-decks" id="topoDecks">
@@ -1309,9 +1446,8 @@
                      id="deck-ngfw">${scopeChosen ? (composing ? composingHtml() : ngfwDeck()) : ''}</section>
           </div>
         </div>
-        ${scopeChosen && !composing ? deckBtn(state.view === 'fabric' ? 'ngfw' : 'fabric') : ''}
       </div>` +
-      (scopeChosen && !composing ? legendHtml() : '') +
+      (scopeChosen && !composing && state.view === 'fabric' ? deckBarHtml() : '') +
       `<aside class="topo-drawer" id="topoDrawer"><div class="topo-drawer-h">
           <span class="topo-drawer-t" id="topoDrawerT">Node</span>
           <button class="topo-drawer-x" id="topoDrawerX" type="button">&times;</button>
@@ -1356,11 +1492,7 @@
     if (btn) btn.outerHTML = deckBtn(view === 'fabric' ? 'ngfw' : 'fabric');
     document.getElementById('deckSwitch')?.addEventListener('click', () =>
       goDeck(state.view === 'fabric' ? 'ngfw' : 'fabric'));
-
-    // The key belongs to the deck on screen, so it changes with it. Swapped rather than re-rendered:
-    // a full render would restage both decks to relabel one strip.
-    const legend = document.querySelector('.topo-legend');
-    if (legend) legend.outerHTML = legendHtml();
+    placeDeckBar();
 
     // The cards assemble on arrival, not on every poll — a stagger that replayed every 30 seconds
     // would read as the page glitching rather than as the estate resolving into view.
@@ -1382,8 +1514,8 @@
     const out = [];
 
     shownZones(m).forEach((z) => {
-      const gwGroup = z.groups.findIndex(g => g.svc === 'gp_gateway');
-      const swgGroup = z.groups.findIndex(g => g.svc === 'swg_proxy');
+      const gwGroup = z.groups.findIndex(g => g.svc === 'gp_gateway' && !g.absent);
+      const swgGroup = z.groups.findIndex(g => g.svc === 'swg_proxy' && !g.absent);
 
       z.groups.forEach((g, gi) => {
         const gid = 'svc-' + z.zi + '-' + gi;
@@ -1424,27 +1556,46 @@
   // relationship really is "the fabric reaches these", not "this particular region does".
   function coarseEdges(m) {
     const out = [];
+    // A Service Connection whose peer address is an address on a firewall we manage is a tunnel
+    // configured end to end — see linkServiceConnections() in topologyd. That is the first thing on
+    // the private side of this drawing the page has ever been able to state rather than reserve, so
+    // it is the first line there allowed to carry packets: `sc` is drawn solid and animated, where
+    // `pending` is the dashed lane that means "we cannot see whether anything is here".
+    //
+    // Deliberately not extended past the firewall. What sits behind it is not collected, and a
+    // packet crossing into the applications card would be inventing the one hop nothing reports.
+    const scBuilt = (((m.tenant || {}).sc || {}).connections || []).some(c => c.linked);
+
     if (m.dataZones.length) {
       // No coarse RN line when nothing is onboarded: a line into the fabric would imply an RN-SPN
       // that does not exist. When one does exist it is drawn per region, above.
 
-      out.push({ from: 'data-plane', to: 'dst-sc', kind: 'pending', zone: 'all' });
+      out.push({ from: 'data-plane', to: 'dst-sc', kind: scBuilt ? 'sc' : 'pending', zone: 'all' });
       out.push({ from: 'data-plane', to: 'dst-ztna', kind: 'pending', zone: 'all' });
     }
 
     // The portal is what the GlobalProtect app talks to before it has a gateway at all.
     if (m.ctlZones.length) out.push({ from: 'ep-gp', to: 'ctl-strip', kind: 'ctl', zone: 'all' });
 
-    // The private estate sits in one band at the foot of the canvas, directly under the fabric it
-    // hangs off: every link here is a short hop between neighbours. Routing them around the outside
-    // of the diagram — which is what a distant right-hand column forced — was the clutter.
-    out.push({ from: 'dst-sc', to: 'dst-fw', kind: 'pending', zone: 'all', route: 0 });
-    out.push({ from: 'dst-ztna', to: 'dst-fw', kind: 'pending', zone: 'all', route: 1 });
-    // The connector is a VM deployed in the application estate itself, so it also reaches private
-    // apps directly — that path never passes the perimeter firewall, which is the whole point of it
-    // and the reason it stays its own line.
-    out.push({ from: 'dst-ztna', to: 'dst-apps', kind: 'pending', zone: 'all', route: 2 });
+    // The private estate is now one vertical stack under the hand-offs that reach it, so these are
+    // plain top-to-bottom hops between neighbours and need no routing at all — geometry() draws a
+    // stacked pair from the bottom edge to the top edge on its own.
+    // Not `short`. That flag caps a line at one packet, which is right for a hop between two cards
+    // sitting on top of each other — an NLB to its node — but this one spans the width of the stack
+    // and a single dot on it read as a stray mark rather than as traffic. It gets the standard count
+    // for its length, the same as the line feeding it from the fabric above.
+    out.push({ from: 'dst-sc', to: 'dst-fw', kind: scBuilt ? 'sc' : 'pending', zone: 'all' });
     out.push({ from: 'dst-fw', to: 'dst-apps', kind: 'pending', zone: 'all', short: true });
+
+    // No connector-to-firewall link, deliberately. A connector dials OUT to the fabric from a host
+    // inside the estate; the firewall it happens to sit behind is not a peer and no tunnel is built
+    // to it. Drawing one would put the connector on the Service Connection's footing, which is the
+    // single thing about this half of the picture worth getting right.
+    //
+    // So the connector has exactly one link, and it goes straight to the applications — down the
+    // outside of the stack and in from the far side. Drawn as a drop through the middle it would
+    // read as passing through the firewall; the detour IS the statement.
+    out.push({ from: 'dst-ztna', to: 'dst-apps', kind: 'pending', zone: 'all', enter: 'right' });
     return out;
   }
 
@@ -1629,6 +1780,22 @@
   // Where one link runs, given the two boxes it joins. Pure geometry: no DOM, so it can be re-run on
   // every frame of a resize without touching the drawing.
   function geometry(s, ra, rb) {
+    // Round the outside and in from the target's right edge. For a source that stands beside the
+    // stack rather than above it, this is the only path that does not cross what it is bypassing:
+    // the vertical run stays clear of the column, so the line never touches the cards it skips.
+    if (s.enter === 'right') {
+      // Out the SIDE, down the outside, and back in the target's far edge — three straight runs and
+      // two corners, none of them over a card. Leaving downwards instead put the first corner
+      // directly under the source and dropped the line past the edge of every card in the stack,
+      // which read as a line squeezing between them rather than as one going around. Out the right
+      // edge it never enters the column at all, and the detour — the whole statement this link
+      // makes, that a connector reaches the applications without passing the firewall — is what the
+      // eye follows.
+      const chanX = Math.max(ra.r, rb.r) + 18;
+      return roundedPath([{ x: ra.r, y: ra.cy }, { x: chanX, y: ra.cy },
+                          { x: chanX, y: rb.cy }, { x: rb.r, y: rb.cy }], 12);
+    }
+
     if (s.route !== undefined) {
       // Straight across would cut through the card standing between the two columns, so the link
       // leaves downwards into the margin under the row, runs along it, climbs the empty channel
@@ -1669,6 +1836,23 @@
   }
 
   // ── Detail drawer ───────────────────────────────────────────────────────────
+  // Every opener ends here: set the title, set the body, slide it in. Kept in one place so the
+  // selection bookkeeping cannot drift between the dozen cards that now open it.
+  function drawer(title, html) {
+    state.selected = null;
+    document.getElementById('topoDrawerT').textContent = title;
+    document.getElementById('topoDrawerB').innerHTML = html;
+    document.getElementById('topoDrawer').classList.add('open');
+    document.querySelectorAll('.topo-node.selected').forEach(el => el.classList.remove('selected'));
+  }
+
+  // The two shapes every detail body is built from.
+  const kvRow = (k, v, mono) => (v === '' || v === undefined || v === null)
+    ? '' : `<dt>${esc(k)}</dt><dd class="${mono ? 'mono' : ''}">${esc(v)}</dd>`;
+  const kv = (rows) => rows.filter(Boolean).length ? `<dl class="topo-kv">${rows.join('')}</dl>` : '';
+  const sec = (t) => `<div class="topo-drawer-sec">${esc(t)}</div>`;
+  const hint = (t) => `<p class="field-hint">${t}</p>`;
+
   function findNode(key) {
     if (!model) return null;
     for (const z of model.zones)
@@ -1684,11 +1868,9 @@
     const { node: n, zone: z, group: g } = hit;
     state.selected = key;
 
-    const row = (k, v, mono) => v === '' || v === undefined || v === null
-      ? '' : `<dt>${esc(k)}</dt><dd class="${mono ? 'mono' : ''}">${esc(v)}</dd>`;
+    const row = kvRow;
 
-    document.getElementById('topoDrawerT').textContent = n.address;
-    document.getElementById('topoDrawerB').innerHTML = `
+    drawer(n.address, `
       <dl class="topo-kv">
         ${row('Region', z.name)}
         ${row('Service', g.spec.label)}
@@ -1706,10 +1888,9 @@
       ${z.subnets.length ? `<div class="topo-drawer-sec">Region subnets (v4)</div>
         <div class="topo-sub-list">${z.subnets.map(s => `<span class="topo-sub">${esc(s)}</span>`).join('')}</div>` : ''}
       ${z.subnets6.length ? `<div class="topo-drawer-sec">Region subnets (v6)</div>
-        <div class="topo-sub-list">${z.subnets6.map(s => `<span class="topo-sub">${esc(s)}</span>`).join('')}</div>` : ''}`;
+        <div class="topo-sub-list">${z.subnets6.map(s => `<span class="topo-sub">${esc(s)}</span>`).join('')}</div>` : ''}`);
 
-    document.getElementById('topoDrawer').classList.add('open');
-    document.querySelectorAll('.topo-node.selected').forEach(el => el.classList.remove('selected'));
+    state.selected = key;
     const el = document.querySelector('.topo-node[data-node="' + cssEscape(key) + '"]');
     if (el) el.classList.add('selected');
   }
@@ -1719,25 +1900,308 @@
   function openFwDrawer(oid) {
     const d = state.ngfw.find(x => x.oid === oid);
     if (!d) return;
-    state.selected = null;
-    const row = (k, v, mono) => (v === '' || v == null) ? ''
-      : `<dt>${esc(k)}</dt><dd class="${mono ? 'mono' : ''}">${esc(v)}</dd>`;
+    const row = kvRow;
     const word = d.status === 'active' ? 'reachable' : d.status === 'down' ? 'unreachable' : 'not probed yet';
+    const peers = linksOf(d.oid);
 
-    document.getElementById('topoDrawerT').textContent = d.name || d.target || 'firewall';
-    document.getElementById('topoDrawerB').innerHTML = `
+    drawer(d.name || d.target || 'firewall', `
       <dl class="topo-kv">
         ${row('Role', 'On-premise NGFW')}
         ${row('Site', d.site_name)}
-        ${row('Address', d.target, true)}
+        ${row('Management address', d.target, true)}
         ${row('Status', word)}
       </dl>
+      ${peers.length ? sec('Configured peers') + `<div class="topo-dl">${peers.map(l =>
+          `<div class="topo-dl-r"><span class="topo-dl-k k-${esc(l.kind)}">${
+            l.kind === 'service_connection' ? 'SC' : l.kind === 'remote_network' ? 'RN' : 'ext'}</span>
+             <span class="topo-dl-n">${esc(l.label || l.peer)}</span>
+             <span class="topo-dl-v mono">${esc(l.peer)}</span></div>`).join('')}</div>` : ''}
       ${fwDetail(d)}
-      <div class="topo-drawer-sec">Why it is in this picture</div>
-      <p class="field-hint">No Service Connection or ZTNA link is drawn — neither is reported by an
-        API yet, and connectors are not peers of this firewall.</p>`;
-    document.getElementById('topoDrawer').classList.add('open');
-    document.querySelectorAll('.topo-node.selected').forEach(el => el.classList.remove('selected'));
+      ${sec('Why it is in this picture')}
+      ${hint(`A Service Connection reaches this box when its IKE gateway's peer address is one of the
+              addresses above — the Service Connection card does that match. A ZTNA connector never
+              does: it dials out from a host inside the estate and this firewall is not its peer.`)}`);
+  }
+
+  // ── One panel per card kind ─────────────────────────────────────────────────
+  // The drawer is where a card stops summarising. Each of these answers the question its card
+  // raises and says plainly where the answer came from — or that no API reports it, which on this
+  // page is a real answer and not a gap to paper over.
+  function openDetail(kind, key) {
+    const m = model;
+    const t = m && m.tenant;
+
+    if (kind === 'node') return openDrawer(key);
+    if (kind === 'fw')   return openFwDrawer(key);
+
+    if (kind === 'mu') {
+      const c = m ? m.counts : { gw: 0, swg: 0, portal: 0 };
+      return drawer('Mobile Users', `
+        ${kv([kvRow('Endpoint kinds', 'GlobalProtect app · Prisma Access Browser · Browser + PAC'),
+              kvRow('GP gateway addresses', c.gw), kvRow('Explicit Proxy addresses', c.swg),
+              kvRow('GP portal addresses', c.portal)])}
+        ${sec('How a session gets in')}
+        ${hint(`The GlobalProtect app talks to the <b>portal</b> first, takes the gateway list it
+                answers with, and picks one itself — which is why a region's gateway NLB can be
+                allocated and still carry nothing. A browser instead resolves one name,
+                <code>…proxy.prismaaccess.com</code>; DNS steers it to a region and that region's NLB
+                spreads it over the proxy nodes. Client-side choice on one lane, server-side on the
+                other.`)}
+        ${sec('The two chained')}
+        ${hint(`In full tunnel a browser session rides the L4 tunnel first and is proxied by the SWG
+                behind it — GP gateway → Explicit Proxy → internet, both hops inside Prisma Access.
+                Under split tunnel it reaches the SWG directly. DNS resolves from wherever the tunnel
+                puts it, so full tunnel also decides which proxy region the browser lands in.`)}`);
+    }
+
+    if (kind === 'rn') {
+      const zones = m ? m.dataZones.filter(z => z.groups.some(g => g.svc === 'remote_network' && !g.absent)) : [];
+      return drawer('Remote Users', `
+        ${kv([kvRow('RN-SPN addresses', (m && m.counts.rn) || 0),
+              kvRow('Regions onboarded', zones.length)])}
+        ${zones.length
+          ? sec('Where branch tunnels land') + zones.map(z => {
+              const g = z.groups.find(x => x.svc === 'remote_network' && !x.absent);
+              return `<div class="topo-dl"><div class="topo-dl-r">
+                  <span class="topo-dl-n">${esc(z.name)}</span></div>${
+                g.nodes.map(n => `<div class="topo-dl-r"><span class="topo-dl-k">${
+                  esc(ADDR_LABEL[n.addressType] || n.addressType)}</span>
+                  <span class="topo-dl-v mono">${esc(n.address)}</span></div>`).join('')}</div>`;
+            }).join('')
+          : sec('Not configured') + hint(`No remote network is onboarded in this tenant. This same API
+              reports <code>serviceType: remote_network</code> for every region a branch is onboarded
+              to, so an empty answer here is the tenant's answer, not a missing read.`)}
+        ${sec('Not readable from this API')}
+        ${hint('BGP routes and per-branch bandwidth need the remote-network read, which is not collected.')}`);
+    }
+
+    if (kind === 'ctl') {
+      const zones = m ? m.ctlZones : [];
+      return drawer('Control plane & shared services', `
+        ${kv([kvRow('Locations', zones.length),
+              kvRow('Addresses', zones.reduce((a, z) => a + z.groups.reduce((b, g) =>
+                b + g.nodes.length + g.aux.length, 0), 0))])}
+        ${zones.map(z => sec(z.name) + `<div class="topo-dl">${z.groups.map(g =>
+            g.nodes.concat(g.aux).map(n => `<div class="topo-dl-r">
+              <span class="topo-dl-k">${esc(ADDR_LABEL[n.addressType] || n.addressType)}</span>
+              <span class="topo-dl-v mono">${esc(n.address)}</span></div>`).join('')).join('')}</div>`).join('')}
+        ${sec('Why they are not in the data plane')}
+        ${hint(`A portal hands the app its configuration and its gateway list; the auth cache is
+                tenant-global. Neither carries a user's traffic, so neither is drawn as a lane.`)}`);
+    }
+
+    // The frame owns every region and every lane inside it, so its panel is the whole data plane:
+    // each region, each of its three slots, and every address under them. The lanes and the regions
+    // carry no mark of their own — a mark on a card inside a card teaches the reader to hunt for
+    // which level of the drawing is the clickable one.
+    if (kind === 'plane') {
+      const zones = m ? m.dataZones : [];
+      const c = m ? m.counts : { gw: 0, swg: 0, rn: 0, lb: 0 };
+      const addrs = (g) => g.lbs.concat(g.nodes, g.aux).map(n => `<div class="topo-dl-r">
+          <span class="topo-dl-k">${esc(ADDR_LABEL[n.addressType] || n.addressType)}</span>
+          <span class="topo-dl-v mono">${esc(n.address)}</span>
+          <span class="topo-dl-t">${esc(relAge(n.age))}</span></div>`).join('');
+
+      return drawer('Data plane · traffic regions', `
+        ${kv([kvRow('Traffic regions', zones.length),
+              kvRow('GlobalProtect gateway addresses', c.gw),
+              kvRow('Explicit Proxy addresses', c.swg),
+              kvRow('RN-SPN addresses', c.rn),
+              kvRow('Load balancers', c.lb)])}
+        ${zones.map(z => sec(z.name) + kv([
+            kvRow('Kind', z.dataplane ? 'traffic region' : 'portal region'),
+            kvRow('Proxy geo-LB', z.geoFqdn, true),
+            kvRow('Geo-LB CNAME', z.geoCname, true),
+            kvRow('Regional FQDN', (z.groups.reduce((a, g) => a.concat(g.lbs), [])
+                                     .find(n => n.regionalFqdn) || {}).regionalFqdn, true),
+          ]) + z.groups.map(g => `<div class="topo-dl">
+              <div class="topo-dl-r"><span class="topo-dl-n">${esc(g.spec.label)}</span>
+                ${g.absent ? '<span class="topo-dl-t">not configured</span>'
+                           : `<span class="topo-dl-t">${g.nodes.length + g.aux.length} node${
+                               g.nodes.length + g.aux.length === 1 ? '' : 's'}</span>`}</div>
+              ${g.absent ? '' : addrs(g)}
+            </div>`).join('') + (z.subnets.length
+              ? `<div class="topo-sub-list">${z.subnets.map(x =>
+                  `<span class="topo-sub mono">${esc(x)}</span>`).join('')}</div>` : '')).join('')}
+        ${sec('What the addresses are')}
+        ${hint(`Sessions arrive on a region's <b>load balancer</b>. The addresses listed under it are
+                <b>egress</b> — the source IPs the internet sees, and what a SaaS allow-list carries.
+                A lane marked not configured is the tenant's answer, not a missing read.`)}`);
+    }
+
+    if (kind === 'net') {
+      const ips = m ? m.counts.egressIps : [];
+      const byZone = new Map();
+      ips.forEach(x => { if (!byZone.has(x.zone)) byZone.set(x.zone, []); byZone.get(x.zone).push(x.address); });
+      return drawer('Internet & SaaS', `
+        ${kv([kvRow('Egress addresses', ips.length), kvRow('Regions', byZone.size)])}
+        ${[...byZone.entries()].map(([zn, list]) => sec(zn) +
+          `<div class="topo-sub-list">${list.map(a => `<span class="topo-sub mono">${esc(a)}</span>`).join('')}</div>`).join('')}
+        ${sec('What to do with them')}
+        ${hint(`These are the source IPs a SaaS allow-list must carry. An allow-list is written per
+                region as often as it is written whole, which is why each address says where it
+                egresses from. They are outbound only — nothing connects to them.`)}`);
+    }
+
+    if (kind === 'sc') {
+      const sc = (t && t.sc) || {};
+      const list = Array.isArray(sc.connections) ? sc.connections : [];
+      return drawer('Service Connection', `
+        ${kv([kvRow('Connections', list.length),
+              kvRow('Subnets published', list.reduce((n, c) => n + ((c.subnets || []).length), 0)),
+              kvRow('Read', sc.collected_at ? relStamp(sc.collected_at) : '')])}
+        ${list.map(c => sec(c.name || c.id || 'connection') + kv([
+            kvRow('Region', c.region || c.region_tag), kvRow('IPsec tunnel', c.ipsec_tunnel, true),
+            kvRow('IKE gateway', c.ike_gateway, true),
+            kvRow('Peer address', c.peer_ip || c.peer_fqdn || (c.peer_dynamic ? 'dynamic' : ''), true),
+            kvRow('State', c.linked
+                    ? 'built end to end — peer is ' + (c.linked_device_name || 'a managed firewall') +
+                      (c.linked_interface ? ' ' + c.linked_interface : '')
+                    : c.peer_ip ? 'peer is not an address on any firewall in this scope'
+                    : c.peer_fqdn ? 'peer is an FQDN — cannot be matched to an interface'
+                    : c.peer_dynamic ? 'peer address is dynamic — nothing to match'
+                    : 'no peer address resolved'),
+            kvRow('Backup tunnel', c.backup_SC || c.secondary_ipsec_tunnel, true),
+            kvRow('Source NAT', c.source_nat === undefined ? '' : (c.source_nat ? 'on' : 'off')),
+            kvRow('BGP', ((c.protocol || {}).bgp || {}).enable || c.bgp_peer ? 'enabled' : 'not enabled'),
+            kvRow('Onboarding', c.onboarding_type),
+          ]) + ((c.subnets || []).length
+            ? `<div class="topo-sub-list">${c.subnets.map(x => `<span class="topo-sub mono">${esc(x)}</span>`).join('')}</div>`
+            : '')).join('')}
+        ${list.length ? '' : sec('Not collected') + hint('No Service Connection has been read for this tenant.')}
+        ${sec('How the peer is known')}
+        ${hint(`The deployment read answers eight fields and a peer address is not among them. It
+                names an <code>ipsec_tunnel</code>; that tunnel names an IKE gateway; that gateway
+                records the address Prisma Access dials — which is your own firewall. topologyd walks
+                those three documents and matches the result against every address configured on the
+                firewalls in this scope.`)}
+        ${sec('Built is not up')}
+        ${hint(`A match means both ends name each other, so the tunnel is configured end to end and
+                traffic <b>can</b> flow. It does not mean traffic <b>is</b> flowing: neither the
+                deployment API nor the config APIs report tunnel state, IKE phase or a byte counter.
+                Nothing collected here does, so nothing here draws an "up" light.`)}`);
+    }
+
+    if (kind === 'ztna') {
+      const z = (t && t.ztna) || {};
+      const conns = Array.isArray(z.connectors) ? z.connectors : [];
+      const groups = Array.isArray(z.groups) ? z.groups : [];
+      const names = z.group_names || {};
+      const up = conns.filter(c => (c.flags || {}).tunnel_up && (c.flags || {}).control_plane_up).length;
+      return drawer('ZTNA Connector', `
+        ${kv([kvRow('Connectors', conns.length), kvRow('Groups', groups.length),
+              kvRow('Healthy', conns.length ? up + ' / ' + conns.length : ''),
+              kvRow('Read', z.collected_at ? relStamp(z.collected_at) : '')])}
+        ${conns.length ? sec('Connectors') + `<div class="topo-dl">${conns.map(c => {
+            const f = c.flags || {};
+            const ok = f.tunnel_up && f.control_plane_up;
+            return `<div class="topo-dl-r"><span class="topo-dot ${ok ? 'ok' : 'bad'}"></span>
+                <span class="topo-dl-n">${esc(c.name || c.oid || 'connector')}</span>
+                <span class="topo-dl-k">${esc(names[c.group] || '')}</span>
+                <span class="topo-dl-v mono">${esc(c.cgnx_vion_ip || '')}</span>
+                <span class="topo-dl-t">${esc(!f.tunnel_up ? 'tunnel down'
+                  : !f.control_plane_up ? 'control plane down' : 'up')}</span></div>`;
+          }).join('')}</div>`
+          : sec('Not configured') + hint('No ZTNA connector is reported for this tenant.')}
+        ${sec('Why it has no link to the firewall')}
+        ${hint(`A connector VM dials OUT to a Zero Trust Tunnel termination point in the region. No
+                routing from your network is involved, so overlapping app subnets are fine and the
+                application is reached without crossing the firewall — which is why its line goes
+                around the stack rather than through it.`)}`);
+    }
+
+    if (kind === 'fwcard') {
+      const devs = ngfwForSite();
+      return drawer('On-premise NGFW', `
+        ${kv([kvRow('Firewalls in scope', devs.length),
+              kvRow('Reachable', devs.filter(d => d.status === 'active').length)])}
+        ${devs.map(d => {
+          const peers = linksOf(d.oid);
+          return sec(d.name || d.target || 'firewall') + kv([
+            kvRow('Management address', d.target, true),
+            kvRow('Status', d.status === 'active' ? 'reachable' : d.status === 'down' ? 'unreachable' : 'not probed yet'),
+            kvRow('Site', d.site_name),
+            kvRow('Fabric peers', peers.filter(isFabric).length),
+          ]) + (peers.length ? `<div class="topo-dl">${peers.map(l =>
+              `<div class="topo-dl-r"><span class="topo-dl-k k-${esc(l.kind)}">${
+                l.kind === 'service_connection' ? 'SC' : l.kind === 'remote_network' ? 'RN' : 'ext'}</span>
+                 <span class="topo-dl-n">${esc(l.label || l.peer)}</span>
+                 <span class="topo-dl-v mono">${esc(l.peer)}</span></div>`).join('')}</div>` : '');
+        }).join('') || hint('No NGFW is managed in this scope.')}
+        ${sec('Peer, not management')}
+        ${hint(`The peer chips are IKE gateway peer addresses — where the box dials Prisma Access. The
+                address beside the name is how <em>we</em> reach the box. Which Service Connection
+                reaches which firewall is now readable from the other direction: see the Service
+                Connection card, which matches its peer address against these interfaces.`)}`);
+    }
+
+    if (kind === 'apps') {
+      return drawer('Private apps & Data Center', `
+        ${kv([kvRow('State', 'not configured')])}
+        ${sec('Not readable from these APIs')}
+        ${hint(`Applications, servers and segments the firewall fronts. What each Service Connection
+                or ZTNA connector actually publishes is not reported by any endpoint collected here —
+                the Service Connection read answers subnets, which is the nearest thing, and those
+                are listed on that card instead.`)}`);
+    }
+
+    if (kind === 'gp') {
+      const devs = ngfwForSite();
+      const portals = [], gateways = [];
+      devs.forEach(d => {
+        ((d.gp || {}).portals || []).forEach(x => portals.push({ d, x }));
+        ((d.gp || {}).gateways || []).forEach(x => gateways.push({ d, x }));
+      });
+      return drawer('GlobalProtect — on-premise', `
+        ${kv([kvRow('Portals', portals.length), kvRow('Gateways', gateways.length),
+              kvRow('Client pools', gateways.reduce((n, g) => n + ((g.x.pools || []).length), 0))])}
+        ${portals.length ? sec('Portals') + `<div class="topo-dl">${portals.map(({ d, x }) =>
+          `<div class="topo-dl-r"><span class="topo-dl-n">${esc(x.name)}</span>
+             <span class="topo-dl-k">${esc(d.name || d.target)}</span>
+             <span class="topo-dl-v mono">${esc(x.interface || '—')}</span></div>`).join('')}</div>` : ''}
+        ${gateways.length ? sec('Gateways') + `<div class="topo-dl">${gateways.map(({ d, x }) =>
+          `<div class="topo-dl-r"><span class="topo-dl-n">${esc(x.name)}</span>
+             <span class="topo-dl-k">${esc(d.name || d.target)}</span>
+             <span class="topo-dl-v mono">${esc((x.pools || []).join(', ') || x.interface || '—')}</span></div>`).join('')}</div>` : ''}
+        ${sec('Not the same GlobalProtect')}
+        ${hint(`These users terminate ON the firewall — they do not travel through Prisma Access to
+                get there. The MU-SPN GlobalProtect lane on the fabric deck is the other one.`)}`);
+    }
+
+    if (kind === 'dest') {
+      const g = destGroups().tenants.find(x => x.key === key);
+      if (!g) return;
+      const rows = (arr, k) => arr.map(l => `<div class="topo-dl-r">
+          <span class="topo-dl-k k-${k}">${k.toUpperCase()}</span>
+          <span class="topo-dl-n">${esc(l.label || l.peer)}</span>
+          <span class="topo-dl-v mono">${esc(l.peer)}</span>
+          <span class="topo-dl-t">${esc(l.region || '')}</span></div>`).join('');
+      return drawer(g.key === 'unknown' ? 'Prisma Access tenant' : g.key, `
+        ${kv([kvRow('Service Connections', g.sc.length), kvRow('Remote Networks', g.rn.length),
+              kvRow('Firewalls reaching it', g.devices.size)])}
+        ${g.sc.length ? sec('Service Connections') + `<div class="topo-dl">${rows(g.sc, 'sc')}</div>` : ''}
+        ${g.rn.length ? sec('Remote Networks') + `<div class="topo-dl">${rows(g.rn, 'rn')}</div>` : ''}
+        ${sec('Where these come from')}
+        ${hint(`Every row is one IKE gateway's configured peer, read off the firewall itself — a fact
+                the box states about what it reaches, not an inference from addresses that happen to
+                look related.`)}`);
+    }
+
+    if (kind === 'ext') {
+      const ext = destGroups().external;
+      const byPeer = new Map();
+      ext.forEach(l => { if (!byPeer.has(l.peer)) byPeer.set(l.peer, l); });
+      return drawer('External peers', `
+        ${kv([kvRow('Peers', byPeer.size), kvRow('Tunnels', ext.length)])}
+        <div class="topo-dl">${[...byPeer.values()].map(l => `<div class="topo-dl-r">
+            <span class="topo-dl-n">${esc(l.label || l.peer)}</span>
+            <span class="topo-dl-v mono">${esc(l.peer)}</span>
+            <span class="topo-dl-t">${esc(l.gateway || '')}</span></div>`).join('')}</div>
+        ${sec('What makes a peer external')}
+        ${hint(`It carries no tenant token, so topologyd's classifyPeer could not place it inside a
+                Prisma Access fabric. A partner, a branch of your own, or a second vendor — the
+                firewall names it as a peer and that is all this read knows.`)}`);
+    }
   }
 
   function closeDrawer() {
@@ -1781,17 +2245,6 @@
       window.NMS.utils.enhanceSelect?.(siteSel);
     }
 
-    document.getElementById('egressMore')?.addEventListener('click', () => {
-      state.egressOpen = !state.egressOpen;
-      render();
-    });
-
-    document.getElementById('planeMore')?.addEventListener('click', () => {
-      state.planeOpen = true;
-      try { localStorage.setItem('topo.plane', 'open'); } catch (_) { /* private mode */ }
-      render();
-    });
-
     document.getElementById('planeToggle')?.addEventListener('click', () => {
       state.planeOpen = !state.planeOpen;
       try { localStorage.setItem('topo.plane', state.planeOpen ? 'open' : 'closed'); } catch (_) { /* private mode */ }
@@ -1820,6 +2273,14 @@
         return;
       }
 
+      // The one way into the drawer. It comes first: a detail icon sits inside cards that are
+      // themselves clickable for other reasons, and the icon must win over what it stands on.
+      const det = e.target.closest('[data-det]');
+      if (det) { openDetail(det.dataset.det, det.dataset.detk); return; }
+
+      // Node chips keep their whole-chip click. They are chips inside a lane, not cards, and an icon
+      // on each would cost more room than the address it sits beside — the lane's own icon opens the
+      // same addresses in a list.
       const n = e.target.closest('.topo-node[data-node]');
       if (n) { openDrawer(n.dataset.node); return; }
 
@@ -1846,12 +2307,11 @@
         return;
       }
 
-      const det = e.target.closest('[data-fwdetail]');
-      if (det) { openFwDrawer(det.dataset.fwdetail); return; }
-
-      // The fabric deck's compact row (.topo-fw) opens the same drawer.
-      const f = e.target.closest('[data-fw]');
-      if (f) openFwDrawer(f.dataset.fw);
+      // Nothing above claimed the click, so it was aimed at the drawing rather than at anything in
+      // it — which is how someone puts a panel away. Every opener returns before reaching here, so
+      // moving between two details still swaps the panel rather than closing and reopening it. The
+      // drawer is a sibling of the canvas, so a click inside the panel never arrives here at all.
+      closeDrawer();
     });
 
     const x = document.getElementById('topoDrawerX');
@@ -1983,6 +2443,12 @@
 
     if (root && window.ResizeObserver) new ResizeObserver(redraw).observe(root);
     else window.addEventListener('resize', debounce(() => { drawLinks(); drawNgfwLinks(); }, 120));
+
+    // The regions list scrolls inside its own frame now, and scrolling moves cards without resizing
+    // anything — no resize event, no observer callback, and the wires would stay pinned where the
+    // cards used to be. Scroll does not bubble, so this listens in the capture phase and catches
+    // every scroller under the page, whichever one the pointer is over.
+    (root || document).addEventListener('scroll', redraw, true);
   }
 
   function mount() {

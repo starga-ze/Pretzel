@@ -173,9 +173,10 @@ bool validApiEndpoint(const json& e)
 
     if (deviceType == "sase")
     {
-        // Only ZTNA is served today. The other products are refused rather than accepted-and-ignored
-        // so a commit cannot leave an endpoint that looks configured and never collects.
-        if (subtype != "ztna")
+        // ZTNA and Strata Cloud Manager are served today. The other products are refused rather than
+        // accepted-and-ignored so a commit cannot leave an endpoint that looks configured and never
+        // collects.
+        if (subtype != "ztna" && subtype != "scm")
             return false;
 
         // The host belongs to the endpoint, not the device: a SASE "device" is a tenant (the tsg_id

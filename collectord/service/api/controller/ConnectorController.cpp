@@ -40,6 +40,9 @@ struct CollectorJob
     std::string authProfileOid;   // which issued key authenticates the call
     std::string objectOid;        // inventory object → device host + pinned fingerprint
     std::chrono::seconds interval{60};
+    // How long to wait before trying again while the credential this job needs is still missing.
+    // Zero when the last poll had one; see collectOnce() for why this is not the interval.
+    std::chrono::seconds keyWait{0};
     boost::asio::steady_timer timer;
 
     explicit CollectorJob(boost::asio::io_context& ioc) : timer(ioc) {}
@@ -55,6 +58,16 @@ using json = nlohmann::json;
 // delay lets the issued keys arrive first; it is capped at the interval so a sub-delay interval
 // still fires on schedule.
 constexpr std::chrono::seconds kInitialDelay{3};
+
+// Waiting for a credential is not the same as having polled. The issued keys arrive from engined
+// over IPC, and the first poll is armed 3s after start — a race the first poll routinely loses,
+// because a config commit RESTARTS this daemon and the OAuth token for a device added by that same
+// commit may not have been issued yet at all. Re-arming at the full interval turned a few seconds
+// of waiting into a whole poll_interval_sec of it: with the hourly interval this deployment uses,
+// one commit meant an hour of an empty topology page. So a job with no key backs off in seconds,
+// not hours, and is capped well under any sane interval.
+constexpr std::chrono::seconds kKeyWaitMin{2};
+constexpr std::chrono::seconds kKeyWaitMax{30};
 
 // Resolves an inventory object to the device it names: host, port and the pinned TLS fingerprint.
 // The devices live in engined's config domain, which collectord can read because Config is the whole
@@ -156,10 +169,16 @@ void collectOnce(std::shared_ptr<CollectorJob> job)
     const std::string key = api.issuedKey(job->authProfileOid);
     if (key.empty())
     {
-        LOG_WARN("collection skipped — no issued key yet (connector={}, profile={})", job->connectorOid,
-                 job->authProfileOid);
-        return armJob(job, job->interval);
+        // Back off in seconds and keep asking. The key is expected imminently — it is in flight from
+        // engined, or about to be issued by the credential auto-refresh — so this is a wait, not a
+        // failure, and it must not cost a full collection interval.
+        job->keyWait = job->keyWait.count() ? std::min(job->keyWait * 2, kKeyWaitMax) : kKeyWaitMin;
+        const auto wait = std::min(job->keyWait, job->interval);
+        LOG_WARN("collection deferred — no issued key yet (connector={}, profile={}, retry_in={}s)",
+                 job->connectorOid, job->authProfileOid, wait.count());
+        return armJob(job, wait);
     }
+    job->keyWait = std::chrono::seconds{0};   // credential in hand; back to the normal cadence
 
     // A SASE endpoint names its own host — the tenant is who you are, not where you connect — so
     // there is no device address to resolve and no certificate to pin. The sample it produces is the

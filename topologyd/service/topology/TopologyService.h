@@ -58,6 +58,13 @@ private:
     nlohmann::json composeSase(const std::string& siteOid, const SampleMap& samples, nlohmann::json& sources);
     nlohmann::json composeNgfw(const std::string& siteOid, const SampleMap& samples, nlohmann::json& sources);
 
+    // The one place the two estates are joined, and it runs after both are composed because it needs
+    // both: a Service Connection's peer address, read off the Prisma side, matched against the
+    // addresses configured on the customer's firewalls. When they match, the two ends have named
+    // each other and the tunnel is built end to end — see the note on the definition for what that
+    // does and does not mean.
+    void linkServiceConnections(nlohmann::json& out, nlohmann::json& sources);
+
     void reply(TopologydServiceManager& sm, std::uint32_t seqNo, const nlohmann::json& model);
 };
 

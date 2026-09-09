@@ -38,6 +38,9 @@ enum class Role
     None,
     ZtnaGroups,        // ZTNA connector-groups
     ZtnaConnectors,    // ZTNA connectors
+    SaseServiceConns,  // Service Connections — the tenant's data-centre hand-off
+    SaseIpsec,         // SCM IPSec tunnels — the middle link between a connection and its peer
+    SaseIke,           // SCM IKE gateways — where the Prisma side records OUR firewall's address
     NgfwInterfaces,    // ethernet interfaces
     NgfwTunnels,       // IPSec tunnels
     NgfwIke,           // IKE gateways — where the peer address lives, and so every off-box link
@@ -65,7 +68,19 @@ Role roleOf(const json& ep)
 
     if (deviceType == "sase")
     {
-        // Order matters: "connector-groups" also contains "connector".
+        // Order matters: "connector-groups" also contains "connector", and "service-connections" is
+        // a different product's noun that reads like both. Most specific first, as below.
+        if (contains(path, "service-connections"))
+            return Role::SaseServiceConns;
+        // Both of these live under /config/network/v1 and are read with folder=Service Connections.
+        // They were being collected and thrown away: the deployment read answers eight fields and a
+        // peer address is not among them, so without these two a Service Connection could say where
+        // it lands but not what it dials. Most specific first — "ike-gateways" also contains
+        // "gateway", and an ipsec-tunnels path contains "tunnel".
+        if (contains(path, "ike-gateways"))
+            return Role::SaseIke;
+        if (contains(path, "ipsec-tunnels"))
+            return Role::SaseIpsec;
         if (contains(path, "connector-groups"))
             return Role::ZtnaGroups;
         if (contains(path, "/connectors"))
@@ -195,9 +210,10 @@ nlohmann::json TopologyService::compose(const std::string& siteOid)
     const SampleMap samples = latestSamples();
     out["sase"] = composeSase(siteOid, samples, sources);
     out["ngfw"] = composeNgfw(siteOid, samples, sources);
+    linkServiceConnections(out, sources);
     out["sources"] = std::move(sources);
 
-    LOG_DEBUG("topology composed (site={}, tenants={}, firewalls={})", siteOid.empty() ? "all" : siteOid,
+    LOG_TRACE("topology composed (site={}, tenants={}, firewalls={})", siteOid.empty() ? "all" : siteOid,
               out["sase"]["tenants"].size(), out["ngfw"]["devices"].size());
     return out;
 }
@@ -326,6 +342,7 @@ nlohmann::json TopologyService::composeSase(const std::string& siteOid, const Sa
 
     const auto names = siteNames();
     int ztnaStreams = 0;
+    int scStreams = 0;
 
     std::unordered_map<std::string, json> deviceRows;
     try
@@ -388,35 +405,147 @@ nlohmann::json TopologyService::composeSase(const std::string& siteOid, const Sa
             }
         }
 
-        // ZTNA, from whatever this tenant's connectors collected.
+        // The two ways a tenant reaches the customer's own estate, from whatever it collected. They
+        // are independent — a tenant may run Service Connections, ZTNA connectors, or both — so each
+        // carries its own freshness and each is drawn from its own streams.
         json ztna;
         ztna["groups"] = json::array();
         ztna["connectors"] = json::array();
         ztna["collected_at"] = "";
 
+        json sc;
+        sc["connections"] = json::array();
+        sc["collected_at"] = "";
+
+        // The two documents that stand between a Service Connection and the address it dials. Held
+        // aside rather than published: they are a lookup, not a lane, and what the picture wants is
+        // the answer they resolve to.
+        json scmTunnels = json::array();
+        json scmGateways = json::array();
+
         for (const auto& s : streamsForDevice(oid))
         {
             const Role role = roleOf(s.endpoint);
-            if (role != Role::ZtnaGroups && role != Role::ZtnaConnectors)
+            if (role != Role::ZtnaGroups && role != Role::ZtnaConnectors &&
+                role != Role::SaseServiceConns && role != Role::SaseIpsec && role != Role::SaseIke)
                 continue;
 
             const auto it = samples.find(s.connectorOid + '\x1f' + s.endpointOid);
             if (it == samples.end())
                 continue;
-            ++ztnaStreams;
 
-            const json doc = parseBody(it->second);
-            const json rows = dataOf(doc);
+            const json rows = dataOf(parseBody(it->second));
+            const std::string at = it->second.at;
+
+            // A lane's view is as old as its oldest contributing sample.
+            const auto age = [&at](json& lane) {
+                const std::string cur = lane["collected_at"].get<std::string>();
+                if (cur.empty() || (!at.empty() && at < cur))
+                    lane["collected_at"] = at;
+            };
+
+            if (role == Role::SaseIpsec || role == Role::SaseIke)
+            {
+                // Same "fuller answer wins" rule as the connections themselves: a tenant may carry
+                // both a list read and a single-object read of the same resource.
+                json& into = (role == Role::SaseIpsec) ? scmTunnels : scmGateways;
+                if (rows.size() >= into.size())
+                    into = rows;
+                age(sc);
+                continue;
+            }
+
+            if (role == Role::SaseServiceConns)
+            {
+                ++scStreams;
+                // One tenant can carry both a list read and a single-object read of the same
+                // resource — they are two endpoints on one path, and both classify here. The fuller
+                // answer wins rather than the last one seen, so a `.../<id>` stream cannot shrink
+                // the lane to the one connection it asked about.
+                if (rows.size() >= sc["connections"].size())
+                    sc["connections"] = rows;
+                age(sc);
+                continue;
+            }
+
+            ++ztnaStreams;
             if (role == Role::ZtnaGroups)
                 ztna["groups"] = rows;
             else
                 ztna["connectors"] = rows;
+            age(ztna);
+        }
 
-            // The tenant's ZTNA view is as old as its oldest contributing sample.
-            const std::string at = it->second.at;
-            const std::string cur = ztna["collected_at"].get<std::string>();
-            if (cur.empty() || (!at.empty() && at < cur))
-                ztna["collected_at"] = at;
+        // ── The peer address, resolved ────────────────────────────────────────────────────────
+        //
+        // A Service Connection names an `ipsec_tunnel`; the tunnel names an `ike_gateway`; the
+        // gateway records a `peer_address`. Three documents, two joins, and the answer at the end is
+        // the single most useful fact about the connection — because on the Prisma side the peer is
+        // OUR firewall. The customer's own box, named by the service, in the service's own config.
+        //
+        // Resolved here rather than on the page because it is a join over three vendor documents and
+        // the page should be handed answers, not homework.
+        {
+            // tunnel name → the gateway it uses. `auto_key.ike_gateway` is a list even when there is
+            // one, and SCM collapses one-element lists to an object often enough that both shapes
+            // have to be read.
+            std::unordered_map<std::string, std::string> gwOfTunnel;
+            for (const auto& t : scmTunnels)
+            {
+                if (!t.is_object())
+                    continue;
+                const std::string name = str(t, "name");
+                if (name.empty() || !t.contains("auto_key") || !t["auto_key"].is_object())
+                    continue;
+                const auto& gw = t["auto_key"]["ike_gateway"];
+                if (gw.is_array() && !gw.empty() && gw[0].is_object())
+                    gwOfTunnel[name] = str(gw[0], "name");
+                else if (gw.is_object())
+                    gwOfTunnel[name] = str(gw, "name");
+            }
+
+            // gateway name → what it dials. `peer_address` is one of three shapes and they are not
+            // interchangeable: an address can be matched against a firewall's interfaces, an FQDN
+            // cannot, and `dynamic` means the far end has no fixed address at all. Each is recorded
+            // as what it is rather than flattened to a string, so nothing downstream has to guess
+            // which kind it got.
+            struct GwPeer { std::string ip, fqdn; bool dynamic{false}; };
+            std::unordered_map<std::string, GwPeer> peerOfGw;
+            for (const auto& g : scmGateways)
+            {
+                if (!g.is_object())
+                    continue;
+                const std::string name = str(g, "name");
+                if (name.empty() || !g.contains("peer_address") || !g["peer_address"].is_object())
+                    continue;
+                const auto& pa = g["peer_address"];
+                GwPeer p;
+                p.ip = str(pa, "ip");
+                p.fqdn = str(pa, "fqdn");
+                p.dynamic = pa.contains("dynamic");
+                peerOfGw[name] = std::move(p);
+            }
+
+            for (auto& c : sc["connections"])
+            {
+                if (!c.is_object())
+                    continue;
+                const std::string tun = str(c, "ipsec_tunnel");
+                const auto gi = gwOfTunnel.find(tun);
+                const std::string gw = (gi == gwOfTunnel.end()) ? std::string() : gi->second;
+                c["ike_gateway"] = gw;
+
+                const auto pi = peerOfGw.find(gw);
+                c["peer_ip"] = (pi == peerOfGw.end()) ? std::string() : pi->second.ip;
+                c["peer_fqdn"] = (pi == peerOfGw.end()) ? std::string() : pi->second.fqdn;
+                c["peer_dynamic"] = (pi != peerOfGw.end()) && pi->second.dynamic;
+                // Filled by linkServiceConnections() once the firewalls are composed; declared here
+                // so a connection's shape does not depend on whether the join found anything.
+                c["linked"] = false;
+                c["linked_device"] = "";
+                c["linked_device_name"] = "";
+                c["linked_interface"] = "";
+            }
         }
 
         // Group name by oid, so a connector can say which group it serves without the page joining.
@@ -427,11 +556,13 @@ nlohmann::json TopologyService::composeSase(const std::string& siteOid, const Sa
         ztna["group_names"] = std::move(groupNames);
 
         t["ztna"] = std::move(ztna);
+        t["sc"] = std::move(sc);
         out["tenants"].push_back(std::move(t));
     }
 
     sources["sase_tenants"] = out["tenants"].size();
     sources["ztna_streams"] = ztnaStreams;
+    sources["sc_streams"] = scStreams;
     return out;
 }
 
@@ -886,6 +1017,98 @@ nlohmann::json TopologyService::composeNgfw(const std::string& siteOid, const Sa
     sources["gp_streams"] = gpStreams;
     sources["ngfw_links"] = out["links"].size();
     return out;
+}
+
+// ── The join ──────────────────────────────────────────────────────────────────────────────────
+//
+// Both estates name the same address, from opposite sides, and until now neither knew it.
+//
+//   Prisma side   service-connection "sherpain" → ipsec_tunnel "test" → ike gateway → peer 1.214.192.59
+//   Customer side Sherpain-FW ethernet1/2 → 1.214.192.59/28
+//
+// The peer address on a Service Connection's IKE gateway is where Prisma Access dials, and that is
+// the customer's own firewall. So an exact match between it and an address configured on a firewall
+// in this scope is not a heuristic and not a resemblance: it is the two ends of one tunnel, each
+// stated by the side that owns it. That is the strongest evidence this page has ever had for
+// drawing a line between the fabric and a box in the rack.
+//
+// WHAT IT MEANS, precisely, because the difference matters on the one card an operator opens when
+// the data centre has gone quiet:
+//
+//   It means the tunnel is BUILT — configured end to end, both sides agreeing on who the other is,
+//   so traffic CAN flow. It does not mean traffic IS flowing. Neither the deployment API nor the
+//   config APIs report tunnel state, IKE phase, or a byte counter; nothing collected here does. A
+//   green "up" light would be an invention, and on this card it would be the expensive kind.
+//
+// A connection whose peer is an FQDN or `dynamic` cannot be matched at all, and is left unlinked
+// rather than guessed at — an unresolved name is not evidence of anything.
+void TopologyService::linkServiceConnections(nlohmann::json& out, nlohmann::json& sources)
+{
+    if (!out.contains("sase") || !out.contains("ngfw"))
+        return;
+
+    // Every address configured on every firewall in scope, without its prefix length: the config
+    // says "1.214.192.59/28" and the far side names the host, not the subnet.
+    struct Owner { std::string oid, name, iface; };
+    std::unordered_map<std::string, Owner> owners;
+    for (const auto& d : out["ngfw"]["devices"])
+    {
+        if (!d.is_object() || !d.contains("interfaces") || !d["interfaces"].is_object())
+            continue;
+        for (const auto& i : d["interfaces"].value("list", json::array()))
+        {
+            if (!i.is_object())
+                continue;
+            for (const auto& a : i.value("addresses", json::array()))
+            {
+                if (!a.is_string())
+                    continue;
+                std::string ip = a.get<std::string>();
+                const auto slash = ip.find('/');
+                if (slash != std::string::npos)
+                    ip.resize(slash);
+                if (ip.empty())
+                    continue;
+                // First interface to claim an address keeps it. A duplicate across two firewalls is
+                // a misconfiguration in the estate, not something to resolve by picking the later one.
+                owners.emplace(ip, Owner{d.value("oid", std::string()),
+                                         d.value("name", std::string()),
+                                         i.value("name", std::string())});
+            }
+        }
+    }
+
+    int linked = 0, total = 0;
+    for (auto& t : out["sase"]["tenants"])
+    {
+        if (!t.is_object() || !t.contains("sc") || !t["sc"].is_object())
+            continue;
+        int tenantLinked = 0;
+        for (auto& c : t["sc"]["connections"])
+        {
+            if (!c.is_object())
+                continue;
+            ++total;
+            const std::string peer = c.value("peer_ip", std::string());
+            if (peer.empty())
+                continue;
+            const auto it = owners.find(peer);
+            if (it == owners.end())
+                continue;
+
+            c["linked"] = true;
+            c["linked_device"] = it->second.oid;
+            c["linked_device_name"] = it->second.name;
+            c["linked_interface"] = it->second.iface;
+            ++tenantLinked;
+            ++linked;
+        }
+        t["sc"]["linked"] = tenantLinked;
+    }
+
+    sources["sc_linked"] = linked;
+    sources["sc_connections"] = total;
+    LOG_TRACE("service connections linked to firewall interfaces ({}/{})", linked, total);
 }
 
 void TopologyService::reply(TopologydServiceManager& sm, std::uint32_t seqNo, const nlohmann::json& model)

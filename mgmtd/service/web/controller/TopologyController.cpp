@@ -105,7 +105,7 @@ void TopologyController::onTopologyResponse(MgmtdServiceManager& sm, const pz::i
         return;
     }
 
-    LOG_DEBUG("topology model filed (site={}, bytes={})", site.empty() ? "all" : site, body.size());
+    LOG_TRACE("topology model filed (site={}, bytes={})", site.empty() ? "all" : site, body.size());
     sm.setTopology(site, std::move(body));
 }
 

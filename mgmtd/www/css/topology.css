@@ -23,7 +23,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 7px 12px;
+  padding: 4px 12px;
 }
 
 .topo-bar-group { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -105,6 +105,10 @@
   --tc-pending:  #94a3b8;   /* dormant, not broken — see the hatch below */
   --tc-rn:        #f472b6;   /* branch IPsec — its own lane, like GP and the proxy */
   --tc-sc:        #2dd4bf;   /* Service Connection — the site's trunk into the fabric */
+  /* The other way in. Green like the Service Connection, because the pair answers one question —
+   how does the fabric reach the private estate — but a spring green rather than a teal, so which of
+   the two a card is stays readable at a glance and in the link that leaves it. */
+  --tc-ztna:      #4ade80;
   --tc-bg:        #12151f;   /* the canvas itself, for text sitting ON a coloured chip */
   --tc-chain:     #c084fc;
   --tc-zone:      linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
@@ -139,6 +143,7 @@
   --tc-pending:  #94a3b8;
   --tc-rn:        #db2777;
   --tc-sc:        #0d9488;
+  --tc-ztna:      #15803d;
   --tc-bg:        #ffffff;
   --tc-chain:     #9333ea;
   --tc-zone:      linear-gradient(180deg, rgba(15,23,42,.035), rgba(15,23,42,.012));
@@ -152,19 +157,49 @@
 :root[data-theme="light"] .topo-link.kind-egress { opacity: .7; }
 :root[data-theme="light"] .topo-link.kind-internal { opacity: .5; }
 
+/* The stage fills the deck rather than shrink-wrapping its content. Every card in it is sized by
+   what it holds, so a tenant with one region used to leave half the frame empty and a tenant with
+   six used to push the whole picture off the bottom — the drawing changed size with the estate.
+   Filling the frame fixes the outer geometry; the regions list absorbs the difference by scrolling
+   inside its own frame, so the hand-offs and the private stack under them never move. */
 .topo-stage {
   position: relative;
   min-width: 980px;
-  padding: 8px 16px 44px;   /* bottom clears the third routed lane (last row + 34px) */
+  /* At least the deck's height, not exactly it. Pinning it to exactly 100% does make .topo-plane-b
+     the scroller — but then the regions scroll INSIDE a frame whose neighbours stay put, and every
+     wire crossing that frame has one end moving and the other still. The links are geometry over
+     live DOM and they follow, so nothing breaks; it just draws a tangle. Growing the stage and
+     letting the whole deck scroll keeps every card in one coordinate space, which is what keeps the
+     lines readable. */
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  /* No reserve for the deck control any more: it stands below the canvas rather than over the last
+     card, so this is just the frame's own breathing room. */
+  padding: 8px 16px 14px;
 }
 
 /* Wires run OVER the cards, not behind them: half of every link would otherwise disappear under a
    zone card, and the packet crossing a node is exactly the moment worth seeing. Opacity keeps the
    labels underneath readable. */
 .topo-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
-.topo-cols  { position: relative; z-index: 1; display: grid; grid-template-columns: 186px 1fr 232px; gap: 26px; align-items: start; }
+/* The two outer columns are one width, written once. They were 186px and 232px — sized to their
+   contents, which is how a drawing ends up asymmetric about its own centre for no reason a viewer
+   can see. Both are fixed and equal, so the middle column absorbs every change in the frame's width
+   and the sidebar opening or closing moves the picture without reshaping it. */
+.topo-cols  { position: relative; z-index: 1; display: grid;
+  --topo-side: 212px;
+  grid-template-columns: var(--topo-side) 1fr var(--topo-side);
+  gap: 34px; align-items: stretch; align-content: stretch; grid-template-rows: minmax(0, 1fr);
+  flex: 1 1 auto; min-height: 0; }
 
-.topo-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.topo-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
+
+/* Collapsed, the regions frame is a fixed thing and nothing in the middle column takes the slack, so
+   the column spreads it — across EVERY gap, not just the ones below the hand-offs. That was the old
+   arrangement's fault: the private cards lived in a nested stack with its own justify-content, so
+   four cards sat 40px apart while the two above them sat 6px apart, in one column. */
+.topo-col:has(.topo-plane.is-closed) { justify-content: space-between; }
 
 
 /* ── Endpoint / destination cards (the two outer columns) ───────────────────── */
@@ -179,20 +214,69 @@
 }
 .topo-end:hover { background: var(--tc-card-hi); }
 .topo-end.is-pending { border-style: dashed; opacity: .72; }
-.topo-end-h { display: flex; align-items: center; gap: 9px; }
-.topo-end-ic {
-  width: 24px; height: 24px; flex: 0 0 auto; border-radius: 7px;
-  display: grid; place-items: center;
-  background: color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 18%, transparent);
-  color: var(--topo-tone, var(--tc-gw));
-}
-.topo-end-ic svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.9; }
-.topo-end-nm { font-size: 11.5px; font-weight: 700; letter-spacing: -.01em; }
-.topo-end-sub { font-size: 9px; color: var(--tc-dim); margin-top: 1px; }
-.topo-end-body { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+.topo-end-body { display: flex; flex-direction: column; gap: 3px; }
 .topo-end-line { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--tc-dim); }
 .topo-end-line b { color: var(--tc-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 .topo-mini-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--topo-tone, var(--tc-gw)); flex: 0 0 auto; }
+
+/* ── The detail mark ──────────────────────────────────────────────────────────
+   One control, one corner, on every card that has a list behind it. Cards used to be clickable in
+   some places and inert in others with nothing to tell them apart, so the reader had to try; a mark
+   that always means the same thing is learned once and then read, not tested. Low-contrast at rest
+   so a dozen of them do not compete with the drawing, full strength on hover and on keyboard focus. */
+/* Only the outermost card of a group carries one: the data-plane frame rather than its regions and
+   their lanes, the NGFW card rather than each firewall row. A mark on a card inside a card asks the
+   reader to work out which level of the drawing is the clickable one, and the answer was "both",
+   which is worse than either. Fewer of them also means each can be drawn to be seen — at a fifth
+   opacity on a busy canvas it read as an artefact rather than a control. */
+/* ── The deck's two controls, drawn from one rule ─────────────────────────────
+   The detail mark and the data-plane's regions toggle sit on the same line at the top of the same
+   card, and they are the same kind of object: a small, quiet control on a card. One is square
+   because it holds a glyph and the other is label-width because it holds words — that is the ONLY
+   thing that should differ. Ground, border, radius, height, resting colour and hover behaviour are
+   shared here rather than restated in each, because restating them is how they drifted apart. */
+.topo-det, .topo-plane-more {
+  height: 20px;
+  border: 1px solid var(--tc-line); border-radius: 6px;
+  background: var(--tc-card-hi); color: var(--tc-dim);
+  transition: color var(--tr), background var(--tr), border-color var(--tr), transform var(--tr);
+}
+.topo-det:hover, .topo-plane-h:hover .topo-plane-more {
+  color: var(--tc-ink); transform: translateY(-1px);
+  background: color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 20%, var(--tc-card-hi));
+  border-color: color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 55%, var(--tc-line));
+}
+
+.topo-det {
+  /* The card's own padding — 7px 10px — so the mark lands exactly on the top-right corner of the
+     content box. A control placed at the end of the first row then aligns with it for free. */
+  position: absolute; top: 7px; right: 10px; z-index: 3;
+  font: inherit; cursor: pointer; flex: 0 0 auto;
+  display: inline-grid; place-items: center;
+  width: 20px; padding: 0;
+}
+.topo-det svg {
+  width: 12px; height: 12px; fill: none; stroke: currentColor;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
+.topo-det:focus-visible {
+  outline: none; color: var(--tc-ink);
+  border-color: var(--topo-tone, var(--tc-gw));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 30%, transparent);
+}
+/* A card the pointer is already on brings its mark forward without being aimed at. */
+.topo-end:hover > .topo-det, .topo-half:hover > .topo-det, .topo-plane:hover > .topo-det,
+.topo-ctl:hover > .topo-det, .topo-dest:hover > .topo-det, .topo-acc:hover > .topo-det,
+.topo-fwb:hover > .topo-det { color: var(--tc-ink); }
+
+/* Cards that hold one need to be its containing block. */
+.topo-end, .topo-half, .topo-plane, .topo-ctl, .topo-dest, .topo-acc, .topo-fwb { position: relative; }
+
+/* Nothing special: the control strip's mark floats in its corner exactly as the data-plane frame's
+   does, off the same rule and the same offsets. */
+/* The frame's header is a full-width toggle button, so the mark cannot sit inside it — it floats
+   over the corner and the header stops short of it. That reserve lives in .topo-plane-h's own rule,
+   below: set here it was overwritten by that rule's `padding: 0` and the summary ran under the mark. */
 
 .topo-tag {
   display: inline-flex; align-items: center; gap: 5px;
@@ -204,7 +288,17 @@
 }
 .topo-tag.pending { --topo-tone: var(--tc-pending); }
 
-.topo-ips { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+/* The dest column is one card in a full-height lane, so the address list is shown whole rather than
+   folded behind a "+N more" in a card that had the room for it. No scroller of its own: the deck
+   scrolls the drawing, and a nested `overflow-y: auto` here swallowed the wheel — pointer over the
+   address list, page frozen — for the sake of an overflow it almost never has. It takes the card's
+   slack and, for a tenant with more addresses than that, grows the card and scrolls with the deck. */
+.topo-col-dest .topo-end { display: flex; flex-direction: column; min-height: 0; }
+.topo-col-dest .topo-end-body { flex: 1 1 auto; min-height: 0; }
+.topo-ips {
+  display: flex; flex-direction: column; gap: 3px; margin-top: 2px;
+  flex: 1 1 auto; min-height: 0;
+}
 .topo-ip {
   font-family: var(--font-mono); font-size: 9.5px; color: var(--tc-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -224,11 +318,9 @@
 .topo-zone.is-dimmed { opacity: .28; filter: saturate(.4); }
 
 .topo-zone-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.topo-zone-nm { font-size: 11.5px; font-weight: 700; color: var(--tc-ink); letter-spacing: -.01em; }
-.topo-zone-kind {
-  font-size: 8.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
-  color: var(--tc-faint); border: 1px solid var(--tc-line); border-radius: 999px; padding: 1px 6px;
-}
+/* A region sits inside the Data Plane card, so it reads under that card's own 10.5px title rather
+   than over it — it was the largest text on the deck while naming the smallest thing on it. */
+.topo-zone-nm { font-size: 10px; font-weight: 700; color: var(--tc-ink); letter-spacing: -.01em; }
 .topo-zone-counts { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .topo-count { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; color: var(--tc-dim); }
 .topo-count b { color: var(--tc-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -245,23 +337,56 @@
 }
 .topo-geo code { font-family: var(--font-mono); font-size: 9px; color: var(--tc-ink); opacity: .82; }
 
-.topo-zone-body { display: flex; flex-direction: column; gap: 11px; margin-top: 6px; }
+.topo-zone-body { display: flex; flex-direction: column; gap: 8px; margin-top: 5px; }
 
 /* ── Service group: load balancer → nodes ───────────────────────────────────── */
+/* The name column fits the longest label the vocabulary has — "RN-SPN · Remote Network" — because
+   a wrapped one costs the row a whole line and reads as two different things stacked. */
 .topo-svc {
   --topo-tone: var(--tc-other);
-  display: grid; grid-template-columns: 126px 116px 1fr; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: 152px 116px 1fr; gap: 10px; align-items: center;
   border: 1px solid var(--tc-line); border-left: 2px solid var(--topo-tone);
   border-radius: 9px; padding: 5px 8px;
   background: var(--tc-well);
+  /* Every lane stands as tall as a lane carrying traffic — one NLB card and one node card, which is
+     what a populated row is. A tenant that has not bought a service is the common case and it made
+     the drawing shorter than the same tenant will be tomorrow; sizing the frame to the estate means
+     the page fits until the day it matters. The rows are also the three same-sized slots the region
+     is offering, which is what makes "this one is empty" read at a glance. */
+  min-height: 64px;
 }
 .topo-svc.tone-gw     { --topo-tone: var(--tc-gw); }
 .topo-svc.tone-swg    { --topo-tone: var(--tc-swg); }
 .topo-svc.tone-portal { --topo-tone: var(--tc-portal); }
 .topo-svc.tone-rn     { --topo-tone: var(--tc-rn); }
 
-.topo-svc-h { min-width: 0; }
-.topo-svc-nm { font-size: 10px; font-weight: 700; color: var(--tc-ink); line-height: 1.25; }
+/* A lane the tenant does not run. The same hatch the endpoint cards use for "nothing flows here",
+   so the eye learns the treatment once and reads it the same wherever it appears — dormant, not
+   broken. It keeps its lane's tone at low strength: the row is still recognisably the GlobalProtect
+   or the Explicit Proxy row, which is the point of drawing it at all. */
+.topo-svc.is-absent {
+  grid-template-columns: 152px auto 1fr;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--tc-pending) 40%, var(--tc-line));
+  border-left-color: color-mix(in srgb, var(--topo-tone) 45%, transparent);
+  background-color: transparent;
+  background-image: repeating-linear-gradient(-45deg,
+    color-mix(in srgb, var(--tc-pending) 13%, transparent) 0 5px,
+    transparent 5px 11px);
+}
+.topo-svc.is-absent .topo-svc-nm { color: color-mix(in srgb, var(--tc-pending) 45%, var(--tc-ink)); }
+.topo-svc.is-absent .topo-slot { align-self: center; gap: 4px; }
+
+/* Top-left, not centred. The row is now a fixed height whatever it holds, so a centred name floated
+   in the middle of its own lane and drifted relative to the name above it. Anchored to the top, the
+   three names line up as a column and the slots beside them stay centred on their cards. */
+.topo-svc-h { min-width: 0; align-self: start; padding-top: 1px; }
+/* An unrecognised serviceType can still be longer than the column; it clips rather than wraps, and
+   the row's own title carries the whole string. */
+.topo-svc-nm {
+  font-size: 10px; font-weight: 700; color: var(--tc-ink); line-height: 1.25;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .topo-svc-note { font-size: 8.5px; color: var(--tc-faint); margin-top: 1px; line-height: 1.3; }
 
 .topo-slot { display: flex; flex-direction: column; gap: 4px; }
@@ -351,16 +476,7 @@
   .topo-node.is-new { animation: none; }
 }
 
-/* ── Legend + detail drawer ─────────────────────────────────────────────────── */
-.topo-legend {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
-  padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--surface); font-size: 10px; color: var(--text-muted);
-}
-.topo-lg { display: inline-flex; align-items: center; gap: 6px; }
-.topo-lg i { width: 14px; height: 2px; border-radius: 2px; display: inline-block; }
-.topo-lg-note { margin-left: auto; font-style: italic; }
-
+/* ── Detail drawer ──────────────────────────────────────────────────────────── */
 .topo-drawer {
   position: fixed; top: 0; right: 0; bottom: 0; width: 340px; z-index: 400;
   background: var(--surface); border-left: 1px solid var(--border);
@@ -378,6 +494,26 @@
   color: var(--text-muted); cursor: pointer;
 }
 .topo-drawer-b { padding: 14px 16px; overflow-y: auto; }
+
+/* The list shape every detail panel is built from: a role, a name, a value, and how long ago —
+   whichever of the four the row actually has. One rhythm across a dozen panels is what keeps the
+   drawer readable when the thing behind each card is a different kind of list. */
+.topo-dl { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 2px; }
+.topo-dl-r {
+  display: flex; align-items: center; gap: 7px;
+  padding: 3px 7px; border-radius: 6px; background: var(--tc-well);
+  border: 1px solid var(--tc-line); font-size: 10.5px; min-width: 0;
+}
+.topo-dl-k {
+  font-size: 8px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--tc-faint); flex: 0 0 auto;
+}
+.topo-dl-k.k-service_connection, .topo-dl-k.k-sc { color: var(--tc-sc); }
+.topo-dl-k.k-remote_network, .topo-dl-k.k-rn    { color: var(--tc-rn); }
+.topo-dl-n { font-weight: 600; color: var(--tc-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topo-dl-v { font-family: var(--font-mono); font-size: 9.5px; color: var(--tc-dim); margin-left: auto; flex: 0 0 auto; }
+.topo-dl-t { font-size: 9px; color: var(--tc-faint); flex: 0 0 auto; }
+.topo-sub-list .topo-sub.mono { font-family: var(--font-mono); }
 .topo-kv { display: grid; grid-template-columns: 108px 1fr; gap: 6px 10px; font-size: 12.5px; }
 .topo-kv dt { color: var(--text-muted); }
 .topo-kv dd { color: var(--text); word-break: break-all; }
@@ -403,8 +539,10 @@
    and at the same size as Insight ▸ API Collection's — the two ask the same question. */
 .topo-msg.is-full { height: 100%; min-height: 460px; }
 
+/* The gap is not only air: the connector's link runs down the channel between the middle column and
+   the dest column, so it cannot narrow past the room that line needs to be seen in. */
 @media (max-width: 1180px) {
-  .topo-cols { grid-template-columns: 190px 1fr 190px; gap: 20px; }
+  .topo-cols { --topo-side: 186px; gap: 26px; }
 }
 
 /* ── Endpoint lanes, notes, firewalls ─────────────────────────────────────────
@@ -420,29 +558,56 @@
 
 .topo-note { font-size: 8.5px; line-height: 1.4; color: var(--tc-faint); }
 
-.topo-fw-list { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
-.topo-fw {
-  font: inherit; cursor: pointer; text-align: left;
-  display: flex; align-items: center; gap: 6px;
-  border: 1px solid var(--tc-line); border-radius: 7px; padding: 3px 7px;
-  background: var(--tc-well); color: var(--tc-ink);
-  transition: border-color var(--tr), background var(--tr);
+/* A card's whole body, for the four cards that describe things a tenant has several of: one line of
+   figures. No pills — the card already has a border and a title, so a box around each number was a
+   third frame around a single digit. The figure takes the card's own colour and carries the weight;
+   the word after it names what was counted and stays out of the way. The line's height does not
+   depend on how much of the estate is configured, which is the point of counting rather than
+   listing. Separators are drawn, not typed, so a wrapped line never starts with a stray dot. */
+/* Names rather than numbers, for the card whose things are asked for by name. The chip takes the
+   card's colour in its border and its ground; the text stays white, because on a coloured card the
+   colour is already saying which card this is and a tinted name only makes it harder to read. */
+.topo-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 5px; }
+.topo-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  border: 1px solid var(--tc-line); border-radius: 999px; padding: 2px 8px;
+  background: var(--tc-well); color: var(--tc-ink); font-size: 9px;
+  line-height: 1.5;   /* one line box for every part, so centring is exact rather than eyeballed */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.topo-fw:hover { border-color: color-mix(in srgb, var(--tc-ok) 45%, var(--tc-line)); }
+.topo-chip-nm { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The second half of the same identity — a region, an address — read straight on from the name. No
+   rule between them: they are one answer said in two parts, and a divider made them look like two
+   columns of a table that had lost its header. */
+/* No variants. A monospace one existed for the address on the firewall chip, and that single class
+   was the whole difference between two chips that were supposed to be the same object — different
+   family, 8.5px against 9px, and its own tracking. Whatever the second half happens to be — a
+   location, a region, an address — it is set exactly one way. */
+.topo-chip-z { color: var(--tc-dim); }
+.topo-chip b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.topo-chip.is-more { color: var(--tc-dim); font-weight: 700; background: none; border-style: dashed; }
+
+.topo-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 9px; margin-top: 5px; }
+.topo-stat {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 9px; color: var(--tc-dim); white-space: nowrap;
+}
+.topo-stat + .topo-stat::before {
+  content: ''; width: 3px; height: 3px; border-radius: 50%;
+  background: var(--tc-line); margin-right: 6px; align-self: center;
+}
+.topo-stat b {
+  font-size: 11.5px; font-weight: 700; line-height: 1;
+  color: var(--topo-tone, var(--tc-ink)); font-variant-numeric: tabular-nums;
+}
+.topo-stat.is-health { align-items: center; }
+.topo-stat.is-health b { color: var(--tc-ink); }
+.topo-stat.is-health .topo-dot { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; }
+
+
 .topo-fw-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--tc-faint); flex: 0 0 auto; }
 .topo-fw-dot.ok  { background: var(--tc-ok); }
 .topo-fw-dot.bad { background: var(--tc-warn); }
-.topo-fw-nm { font-size: 9.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topo-fw-t {
-  font-family: var(--font-mono); font-size: 8.5px; color: var(--tc-dim);
-  margin-left: auto; white-space: nowrap;
-}
-
-.topo-geo-note {
-  font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
-  color: var(--tc-faint); border: 1px solid var(--tc-line); border-radius: 999px; padding: 0 5px;
-}
-
 /* ── Endpoint rows, control-plane strip, private split ───────────────────────── */
 .topo-lane-l {
   font-size: 7.5px; font-weight: 800; letter-spacing: .06em; color: var(--tc-faint);
@@ -451,46 +616,171 @@
 
 .topo-svc-sub { font-size: 8.5px; color: var(--tc-dim); margin-top: 1px; }
 
-/* Portals and the auth cache: present, findable, and visibly not part of the traffic path. */
-.topo-ctl {
-  border: 1px dashed var(--tc-line); border-radius: 10px; padding: 5px 8px 6px;
-  background: var(--tc-zone-flat);
-}
-.topo-ctl-t {
-  font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--tc-faint);
-}
-.topo-ctl-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
-.topo-ctl-chip {
-  font: inherit; cursor: default; display: flex; align-items: center; gap: 5px;
-  border: 1px solid var(--tc-line); border-radius: 999px; padding: 2px 8px;
-  background: var(--tc-well); color: var(--tc-ink); font-size: 9px;
-}
-.topo-ctl-nm { font-weight: 700; }
-.topo-ctl-z { color: var(--tc-dim); }
-.topo-ctl-chip b { font-variant-numeric: tabular-nums; }
+/* Portals and the auth cache: present, findable, and visibly not part of the traffic path. The
+   frame and its heading match .topo-plane exactly — same radius, same padding, and the label set in
+   from the edge by the width the data-plane chevron occupies, so the two titles start on the same x.
+   Only the colour differs, which is the one thing that should: this band carries no user traffic. */
+.topo-ctl { --topo-tone: var(--tc-portal); }
+/* Portal yellow, mixed the same way the plane's title mixes its own tone — each band titled in the
+   colour of what it holds. Grey read as smaller than the blue beside it even at the same 8px. */
+/* Titled like a card, because that is what these bands are. Small caps at wide tracking read as a
+   section rule from a different system than the cards inside them; the same 10px/700 the hand-off
+   cards use makes every heading on the deck one family. */
 
-/* Two ways into the private estate, side by side because a tenant may run either or both. */
-/* The two ways into the private estate, at the foot of the fabric column, side by side because a
-   tenant may run either or both. Their links to the targets do not go straight across — see the
-   routed path in drawLinks, which leaves under the row rather than through the neighbouring card. */
-.topo-priv-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 
-/* Their targets, with the other target at the top of the destination column. The gap between the
-   firewall and what sits behind it is wider than the column's own rhythm — the link that runs
-   between them needs somewhere to be seen. */
-.topo-priv-group { display: flex; flex-direction: column; gap: 18px; }
-.topo-half {
-  border: 1px solid var(--tc-line); border-radius: 11px; padding: 7px 10px;
-  background: var(--tc-card); color: var(--tc-ink);
-  display: flex; flex-direction: column; gap: 2px;
+/* ── Inside Prisma Access ─────────────────────────────────────────────────────
+   Four cards on this deck are the service someone else runs: the two control bands and the two
+   hand-offs out of the fabric. The rest — the firewall, the applications behind it, the users at
+   the edge — are the customer's own estate and stay neutral. Giving only the four a border and a
+   wash in their own colour is what makes that boundary a thing you can see rather than a thing you
+   have to know, and each colour is the one that lane's link is already drawn in.
+
+   Written as ID rules on purpose: .topo-half.is-pending sets its own border colour for the hatch,
+   and a class here would lose to it — a not-yet-configured hand-off should still read as the hand-off
+   it is. The hatch itself is a background-image, so a background-COLOR underneath it survives. */
+#dst-sc   { --topo-tone: var(--tc-sc); }
+#dst-ztna { --topo-tone: var(--tc-ztna); }
+/* White inside. The frame and the wash already say which card this is — tinting the words as well
+   made a name harder to read for no information anyone was missing. */
+#dst-sc .topo-stat, #dst-ztna .topo-stat,
+#dst-sc .topo-stat b, #dst-ztna .topo-stat b { color: var(--tc-ink); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   THE PRISMA ACCESS BAND
+   A named ground under the four cards that are somebody else's service, ending where the customer's
+   own racks begin. The deck's most-asked question is "whose kit is this", and the four cards were
+   answering it in colour alone — which works only once the colours have been learned. A ground with
+   a name on it answers it on first sight, and it costs the drawing nothing: no extra frame competing
+   with the cards inside it, no second border, no box.
+
+   Deliberately restrained. It is a backdrop, not a panel: a hairline at the lowest contrast that
+   still resolves in both themes, a wash that fades out downward so the eye is carried toward the
+   boundary rather than stopped at it, and a label set small and widely tracked so it reads as a
+   region marker rather than as another card title. Everything louder than this competes with the
+   thing it is supposed to be behind.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.topo-pa-zone {
+  position: relative;
+  /* Wider than the column's own gap, and for a reason the column's gaps do not have: two links come
+     down out of the regions frame and land on the hand-offs, so this is a gap with traffic running
+     through it. At 12px the curves grazed both card edges and read as touching them. The band's
+     11px padding already puts more than this between it and the cards below, so widening here also
+     brings the two distances closer together rather than further apart. */
+  display: flex; flex-direction: column; gap: 16px;
+  /* Top pads for the label; the rest is the band's own inset from the cards it holds. */
+  padding: 24px 11px 11px;
+  border-radius: 17px;
+  border: 1px solid color-mix(in srgb, var(--tc-gw) 15%, transparent);
+  /* An even ground, with a small lift at the top-left ON TOP of it rather than instead of it. The
+     first version faded to nothing by the foot of the band, which meant the two cards that matter
+     most down there — the hand-offs — sat outside the colour that was supposed to be claiming them.
+     A band that stops colouring halfway is not a band. */
+  background:
+    radial-gradient(120% 50% at 0% 0%, color-mix(in srgb, var(--tc-gw) 6%, transparent), transparent 70%),
+    color-mix(in srgb, var(--tc-gw) 6%, transparent);
+  /* Content height by default; it takes the column's slack only when the regions frame inside it is
+     open and has something to do with the room. Closed, the slack falls to the gaps below the band —
+     which is where the Service Connection's link runs, and the one seam worth widening. */
+  flex: 0 1 auto; min-height: 0;
 }
-.topo-half-nm { font-size: 11px; display: flex; align-items: center; gap: 6px; }
-.topo-half-ic { width: 13px; height: 13px; flex: 0 0 auto; color: var(--topo-tone, var(--tc-dim)); }
-.topo-half.is-pending { border-style: dashed; }
-.topo-half-nm { font-size: 10px; font-weight: 700; line-height: 1.2; }
-.topo-half-sub { font-size: 8.5px; color: var(--tc-dim); }
-.topo-half .topo-tag { align-self: flex-start; margin-top: 3px; }
+.topo-pa-zone:has(.topo-plane:not(.is-closed)) { flex: 1 1 auto; }
+
+.topo-pa-zone-t {
+  position: absolute; top: 8px; left: 14px;
+  font-size: 8px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--tc-gw) 52%, var(--tc-faint));
+  pointer-events: none; user-select: none;
+}
+
+/* The two ways into the private estate, side by side because a tenant may run either or both.
+   What tells them apart is what leaves them: see the sideways path in geometry(), which is how the
+   connector's link says it never touches the firewall the Service Connection lands on. */
+.topo-priv-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* All three columns end on the same line, because a column that stops short reads as content missing
+   rather than as content that fit. In the outer columns the cards are the SAME height — `1 1 0`, not
+   `1 1 auto`. With `auto` they shared the leftover equally but started from their own content, so
+   Mobile Users with three lanes in it stood a head taller than Remote Users with a tag in it, and
+   two endpoint cards of different heights read as two different kinds of thing. From a zero basis
+   they split the column evenly and a stub reads as a slot waiting to be filled. */
+.topo-col-edge > *,
+.topo-col-dest > * { flex: 1 1 0; min-height: 0; }
+
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   INSIDE PRISMA ACCESS — one box, one heading, four cards
+   Control Plane, Data Plane, Service Connection and ZTNA Connector are the service someone else
+   runs, and on this deck they must read as one system. "Similar" is not a system: the previous
+   version set their padding, radius, title and subtitle from six classes across four blocks, two of
+   them declared twice with the later declaration quietly winning — which is how three cards meant to
+   be identical came out three pixels apart. So there is now exactly one rule for the box and one for
+   the heading, and all four use the same markup. Service Connection is the reference; these are its
+   numbers.
+
+   Each card supplies only `--topo-tone` and the frame and wash are derived from it. The tone never
+   touches the words: on a coloured card the colour has already said which card this is.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.topo-pa {
+  position: relative;
+  border: 1px dashed color-mix(in srgb, var(--topo-tone, var(--tc-line)) 42%, var(--tc-line));
+  border-radius: 11px;
+  padding: 7px 10px;
+  background-color: color-mix(in srgb, var(--topo-tone, transparent) 8%, var(--tc-card));
+  color: var(--tc-ink);
+}
+/* Icon, title, subtitle — one block, one set of numbers, every card on the deck. The endpoint cards
+   had their own copy of it at 11.5px/9px with a 24px icon while the four bands ran at 10px/8.5px with
+   none, which is two heading systems on one drawing. These are the numbers both now use. */
+.topo-hd {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding-right: 24px;   /* the 20px mark in the corner, plus air */
+}
+.topo-hd-ic {
+  width: 21px; height: 21px; flex: 0 0 auto; border-radius: 6px;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 18%, transparent);
+  color: var(--topo-tone, var(--tc-gw));
+}
+.topo-hd-ic svg {
+  width: 12px; height: 12px; fill: none; stroke: currentColor;
+  stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
+}
+.topo-hd-x { min-width: 0; }
+.topo-hd-t {
+  display: block; font-size: 10.5px; font-weight: 700; line-height: 1.2; color: var(--tc-ink);
+  letter-spacing: -.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.topo-hd-s {
+  display: block; font-size: 8.5px; font-weight: 400; line-height: 1.3;
+  color: var(--tc-dim); margin-top: 1px;
+}
+/* Whatever the card's body turns out to be — chips, counts, a tag, or the regions themselves — it
+   begins the same distance under the subtitle. */
+.topo-chips, .topo-stats, .topo-plane-b, .topo-end-body,
+.topo-half .topo-tag { margin-top: 5px; }
+.topo-half .topo-tag { align-self: flex-start; }
+
+/* The three single-row cards end on the same line. The grid already makes the two hand-offs equal to
+   each other; this makes the control band equal to both. The data-plane frame is deliberately not in
+   the list — it holds the regions and grows with them. */
+.topo-ctl, #dst-sc, #dst-ztna { min-height: 62px; }
+
+/* ── The four Prisma Access cards, headed from one place ──────────────────────
+   Control Plane, Data Plane, Service Connection and ZTNA Connector are one system, and a system is
+   only legible if its parts are set identically — not similarly. Every metric that decides where a
+   title and its subtitle land is written once here, after each card's own rules, so none of the four
+   can drift from the other three: the same box padding, the same title size and leading, the same
+   subtitle size and offset, and the same distance from the subtitle down to whatever the card's body
+   turns out to be (chips, counts, or a tag). */
+.topo-chips, .topo-stats, .topo-plane-b, .topo-end-body, .topo-half .topo-tag { margin-top: 5px; }
+
+/* Three of them are single-row cards standing side by side or one above the other, and a row of
+   cards that ends on three different lines reads as three different kinds of thing. The grid already
+   makes the two hand-offs equal to each other; this makes the control band equal to both. The
+   data-plane frame is deliberately not in the list — it holds the regions and grows with them. */
+.topo-ctl, .topo-half#dst-sc, .topo-half#dst-ztna { min-height: 62px; }
 
 /* The private side of the picture is short on words and long on meaning — give it presence rather
    than letting it shrink-wrap next to a tall stack of regions. */
@@ -500,30 +790,50 @@
    also gives the coarse links (RN in, Service Connection out) one thing to attach to, instead of a
    line per region having to travel down across every card below it. */
 .topo-plane {
-  border: 1px dashed color-mix(in srgb, var(--tc-gw) 40%, var(--tc-line));
-  border-radius: 13px; padding: 6px 8px 7px;
-  background: color-mix(in srgb, var(--tc-gw) 4%, transparent);
+  --topo-tone: var(--tc-gw);
+  display: flex; flex-direction: column; min-height: 0;
+  flex: 1 1 auto;   /* the one thing on the stage allowed to take the slack */
 }
+/* Collapsed it is a header and one region — a fixed thing, not the part that stretches. */
+.topo-plane.is-closed { flex: 0 0 auto; }
+/* The header band is as tall as the detail mark that floats over its right end, so the mark sits
+   inside the band instead of hanging into the first region below it. */
+/* The shared heading block on the left, the regions control at the end of the same line. No padding
+   of its own: the heading block carries the reserve for the detail mark, exactly as it does on the
+   other three cards, so all four titles start and end at the same place. */
 .topo-plane-h {
-  display: flex; align-items: center; gap: 7px; width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
   background: none; border: 0; padding: 0; cursor: pointer; font: inherit; text-align: left;
 }
-.topo-plane-t {
-  font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
-  color: color-mix(in srgb, var(--tc-gw) 70%, var(--tc-faint));
+/* On this card the reserve belongs to the row — the regions control is what would otherwise end up
+   under the mark — and the control is aligned to the top of the row so its top edge is the mark's.
+   Both are 20px tall and both start at the content box's top, which is what makes them a pair. */
+.topo-plane-h { padding-right: 24px; align-items: flex-start; }
+.topo-plane-h .topo-hd { padding-right: 0; }
+/* It says what pressing it does, which is the only thing a control has to say. Counting the regions
+   here was the frame explaining itself twice — the region cards are right below it and the detail
+   panel has the census. Exactly the detail mark's height, and aligned to the same line, so the two
+   controls at the top of this card read as a pair rather than as two near-misses. */
+.topo-plane-more {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  padding: 0 9px; font-size: 9px; font-weight: 700;
 }
-.topo-plane-sum {
-  margin-left: auto; font-size: 9px; color: var(--tc-dim); font-variant-numeric: tabular-nums;
-  opacity: 0; transition: opacity var(--tr);
+/* Inherits the control's colour rather than carrying its own: the glyph and the words are one
+   control, and a faint sign next to a dim label read as two states of the same thing. */
+.topo-more-x { font-size: 12px; font-weight: 700; line-height: 1; color: inherit; }
+.topo-plane-h:hover .topo-plane-more {
+  color: var(--tc-ink); border-color: color-mix(in srgb, var(--tc-gw) 45%, var(--tc-line));
 }
-.topo-plane.is-closed .topo-plane-sum { opacity: 1; }
-.topo-chev {
-  width: 11px; height: 11px; flex: 0 0 auto; color: var(--tc-faint);
-  transform: rotate(90deg); transition: transform var(--tr);
-}
-.topo-plane.is-closed .topo-chev { transform: none; }
 .topo-plane.is-closed { padding-bottom: 7px; }
-.topo-plane-b { display: flex; flex-direction: column; gap: 8px; margin-top: 5px; }
+/* Not a scroller. The deck scrolls the whole drawing in one coordinate space — that is what keeps
+   the wires readable — so this frame grows with its regions and lets the wheel through. It was an
+   `overflow-y: auto` box with `overscroll-behavior: contain`, and that combination is a trap: with
+   nothing of its own left to scroll it still swallowed the wheel rather than chaining to the deck,
+   so the pointer resting anywhere over the regions meant the page simply would not move. */
+.topo-plane-b {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 5px;
+  flex: 1 1 auto; min-height: 0;
+}
 
 /* The regions the collapsed frame is not showing. Clicking it is the same as opening the frame. */
 .topo-more {
@@ -548,8 +858,7 @@
   border-color: color-mix(in srgb, var(--tc-pending) 45%, var(--tc-line));
   opacity: 1;
 }
-.topo-end.is-pending .topo-end-nm,
-.topo-half.is-pending .topo-half-nm { color: color-mix(in srgb, var(--tc-pending) 55%, var(--tc-ink)); }
+.is-pending > .topo-hd .topo-hd-t { color: color-mix(in srgb, var(--tc-pending) 55%, var(--tc-ink)); }
 
 .topo-tag.pending {
   --topo-tone: var(--tc-pending);
@@ -607,24 +916,37 @@
   pointer-events: auto;
 }
 
-/* The move between them, named for where it goes and arrowed the way the screen will travel. */
+/* The move between them, named for where it goes and arrowed the way the screen will travel. It
+   used to be pinned inside the canvas, which meant it floated over whichever cards happened to be
+   scrolled under it — a control standing ON the drawing rather than beside it, and the taller the
+   data plane grew the more of the picture it covered. It is a way OUT of this deck, so it now sits
+   after the deck ends, in normal flow at the foot of the page. */
+.topo-deck-bar { display: flex; justify-content: center; flex: 0 0 auto; }
+/* Page tokens, not canvas tokens. Every --tc-* variable is declared ON .topo-canvas, so it exists
+   only for elements inside it — and this button now stands below the canvas, in normal flow. There
+   its background and border were color-mix() over undefined variables, which is an invalid value:
+   the background fell back to transparent and the border to currentColor. On the light theme that
+   still read as a button; on the dark one it was an outline on a dark ground and all but gone.
+   Everything here is drawn from the app's own tokens, which are defined for both themes. */
 .topo-deck-btn {
-  position: absolute; right: 18px; bottom: 14px; z-index: 5;
-  box-shadow: 0 6px 18px -8px rgba(0,0,0,.65);
-  backdrop-filter: blur(6px);
   display: inline-flex; align-items: center; gap: 7px;
   font: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .01em;
-  color: var(--tc-ink); cursor: pointer;
-  background: color-mix(in srgb, var(--tc-gw) 14%, var(--tc-well));
-  border: 1px solid color-mix(in srgb, var(--tc-gw) 42%, var(--tc-line));
-  border-radius: 999px; padding: 6px 13px;
-  transition: background var(--tr), border-color var(--tr), transform var(--tr);
+  color: var(--text); cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 999px; padding: 6px 14px;
+  transition: background .15s ease, border-color .15s ease, transform .15s ease;
 }
 .topo-deck-btn:hover {
-  background: color-mix(in srgb, var(--tc-gw) 26%, var(--tc-well));
-  border-color: var(--tc-gw);
+  background: color-mix(in srgb, var(--accent) 26%, var(--surface));
+  border-color: var(--accent);
   transform: translateY(-1px);
 }
+.topo-deck-btn:focus-visible {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.topo-deck-btn svg { color: var(--accent); }
 .topo-deck-btn svg { width: 13px; height: 13px; flex: 0 0 auto; }
 
 /* ── Deck 2: on-premise infrastructure ───────────────────────────────────────
@@ -638,7 +960,11 @@
 /* The fabric deck needs its 980px to keep its lanes side by side. This one does not: its columns
    stack on a narrow screen, and inheriting that floor would force a horizontal scrollbar under a
    layout that had already adapted. */
-.topo-stage-ngfw { position: relative; min-width: 0; padding-bottom: 56px; }
+/* The fill-the-frame behaviour above belongs to the fabric deck, whose height problem it solves.
+   This deck is a grid of however many firewalls the site has and was already content-sized, so it
+   opts back out rather than inheriting a stretch it has nothing to stretch. */
+.topo-stage-ngfw { position: relative; min-width: 0; padding-bottom: 16px;
+  display: block; min-height: 0; }
 
 /* Both decks are headed the same way — a name and a one-line census — so moving between them feels
    like changing floors in one building rather than opening a different page. */
@@ -804,13 +1130,7 @@
 .topo-port-b.b-vpn { color: var(--tc-bg); background: var(--tc-sc); }
 .topo-port-b.b-gp  { color: var(--tc-bg); background: var(--tc-gw); }
 
-.topo-fwb-more {
-  align-self: flex-start; font: inherit; cursor: pointer;
-  font-size: 8.5px; color: var(--tc-dim);
-  border: 1px solid var(--tc-line); border-radius: 999px; padding: 1px 8px;
-  background: transparent; transition: color var(--tr), border-color var(--tr);
-}
-.topo-fwb-more:hover { color: var(--tc-ink); border-color: var(--tc-dim); }
+
 
 /* ── Access edge and destinations ────────────────────────────────────────────
    The two outer columns share a shape on purpose: both are "somewhere the traffic is", and the
@@ -901,14 +1221,6 @@
 /* ── ZTNA lane ───────────────────────────────────────────────────────────────
    Connectors listed as their own endpoints. They are not attached to a firewall in the drawing
    because they are not attached to one in reality — they dial out to the fabric themselves. */
-.topo-ztna-list { display: flex; flex-direction: column; gap: 3px; margin: 6px 0 4px; }
-.topo-ztna-row {
-  display: grid; grid-template-columns: 8px 1fr auto auto; align-items: center; gap: 7px;
-  font-size: 9.5px; min-width: 0;
-}
-.topo-ztna-nm { color: var(--tc-ink); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.topo-ztna-sub { color: var(--tc-faint); font-size: 8.5px; }
-.topo-ztna-ip { font-family: var(--font-mono); font-size: 8.5px; color: var(--tc-dim); }
 
 .topo-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--tc-dim); flex: 0 0 auto; }
 .topo-dot.ok  { background: var(--tc-ok); }

@@ -60,10 +60,19 @@
       params: [],
       hint: 'Region required: americas, au, ca, de, europe, in, jp, sg, uk.',
     },
+    // Strata Cloud Manager — the tenant's own configuration plane, read with the same OAuth and the
+    // same tsg_id scope as ZTNA. It differs only in host and path layout, and it takes no region
+    // header: the tenant is already the token's scope, so there is nothing left to disambiguate.
+    scm: {
+      device: 'sase', label: 'Strata Cloud Manager', enabled: true,
+      url: 'https://api.strata.paloaltonetworks.com/config/deployment/v1/service-connections',
+      headers: [],
+      params: [],
+      hint: 'No region header — the tenant is the token scope.',
+    },
     // Listed but not selectable, so the menu is honest about what exists rather than implying the
     // list is complete.
     pab: { device: 'sase', label: 'Prisma Access Browser', enabled: false },
-    scm: { device: 'sase', label: 'Strata Cloud Manager',  enabled: false },
   };
 
   const subtypesFor = (deviceType) =>
@@ -657,8 +666,8 @@
     document.getElementById('epHeaderAdd')?.addEventListener('click', () => addRowTo('epHeaderList'));
 
     // Changing the SASE subtype re-seeds the URL and the headers — they belong to the product, not
-    // to the operator, until edited. Only ZTNA is selectable today, so this is the seam rather than a
-    // path anyone walks yet.
+    // to the operator, until edited. Moving between ZTNA and SCM therefore drops the region header
+    // rather than carrying a value that means nothing on the other host.
     body.querySelector('[data-f="subtype"]')?.addEventListener('change', (ev) => {
       const spec = subtypeSpec(ev.target.value);
       const url = body.querySelector('[data-f="sase-url"]');

@@ -117,7 +117,14 @@ void ApiService::loadEndpoints(const nlohmann::json& cfg)
 
         if (endpoint.vendor == ApiVendor::Sase)
         {
-            if (subtype != "ztna")
+            // The products served today. What separates them — host, path layout, required headers —
+            // the endpoint already carries, so the subtype does not change how the call is built;
+            // what it still does is refuse a product nobody has built the rest of.
+            if (subtype == "ztna")
+                endpoint.subtype = ApiSubtype::Ztna;
+            else if (subtype == "scm")
+                endpoint.subtype = ApiSubtype::Scm;
+            else
             {
                 // Refused rather than defaulted: silently collecting a Prisma Access Browser endpoint
                 // as though it were ZTNA would send a request nobody asked for.
@@ -125,7 +132,6 @@ void ApiService::loadEndpoints(const nlohmann::json& cfg)
                          endpoint.name, subtype);
                 continue;
             }
-            endpoint.subtype = ApiSubtype::Ztna;
 
             endpoint.host = e.value("host", std::string());
             readPairs("headers", endpoint.headers);
@@ -366,7 +372,7 @@ void ApiService::route(CollectordServiceManager& sm, const ApiEvent& event)
 
     case ApiEventType::StoreSaseKey:
         if (decodeTest(event, seqNo, input))
-            m_statusController.storeApiKey(sm, seqNo, input);
+            m_statusController.storeApiKey(*this, sm, seqNo, input);
         break;
 
     case ApiEventType::StoreCredential:

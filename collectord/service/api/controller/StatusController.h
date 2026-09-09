@@ -52,7 +52,10 @@ public:
     // device call. Storing is its own operation rather than a side effect of a passing test: the key
     // must survive a device saved before it was ever tested, and the browser must be able to forget
     // the plaintext (it renders the stored key as bullets). Routed to on ApiEventType::StoreSaseKey.
-    void storeApiKey(CollectordServiceManager& sm, std::uint32_t seqNo, const nlohmann::json& input);
+    // `api` caches the key too, so a test pressed right after the save finds it — the fetch from
+    // engined runs only at startup.
+    void storeApiKey(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
+                     const nlohmann::json& input);
 
     std::vector<std::string> aliveTargets() const;
     std::vector<std::string> downTargets() const;
@@ -62,6 +65,11 @@ public:
     const std::unordered_map<std::string, nlohmann::json>& egressResults() const;
 
 private:
+    // Hand the current alive/down verdicts and the cached egress documents to engined. Called at the
+    // head of each cycle AND the moment a cycle's last probe lands — see the note on the call site
+    // in the completion handler for why waiting for the next tick was not good enough.
+    void report(CollectordServiceManager& sm) const;
+
     boost::asio::io_context& m_ioc;
     std::chrono::steady_clock::time_point m_lastRun{};
     std::unordered_map<std::string, bool> m_result;               // target -> last probe ok
