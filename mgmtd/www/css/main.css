@@ -219,8 +219,12 @@ html, body {
   color: var(--sb-muted);
 }
 
+/* 13 + the 3px a row carries below it = 16 above every section label. The number matters less
+   than its being one number: a section that followed a row had 12 and a section that opened a tier
+   had 16, so the column's rhythm changed at exactly the points a reader uses to find their place.
+   The tier heading gives up its own bottom padding to keep the sum the same on that side. */
 .nav-section-label {
-  padding: 11px 9px 3px;
+  padding: 13px 9px 3px;
   white-space: nowrap;
   overflow: hidden;
   opacity: 1;
@@ -231,9 +235,19 @@ html, body {
    read as a list. */
 .sidebar.collapsed .nav-section-label { display: none; }
 
-.sidebar-nav > .nav-item,
-.sidebar-nav > .nav-group,
-.nav-tier > .nav-item { margin-bottom: 1px; }
+/* The gap belongs to the row, not to a list of the places a row is allowed to appear. It used to
+   name three parents — and Configuration, the one group that lives inside a tier, was named by
+   none of them, so its hover ground sat flush against System Operation's while every other pair in
+   the column had a gap. The footer's four rows were outside all three too.
+   3px, because the grounds are what say a row is a row, and at 1px two of them touch at the
+   corners. The number is load-bearing twice more below: the space above a section label is this
+   plus the label's own top padding, and the two have to add to 16. */
+.nav-item,
+.nav-group { margin-bottom: 3px; }
+/* The wrapper carries it once; the button inside must not add a second. */
+.nav-group > .nav-item { margin-bottom: 0; }
+/* The site switcher is a group sitting on a heading line, not a row in the list. */
+.nav-tier-label .nav-group { margin-bottom: 0; }
 
 .nav-item {
   display: flex;
@@ -3529,11 +3543,13 @@ a.details-btn { display: inline-block; text-decoration: none; }
 /* 9px and 9px, which is where a row's icon and a row's label sit: the heading governs the list
    under it, so it stands in the same two columns rather than three pixels to the left of them. */
 .nav-tier-label {
+  position: relative;
+  cursor: pointer; user-select: none;
   display: flex; align-items: center; gap: 9px;
   font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
   color: var(--sb-text); opacity: .85;
-  padding: 12px 6px 5px 9px;
-  margin-top: 4px;
+  padding: 12px 6px 3px 9px;
+  margin-top: 6px;
   border-top: 1px solid var(--sb-border);
   white-space: nowrap; overflow: hidden;
   transition: opacity var(--tr);
@@ -3541,6 +3557,32 @@ a.details-btn { display: inline-block; text-decoration: none; }
 /* Accent, where every other icon in the column is grey until it is the page you are on. The two
    tier glyphs are not rows and cannot be selected, so the colour is not competing with an active
    state — it is what tells you these two marks divide the list rather than belong to it. */
+.nav-tier-label:hover { opacity: 1; }
+.nav-tier-label:focus-visible { outline: 1px solid var(--sb-active-cl); outline-offset: 2px; border-radius: 4px; }
+
+/* In the gutter, not in the row. The tier's glyph and word stand in the same two columns as the
+   rows they govern — that alignment is the point of them — so the fold handle takes the only space
+   left, the 15px to the left of it, and sits directly above the rail it opens and shuts.
+   A flex item with its own width negated, rather than an absolutely positioned one: it costs the
+   flow nothing (-12 for its width, -9 for the row gap that would follow it) and lands on exactly
+   the x it would have, but being in the flow it is centred by the same rule that centres the
+   glyph — so the two are aligned by construction instead of by an offset that has to be
+   re-derived every time the heading's padding changes. */
+.nav-tier-caret {
+  flex: 0 0 auto;
+  width: 12px; height: 12px;
+  margin-left: -12px; margin-right: -9px;
+  stroke-width: 2.4; stroke-linecap: round;
+  color: var(--sb-muted);
+  transform: rotate(0deg);
+  transition: transform var(--tr), color var(--tr);
+}
+/* The site heading aligns its two words on a baseline; the glyph and the handle both opt out. */
+.nav-tier-label.is-site .nav-tier-caret { align-self: center; }
+.nav-tier-label.is-open .nav-tier-caret { transform: rotate(90deg); }
+.nav-tier-label:hover .nav-tier-caret { color: var(--sb-text); }
+@media (prefers-reduced-motion: reduce) { .nav-tier-caret { transition: none; } }
+
 .nav-tier-ic {
   width: 15px; height: 15px; flex: 0 0 auto;
   stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
@@ -3571,6 +3613,9 @@ a.details-btn { display: inline-block; text-decoration: none; }
    cost two text lines in a rail whose whole argument is height, and an orange mark against a column
    of grey ones already says "a new group starts here". */
 .sidebar.collapsed .nav-tier-name { display: none; }
+/* No room, and nothing to point at: the rail it would fold is hidden at this width too. A tier
+   folded here is simply four fewer icons, which is what folding it meant. */
+.sidebar.collapsed .nav-tier-caret { display: none; }
 
 /* The switcher survives too, as the icon it can afford to be. Hovering it opens the same flyout
    Configuration uses — the site list, with the one you are in marked — so the rail can still say
@@ -3580,7 +3625,31 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .sidebar.collapsed .nav-site-nm,
 .sidebar.collapsed .nav-site-caret { display: none; }
 .sidebar.collapsed .nav-site-ic { display: block; }
-.nav-tier { margin-bottom: 6px; }
+.nav-tier { margin-bottom: 6px; position: relative; }
+
+/* A rail down the left of each tier, marking how far it reaches. The heading and the hairline say
+   where a tier STARTS; nothing said where it ended, and with seven section labels in the column the
+   eye had to count back up to work out whether MONITOR was still inside SHARED.
+   It lives in the nav's 6px gutter rather than in the rows' own left edge, so nothing is indented
+   to make room for it and it never touches a hover ground. Both tiers carry it — the earlier
+   version was on SITE alone, which read as SITE being the odd one rather than as a bracket.
+   Accent, at one pixel: the same orange the tier's own glyph is drawn in, so the mark at the top
+   and the line down the side read as one bracket rather than two decorations. A folded tier has no
+   height, so the rail goes away with the rows without being told to. */
+.nav-tier::before {
+  content: '';
+  position: absolute;
+  left: -4px; top: 2px; bottom: 2px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--sb-active-cl);
+  opacity: .65;
+}
+/* Nothing to bracket at 48px: the rows are a single column of icons and the hairlines already cut
+   it into two. */
+.sidebar.collapsed .nav-tier::before { display: none; }
+.nav-tier > :last-child,
+.nav-tier-body-in > :last-child { margin-bottom: 0; }
 
 /* Sections inside a tier are the finer cut, so they step back: smaller, dimmer, and indented under
    the tier they belong to. Two label levels only work if they cannot be mistaken for each other. */

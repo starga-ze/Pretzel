@@ -589,7 +589,15 @@
         // list with a control wedged into the top of it.
         // The glyph is the tier's identity: collapsed it is all that is left of the heading, so the
         // same one has to lead the word when there is room for the word.
-        html += `<div class="nav-tier-label${item.scoped ? ' is-site' : ''}">` +
+        //
+        // The heading is also the tier's switch. A caret leads it because that is what a row you
+        // can fold looks like everywhere else in this console, and the whole line is the target —
+        // a 10px word is not something to ask anyone to hit. The site switcher sits on this same
+        // line and keeps its own clicks; the handler steps over anything inside a .nav-group.
+        html += `<div class="nav-tier-label${item.scoped ? ' is-site' : ''}" data-tier="${item.id}"` +
+                ` role="button" tabindex="0" aria-controls="navTierBody-${item.id}" aria-expanded="false">` +
+                `<svg class="nav-tier-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>` +
                 `<svg class="nav-tier-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                       aria-hidden="true">${item.icon || ''}</svg>` +
                 `<span class="nav-tier-name">${item.label}</span>` +
@@ -599,12 +607,11 @@
                 `</div>`;
         html += `<div class="nav-tier">`;
         tierOpen = true;
-        if (item.scoped) {
-          // What the switcher governs, collapsed to nothing until it has an answer. Its own box
-          // because a height can only be animated on something that has one.
-          html += `<div class="nav-tier-body" id="navScopedBody"><div class="nav-tier-body-in">`;
-          bodyOpen = true;
-        }
+        // Its own box because a height can only be animated on something that has one. Both tiers
+        // have one now: the scoped tier folds when it has no site to read through, and either
+        // folds when the operator says so.
+        html += `<div class="nav-tier-body" id="navTierBody-${item.id}"><div class="nav-tier-body-in">`;
+        bodyOpen = true;
         continue;
       }
 
@@ -1080,12 +1087,88 @@
     });
   }
 
+  // ── Nav tiers: fold and unfold ────────────────────────────────────────────
+  // Per browser, not per user: which halves of the nav someone keeps open is a view preference
+  // about this screen, the same kind of thing as the sidebar's own collapsed state, and it has no
+  // business making a round trip.
+
+  const TIERS_KEY = 'pz.nav.tiers';
+
+  function tierPrefs() {
+    try { return JSON.parse(localStorage.getItem(TIERS_KEY) || '{}') || {}; }
+    catch (_) { return {}; }   // private window, or someone else's JSON under our key
+  }
+
+  // Open unless it has been shut. A tier absent from the store is a tier nobody has touched, and
+  // the useful default for a nav is that you can see what is in it.
+  function tierWanted(id) {
+    return tierPrefs()[id] !== false;
+  }
+
+  function setTierWanted(id, open) {
+    const prefs = tierPrefs();
+    prefs[id] = open;
+    try { localStorage.setItem(TIERS_KEY, JSON.stringify(prefs)); } catch (_) { /* nothing to do */ }
+  }
+
+  // The scoped tier answers to two things at once: the operator's fold, and whether there is a site
+  // to read the rows through at all. With no site the rows would open onto pages that can only
+  // apologise, so the gate wins and the caret shows shut — pressing the heading then does nothing
+  // but record a preference for when a site is chosen.
+  function tierOpenState(id) {
+    if (id === 'site' && !window.NMS.utils.siteScope.get()) return false;
+    return tierWanted(id);
+  }
+
+  function syncTiers() {
+    document.querySelectorAll('.nav-tier-label[data-tier]').forEach((label) => {
+      const id   = label.dataset.tier;
+      const open = tierOpenState(id);
+      label.classList.toggle('is-open', open);
+      label.setAttribute('aria-expanded', String(open));
+      document.getElementById(`navTierBody-${id}`)?.classList.toggle('is-open', open);
+    });
+  }
+  window.NMS = window.NMS || {};
+  window.NMS.syncTiers = syncTiers;   // the scope gate re-asks when the site changes
+
+  function initTiers() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    const toggle = (label) => {
+      const id = label.dataset.tier;
+      if (!id) return;
+      setTierWanted(id, !tierOpenState(id));
+      syncTiers();
+    };
+
+    // Delegated: the heading is rewritten whenever the nav is rebuilt, and the site switcher inside
+    // it is rewritten more often than that.
+    sidebar.addEventListener('click', (e) => {
+      if (e.target.closest('.nav-group')) return;   // the switcher's own business
+      const label = e.target.closest('.nav-tier-label[data-tier]');
+      if (label) toggle(label);
+    });
+    sidebar.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      if (e.target.closest('.nav-group')) return;
+      const label = e.target.closest('.nav-tier-label[data-tier]');
+      if (!label) return;
+      e.preventDefault();                            // Space scrolls the nav otherwise
+      toggle(label);
+    });
+
+    syncTiers();
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
 
   document.addEventListener('DOMContentLoaded', () => {
     buildSidebar();
     buildTopbar();
     initSidebar();
+    initTiers();
     initFlyouts();
     initTooltips();
     initTheme();
@@ -1514,8 +1597,10 @@
     syncScopeGating() {
       const chosen = !!this.siteScope.get();
       // The rows slide away rather than sitting there greyed out: with no site there is nothing
-      // behind them to show, and a list of four dead links is a worse answer than no list.
-      document.getElementById('navScopedBody')?.classList.toggle('is-open', chosen);
+      // behind them to show, and a list of four dead links is a worse answer than no list. The fold
+      // is one decision made in one place — tierOpenState — because the operator's own fold has a
+      // say in it too.
+      window.NMS.syncTiers?.();
       document.querySelectorAll('.nav-item[data-scoped="1"]').forEach((el) => {
         el.classList.toggle('nav-disabled', !chosen);
         if (chosen) {
