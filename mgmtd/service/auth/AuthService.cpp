@@ -1,5 +1,7 @@
 #include "service/auth/AuthService.h"
 
+#include "algorithm/Hex.h"
+
 #include "service/MgmtdServiceManager.h"
 #include "service/auth/AuthEvent.h"
 
@@ -10,7 +12,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <openssl/rand.h>
 
 #include <algorithm>
 #include <chrono>
@@ -306,21 +307,9 @@ std::uint64_t AuthService::now()
 // a bearer token: guessing one is the same as stealing it.
 std::string AuthService::generateSessionId()
 {
-    unsigned char buf[32];
-    if (RAND_bytes(buf, static_cast<int>(sizeof(buf))) != 1)
-    {
-        return {};
-    }
-
-    static const char* hex = "0123456789abcdef";
-    std::string out;
-    out.reserve(sizeof(buf) * 2);
-    for (unsigned char c : buf)
-    {
-        out.push_back(hex[(c >> 4) & 0xF]);
-        out.push_back(hex[c & 0xF]);
-    }
-    return out;
+    // 32 bytes, from the system's entropy source. Empty when that fails, which callers treat as a
+    // refusal to issue a session rather than as a session with a blank id.
+    return pz::algorithm::randomHex(32);
 }
 
 

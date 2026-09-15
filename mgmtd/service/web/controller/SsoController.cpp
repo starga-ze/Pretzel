@@ -2,6 +2,10 @@
 
 #include "service/MgmtdServiceManager.h"
 
+#include "algorithm/Base64.h"
+#include "algorithm/Hex.h"
+#include "algorithm/Timestamp.h"
+
 #include "service/web/WebUtil.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -16,9 +20,7 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include <ctime>
 #include <memory>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -30,56 +32,8 @@ using json = nlohmann::json;
 namespace
 {
 
-std::string ssoRandomHex(std::size_t nBytes)
-{
-    static const char* hex = "0123456789abcdef";
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<int> dist(0, 15);
-    std::string s;
-    s.reserve(nBytes * 2);
-    for (std::size_t i = 0; i < nBytes * 2; ++i)
-        s.push_back(hex[dist(gen)]);
-    return s;
-}
 
-std::string ssoUtcNow()
-{
-    std::time_t t = std::time(nullptr);
-    std::tm tm{};
-    gmtime_r(&t, &tm);
-    char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
-    return buf;
-}
 
-std::string ssoBase64(const std::string& in)
-{
-    static const char* tbl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve((in.size() + 2) / 3 * 4);
-    const auto* d = reinterpret_cast<const unsigned char*>(in.data());
-    std::size_t len = in.size(), i = 0;
-    for (; i + 2 < len; i += 3)
-    {
-        std::uint32_t n = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
-        out.push_back(tbl[(n >> 18) & 63]);
-        out.push_back(tbl[(n >> 12) & 63]);
-        out.push_back(tbl[(n >> 6) & 63]);
-        out.push_back(tbl[n & 63]);
-    }
-    if (i < len)
-    {
-        std::uint32_t n = d[i] << 16;
-        if (i + 1 < len)
-            n |= d[i + 1] << 8;
-        out.push_back(tbl[(n >> 18) & 63]);
-        out.push_back(tbl[(n >> 12) & 63]);
-        out.push_back((i + 1 < len) ? tbl[(n >> 6) & 63] : '=');
-        out.push_back('=');
-    }
-    return out;
-}
 
 std::string ssoUrlDecode(const std::string& s)
 {
@@ -217,11 +171,11 @@ void SsoController::login(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
     if (idp.empty() || acs.empty())
         return redirectErr("misconfigured");
 
-    const std::string id = "_" + ssoRandomHex(16);
+    const std::string id = "_" + pz::algorithm::randomHex(16);
     const std::string xml = "<samlp:AuthnRequest xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\""
                             " xmlns:saml=\"urn:oasis:names:tc:SAML:2.0:assertion\""
                             " ID=\"" +
-                            id + "\" Version=\"2.0\" IssueInstant=\"" + ssoUtcNow() +
+                            id + "\" Version=\"2.0\" IssueInstant=\"" + pz::algorithm::utcTimestamp() +
                             "\""
                             " Destination=\"" +
                             idp +
@@ -239,7 +193,7 @@ void SsoController::login(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
                              ssoHtmlAttr(idp) +
                              "\">"
                              "<input type=\"hidden\" name=\"SAMLRequest\" value=\"" +
-                             ssoHtmlAttr(ssoBase64(xml)) +
+                             ssoHtmlAttr(pz::algorithm::base64Encode(xml)) +
                              "\"/>"
                              "<noscript><button type=\"submit\">Continue to Okta</button></noscript>"
                              "</form></body></html>";

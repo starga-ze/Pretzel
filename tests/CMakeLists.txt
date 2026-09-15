@@ -46,6 +46,12 @@ pz_add_test(test-ipc-codec          test_ipc_codec.cpp          GTest::gtest_mai
 pz_add_test(test-static-file-cache  test_static_file_cache.cpp  GTest::gtest_main)
 pz_add_test(test-url-encode         test_url_encode.cpp         GTest::gtest_main)
 pz_add_test(test-api-refs           test_api_refs.cpp           GTest::gtest_main)
+pz_add_test(test-byte-ring-buffer   test_byte_ring_buffer.cpp   GTest::gtest_main)
+pz_add_test(test-http-beast        test_http_beast.cpp         GTest::gtest_main)
+pz_add_test(test-base64            test_base64.cpp             GTest::gtest_main)
+pz_add_test(test-hex               test_hex.cpp                GTest::gtest_main)
+pz_add_test(test-ticket-map        test_ticket_map.cpp         GTest::gtest_main)
+pz_add_test(test-timestamp         test_timestamp.cpp          GTest::gtest_main)
 
 # No gtest_main: secret::masterKey() caches the key file in a function-local static, so this
 # suite needs its own main() to point PRETZEL_CONFIG_DIR at a fixture before any test runs.
@@ -113,3 +119,31 @@ pz_add_test(test-ingest-routing     test_ingest_routing.cpp)
 target_sources(test-ingest-routing PRIVATE
     ${CMAKE_SOURCE_DIR}/apid/service/ingest/IngestRouting.cpp)
 target_include_directories(test-ingest-routing PRIVATE ${CMAKE_SOURCE_DIR}/apid)
+
+# The rest of collectord's ApiUtil — the helpers every device exchange is assembled from (URL
+# splitting, OAuth and keygen request building, PAN-OS XML reading, the TLS/pin step record).
+# Same link arrangement as test-collection-sample: one translation unit, with --gc-sections
+# dropping the IPC senders that would otherwise pull the whole daemon in.
+pz_add_test(test-api-util           test_api_util.cpp           GTest::gtest_main)
+target_sources(test-api-util PRIVATE
+    ${CMAKE_SOURCE_DIR}/collectord/service/api/ApiUtil.cpp)
+target_include_directories(test-api-util PRIVATE ${CMAKE_SOURCE_DIR}/collectord)
+target_compile_options(test-api-util PRIVATE -ffunction-sections -fdata-sections)
+target_link_options(test-api-util PRIVATE -Wl,--gc-sections)
+
+# engined's config→inventory projection. Extracted out of ProbeService so the reading is separable
+# from the writing: the SQL stays in the service, and the decision about which rows should exist —
+# the one that silently deletes a device when it goes wrong — links with no database behind it.
+pz_add_test(test-inventory-projection  test_inventory_projection.cpp  GTest::gtest_main)
+target_sources(test-inventory-projection PRIVATE
+    ${CMAKE_SOURCE_DIR}/engined/service/probe/InventoryProjection.cpp)
+target_include_directories(test-inventory-projection PRIVATE ${CMAKE_SOURCE_DIR}/engined)
+
+# mgmtd's commit gate. Extracted out of SettingsController so the judgement links without an HTTP
+# request, a commit queue or a database behind it; ApiRefs comes from pz-shared, and Config::section
+# answers with an empty object when nothing is loaded — which is the useful baseline here, since it
+# makes the merged view exactly the batch being committed.
+pz_add_test(test-settings-validation  test_settings_validation.cpp  GTest::gtest_main)
+target_sources(test-settings-validation PRIVATE
+    ${CMAKE_SOURCE_DIR}/mgmtd/service/web/controller/SettingsValidation.cpp)
+target_include_directories(test-settings-validation PRIVATE ${CMAKE_SOURCE_DIR}/mgmtd)

@@ -1,5 +1,7 @@
 #include "service/probe/ProbeService.h"
 
+#include "service/probe/InventoryProjection.h"
+
 #include "router/EnginedTxRouter.h"
 #include "service/EnginedServiceManager.h"
 
@@ -205,56 +207,34 @@ void ProbeService::onSaseHealthResult(EnginedServiceManager& serviceManager, con
 void ProbeService::projectInventory()
 {
     const auto& site = pz::config::Config::section(pz::config::scope::kPretzel, "site");
+    const auto projection = inventory::projectSite(site);
     auto& db = pz::db::Database::instance();
 
     // Upsert only the config-projected columns; runtime state (status/last_seen/api_key_enc/
     // egress_result) is written elsewhere and must survive a reload, so ON CONFLICT never touches it.
-    nlohmann::json ngfwIds = nlohmann::json::array();
-    for (const auto& d : site.value("ngfw_devices", nlohmann::json::array()))
+    for (const auto& r : projection.ngfw)
     {
-        if (!d.is_object())
-            continue;
-        const std::string oid = d.value("oid", d.value("uuid", d.value("id", std::string())));
-        if (oid.empty())
-            continue;
         db.exec("INSERT INTO ngfw_device (oid, site, target, name, description, fingerprint) "
                 "VALUES ($1,$2,$3,$4,$5,$6) "
                 "ON CONFLICT (oid) DO UPDATE SET site=EXCLUDED.site, target=EXCLUDED.target, "
                 "name=EXCLUDED.name, description=EXCLUDED.description, fingerprint=EXCLUDED.fingerprint, "
                 "updated_at=now()",
-                {oid, d.value("site", std::string()), d.value("target", std::string()),
-                 d.value("name", std::string()), d.value("description", std::string()),
-                 d.value("fingerprint", std::string())});
-        ngfwIds.push_back(oid);
+                {r.oid, r.site, r.target, r.name, r.description, r.fingerprint});
     }
     db.exec("DELETE FROM ngfw_device WHERE oid <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
-            {ngfwIds.dump()});
+            {inventory::oidsOf(projection.ngfw).dump()});
 
-    nlohmann::json saseIds = nlohmann::json::array();
-    for (const auto& d : site.value("sase_devices", nlohmann::json::array()))
+    for (const auto& r : projection.sase)
     {
-        if (!d.is_object())
-            continue;
-        const std::string oid = d.value("oid", d.value("uuid", d.value("id", std::string())));
-        if (oid.empty())
-            continue;
-        const auto health = d.value("health", nlohmann::json::object());
-        const std::string body =
-            health.contains("body") ? (health["body"].is_string() ? health["body"].get<std::string>()
-                                                                   : health["body"].dump())
-                                     : std::string();
         db.exec("INSERT INTO sase_device (oid, site, target, name, description, health_url, health_body) "
                 "VALUES ($1,$2,$3,$4,$5,$6,$7) "
                 "ON CONFLICT (oid) DO UPDATE SET site=EXCLUDED.site, target=EXCLUDED.target, "
                 "name=EXCLUDED.name, description=EXCLUDED.description, health_url=EXCLUDED.health_url, "
                 "health_body=EXCLUDED.health_body, updated_at=now()",
-                {oid, d.value("site", std::string()), d.value("target", std::string()),
-                 d.value("name", std::string()), d.value("description", std::string()),
-                 health.value("url", std::string()), body});
-        saseIds.push_back(oid);
+                {r.oid, r.site, r.target, r.name, r.description, r.healthUrl, r.healthBody});
     }
     db.exec("DELETE FROM sase_device WHERE oid <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
-            {saseIds.dump()});
+            {inventory::oidsOf(projection.sase).dump()});
 }
 
 }

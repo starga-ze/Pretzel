@@ -1,6 +1,8 @@
 #include "service/web/controller/ChatController.h"
 
 #include "service/MgmtdServiceManager.h"
+
+#include "algorithm/Hex.h"
 #include "service/web/WebUtil.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -14,7 +16,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <openssl/rand.h>
 
 #include <cstdlib>
 #include <string>
@@ -52,24 +53,16 @@ constexpr std::size_t kMaxHistoryChars = 64 * 1024;
 // lands in someone else's scan logs beside other tenants' traffic.
 std::string newTransactionId()
 {
-    unsigned char buf[16];
-    if (RAND_bytes(buf, static_cast<int>(sizeof(buf))) != 1)
+    // Not fatal when entropy is unavailable. The id is a tracing aid; a turn that cannot be traced
+    // is still a turn the operator asked for, and refusing it would trade a real answer for a log
+    // field.
+    const std::string id = pz::algorithm::randomHex(16);
+    if (id.empty())
     {
-        // Not fatal. The id is a tracing aid; a turn that cannot be traced is still a turn the
-        // operator asked for, and refusing it would trade a real answer for a log field.
         LOG_WARN("transaction id generation failed — the turn proceeds without one");
         return {};
     }
-
-    static const char* hex = "0123456789abcdef";
-    std::string out = "txn_";
-    out.reserve(4 + sizeof(buf) * 2);
-    for (unsigned char c : buf)
-    {
-        out.push_back(hex[(c >> 4) & 0xF]);
-        out.push_back(hex[c & 0xF]);
-    }
-    return out;
+    return "txn_" + id;
 }
 
 // The browser sends the thread it is showing. It is not trusted to send it well: a role outside

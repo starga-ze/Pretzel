@@ -1,5 +1,8 @@
 #include "service/auth/SamlClient.h"
 
+#include "algorithm/Base64.h"
+#include "algorithm/Hex.h"
+#include "algorithm/Timestamp.h"
 #include "http/UrlEncode.h"
 #include "util/Logger.h"
 
@@ -18,7 +21,6 @@
 #include <chrono>
 #include <cstring>
 #include <ctime>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -38,92 +40,9 @@ std::uint64_t nowSec()
         .count();
 }
 
-std::string randomId()
-{
-    static const char* hex = "0123456789abcdef";
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<int> dist(0, 15);
-    std::string s = "_";
-    for (int i = 0; i < 32; ++i)
-        s.push_back(hex[dist(gen)]);
-    return s;
-}
 
-std::string utcNow()
-{
-    std::time_t t = std::time(nullptr);
-    std::tm tm{};
-    gmtime_r(&t, &tm);
-    char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &tm);
-    return buf;
-}
 
-std::string base64Encode(const unsigned char* data, std::size_t len)
-{
-    static const char* tbl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve((len + 2) / 3 * 4);
-    std::size_t i = 0;
-    for (; i + 2 < len; i += 3)
-    {
-        std::uint32_t n = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
-        out.push_back(tbl[(n >> 18) & 63]);
-        out.push_back(tbl[(n >> 12) & 63]);
-        out.push_back(tbl[(n >> 6) & 63]);
-        out.push_back(tbl[n & 63]);
-    }
-    if (i < len)
-    {
-        std::uint32_t n = data[i] << 16;
-        if (i + 1 < len)
-            n |= data[i + 1] << 8;
-        out.push_back(tbl[(n >> 18) & 63]);
-        out.push_back(tbl[(n >> 12) & 63]);
-        out.push_back((i + 1 < len) ? tbl[(n >> 6) & 63] : '=');
-        out.push_back('=');
-    }
-    return out;
-}
 
-bool base64Decode(const std::string& in, std::vector<unsigned char>& out)
-{
-    auto val = [](char c) -> int
-    {
-        if (c >= 'A' && c <= 'Z')
-            return c - 'A';
-        if (c >= 'a' && c <= 'z')
-            return c - 'a' + 26;
-        if (c >= '0' && c <= '9')
-            return c - '0' + 52;
-        if (c == '+')
-            return 62;
-        if (c == '/')
-            return 63;
-        return -1;
-    };
-    out.clear();
-    int buf = 0, bits = 0;
-    for (char c : in)
-    {
-        if (c == '=')
-            break;
-        if (c == '\n' || c == '\r' || c == ' ' || c == '\t')
-            continue;
-        int v = val(c);
-        if (v < 0)
-            return false;
-        buf = (buf << 6) | v;
-        bits += 6;
-        if (bits >= 8)
-        {
-            bits -= 8;
-            out.push_back((buf >> bits) & 0xFF);
-        }
-    }
-    return true;
-}
 
 bool rawDeflate(const std::string& in, std::vector<unsigned char>& out)
 {
@@ -278,7 +197,16 @@ SamlClient::StartResult SamlClient::buildAuthnRedirectUrl(const std::string& rel
         return r;
     }
 
-    r.requestId = randomId();
+    // xsd:ID is an NCName, so it may not start with a digit — hence the underscore. The token is
+    // not a secret, but it is what InResponseTo is matched against, so a predictable one lets a
+    // forged response claim to answer a request nobody made.
+    const std::string id = pz::algorithm::randomHex(16);
+    if (id.empty())
+    {
+        r.error = "no entropy available to mint a request id";
+        return r;
+    }
+    r.requestId = "_" + id;
     const std::string xml = "<samlp:AuthnRequest xmlns:samlp=\"" + std::string(kNsProtocol) +
                             "\""
                             " xmlns:saml=\"" +
@@ -288,7 +216,7 @@ SamlClient::StartResult SamlClient::buildAuthnRedirectUrl(const std::string& rel
                             r.requestId +
                             "\" Version=\"2.0\""
                             " IssueInstant=\"" +
-                            utcNow() +
+                            pz::algorithm::utcTimestamp() +
                             "\""
                             " Destination=\"" +
                             m_cfg.idpSsoUrl +
@@ -310,7 +238,7 @@ SamlClient::StartResult SamlClient::buildAuthnRedirectUrl(const std::string& rel
     }
 
     using pz::http::urlEncode;
-    const std::string enc = urlEncode(base64Encode(deflated.data(), deflated.size()));
+    const std::string enc = urlEncode(pz::algorithm::base64Encode(deflated.data(), deflated.size()));
 
     std::string url = m_cfg.idpSsoUrl;
     url += (url.find('?') == std::string::npos) ? '?' : '&';
@@ -404,7 +332,7 @@ SamlClient::Result SamlClient::verifyResponse(const std::string& base64SamlRespo
     }
 
     std::vector<unsigned char> xml;
-    if (!base64Decode(base64SamlResponse, xml) || xml.empty())
+    if (!pz::algorithm::base64Decode(base64SamlResponse, xml) || xml.empty())
     {
         r.error = "bad base64 SAMLResponse";
         return r;

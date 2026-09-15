@@ -1,5 +1,7 @@
 #include "service/auth/OktaClient.h"
 
+#include "algorithm/Base64.h"
+#include "algorithm/Hex.h"
 #include "http/HttpClient.h"
 #include "http/UrlEncode.h"
 #include "util/Logger.h"
@@ -13,7 +15,6 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -63,83 +64,8 @@ std::uint64_t nowSec()
         .count();
 }
 
-std::string randomToken(std::size_t bytes)
-{
-    static const char* hex = "0123456789abcdef";
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<int> dist(0, 15);
-    std::string out;
-    out.reserve(bytes * 2);
-    for (std::size_t i = 0; i < bytes * 2; ++i)
-    {
-        out.push_back(hex[dist(gen)]);
-    }
-    return out;
-}
 
-std::string base64UrlEncode(const unsigned char* data, std::size_t len)
-{
-    static const char* tbl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    std::string out;
-    out.reserve((len + 2) / 3 * 4);
-    std::size_t i = 0;
-    for (; i + 2 < len; i += 3)
-    {
-        std::uint32_t n = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
-        out.push_back(tbl[(n >> 18) & 63]);
-        out.push_back(tbl[(n >> 12) & 63]);
-        out.push_back(tbl[(n >> 6) & 63]);
-        out.push_back(tbl[n & 63]);
-    }
-    if (i < len)
-    {
-        std::uint32_t n = data[i] << 16;
-        if (i + 1 < len)
-            n |= data[i + 1] << 8;
-        out.push_back(tbl[(n >> 18) & 63]);
-        out.push_back(tbl[(n >> 12) & 63]);
-        if (i + 1 < len)
-            out.push_back(tbl[(n >> 6) & 63]);
-    }
-    return out;
-}
 
-bool base64UrlDecode(const std::string& in, std::vector<unsigned char>& out)
-{
-    auto val = [](char c) -> int
-    {
-        if (c >= 'A' && c <= 'Z')
-            return c - 'A';
-        if (c >= 'a' && c <= 'z')
-            return c - 'a' + 26;
-        if (c >= '0' && c <= '9')
-            return c - '0' + 52;
-        if (c == '-')
-            return 62;
-        if (c == '_')
-            return 63;
-        return -1;
-    };
-    out.clear();
-    int buf = 0, bits = 0;
-    for (char c : in)
-    {
-        if (c == '=')
-            break;
-        int v = val(c);
-        if (v < 0)
-            return false;
-        buf = (buf << 6) | v;
-        bits += 6;
-        if (bits >= 8)
-        {
-            bits -= 8;
-            out.push_back(static_cast<unsigned char>((buf >> bits) & 0xFF));
-        }
-    }
-    return true;
-}
 
 std::string sha256Raw(const std::string& in)
 {
@@ -241,13 +167,24 @@ OktaClient::StartResult OktaClient::buildAuthorizeUrl()
     pruneExpired(t);
 
     Txn txn;
-    txn.nonce = randomToken(16);
-    txn.codeVerifier = randomToken(32);
+    txn.nonce = pz::algorithm::randomHex(16);
+    txn.codeVerifier = pz::algorithm::randomHex(32);
     txn.expiresAt = t + m_cfg.txnTtlSec;
-    const std::string state = randomToken(16);
+    const std::string state = pz::algorithm::randomHex(16);
+
+    // All three are bearer-grade: state is the CSRF binding, nonce ties the id_token to this
+    // request, and the verifier is the PKCE secret. randomHex answers empty when the entropy
+    // source fails, and issuing an empty one would be issuing a credential everybody can guess.
+    if (txn.nonce.empty() || txn.codeVerifier.empty() || state.empty())
+    {
+        r.error = "no entropy available to start a login";
+        return r;
+    }
 
     const std::string sha = sha256Raw(txn.codeVerifier);
-    const std::string challenge = base64UrlEncode(reinterpret_cast<const unsigned char*>(sha.data()), sha.size());
+    const std::string challenge = pz::algorithm::base64Encode(sha.data(), sha.size(),
+                                                              pz::algorithm::Base64Alphabet::UrlSafe,
+                                                              /*pad=*/false);
 
     using pz::http::urlEncode;
     std::string url = "https://" + ep->host;
@@ -353,7 +290,7 @@ bool OktaClient::verifyIdToken(const std::string& idToken, const std::string& ex
     }
 
     std::vector<unsigned char> hBytes, pBytes;
-    if (!base64UrlDecode(h64, hBytes) || !base64UrlDecode(p64, pBytes))
+    if (!pz::algorithm::base64Decode(h64, hBytes) || !pz::algorithm::base64Decode(p64, pBytes))
     {
         errOut = "base64url decode failed";
         return false;
@@ -495,7 +432,7 @@ bool OktaClient::verifySignatureRs256(const std::string& signingInput, const std
     }
 
     std::vector<unsigned char> nBytes, eBytes, sigBytes;
-    if (!base64UrlDecode(nB64, nBytes) || !base64UrlDecode(eB64, eBytes) || !base64UrlDecode(signatureB64Url, sigBytes))
+    if (!pz::algorithm::base64Decode(nB64, nBytes) || !pz::algorithm::base64Decode(eB64, eBytes) || !pz::algorithm::base64Decode(signatureB64Url, sigBytes))
     {
         errOut = "jwks/sig decode failed";
         return false;

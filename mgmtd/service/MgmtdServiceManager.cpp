@@ -187,23 +187,12 @@ const std::string* MgmtdServiceManager::topology(const std::string& siteOid) con
 
 void MgmtdServiceManager::setApiTestResult(std::uint32_t ticket, std::string resultJson)
 {
-    if (m_apiTestResults.size() > 256)
-    {
-        m_apiTestResults.clear();
-    }
-    m_apiTestResults[ticket] = std::move(resultJson);
+    m_apiTestResults.put(ticket, std::move(resultJson));
 }
 
 std::optional<std::string> MgmtdServiceManager::takeApiTestResult(std::uint32_t ticket)
 {
-    auto it = m_apiTestResults.find(ticket);
-    if (it == m_apiTestResults.end())
-    {
-        return std::nullopt;
-    }
-    std::string out = std::move(it->second);
-    m_apiTestResults.erase(it);
-    return out;
+    return m_apiTestResults.take(ticket);
 }
 
 void MgmtdServiceManager::setChatContext(std::uint32_t ticket, ChatContext ctx)
@@ -212,43 +201,29 @@ void MgmtdServiceManager::setChatContext(std::uint32_t ticket, ChatContext ctx)
     // never comes back for its ticket, and a question nobody will ever see the answer to is worth
     // nothing. Cleared wholesale rather than aged — the map is small and the alternative is a
     // timestamp per entry to serve a case that costs one lost turn.
-    if (m_chatContexts.size() > 256)
-        m_chatContexts.clear();
-    m_chatContexts[ticket] = std::move(ctx);
+    m_chatContexts.put(ticket, std::move(ctx));
 }
 
 std::optional<MgmtdServiceManager::ChatContext> MgmtdServiceManager::takeChatContext(std::uint32_t ticket)
 {
-    const auto it = m_chatContexts.find(ticket);
-    if (it == m_chatContexts.end())
-        return std::nullopt;
-    ChatContext out = std::move(it->second);
-    m_chatContexts.erase(it);
-    return out;
+    return m_chatContexts.take(ticket);
 }
 
 void MgmtdServiceManager::setChatResult(std::uint32_t ticket, std::string resultJson)
 {
     // A browser that navigated away never drains its ticket, so the map is bounded the same way
     // the test results are: an answer nobody came back for is worth nothing.
-    if (m_chatResults.size() > 256)
-    {
-        m_chatResults.clear();
-    }
-    m_chatResults[ticket] = std::move(resultJson);
+    m_chatResults.put(ticket, std::move(resultJson));
 }
 
 std::optional<std::string> MgmtdServiceManager::takeChatResult(std::uint32_t ticket)
 {
-    auto it = m_chatResults.find(ticket);
-    if (it == m_chatResults.end())
+    auto out = m_chatResults.take(ticket);
+    if (out)
     {
-        return std::nullopt;
+        // The turn is over; whatever was accumulating for it is now dead weight.
+        m_chatPartials.discard(ticket);
     }
-    std::string out = std::move(it->second);
-    m_chatResults.erase(it);
-    // The turn is over; whatever was accumulating for it is now dead weight.
-    m_chatPartials.erase(ticket);
     return out;
 }
 
@@ -256,61 +231,35 @@ void MgmtdServiceManager::appendChatPartial(std::uint32_t ticket, const std::str
 {
     // Bounded like the result map, and for the same reason — a browser that closed mid-answer
     // leaves a partial nobody will ever poll for.
-    if (m_chatPartials.size() > 256)
-    {
-        m_chatPartials.clear();
-    }
     m_chatPartials[ticket] += delta;
 }
 
 std::string MgmtdServiceManager::chatPartial(std::uint32_t ticket) const
 {
-    const auto it = m_chatPartials.find(ticket);
-    return it == m_chatPartials.end() ? std::string() : it->second;
+    const std::string* partial = m_chatPartials.peek(ticket);
+    return partial ? *partial : std::string();
 }
 
 void MgmtdServiceManager::setRetrievalResult(std::uint32_t ticket, std::string resultJson)
 {
     // Bounded like the others: a page that navigated away mid-turn leaves its passages
     // behind, and a retrieval nobody came back for is worth nothing.
-    if (m_retrievalResults.size() > 256)
-    {
-        m_retrievalResults.clear();
-    }
-    m_retrievalResults[ticket] = std::move(resultJson);
+    m_retrievalResults.put(ticket, std::move(resultJson));
 }
 
 std::optional<std::string> MgmtdServiceManager::takeRetrievalResult(std::uint32_t ticket)
 {
-    auto it = m_retrievalResults.find(ticket);
-    if (it == m_retrievalResults.end())
-    {
-        return std::nullopt;
-    }
-    std::string out = std::move(it->second);
-    m_retrievalResults.erase(it);
-    return out;
+    return m_retrievalResults.take(ticket);
 }
 
 void MgmtdServiceManager::setSsoResult(std::uint32_t ticket, std::string resultJson)
 {
-    if (m_ssoResults.size() > 256)
-    {
-        m_ssoResults.clear();
-    }
-    m_ssoResults[ticket] = std::move(resultJson);
+    m_ssoResults.put(ticket, std::move(resultJson));
 }
 
 std::optional<std::string> MgmtdServiceManager::takeSsoResult(std::uint32_t ticket)
 {
-    auto it = m_ssoResults.find(ticket);
-    if (it == m_ssoResults.end())
-    {
-        return std::nullopt;
-    }
-    std::string out = std::move(it->second);
-    m_ssoResults.erase(it);
-    return out;
+    return m_ssoResults.take(ticket);
 }
 
 void MgmtdServiceManager::setStaticCache(std::shared_ptr<pz::http::StaticFileCache> cache)
@@ -325,12 +274,12 @@ const std::shared_ptr<pz::http::StaticFileCache>& MgmtdServiceManager::staticCac
 
 std::uint32_t MgmtdServiceManager::nextSsoTicket()
 {
-    return m_ssoTicket++;
+    return m_ssoResults.next();
 }
 
 std::uint32_t MgmtdServiceManager::nextApiTestTicket()
 {
-    return m_apiTestTicket++;
+    return m_apiTestResults.next();
 }
 
 bool MgmtdServiceManager::beginCorpusRefresh()
@@ -420,7 +369,7 @@ bool MgmtdServiceManager::corpusRefreshing() const
 
 std::uint32_t MgmtdServiceManager::nextChatTicket()
 {
-    return m_chatTicket++;
+    return m_chatResults.next();
 }
 
 }

@@ -6,6 +6,7 @@
 // desynchronises every peer), and hostToNet/netToHost must round-trip (a mistake here turns
 // into "works on this machine" and nothing else).
 
+#include "ipc/IpcMessage.h"
 #include "ipc/IpcProtocol.h"
 
 #include <gtest/gtest.h>
@@ -198,4 +199,96 @@ TEST(IpcProtocolNaming, DistinctCommandsHaveDistinctNames)
                  IpcProtocol::cmdToStr(IpcCmd::ApiConnectorTestResponse));
     EXPECT_STRNE(IpcProtocol::cmdToStr(IpcCmd::ApiCredentialStateUpdate),
                  IpcProtocol::cmdToStr(IpcCmd::LocalUserUpdate));
+}
+
+// ── Message flags ─────────────────────────────────────────────────────────────────────────────
+//
+// The flag byte is how a receiver tells an answer from a question. Every router in the system
+// branches on these, and they are a bitfield rather than an enum precisely so an error response
+// can be both — so the predicates have to be independent of each other, not a switch in disguise.
+
+TEST(IpcMessageFlags, EachPredicateAnswersForItsOwnFlagOnly)
+{
+    IpcMessage msg;
+
+    msg.setFlags(IpcProtocol::toFlag(IpcFlag::Request));
+    EXPECT_TRUE(msg.isRequest());
+    EXPECT_FALSE(msg.isResponse());
+    EXPECT_FALSE(msg.isError());
+    EXPECT_FALSE(msg.isBroadcast());
+
+    msg.setFlags(IpcProtocol::toFlag(IpcFlag::Response));
+    EXPECT_FALSE(msg.isRequest());
+    EXPECT_TRUE(msg.isResponse());
+    EXPECT_FALSE(msg.isError());
+    EXPECT_FALSE(msg.isBroadcast());
+
+    msg.setFlags(IpcProtocol::toFlag(IpcFlag::Error));
+    EXPECT_FALSE(msg.isRequest());
+    EXPECT_FALSE(msg.isResponse());
+    EXPECT_TRUE(msg.isError());
+    EXPECT_FALSE(msg.isBroadcast());
+
+    msg.setFlags(IpcProtocol::toFlag(IpcFlag::Broadcast));
+    EXPECT_FALSE(msg.isRequest());
+    EXPECT_FALSE(msg.isResponse());
+    EXPECT_FALSE(msg.isError());
+    EXPECT_TRUE(msg.isBroadcast());
+}
+
+TEST(IpcMessageFlags, NoFlagsMeansNoneOfThePredicatesHold)
+{
+    IpcMessage msg;
+    msg.setFlags(IpcProtocol::toFlag(IpcFlag::None));
+
+    EXPECT_FALSE(msg.isRequest());
+    EXPECT_FALSE(msg.isResponse());
+    EXPECT_FALSE(msg.isError());
+    EXPECT_FALSE(msg.isBroadcast());
+}
+
+TEST(IpcMessageFlags, UnknownBitsDoNotSatisfyAnyPredicate)
+{
+    // A peer running a newer build may set bits this one does not know. They must be ignored, not
+    // read as whichever flag happens to share a byte with them.
+    IpcMessage msg;
+    msg.setFlags(0xF0);
+
+    EXPECT_FALSE(msg.isRequest());
+    EXPECT_FALSE(msg.isResponse());
+    EXPECT_FALSE(msg.isError());
+    EXPECT_FALSE(msg.isBroadcast());
+}
+
+TEST(IpcMessageFlags, EveryFlagOccupiesItsOwnBit)
+{
+    const IpcFlag all[] = {IpcFlag::Request, IpcFlag::Response, IpcFlag::Error, IpcFlag::Broadcast};
+
+    std::uint8_t seen = 0;
+    for (IpcFlag f : all)
+    {
+        const std::uint8_t bit = IpcProtocol::toFlag(f);
+        EXPECT_NE(0u, bit);
+        EXPECT_EQ(0u, bit & (bit - 1)) << "flag " << int(bit) << " is not a single bit";
+        EXPECT_EQ(0u, seen & bit) << "flag " << int(bit) << " collides with an earlier one";
+        seen = static_cast<std::uint8_t>(seen | bit);
+    }
+}
+
+TEST(IpcMessageFlags, SurviveTheWireHeaderRoundTrip)
+{
+    IpcMessage msg;
+    msg.setSrc(IpcDaemon::Mgmtd);
+    msg.setDst(IpcDaemon::Collectord);
+    msg.setCmd(IpcCmd::ApiConnectorTestResponse);
+    msg.setSeqNo(7);
+    msg.setFlags(IpcProtocol::orFlag(IpcFlag::Response, IpcFlag::Error));
+
+    const IpcWireHeader net = IpcProtocol::hostToNet(msg.toWireHeader());
+    const IpcWireHeader host = IpcProtocol::netToHost(net);
+
+    EXPECT_TRUE(IpcProtocol::hasFlag(host.flags, IpcFlag::Response));
+    EXPECT_TRUE(IpcProtocol::hasFlag(host.flags, IpcFlag::Error));
+    EXPECT_FALSE(IpcProtocol::hasFlag(host.flags, IpcFlag::Request));
+    EXPECT_EQ(7u, host.seqNo) << "the flag byte must not have disturbed its neighbours";
 }

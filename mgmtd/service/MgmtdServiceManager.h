@@ -11,6 +11,7 @@
 #include "service/metrics/MetricService.h"
 #include "service/web/WebService.h"
 
+#include "algorithm/TicketMap.h"
 #include "http/StaticFileCache.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -195,19 +196,21 @@ private:
 
     std::string m_commitQueueSnapshot{"[]"};
 
-    std::unordered_map<std::uint32_t, std::string> m_ssoResults;
+    // Each async endpoint files its answer under the ticket it handed the browser; see TicketMap
+    // for the take-once and bounded-clear rules they all share.
+    pz::algorithm::TicketMap<std::string> m_ssoResults;
 
-    std::unordered_map<std::uint32_t, std::string> m_apiTestResults;
+    pz::algorithm::TicketMap<std::string> m_apiTestResults;
 
-    std::unordered_map<std::uint32_t, std::string> m_chatResults;
-    std::unordered_map<std::uint32_t, std::string> m_chatPartials;
-    std::unordered_map<std::uint32_t, ChatContext> m_chatContexts;
+    pz::algorithm::TicketMap<std::string> m_chatResults;
+    pz::algorithm::TicketMap<std::string> m_chatPartials;
+    pz::algorithm::TicketMap<ChatContext> m_chatContexts;
     std::string m_corpusProgress;
     std::string m_benchtestProgress;
     bool m_benchtestRunning{false};
     std::vector<std::string> m_benchtestCases;
     bool m_corpusRefreshing{false};
-    std::unordered_map<std::uint32_t, std::string> m_retrievalResults;
+    pz::algorithm::TicketMap<std::string> m_retrievalResults;
 
     // site oid ('' = every site) -> last composed model. One entry per site the operator has looked
     // at; an estate has tens of sites, not thousands, so this never needs eviction.
@@ -217,9 +220,6 @@ private:
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> m_topologyAsked;
 
     std::shared_ptr<pz::http::StaticFileCache> m_staticCache;
-    std::uint32_t m_ssoTicket{1};
-    std::uint32_t m_apiTestTicket{1};
-    std::uint32_t m_chatTicket{1};
 };
 
 }

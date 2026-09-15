@@ -1,5 +1,7 @@
 #include "service/api/ApiUtil.h"
 
+#include "algorithm/Base64.h"
+
 #include "service/CollectordServiceManager.h"
 #include "service/api/controller/ConnectorTest.h"
 
@@ -21,27 +23,6 @@ using json = nlohmann::json;
 
 // ── Palo Alto cloud ───────────────────────────────────────────────────────────────────────
 
-std::string base64(const std::string& in)
-{
-    static const char T[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    int val = 0, bits = -6;
-    for (unsigned char c : in)
-    {
-        val = (val << 8) + c;
-        bits += 8;
-        while (bits >= 0)
-        {
-            out.push_back(T[(val >> bits) & 0x3F]);
-            bits -= 6;
-        }
-    }
-    if (bits > -6)
-        out.push_back(T[((val << 8) >> (bits + 8)) & 0x3F]);
-    while (out.size() % 4)
-        out.push_back('=');
-    return out;
-}
 
 HostPath splitHostPath(const std::string& urlish, const std::string& defaultHost, const std::string& defaultPath)
 {
@@ -90,7 +71,8 @@ pz::http::ClientRequest buildOAuthTokenRequest(const HostPath& hp, const std::st
     req.method = "POST";
     req.target = hp.path;
     req.timeout = std::chrono::seconds(15);
-    req.headers.push_back({"Authorization", "Basic " + base64(clientId + ":" + clientSecret)});
+    req.headers.push_back(
+        {"Authorization", "Basic " + pz::algorithm::base64Encode(clientId + ":" + clientSecret)});
     req.headers.push_back({"Content-Type", "application/x-www-form-urlencoded"});
     req.body = "grant_type=client_credentials&scope=tsg_id:" + pz::http::urlEncode(tsgId);
     return req;

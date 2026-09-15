@@ -2,6 +2,7 @@
 
 #include "service/CollectordServiceManager.h"
 #include "service/api/ApiService.h"
+#include "algorithm/Timestamp.h"
 #include "service/api/ApiUtil.h"
 #include "service/api/controller/ConnectorTest.h"
 
@@ -13,7 +14,6 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
-#include <ctime>
 #include <memory>
 #include <string>
 #include <utility>
@@ -118,13 +118,8 @@ void onSaseResponse(std::shared_ptr<ConnectorTest> ctx, pz::http::ClientResponse
     const long expiresIn = haveJson ? body.value("expires_in", 0L) : 0L;
     if (expiresIn > 0)
     {
-        const std::time_t tt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now() +
-                                                                    std::chrono::seconds(expiresIn));
-        std::tm tmv{};
-        gmtime_r(&tt, &tmv);
-        char buf[32];
-        if (std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &tmv) > 0)
-            ctx->expiresAt = buf;
+        ctx->expiresAt =
+            pz::algorithm::utcTimestamp(std::chrono::system_clock::now() + std::chrono::seconds(expiresIn));
     }
 
     LOG_INFO("SASE token issued (seq={}, token_len={}, expires_in={}s)", ctx->seqNo, token.size(), expiresIn);

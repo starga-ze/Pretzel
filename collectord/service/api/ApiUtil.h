@@ -40,9 +40,6 @@ HostPath splitHostPath(const std::string& urlish, const std::string& defaultHost
 pz::http::ClientRequest buildOAuthTokenRequest(const HostPath& hp, const std::string& clientId,
                                                const std::string& clientSecret, const std::string& tsgId);
 
-// Base64, for that Basic credential.
-std::string base64(const std::string& in);
-
 // Shared, side-effect-light helpers for the Api service — the plumbing the connector-test controllers
 // (Credential / Endpoint / Status) and the periodic collector all repeat, kept free so each owns only
 // its own device exchange. (Consolidates the former TestSupport + CollectionSample units.)

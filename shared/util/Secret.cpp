@@ -1,5 +1,7 @@
 #include "util/Secret.h"
 
+#include "algorithm/Base64.h"
+
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
@@ -41,71 +43,6 @@ const std::vector<unsigned char>& masterKey()
     return key;
 }
 
-const char* kB64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-std::string base64Encode(const std::vector<unsigned char>& in)
-{
-    std::string out;
-    out.reserve((in.size() + 2) / 3 * 4);
-    std::size_t i = 0;
-    for (; i + 2 < in.size(); i += 3)
-    {
-        const std::uint32_t n = (in[i] << 16) | (in[i + 1] << 8) | in[i + 2];
-        out.push_back(kB64[(n >> 18) & 63]);
-        out.push_back(kB64[(n >> 12) & 63]);
-        out.push_back(kB64[(n >> 6) & 63]);
-        out.push_back(kB64[n & 63]);
-    }
-    if (i < in.size())
-    {
-        std::uint32_t n = in[i] << 16;
-        if (i + 1 < in.size())
-            n |= in[i + 1] << 8;
-        out.push_back(kB64[(n >> 18) & 63]);
-        out.push_back(kB64[(n >> 12) & 63]);
-        out.push_back((i + 1 < in.size()) ? kB64[(n >> 6) & 63] : '=');
-        out.push_back('=');
-    }
-    return out;
-}
-
-std::vector<unsigned char> base64Decode(const std::string& in)
-{
-    auto val = [](char c) -> int
-    {
-        if (c >= 'A' && c <= 'Z')
-            return c - 'A';
-        if (c >= 'a' && c <= 'z')
-            return c - 'a' + 26;
-        if (c >= '0' && c <= '9')
-            return c - '0' + 52;
-        if (c == '+')
-            return 62;
-        if (c == '/')
-            return 63;
-        return -1;
-    };
-
-    std::vector<unsigned char> out;
-    out.reserve(in.size() * 3 / 4);
-    int buf = 0, bits = 0;
-    for (char c : in)
-    {
-        if (c == '=')
-            break;
-        const int v = val(c);
-        if (v < 0)
-            continue;
-        buf = (buf << 6) | v;
-        bits += 6;
-        if (bits >= 8)
-        {
-            bits -= 8;
-            out.push_back(static_cast<unsigned char>((buf >> bits) & 0xFF));
-        }
-    }
-    return out;
-}
 
 }
 
@@ -163,7 +100,7 @@ std::optional<std::string> encrypt(const std::string& plaintext)
     blob.insert(blob.end(), nonce.begin(), nonce.end());
     blob.insert(blob.end(), tag.begin(), tag.end());
     blob.insert(blob.end(), cipher.begin(), cipher.begin() + total);
-    return base64Encode(blob);
+    return pz::algorithm::base64Encode(blob);
 }
 
 std::optional<std::string> decrypt(const std::string& encoded)
@@ -171,7 +108,10 @@ std::optional<std::string> decrypt(const std::string& encoded)
     if (!available())
         return std::nullopt;
 
-    const auto blob = base64Decode(encoded);
+    // SkipInvalid, not Reject: a sealed blob may have picked up wrapping on its way through a
+    // config file or an editor, and the AES-GCM tag is what actually authenticates it.
+    std::vector<std::uint8_t> blob;
+    pz::algorithm::base64Decode(encoded, blob, pz::algorithm::Base64Strictness::SkipInvalid);
     if (blob.size() < kNonceLen + kTagLen)
         return std::nullopt;
 

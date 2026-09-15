@@ -1,8 +1,9 @@
 #include "util/PasswordHash.h"
 
+#include "algorithm/Hex.h"
+
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
-#include <openssl/rand.h>
 #include <openssl/sha.h>
 
 #include <cstdlib>
@@ -18,19 +19,6 @@ namespace
 constexpr char kPrefix[] = "pbkdf2$";
 constexpr std::size_t kDigestLen = 32;   // SHA-256
 constexpr std::size_t kSaltBytes = 16;
-
-std::string toHex(const unsigned char* data, std::size_t len)
-{
-    static const char* hex = "0123456789abcdef";
-    std::string out;
-    out.reserve(len * 2);
-    for (std::size_t i = 0; i < len; ++i)
-    {
-        out.push_back(hex[(data[i] >> 4) & 0xF]);
-        out.push_back(hex[data[i] & 0xF]);
-    }
-    return out;
-}
 
 // Length-independent equality. A plain == returns as soon as two bytes differ, which leaks how
 // much of a guess was correct; over many attempts that is enough to recover the value.
@@ -53,7 +41,7 @@ std::string pbkdf2Hex(const std::string& password, const std::string& salt, int 
     {
         return {};
     }
-    return toHex(out, sizeof(out));
+    return pz::algorithm::toHex(out, sizeof(out));
 }
 
 // The format written by earlier builds: SHA-256(password || salt), lowercase hex. Reproduced
@@ -68,7 +56,7 @@ std::string legacySha256Hex(const std::string& password, const std::string& salt
     if (EVP_Digest(input.data(), input.size(), digest, &len, EVP_sha256(), nullptr) != 1)
         return {};
 
-    return toHex(digest, len);
+    return pz::algorithm::toHex(digest, len);
 }
 
 // Splits "pbkdf2$<iterations>$<hex>". Returns false for anything else, including a legacy value.
@@ -134,14 +122,10 @@ bool needsRehash(const std::string& stored)
 
 std::string generateSalt()
 {
-    unsigned char buf[kSaltBytes];
-    if (RAND_bytes(buf, static_cast<int>(sizeof(buf))) != 1)
-    {
-        // Refuse rather than fall back to a predictable source: a guessable salt turns a
-        // stolen table back into a rainbow-table problem. Callers treat empty as failure.
-        return {};
-    }
-    return toHex(buf, sizeof(buf));
+    // randomHex refuses rather than falling back to a predictable source, and returns empty when
+    // the entropy source fails: a guessable salt turns a stolen table back into a rainbow-table
+    // problem. Callers treat empty as failure.
+    return pz::algorithm::randomHex(kSaltBytes);
 }
 
 }
