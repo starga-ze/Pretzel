@@ -390,55 +390,6 @@ void CollectionController::overview(MgmtdServiceManager& sm, const pz::http::Htt
             }
         }
 
-        // ── Per-site census ───────────────────────────────────────────────────────────────────
-        // What the scope prompt shows on each site's card. Deliberately facts, not judgements: how
-        // many streams, how many devices, and when the site last collected anything. The health
-        // rules (live / stale / failing) live in one place — the grid — and are not restated here in
-        // another language where they could drift.
-        struct Census
-        {
-            std::set<std::string> ngfw;
-            std::set<std::string> sase;
-            std::set<std::string> endpoints;
-        };
-        std::map<std::string, Census> census;
-
-        for (const auto& c : api.value("connectors", json::array()))
-        {
-            if (!c.is_object())
-                continue;
-            const std::string connectorOid = c.value("oid", c.value("uuid", std::string()));
-            const std::string deviceOid = c.value("object", std::string());
-            const auto dev = devices.find(deviceOid);
-            if (connectorOid.empty() || dev == devices.end())
-                continue;
-
-            auto& cs = census[dev->second.site];
-            (dev->second.type == "sase" ? cs.sase : cs.ngfw).insert(deviceOid);
-
-            // Distinct endpoints, not streams: two devices in a site collecting the same endpoint are
-            // two streams but one endpoint, and the count is labelled "API Endpoints".
-            for (const auto& i : c.value("items", json::array()))
-            {
-                if (!i.is_object())
-                    continue;
-                const std::string endpointOid = i.value("endpoint", std::string());
-                if (!endpointOid.empty())
-                    cs.endpoints.insert(endpointOid);
-            }
-        }
-
-        for (auto& site : out["sites"])
-        {
-            const auto it = census.find(site.value("oid", std::string()));
-            const int ngfw = it == census.end() ? 0 : static_cast<int>(it->second.ngfw.size());
-            const int sase = it == census.end() ? 0 : static_cast<int>(it->second.sase.size());
-            site["ngfw"] = ngfw;
-            site["sase"] = sase;
-            site["devices"] = ngfw + sase;
-            site["endpoints"] = it == census.end() ? 0 : static_cast<int>(it->second.endpoints.size());
-        }
-
         // Rows whose stream is no longer declared. They are not listed — an undeclared stream has no
         // device, no site and no schedule to report — but they are counted, because they are what the
         // table is holding that the page cannot otherwise account for.

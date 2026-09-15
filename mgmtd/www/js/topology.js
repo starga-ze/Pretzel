@@ -70,11 +70,13 @@
   // seconds it is not busy, it is not answering, and the page should say that instead of spinning.
   const PENDING_RETRY_MS = 400;
 
-  // How long the composing ring is shown once it appears. See finishComposing.
-  const MIN_COMPOSE_MS = 2000;
+  // What the ring paces itself against while the answer is outstanding. NOT a hold: the picture
+  // goes up the moment the composition is in hand, however early that is. This is only the scale
+  // the arc fills on, so a wait that is genuinely slow still reads as progress rather than a
+  // stalled circle — and it stops short of full until the answer actually lands.
+  const COMPOSE_PACE_MS = 2000;
 
-  // How long to keep asking before calling it a failure. Must exceed MIN_COMPOSE_MS — giving up
-  // while the ring is still filling would abandon a composition that is merely slow.
+  // How long to keep asking before calling it a failure.
   const COMPOSE_TIMEOUT_MS = 15000;
   const PX_PER_SEC = 92;         // packet speed, so a long path is not also a slow one
   const NS = 'http://www.w3.org/2000/svg';
@@ -208,7 +210,6 @@
   let timer = null;
   let pendingTimer = null;
   let ringTimer = null;      // drives the progress ring
-  let composeHold = null;    // enforces the minimum on-screen time
   let composeStart = 0;
   let pendingSince = 0;      // when the current run of pending answers began
   let model = null;
@@ -323,37 +324,22 @@
 
     return { tenant, zones, dataZones, ctlZones, counts };
   }
-
   const prevSvc = {};   // node key → serviceType, so a departed address keeps its lane
   const order = (svc) => (svc === 'gp_gateway' ? 0 : svc === 'swg_proxy' ? 1 : svc === 'gp_portal' ? 2 : 3);
-
-  const relAge = (secs) => {
-    if (!secs) return '';
-    const m = Math.floor(secs / 60);
-    if (m < 60) return m + 'm';
-    const h = Math.floor(m / 60);
-    if (h < 48) return h + 'h';
-    return Math.floor(h / 24) + 'd';
-  };
 
   const visibleZone = (z) => state.region === 'all' || z.name === state.region;
 
   // ── Render: control strip ───────────────────────────────────────────────────
   function barHtml() {
-    const sites = siteList();
-    const opts = [`<option value="" ${state.site ? '' : 'selected'}>Overview</option>`].concat(
-      sites.filter(x => x.oid).map(x =>
-        `<option value="${esc(x.oid)}" ${state.site === x.oid ? 'selected' : ''}>${esc(x.name)}</option>`)
-    ).join('');
-
     const t = tenantsForSite();
     const fw = ngfwForSite();
     const scope = `${t.length} SASE · ${fw.length} NGFW`;
 
+    // No site control here any more: the scope lives in the sidebar, inside the section it governs
+    // (see NMS.utils.siteScope). What stays is the figure for the scope in force — the bar's job is
+    // to say what is on screen, not to choose it.
     return `<div class="topo-bar">
         <div class="topo-bar-group">
-          <span class="topo-bar-label">Site</span>
-          <select class="topo-select" id="topoSite">${opts}</select>
           <span class="topo-stamp">${esc(scope)}</span>
         </div>
         <span class="topo-bar-spacer"></span>
@@ -492,11 +478,10 @@
     const sub = n.addressType === 'network_load_balancer'
       ? lbState(n)
       : (ADDR_LABEL[n.addressType] || n.addressType || 'node');
-    const age = relAge(n.age);
     return `<button class="topo-node ${cls}" data-node="${esc(n.key)}" type="button"
               title="${esc(n.address + ' · ' + sub + ' · ' + n.serviceType)}">
         <span class="topo-node-ip">${esc(n.address)}</span>
-        <span class="topo-node-sub">${esc(sub)}${age ? ' · ' + esc(age) : ''}</span>
+        <span class="topo-node-sub">${esc(sub)}</span>
       </button>`;
   }
 
@@ -774,59 +759,20 @@
 
   // ── Render: page ────────────────────────────────────────────────────────────
   function canvasHtml(m) {
-    // The fabric deck draws ONE tenant — a Prisma fabric is per-tenant and two of them share no
-    // regions, no addresses and no lanes, so there is nothing coherent to overlay. Under "All sites"
-    // it was quietly drawing whichever tenant sorted first while the header said "all", which reads
-    // as "this is your estate" when it is one site of several. Ask instead.
+    // This deck draws ONE tenant: a Prisma fabric is per-tenant, and two of them share no regions,
+    // no addresses and no lanes, so there is nothing coherent to overlay. That is why the page is
+    // unavailable until a site is named rather than offering a cross-site view of it — the sidebar
+    // gates the link, and this is the answer for anyone who arrived by URL anyway.
     //
     // Exactly one <b>: in .topo-msg it is the title style (display:block), so a second one becomes a
     // stray heading mid-sentence rather than emphasis.
     if (!state.site) {
-      // Not a blocked page — the estate at rest. Unscoped, topologyd answers with every site's
-      // tenants and firewalls, so this can total them up and let each site be entered from its own
-      // row. Rows, not a card grid: one card in a grid reads as a layout that failed, one row reads
-      // as a list with one thing in it, and rows go on working at forty.
-      //
-      // Not wrapped in .topo-stage: that class carries the drawing's min-width and asymmetric
-      // padding, which push this off-centre.
-      const seen = new Map();
-      (state.siteList || []).forEach(x => {
-        if (x && x.oid) seen.set(x.oid, { oid: x.oid, name: x.name || x.oid, tenants: 0, fw: 0 });
-      });
-      const ensure = (oid, name) => {
-        if (!oid) return null;
-        if (!seen.has(oid)) seen.set(oid, { oid, name: name || oid, tenants: 0, fw: 0 });
-        return seen.get(oid);
-      };
-      state.tenants.forEach(t => { const e = ensure(t.site, t.site_name); if (e) e.tenants++; });
-      state.ngfw.forEach(d => { const e = ensure(d.site, d.site_name); if (e) e.fw++; });
-
-      const sites = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
-      if (!sites.length) {
-        return `<div class="topo-msg is-full"><div><b>No site configured</b>
-          Add one in <a href="settings?tab=sites">Configuration › Sites</a>.</div></div>`;
-      }
-
-      const tile = (v, label) => `<div class="topo-ov-tile"><b>${v}</b><span>${esc(label)}</span></div>`;
-      const stat = (v, label) => `<span class="topo-ov-stat"><b>${v}</b>${esc(label)}</span>`;
-
-      const rows = sites.map(x => `<button class="topo-ov-row" type="button" data-site="${esc(x.oid)}">
-          <span class="topo-ov-nm">${esc(x.name)}</span>
-          <span class="topo-ov-stats">
-            ${stat(x.tenants, 'SASE')}
-            ${stat(x.fw, 'NGFW')}
-          </span>
-          <span class="topo-ov-go">&rsaquo;</span>
-        </button>`).join('');
-
-      return `<div class="topo-overview">
-          <div class="topo-ov-h">Overview</div>
-          <div class="topo-ov-tiles">
-            ${tile(sites.length, sites.length === 1 ? 'site' : 'sites')}
-          </div>
-          <div class="topo-ov-list">${rows}</div>
-          <div class="topo-ov-note">Open a site to draw its fabric and its firewalls.</div>
-        </div>`;
+      const sites = siteList();
+      return `<div class="topo-msg is-full"><div><b>${
+        sites.length ? 'Choose a site' : 'No site configured'}</b>
+        ${sites.length
+          ? 'Pick one under Infra Service in the sidebar — this page draws a single site\u2019s fabric and its firewalls.'
+          : 'Add one in <a href="settings?tab=sites">Configuration \u203a Sites</a>.'}</div></div>`;
     }
 
     if (state.booting && state.site) return `<div class="topo-msg is-full"></div>`;
@@ -1371,7 +1317,7 @@
     // never show, because it turns "working" into "done, but nothing happened".
     const elapsed = Date.now() - composeStart;
     const ceiling = state.answered ? 1 : 0.9;
-    const pct = Math.min(ceiling, elapsed / MIN_COMPOSE_MS);
+    const pct = Math.min(ceiling, elapsed / COMPOSE_PACE_MS);
     const offset = (RING_C * (1 - pct)).toFixed(1);
     fills.forEach(f => f.setAttribute('stroke-dashoffset', offset));
 
@@ -1381,7 +1327,7 @@
     document.querySelectorAll('.topo-compose-stage').forEach((s) => {
       // Past the expected time with no answer, say so rather than naming a stage that finished long
       // ago — the operator is now waiting on something slow, and that is the useful fact.
-      const label = (!state.answered && elapsed > MIN_COMPOSE_MS)
+      const label = (!state.answered && elapsed > COMPOSE_PACE_MS)
         ? 'Still waiting for topologyd\u2026'
         : COMPOSE_STAGES[Math.min(COMPOSE_STAGES.length - 1, Math.floor(pct * COMPOSE_STAGES.length))];
       if (s.textContent !== label) s.textContent = label;
@@ -1397,20 +1343,17 @@
     ringTimer = setInterval(tickRing, 40);
   }
 
-  // The composition itself settles in tens of milliseconds — far too fast to read. The hold is
-  // deliberate: an indicator that appears and vanishes within one frame tells the operator nothing,
-  // and on the runs that DO take time (a busy or unreachable topologyd) the same indicator is the
-  // only thing that explains the wait. So it always runs for its full length once shown.
+  // The picture goes up as soon as there is one. The ring used to be held for a fixed two seconds
+  // so it would be legible, which meant every site switch cost that two seconds even though the
+  // composition itself settles in tens of milliseconds — a waiting state invented to explain a wait
+  // that was not happening. It now covers exactly the time actually spent waiting: invisible when
+  // topologyd is quick, and the whole explanation when it is not.
   function finishComposing(then) {
     if (!state.composing) return then();
-    const remaining = Math.max(0, MIN_COMPOSE_MS - (Date.now() - composeStart));
-    clearTimeout(composeHold);
-    composeHold = setTimeout(() => {
-      clearInterval(ringTimer);
-      ringTimer = null;
-      state.composing = false;
-      then();
-    }, remaining);
+    clearInterval(ringTimer);
+    ringTimer = null;
+    state.composing = false;
+    then();
   }
 
   function render() {
@@ -1419,7 +1362,7 @@
     const scoped = tenantsForSite();
 
     // Both decks are per-site: a fabric belongs to one tenant, and a firewall sits in one site. So
-    // "All sites" is not a wider view of this page, it is a view this page cannot draw — and rather
+    // An unscoped estate is not a wider view of this page, it is a view this page cannot draw — and rather
     // than half-answering it with an arbitrary tenant and an undifferentiated pile of firewalls, the
     // whole apparatus stands down. One screen, one instruction, no deck switch and no legend for
     // edges that are not on screen.
@@ -1876,7 +1819,7 @@
         ${row('Service', g.spec.label)}
         ${row('Role', ADDR_LABEL[n.addressType] || n.addressType)}
         ${row('Address', n.address, true)}
-        ${row('Created', n.created ? window.NMS.utils.fmtTs(n.created * 1000) + ' (' + relAge(n.age) + ' ago)' : '')}
+        ${row('Created', n.created ? window.NMS.utils.fmtTs(n.created * 1000) : '')}
         ${n.allowListed === undefined ? '' : row('Allow-listed', n.allowListed ? 'yes' : 'no')}
         ${n.addressType !== 'network_load_balancer' ? '' : row('NLB active', n.lbActive === undefined
             ? 'not reported by the tenant' + (n.regionalFqdn ? ' — published as a regional entry point' : '')
@@ -1999,8 +1942,7 @@
       const c = m ? m.counts : { gw: 0, swg: 0, rn: 0, lb: 0 };
       const addrs = (g) => g.lbs.concat(g.nodes, g.aux).map(n => `<div class="topo-dl-r">
           <span class="topo-dl-k">${esc(ADDR_LABEL[n.addressType] || n.addressType)}</span>
-          <span class="topo-dl-v mono">${esc(n.address)}</span>
-          <span class="topo-dl-t">${esc(relAge(n.age))}</span></div>`).join('');
+          <span class="topo-dl-v mono">${esc(n.address)}</span></div>`).join('');
 
       return drawer('Data plane · traffic regions', `
         ${kv([kvRow('Traffic regions', zones.length),
@@ -2211,39 +2153,40 @@
     document.querySelectorAll('.topo-node.selected').forEach(el => el.classList.remove('selected'));
   }
 
+  // The sidebar owns the scope control, so a change arrives here rather than from a select this
+  // page drew. Bound once for the page: wire() runs on every render, and subscribing there would
+  // add a listener a minute and re-enter this for each accumulated copy.
+  let scopeBound = false;
+  function bindScope() {
+    if (scopeBound) return;
+    scopeBound = true;
+
+    window.NMS.utils.siteScope.subscribe((oid) => {
+      state.site = oid;
+      // Both decks stand down with no site and the deck switch goes with them, so a viewer
+      // left on the NGFW deck would be stranded on an empty one with no way back.
+      if (!state.site) state.view = 'fabric';
+      state.tenants = [];
+      state.ngfw = [];
+      state.sources = {};
+      state.generatedAt = '';
+      // The retry budget and any error belong to the site being left — a previous site that ran
+      // out of tries must not make the next one give up on its first answer.
+      pendingSince = 0;
+      state.error = '';
+      clearTimeout(pendingTimer);
+      // Nothing on the choose-a-site screen waits for data, so nothing should appear to.
+      if (state.site) startComposing();
+      render();
+      load();
+    });
+  }
+
   // ── Wiring ──────────────────────────────────────────────────────────────────
   function wire() {
     // The OS draws native option lists and CSS cannot reach them, so the app substitutes its own —
     // the same themed dropdown every Configuration select uses. The <select> stays as the value
     // store, so this listener is unaffected by the swap.
-    const siteSel = document.getElementById('topoSite');
-    if (siteSel) {
-      // The scope now travels to topologyd, so changing it is a re-fetch rather than a re-filter.
-      // The drawn estate belongs to the site being left, so it is cleared first — otherwise it
-      // counts as "data we already have", the composing ring never starts, and the old site's
-      // picture sits on screen until the new one happens to arrive.
-      siteSel.addEventListener('change', (e) => {
-        state.site = e.target.value;
-        window.NMS.utils.siteScope.set(state.site);
-        // Both decks stand down under "All sites" and the deck switch goes with them, so a viewer
-        // left on the NGFW deck would be stranded on an empty one with no way back.
-        if (!state.site) state.view = 'fabric';
-        state.tenants = [];
-        state.ngfw = [];
-        state.sources = {};
-        state.generatedAt = '';
-        // The retry budget and any error belong to the site being left — a previous site that ran
-        // out of tries must not make the next one give up on its first answer.
-        pendingSince = 0;
-        state.error = '';
-        clearTimeout(pendingTimer);
-        // Nothing on the "All sites" screen waits for data, so nothing should appear to.
-        if (state.site) startComposing();
-        render();
-        load();
-      });
-      window.NMS.utils.enhanceSelect?.(siteSel);
-    }
 
     document.getElementById('planeToggle')?.addEventListener('click', () => {
       state.planeOpen = !state.planeOpen;
@@ -2266,13 +2209,6 @@
 
     const canvas = document.getElementById('topoCanvas');
     if (canvas) canvas.addEventListener('click', (e) => {
-      const card = e.target.closest('[data-site]');
-      if (card) {
-        const sel = document.getElementById('topoSite');
-        if (sel) { sel.value = card.dataset.site; sel.dispatchEvent(new Event('change', { bubbles: true })); }
-        return;
-      }
-
       // The one way into the drawer. It comes first: a detail icon sits inside cards that are
       // themselves clickable for other reasons, and the icon must win over what it stands on.
       const det = e.target.closest('[data-det]');
@@ -2342,6 +2278,9 @@
         state.links = (d.ngfw && Array.isArray(d.ngfw.links)) ? d.ngfw.links : [];
         state.shape = (d.ngfw && d.ngfw.shape) || {};
         state.siteList = Array.isArray(d.sites) ? d.sites : [];
+        // The sidebar switcher is fed from here rather than fetching a list of its own — this page
+        // already has it, and a cached list is what lets the control be populated on first paint.
+        window.NMS.utils.siteScope.publish(state.siteList);
         state.sources = d.sources || {};
       }
       state.generatedAt = d.generated_at || '';
@@ -2452,6 +2391,7 @@
   }
 
   function mount() {
+    bindScope();
     load();
     schedule();
     watchLayout();

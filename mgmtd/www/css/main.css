@@ -226,10 +226,14 @@ html, body {
   opacity: 1;
   transition: opacity var(--tr);
 }
-.sidebar.collapsed .nav-section-label { opacity: 0; }
+/* Out of the flow, not just out of sight. Fading them left their height behind — with two label
+   levels that was ~235px of nothing in a 48px-wide rail, and the icons it pushed apart no longer
+   read as a list. */
+.sidebar.collapsed .nav-section-label { display: none; }
 
 .sidebar-nav > .nav-item,
-.sidebar-nav > .nav-group { margin-bottom: 1px; }
+.sidebar-nav > .nav-group,
+.nav-tier > .nav-item { margin-bottom: 1px; }
 
 .nav-item {
   display: flex;
@@ -472,14 +476,20 @@ html, body {
   text-overflow: ellipsis;
 }
 
-/* Logout button reuses .nav-item; reset native <button> chrome and tint on hover. */
+/* Logout button reuses .nav-item; reset native <button> chrome and tint on hover.
+   `font: inherit` takes the family but resets font-size to the BODY size, which left this row
+   noticeably larger than the two it sits between — the same trap .nav-group-toggle documents. Size
+   and weight come back by hand, matched to the theme row: the footer is settings and identity, not
+   destinations, and it reads a step quieter than the nav above it. */
 .nav-logout {
   width: 100%;
   background: transparent;
   border: 0;
-  font: inherit;
+  font-family: inherit;
   text-align: left;
 }
+.nav-logout .nav-label { font-size: 11.5px; font-weight: 500; }
+.nav-logout .nav-icon { width: 15px; height: 15px; }
 .nav-logout:hover { color: var(--danger, #e5484d); opacity: 1; }
 
 /* ══════════════════════════════════════
@@ -3508,6 +3518,132 @@ a.details-btn { display: inline-block; text-decoration: none; }
 
 /* Custom select (window.NMS.utils.enhanceSelect) — one dropdown design on Windows, macOS and Linux.
    The native <select> is hidden but kept in the DOM as the value store, so wiring is unaffected. */
+/* ── Nav tiers ─────────────────────────────────────────────────────────────────
+   The nav has two of them: what is read through one site, and what is not. That is the first thing
+   an operator needs to know about a row — whether it will show them the estate or one place in it —
+   so it is the coarsest division in the list, above the section labels rather than beside them. */
+/* The hairline above each heading is what separates the two tiers — the same line the collapsed
+   rail uses, so the division does not change shape when the sidebar does. It draws above the label
+   rather than below it: the line ends the tier before it, and one between SHARED and its own rows
+   would cut the group it is meant to open. */
+/* 9px and 9px, which is where a row's icon and a row's label sit: the heading governs the list
+   under it, so it stands in the same two columns rather than three pixels to the left of them. */
+.nav-tier-label {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--sb-text); opacity: .85;
+  padding: 12px 6px 5px 9px;
+  margin-top: 4px;
+  border-top: 1px solid var(--sb-border);
+  white-space: nowrap; overflow: hidden;
+  transition: opacity var(--tr);
+}
+/* Accent, where every other icon in the column is grey until it is the page you are on. The two
+   tier glyphs are not rows and cannot be selected, so the colour is not competing with an active
+   state — it is what tells you these two marks divide the list rather than belong to it. */
+.nav-tier-ic {
+  width: 15px; height: 15px; flex: 0 0 auto;
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+  color: var(--sb-active-cl);
+}
+/* The scoped tier answers its own heading on the same line: "SITE — which one". Baseline, not
+   centre: the heading is 10px and the site's name is 11.5px, and two centred boxes of different
+   heights put the two words on two different lines by about two pixels — which is exactly the
+   amount that reads as a mistake. The glyph opts back out, having no baseline of its own. */
+.nav-tier-label.is-site { align-items: baseline; padding-right: 6px; overflow: visible; }
+.nav-tier-label.is-site .nav-tier-ic { align-self: center; }
+.nav-tier-label.is-site .nav-tier-name { flex: 0 0 auto; }
+/* Collapsed, the labels shrink rather than go: which half of the nav an icon belongs to is the one
+   thing the rail cannot say by shape alone, and it is the first thing you need when hunting for a
+   row. */
+.sidebar.collapsed .nav-tier-label {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 1px 4px;
+  margin-top: 6px;
+  text-align: center;
+  overflow: visible;
+}
+.sidebar.collapsed .nav-tier-ic { width: 17px; height: 17px; }
+/* SITE's glyph is the switcher's, which is a button and can be pressed; the heading's copy of it
+   would be a second pin that does nothing. */
+.sidebar.collapsed .nav-tier-label.is-site .nav-tier-ic { display: none; }
+/* The word goes at 48px and the glyph stands for it: SITE and SHARED at 7.5px were legible but
+   cost two text lines in a rail whose whole argument is height, and an orange mark against a column
+   of grey ones already says "a new group starts here". */
+.sidebar.collapsed .nav-tier-name { display: none; }
+
+/* The switcher survives too, as the icon it can afford to be. Hovering it opens the same flyout
+   Configuration uses — the site list, with the one you are in marked — so the rail can still say
+   where you are and still move you, which is more than a name that does not fit could do. */
+.sidebar.collapsed .nav-site { flex: 0 0 auto; width: 100%; justify-content: center; }
+.sidebar.collapsed .nav-site-toggle { justify-content: center; padding: 3px 0; }
+.sidebar.collapsed .nav-site-nm,
+.sidebar.collapsed .nav-site-caret { display: none; }
+.sidebar.collapsed .nav-site-ic { display: block; }
+.nav-tier { margin-bottom: 6px; }
+
+/* Sections inside a tier are the finer cut, so they step back: smaller, dimmer, and indented under
+   the tier they belong to. Two label levels only work if they cannot be mistaken for each other. */
+.nav-tier .nav-section-label { padding-left: 17px; opacity: .75; }
+
+/* The rows the scope governs, slid away until it has one. grid-template-rows rather than a
+   max-height guess: the row animates to the content's real height, so adding a fifth service later
+   cannot silently clip the list. */
+/* No rail: the tier's own heading already says what this list is scoped to, and a bracket down the
+   side of rows that are only ever visible when a site is chosen was saying it a second time. */
+.nav-tier-body {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows var(--tr), opacity var(--tr);
+  opacity: 0;
+}
+.nav-tier-body.is-open { grid-template-rows: 1fr; opacity: 1; }
+.nav-tier-body-in { overflow: hidden; min-height: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-tier-body { transition: none; }
+}
+
+/* A link that cannot be followed until a site is named still has to say why, so unlike the
+   "Coming soon" items it keeps its pointer events — the tooltip is the whole explanation. */
+.nav-item.nav-disabled[data-scoped="1"] { pointer-events: auto; cursor: not-allowed; }
+
+/* ── Site control ──────────────────────────────────────────────────────────────
+   On the SITE heading line, at its right-hand end: the tier already has a heading, and the site is
+   the answer to it. Drawn as a flyout group so it opens the way Configuration does — sideways, with
+   room for a figure beside each name — rather than as a dropdown, which would have been the only
+   one in this nav.
+
+   The overrides below are not decoration: .nav-group lays its children out in a COLUMN and
+   .nav-group-toggle is a full-width 12px/500 row, both of which are right for Configuration and
+   wrong for a name on a heading line. */
+.nav-site {
+  flex: 1 1 auto; min-width: 0;
+  flex-direction: row; justify-content: flex-end;   /* .nav-group says column */
+}
+.nav-site-toggle {
+  display: inline-flex; align-items: center; gap: 3px;
+  width: auto; max-width: 100%;                     /* .nav-group-toggle says 100% */
+  padding: 0 1px; cursor: pointer;
+  font-size: 11.5px; font-weight: 700;              /* .nav-group-toggle says 12px/500 */
+  letter-spacing: 0; text-transform: none;          /* the heading's casing is not the site's name */
+  color: var(--sb-active-cl);                       /* the chosen site, in the colour a choice is made in */
+  background: none; border: 0;
+  transition: opacity var(--tr);
+}
+.nav-site-toggle:hover { opacity: .75; }
+.nav-site-toggle.is-unset { font-weight: 600; color: var(--sb-muted); }
+.nav-site-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-site-caret { flex: 0 0 auto; opacity: .7; }
+.nav-site-ic { display: none; }
+
+/* The figure beside a site in the flyout — the same numbers the page would have shown on a card. */
+/* Monospaced so the eight characters line up down the column — the point of showing them is
+   telling two sites apart, and proportional digits make that a reading exercise. */
+.nav-flyout-note {
+  margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-muted); white-space: nowrap; letter-spacing: -.01em;
+}
+.nav-flyout-item.active .nav-flyout-note { color: color-mix(in srgb, var(--accent) 70%, var(--text-muted)); }
+
 .cs { position: relative; display: block; width: 100%; }
 .item-top .cs { flex: 1 1 auto; min-width: 0; }
 .cs > select { display: none; }

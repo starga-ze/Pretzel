@@ -15,6 +15,11 @@
 }
 
 /* ── Control strip ──────────────────────────────────────────────────────────── */
+/* ── Site bar ────────────────────────────────────────────────────────────────
+   The same bar as API Collection's (.col-bar). The two Insight pages sit next to each other in the
+   nav and an operator switches between them constantly, so a bar that changes height on the way is
+   the kind of thing that reads as the page being slightly broken. Every measurement below is paired
+   with one in collection.css; change them together. */
 .topo-bar {
   display: flex;
   align-items: center;
@@ -1301,50 +1306,6 @@
   .topo-ring-wrap::after { animation: none; opacity: 0; }
 }
 
-/* ── Overview ────────────────────────────────────────────────────────────────
-   The unscoped view, in the canvas palette. Same component as Insight ▸ API Collection's: the estate
-   totalled, then one row per site. Rows rather than a card grid — a grid holding a single card reads
-   as a layout that failed; a list holding one row reads as a list with one thing in it. */
-.topo-overview {
-  height: 100%; min-height: 460px;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-  padding: 40px 28px; text-align: center;
-}
-.topo-ov-h { font-size: 17px; font-weight: 700; color: var(--tc-ink); letter-spacing: -.02em; }
 
-.topo-ov-tiles { display: flex; flex-wrap: wrap; gap: 26px; margin: 20px 0 24px; justify-content: center; }
-.topo-ov-tile { display: flex; flex-direction: column; align-items: center; }
-.topo-ov-tile b {
-  font-size: 26px; font-weight: 700; color: var(--tc-ink); line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-.topo-ov-tile span { font-size: 10px; color: var(--tc-dim); margin-top: 2px; }
 
-.topo-ov-list { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 760px; }
-.topo-ov-row {
-  display: grid; grid-template-columns: minmax(120px, 1fr) auto 14px;
-  align-items: center; gap: 18px;
-  font: inherit; text-align: left; cursor: pointer;
-  padding: 14px 16px; border-radius: 10px;
-  background: var(--tc-card); border: 1px solid var(--tc-line);
-  transition: background var(--tr), border-color var(--tr);
-}
-.topo-ov-row:hover { background: var(--tc-card-hi); border-color: var(--tc-gw); }
-.topo-ov-nm {
-  font-size: 13.5px; font-weight: 700; color: var(--tc-ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.topo-ov-stats { display: flex; gap: 16px; }
-.topo-ov-stat { font-size: 10px; color: var(--tc-dim); white-space: nowrap; }
-.topo-ov-stat b {
-  display: block; font-size: 15px; font-weight: 700; color: var(--tc-ink);
-  font-variant-numeric: tabular-nums; line-height: 1.2;
-}
-.topo-ov-go { font-size: 19px; color: var(--tc-dim); line-height: 1; }
-.topo-ov-row:hover .topo-ov-go { color: var(--tc-gw); }
-.topo-ov-note { font-size: 10.5px; color: var(--tc-faint); margin-top: 20px; }
 
-@media (max-width: 820px) {
-  .topo-ov-row { grid-template-columns: 1fr auto; }
-  .topo-ov-stats { grid-column: 1 / -1; }
-}

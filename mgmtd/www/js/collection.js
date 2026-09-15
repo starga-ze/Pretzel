@@ -68,9 +68,11 @@
   const MAX_TREE_NODES = 4000;
 
   // The site is a scope, not a filter: it travels to mgmtd, which enumerates only that site's
-  // streams. So switching sites is a re-fetch, and the page has a real waiting state — held for a
-  // minimum so it is legible, since the read itself settles far faster than the eye does.
-  const MIN_FETCH_MS = 2000;
+  // streams. So switching sites is a re-fetch and the page has a real waiting state.
+  //
+  // This is the scale the ring's arc fills on, NOT a minimum hold — the page paints the moment the
+  // answer arrives. See finishFetching.
+  const FETCH_PACE_MS = 2000;
   // What is actually happening, in order. mgmtd reads the database directly here — there is no
   // second daemon in the path and nothing is composed, so these say "fetch", not "render".
   const FETCH_STAGES = [
@@ -117,9 +119,7 @@
 
   let timer = null;
   let ringTimer = null;
-  let fetchHold = null;
   let fetchStart = 0;
-
   // ── Stream judgement ────────────────────────────────────────────────────────
   // One stream's interval decides how late is late. Three ticks, never less than 90 seconds: a
   // single skipped poll is noise, two in a row is a stopped cycle.
@@ -219,7 +219,7 @@
     // 100% only once the answer is in hand: a full ring over an unfinished fetch turns "working"
     // into "done, and nothing happened".
     const elapsed = Date.now() - fetchStart;
-    const pct = Math.min(state.answered ? 1 : 0.9, elapsed / MIN_FETCH_MS);
+    const pct = Math.min(state.answered ? 1 : 0.9, elapsed / FETCH_PACE_MS);
     fill.setAttribute('stroke-dashoffset', (RING_C * (1 - pct)).toFixed(1));
 
     const p = document.querySelector('.col-ring-pct');
@@ -227,7 +227,7 @@
 
     const s = document.querySelector('.col-fetch-stage');
     if (s) {
-      const label = (!state.answered && elapsed > MIN_FETCH_MS)
+      const label = (!state.answered && elapsed > FETCH_PACE_MS)
         ? 'Still waiting\u2026'
         : FETCH_STAGES[Math.min(FETCH_STAGES.length - 1, Math.floor(pct * FETCH_STAGES.length))];
       if (s.textContent !== label) s.textContent = label;
@@ -243,15 +243,34 @@
     ringTimer = setInterval(tickRing, 40);
   }
 
+  // Paints as soon as the answer is in hand. The ring used to be held for a fixed two seconds so it
+  // would be legible, which put that two seconds on every site switch for a read that settles in
+  // tens of milliseconds. It now covers only the time actually spent waiting.
   function finishFetching(then) {
     if (!state.fetching) return then();
-    clearTimeout(fetchHold);
-    fetchHold = setTimeout(() => {
-      clearInterval(ringTimer);
-      ringTimer = null;
-      state.fetching = false;
-      then();
-    }, Math.max(0, MIN_FETCH_MS - (Date.now() - fetchStart)));
+    clearInterval(ringTimer);
+    ringTimer = null;
+    state.fetching = false;
+    then();
+  }
+
+  // The sidebar owns the scope control, so a change arrives here rather than from a select this
+  // page drew. Bound once: paintBar runs on every poll and subscribing there would accumulate.
+  let scopeBound = false;
+  function bindScope() {
+    if (scopeBound) return;
+    scopeBound = true;
+
+    window.NMS.utils.siteScope.subscribe((oid) => {
+      state.site = oid;
+      // The streams on screen belong to the site being left. Clearing them first is what makes the
+      // ring appear — otherwise they count as data already in hand.
+      state.streams = [];
+      state.sel = null;
+      if (state.site) startFetching();
+      paint();
+      load();
+    });
   }
 
   // ── Load ────────────────────────────────────────────────────────────────────
@@ -264,6 +283,8 @@
       if (!d) return;
       state.streams = Array.isArray(d.streams) ? d.streams : [];
       state.sites = Array.isArray(d.sites) ? d.sites : [];
+      // Feeds the sidebar switcher; this page already holds the list, so it costs nothing.
+      window.NMS.utils.siteScope.publish(state.sites);
       state.orphans = d.orphan_streams || 0;
       state.windowHours = d.window_hours || state.windowHours;
       state.error = '';
@@ -290,7 +311,7 @@
     }
 
     state.answered = true;
-    // A ring that is up runs out its length before the page appears; everything else paints now.
+    // A ring that is up is torn down here; either way the page paints now.
     if (state.fetching) finishFetching(paint);
     else paint();
   }
@@ -299,15 +320,12 @@
   // Built once. Refreshes repaint the tiles, the grid and the stamps — never the whole page, so the
   // search box keeps focus and the drawer keeps its scroll position through a poll.
   function mount() {
+    bindScope();
     const root = document.getElementById('contentBody');
     if (!root) return;
     root.className = 'content-body col-page';
     root.innerHTML =
       `<div class="col-bar">
-         <div class="col-bar-group">
-           <span class="col-bar-label">Site</span>
-           <select class="col-select" id="colSite"></select>
-         </div>
          <div class="col-chips" id="colChips"></div>
          <span class="col-bar-spacer"></span>
          <input class="col-search" id="colQ" type="search" placeholder="Search stream, device, path…" />
@@ -342,22 +360,6 @@
   }
 
   function wireShell() {
-    const sel = document.getElementById('colSite');
-    // Guarded: paintBar re-fires 'change' after rebuilding the option list, purely to make the themed
-    // dropdown resync its label. Only a real selection change is worth a repaint.
-    sel.addEventListener('change', (e) => {
-      if (e.target.value === state.site) return;
-      state.site = e.target.value;
-      window.NMS.utils.siteScope.set(state.site);
-      // The streams on screen belong to the site being left. Clearing them first is what makes the
-      // ring appear — otherwise they count as data already in hand.
-      state.streams = [];
-      state.sel = null;
-      if (state.site) startFetching();
-      paint();
-      load();
-    });
-
     document.getElementById('colChips').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-h]');
       if (!b) return;
@@ -387,13 +389,6 @@
     });
 
     document.getElementById('colGroups').addEventListener('click', (e) => {
-      const card = e.target.closest('[data-site]');
-      if (card) {
-        const sel = document.getElementById('colSite');
-        if (sel) { sel.value = card.dataset.site; sel.dispatchEvent(new Event('change', { bubbles: true })); }
-        return;
-      }
-
       const head = e.target.closest('.col-group-h');
       if (head) {
         const key = head.parentElement.dataset.key;
@@ -436,24 +431,8 @@
   const scopeChosen = () => !!state.site;
 
   function paintBar() {
-    const sel = document.getElementById('colSite');
-    if (sel) {
-      const opts = siteOptions();
-      const want = `<option value="">Overview</option>` + opts.map(([oid, name]) =>
-        `<option value="${esc(oid)}">${esc(name)}</option>`).join('');
-      // The themed dropdown reads select.options fresh each time it opens, so replacing them is
-      // safe; only its collapsed label is cached, and a change event is what resyncs it. Guarded by
-      // a signature because the site list moves on a config commit, not on every poll.
-      if (sel.dataset.sig !== want) {
-        sel.dataset.sig = want;
-        sel.innerHTML = want;
-        sel.value = state.site;
-        window.NMS.utils.enhanceSelect?.(sel);   // no-op once enhanced
-        sel.dispatchEvent(new Event('change'));
-      } else if (sel.value !== state.site) {
-        sel.value = state.site;
-      }
-    }
+    // The site control lives in the sidebar now (NMS.utils.siteScope); this bar carries only what
+    // is local to the page — the health chips, the search and the live stamp.
 
     const rows = scoped();
     const n = { all: rows.length, live: 0, failing: 0, stale: 0, never: 0 };
@@ -566,47 +545,15 @@
     if (state.fetching) { el.innerHTML = ringHtml(); return; }
     if (state.booting && state.site) { el.innerHTML = ''; return; }
 
+    // Unavailable until a site is named: this page lists one site's streams, and the sidebar gates
+    // the link for that reason. This is the answer for anyone who arrived by URL anyway.
     if (!scopeChosen()) {
-      // The estate at rest, not a blocked page. Rows rather than a card grid: one card in a grid
-      // reads as a layout that failed, one row reads as a list with one thing in it, and rows keep
-      // working at forty sites.
-      const sites = (state.sites || []).slice()
-        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-
-      if (!sites.length) {
-        el.innerHTML = `<div class="col-panel">
-          <div class="col-panel-t">No site configured</div>
-          <div class="col-panel-s">Add one in <a href="settings?tab=sites">Configuration ▸ Sites</a>.</div>
-        </div>`;
-        return;
-      }
-
-      const tile = (v, label) => `<div class="col-ov-tile"><b>${v}</b><span>${esc(label)}</span></div>`;
-      // `sub` carries the breakdown under the headline number, so "2 devices" can say what those two
-      // are without becoming two more columns.
-      const stat = (v, label, sub) => `<span class="col-ov-stat"><b>${v}</b>${esc(label)}${
-        sub ? `<i>${esc(sub)}</i>` : ''}</span>`;
-
-      const rows = sites.map(x => {
-        const ngfw = x.ngfw || 0;
-        const sase = x.sase || 0;
-        return `<button class="col-ov-row" type="button" data-site="${esc(x.oid)}">
-          <span class="col-ov-nm">${esc(x.name || x.oid)}</span>
-          <span class="col-ov-stats">
-            ${stat(ngfw + sase, (ngfw + sase) === 1 ? 'device' : 'devices', `${sase} SASE · ${ngfw} NGFW`)}
-            ${stat(x.endpoints || 0, (x.endpoints === 1 ? 'API endpoint' : 'API endpoints'))}
-          </span>
-          <span class="col-ov-go">&rsaquo;</span>
-        </button>`;
-      }).join('');
-
-      el.innerHTML = `<div class="col-panel col-overview">
-          <div class="col-ov-h">Overview</div>
-          <div class="col-ov-tiles">
-            ${tile(sites.length, sites.length === 1 ? 'site' : 'sites')}
-          </div>
-          <div class="col-ov-list">${rows}</div>
-          <div class="col-ov-note">Open a site to see what each of its APIs is returning.</div>
+      const sites = state.sites || [];
+      el.innerHTML = `<div class="col-panel">
+          <div class="col-panel-t">${sites.length ? 'Choose a site' : 'No site configured'}</div>
+          <div class="col-panel-s">${sites.length
+            ? 'Pick one under Infra Service in the sidebar \u2014 this page shows what a single site\u2019s APIs are returning.'
+            : 'Add one in <a href="settings?tab=sites">Configuration \u25b8 Sites</a>.'}</div>
         </div>`;
       return;
     }

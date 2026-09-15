@@ -91,27 +91,27 @@
   // nothing to say that one decides what the appliance itself says to a vendor while the other
   // describes the estate it manages — two words a letter apart doing entirely different jobs.
   //
-  //   AI Service     AI Provider       which vendors serve a turn (the pretzel-ai deployment)
-  //                  AI Route          how a turn reaches a model, and who inspects it on the way
-  //   Infra Service  Site Management   where things are, and what is there (a Site is one customer)
-  //                  API Profile       the reusable definitions a connector references
-  //                  API Connector     binding a device + credential + endpoints on a schedule
-  //   System         User Management   who may sign in
+  //   Infrastructure  Site Management   where things are, and what is there (a Site is one customer)
+  //                   API Profile       the reusable definitions a connector references
+  //                   API Connector     binding a device + credential + endpoints on a schedule
+  //   AI              AI Provider       which vendors serve a turn (the pretzel-ai deployment)
+  //                   AI Route          how a turn reaches a model, and who inspects it on the way
+  //   System          User Management   who may sign in
   //
   // System Operation is NOT here. Saving and loading a configuration file, and the appliance's own
   // upkeep, are things you DO — they take effect when pressed, they stage nothing, and there is no
   // Publish for them. Everything else in this flyout is a declaration you edit and then publish,
   // and putting an action among them made Publish look like it applied to both.
   //
-  // AI comes first because it is the half that configures this appliance's own outbound behaviour:
-  // the infra groups describe the estate being managed, these two decide who the appliance itself
-  // talks to on the operator's behalf, how it gets there and who looks at what it says. System comes last because it
-  // is the one an operator visits least.
+  // The order is the sidebar's own, read top to bottom: the column puts Infrastructure first, under
+  // SITE, and AI after it, under SHARED. A flyout that opens off that column and then re-sorts what
+  // it contains makes the operator hold two orders in their head for one set of things. System is
+  // last in both, being the one an operator visits least.
+  //
+  // This decides where a bare /settings lands, since settingsDefaultTab is the first tab of the
+  // first group — Sites, which is both the most-visited page here and the one everything else in
+  // the estate is declared against.
   const SETTINGS_GROUPS = [
-    { id: 'ai-provider', label: 'AI Provider', section: 'ai', tabs: [
-        { id: 'ai-provider', label: 'AI Provider' } ] },
-    { id: 'ai-route', label: 'AI Route', section: 'ai', tabs: [
-        { id: 'ai-route', label: 'AI Route' } ] },
     { id: 'site-management', label: 'Site Management', section: 'infra', tabs: [
         { id: 'sites',        label: 'Sites'        },
         { id: 'devices',      label: 'Devices'      } ] },
@@ -120,6 +120,10 @@
         { id: 'api-endpoint', label: 'API Endpoint' } ] },
     { id: 'api-connector', label: 'API Connector', section: 'infra', tabs: [
         { id: 'api-connector', label: 'API Connector' } ] },
+    { id: 'ai-provider', label: 'AI Provider', section: 'ai', tabs: [
+        { id: 'ai-provider', label: 'AI Provider' } ] },
+    { id: 'ai-route', label: 'AI Route', section: 'ai', tabs: [
+        { id: 'ai-route', label: 'AI Route' } ] },
     // One group each rather than two tabs under a "System Management" heading. They are not two
     // views of one subject the way Sites and Devices are: one is who may sign in, the other is what
     // the appliance does with its own disks and clock, and an operator going to either was reading
@@ -134,11 +138,12 @@
         { id: 'operation',    label: 'System Operation' } ] },
   ];
 
-  // The label each section carries in the Configuration flyout. The first two are named for the
-  // sidebar sections they mirror, so the flyout reads as a continuation of the column it opened
-  // from; System has no counterpart up there because it is the appliance itself rather than
-  // anything it manages or talks to.
-  const SETTINGS_SECTIONS = { ai: 'AI Service', infra: 'Infra Service', system: 'System' };
+  // The label each section carries in the Configuration flyout. The first two are the sidebar's own
+  // section names, spelled exactly as the column spells them — "Infra Service" and "AI Service"
+  // named the same two groups in two different words, and the reader had to work out that they
+  // were the same two groups. System has no counterpart up there because it is the appliance
+  // itself rather than anything it manages or talks to.
+  const SETTINGS_SECTIONS = { infra: 'Infrastructure', ai: 'AI', system: 'System' };
 
   const SETTINGS_TABS = SETTINGS_GROUPS.reduce((acc, g) => acc.concat(g.tabs), []);
   // Where a bare /settings (no ?tab=) lands. Published because the tab modules resolve the same
@@ -160,7 +165,51 @@
              <polyline points="9 22 9 12 15 12 15 22"/>`,
     },
 
-    { type: 'section', label: 'AI Service' },
+    // Everything here is read through one site. No section labels inside it: the four rows are one
+    // kind of thing — what you do to a site — and a label per pair would be naming the obvious.
+    { type: 'tier', id: 'site', label: 'Site', scoped: true,
+      icon: `<path d="M12 21s7-5.686 7-11a7 7 0 1 0-14 0c0 5.314 7 11 7 11z"/>
+             <circle cx="12" cy="10" r="2.6"/>` },
+
+
+
+    // The two reads of the estate: its shape, and what its APIs are returning.
+    { type: 'section', label: 'Infrastructure' },
+    {
+      // The estate as a picture rather than a list: who connects, what they land on, where it
+      // exits. Named for what it draws, not for where it sits — the section above already says
+      // that, and "Overview" would have been the only page here that did not say what it shows.
+      type: 'link', id: 'site-topology', label: 'Topology', href: 'topology', scoped: true,
+      icon: `<circle cx="5" cy="12" r="2.4"/><circle cx="12" cy="5.5" r="2.4"/>
+             <circle cx="12" cy="18.5" r="2.4"/><circle cx="19" cy="12" r="2.4"/>
+             <path d="M7 11l3-4M7 13l3 4M14 7l3 3.4M14 17l3-3.4"/>`,
+    },
+    {
+      // The other half of the same estate: not its shape, but what its APIs are actually returning
+      // and whether the collection cycle is still turning.
+      type: 'link', id: 'api-collection', label: 'API Collection', href: 'collection', scoped: true,
+      icon: `<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/>
+             <path d="M4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/>
+             <path d="M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"/>`,
+    },
+
+    // Acting on the estate rather than reading it — which is why these are not filed with the two
+    // above, and why they are the pages that will need a confirmation step.
+    { type: 'section', label: 'Control' },
+    {
+      type: 'link', id: 'remote-access', label: 'Remote Access', href: '#', soon: true,
+      icon: `<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>`,
+    },
+    {
+      type: 'link', id: 'power', label: 'Power Control', href: '#', soon: true,
+      icon: `<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>`,
+    },
+
+    { type: 'tier', id: 'shared', label: 'Shared',
+      icon: `<polygon points="12 2.5 3 7 12 11.5 21 7 12 2.5"/>
+             <polyline points="3 16.5 12 21 21 16.5"/>
+             <polyline points="3 11.75 12 16.25 21 11.75"/>` },
+    { type: 'section', label: 'AI' },
     {
       // The internal assistant itself, not a view of it: the one page here that an ordinary
       // employee would use rather than an operator. It sits above Infra Service because the
@@ -179,25 +228,6 @@
              <rect x="15.4" y="13" width="3.6" height="4" rx="1"/>`,
     },
 
-    { type: 'section', label: 'Infra Service' },
-    {
-      // The estate as a picture rather than a list: who connects, what they land on, where it
-      // exits. Named for what it draws, not for where it sits — the section above already says
-      // that, and "Overview" would have been the only page here that did not say what it shows.
-      type: 'link', id: 'site-topology', label: 'Topology', href: 'topology',
-      icon: `<circle cx="5" cy="12" r="2.4"/><circle cx="12" cy="5.5" r="2.4"/>
-             <circle cx="12" cy="18.5" r="2.4"/><circle cx="19" cy="12" r="2.4"/>
-             <path d="M7 11l3-4M7 13l3 4M14 7l3 3.4M14 17l3-3.4"/>`,
-    },
-    {
-      // The other half of the same estate: not its shape, but what its APIs are actually returning
-      // and whether the collection cycle is still turning.
-      type: 'link', id: 'api-collection', label: 'API Collection', href: 'collection',
-      icon: `<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z"/>
-             <path d="M4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/>
-             <path d="M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"/>`,
-    },
-
     // Its own section rather than a third entry under Infra Service. What sits up there is the
     // customer's estate — what they run and what it is doing; this is the VENDOR's product
     // documentation, which the assistant answers out of. Two different subjects that happen to
@@ -206,7 +236,7 @@
     //
     // Named for what it provides rather than for what it holds, so a second source — release
     // notes, a customer's own runbooks — lands here without the section needing a new name.
-    { type: 'section', label: 'Knowledge Service' },
+    { type: 'section', label: 'Knowledge' },
     {
       // The corpus as a reader sees it. Collecting it is an action on the appliance and stays
       // under Administrator ▸ System Operation; this is where an operator comes to check what the
@@ -217,16 +247,6 @@
              <path d="M12 6.6c1.6-1.5 3.6-2 6-2a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1
                       c-2.4 0-4.4.5-6 2"/>
              <path d="M12 6.6v13"/>`,
-    },
-
-    { type: 'section', label: 'Control' },
-    {
-      type: 'link', id: 'remote-access', label: 'Remote Access', href: '#', soon: true,
-      icon: `<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>`,
-    },
-    {
-      type: 'link', id: 'power', label: 'Power Control', href: '#', soon: true,
-      icon: `<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>`,
     },
 
     { type: 'section', label: 'Administrator' },
@@ -280,7 +300,7 @@
              <path d="M10 3v6.5L4.6 18.2A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.7-2.8L14 9.5V3"/>
              <line x1="7" y1="15" x2="17" y2="15"/>`,
     },
-  ];
+];
 
   function buildSvg(inner) {
     return `<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">${inner}</svg>`;
@@ -546,7 +566,48 @@
       </div>
       <nav class="sidebar-nav">`;
 
+    // The nav has two tiers — what is read through one site, and what is not — and the tier is a
+    // property of a RUN of items, not of any one of them. So a tier opens a wrapper and the next
+    // tier closes it; the scoped one gets the rail down its edge that says how far the site reaches.
+    let tierOpen = false;
+    let bodyOpen = false;
+    const closeTier = () => {
+      let out = '';
+      if (bodyOpen) { out += '</div></div>'; bodyOpen = false; }
+      if (tierOpen) { out += '</div>'; tierOpen = false; }
+      return out;
+    };
+
     for (const item of SIDEBAR_NAV) {
+      if (item.type === 'tier') {
+        html += closeTier();
+        // The label sits OUTSIDE the wrapper, so it keeps the same left edge as every other tier
+        // label; the rail below it marks the thing it governs rather than the name of it.
+        //
+        // A scoped tier puts its switcher on that same line, at the far right — the heading and the
+        // answer to it read as one row, and the list below stays a list of services rather than a
+        // list with a control wedged into the top of it.
+        // The glyph is the tier's identity: collapsed it is all that is left of the heading, so the
+        // same one has to lead the word when there is room for the word.
+        html += `<div class="nav-tier-label${item.scoped ? ' is-site' : ''}">` +
+                `<svg class="nav-tier-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      aria-hidden="true">${item.icon || ''}</svg>` +
+                `<span class="nav-tier-name">${item.label}</span>` +
+                (item.scoped
+                  ? `<div class="nav-group nav-site" data-group-id="site-scope" id="navSite"></div>`
+                  : '') +
+                `</div>`;
+        html += `<div class="nav-tier">`;
+        tierOpen = true;
+        if (item.scoped) {
+          // What the switcher governs, collapsed to nothing until it has an answer. Its own box
+          // because a height can only be animated on something that has one.
+          html += `<div class="nav-tier-body" id="navScopedBody"><div class="nav-tier-body-in">`;
+          bodyOpen = true;
+        }
+        continue;
+      }
+
       if (item.type === 'section') {
         html += `<div class="nav-section-label">${item.label}</div>`;
         continue;
@@ -557,7 +618,8 @@
         const cls = ['nav-item', active ? 'active' : '', item.disabled ? 'nav-disabled' : ''].filter(Boolean).join(' ');
         const href = item.disabled ? '#' : item.href;
         const tooltip = item.disabled ? `${item.label} (Coming soon)` : item.label;
-        html += `<a class="${cls}" href="${href}" data-page="${item.href || ''}" data-tooltip="${tooltip}">
+        html += `<a class="${cls}" href="${href}" data-page="${item.href || ''}" data-tooltip="${tooltip}"${
+          item.scoped ? ` data-scoped="1" data-label="${item.label}"` : ''}>
           ${buildSvg(item.icon)}
           <span class="nav-label">${item.label}</span>
           ${item.soon ? '<span class="nav-badge-soon">Coming soon</span>' : ''}
@@ -634,7 +696,12 @@
         </div>
       </div>`;
 
+    html += closeTier();
+
     sidebar.innerHTML = html;
+
+    // The switcher is cached state rather than markup, so it is filled once the nav is in the DOM.
+    window.NMS.utils.syncSidebarScope?.();
   }
 
   // ── Sidebar collapse/expand ───────────────────────────────────────────────
@@ -784,9 +851,16 @@
       // renders exactly as it did before. Configuration is the only one that uses them today, and
       // it needs them: "AI Provider" and "API Profile" are two words a letter apart doing
       // different jobs, and a flat list of six gave the reader nothing to tell them apart by.
+      //
+      // The panel's own name is dropped when it has them. It would sit directly above the first
+      // section heading in the same size, weight and colour — two stacked labels where the reader
+      // expects one, the upper one naming the row they just pressed and so telling them nothing
+      // they did not know a moment ago. A flyout with no sections keeps it: there it is the only
+      // thing saying what the list is.
+      const sectioned = subs.some(s => s.section);
       let section = null;
       flyout.innerHTML =
-        `<div class="nav-flyout-title">${toggle.dataset.label || ''}</div>` +
+        (sectioned ? '' : `<div class="nav-flyout-title">${toggle.dataset.label || ''}</div>`) +
         subs.map(s => {
           let head = '';
           if ((s.section || '') !== (section || '')) {
@@ -796,14 +870,27 @@
           const cls  = ['nav-flyout-item', s.active ? 'active' : '', s.soon ? 'is-soon' : ''].filter(Boolean).join(' ');
           const href = s.soon ? '#' : s.href;
           const tab  = (s.tabs && s.tabs.length) ? ` data-goto-tab="${s.tabs[0]}"` : '';
-          return head + `<a class="${cls}" href="${href}"${tab}>` +
+          // A site row changes the scope rather than navigating, the same way a tab row switches in
+          // place rather than reloading.
+          const site = s.site ? ` data-set-site="${s.site}"` : '';
+          const title = s.title ? ` title="${s.title}"` : '';
+          return head + `<a class="${cls}" href="${href}"${tab}${site}${title}>` +
                  `<span>${s.label}</span>` +
+                 (s.note ? `<span class="nav-flyout-note">${s.note}</span>` : '') +
                  (s.soon ? '<span class="nav-badge-soon">Soon</span>' : '') +
                  `</a>`;
         }).join('');
 
       // Already on the target page: switch in place rather than reloading, so the topbar and
       // the staged Publish state survive (see NMS.gotoSettingsTab).
+      flyout.querySelectorAll('[data-set-site]').forEach(a => {
+        a.addEventListener('click', (e) => {
+          e.preventDefault();
+          window.NMS.utils.siteScope.set(a.dataset.setSite);
+          hide();
+        });
+      });
+
       flyout.querySelectorAll('[data-goto-tab]').forEach(a => {
         a.addEventListener('click', (e) => {
           if (typeof window.NMS.gotoSettingsTab !== 'function') return;
@@ -829,11 +916,19 @@
       toggle.setAttribute('aria-expanded', 'true');
     }
 
+    // Delegated rather than bound per element: the site group's toggle is rebuilt whenever the
+    // estate changes, and a listener attached to the button it replaced would be attached to
+    // nothing. The group divs themselves are stable, so hover can stay on them.
     sidebar.querySelectorAll('.nav-group').forEach(group => {
-      const toggle = group.querySelector('.nav-group-toggle');
       group.addEventListener('mouseenter', () => { cancelHide(); show(group); });
       group.addEventListener('mouseleave', scheduleHide);
-      toggle?.addEventListener('click', (e) => { e.preventDefault(); cancelHide(); show(group); });
+    });
+    sidebar.addEventListener('click', (e) => {
+      const toggle = e.target.closest('.nav-group-toggle');
+      if (!toggle) return;
+      e.preventDefault();
+      cancelHide();
+      show(toggle.closest('.nav-group'));
     });
 
     flyout.addEventListener('mouseenter', cancelHide);
@@ -1132,6 +1227,15 @@
       const d = await this.fetchJSON('/api/settings', { headers: { Accept: 'application/json' } });
       if (!d) return null;
       window.NMS.draft.checkBase(d.version);
+
+      // The sidebar's switcher is fed from a cache, and until now only Topology and API Collection
+      // refilled it — so a site added under Configuration ▸ Sites did not appear in the switcher
+      // until the operator happened to visit one of those two pages. This document already carries
+      // the list, and every settings editor reads it, so the one place a site can be created is now
+      // also a place the switcher hears about it.
+      const sites = (((d.scopes || {}).pretzel || {}).site || {}).sites;
+      if (Array.isArray(sites)) this.siteScope.publish(sites);
+
       return d;
     },
 
@@ -1206,15 +1310,60 @@
     // the value against the sites they actually received and fall back to Overview.
     siteScope: {
       key: 'pz.site',
+      listKey: 'pz.sites',
+
       get() {
         try { return localStorage.getItem(this.key) || ''; } catch (_) { return ''; }
       },
-      set(oid) {
+
+      // Writes through to the sidebar control and to whatever page is open. The control lives in
+      // the shell now, so a page can no longer be the only thing that knows the scope changed.
+      set(oid, opts) {
+        const next = oid || '';
+        if (next === this.get()) return;
         try {
-          if (oid) localStorage.setItem(this.key, oid);
+          if (next) localStorage.setItem(this.key, next);
           else localStorage.removeItem(this.key);
         } catch (_) { /* private mode — the scope just does not persist */ }
+
+        this._subs.forEach(fn => { try { fn(next); } catch (_) { /* one bad listener is not the rest */ } });
+        if (!opts || !opts.silent) window.NMS.utils.syncSidebarScope?.();
       },
+
+      // A page calls this to be told when the scope changes from the sidebar. Returns an unsubscribe.
+      subscribe(fn) {
+        this._subs.push(fn);
+        return () => { this._subs = this._subs.filter(f => f !== fn); };
+      },
+      _subs: [],
+
+      // The sites the switcher offers. Cached in localStorage so the control is populated on the
+      // first paint of every page, including the ones that never load a site list of their own —
+      // the sidebar is global and a switcher that is empty until a fetch lands reads as broken.
+      options() {
+        try { return JSON.parse(localStorage.getItem(this.listKey) || '[]') || []; } catch (_) { return []; }
+      },
+
+      // Pages that already hold the list publish it here for free. Shape: [{ oid, name }].
+      publish(list) {
+        const clean = (Array.isArray(list) ? list : [])
+          .filter(x => x && x.oid)
+          .map(x => ({ oid: String(x.oid), name: String(x.name || x.oid) }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        // Guarded on the serialised value: pages publish on every poll, and rebuilding the control
+        // a minute would tear down a panel the operator has open. The site list moves on a config
+        // commit, not on a refresh.
+        const next = JSON.stringify(clean);
+        let prev = null;
+        try { prev = localStorage.getItem(this.listKey); } catch (_) { /* no cache */ }
+        if (prev === next) return clean;
+
+        try { localStorage.setItem(this.listKey, next); } catch (_) { /* no cache */ }
+        window.NMS.utils.syncSidebarScope?.();
+        return clean;
+      },
+
     },
 
     // "just now" / "42s" / "7m" / "3h" / "2d" — the age of a timestamp, for a freshness stamp.
@@ -1292,8 +1441,92 @@
       scope.querySelector('.ed-error')?.remove();
       this.clearInvalid(scope);
     },
+    // Build (or rebuild) the sidebar's site switcher from the cached list and the current scope.
+    // Idempotent: called on first paint, whenever a page publishes a fresher list, and after the
+    // scope changes from anywhere.
+    syncSidebarScope() {
+      const host = document.getElementById('navSite');
+      if (!host) return;
 
-    // Enhance every <select> in a container with the custom dropdown below.
+      const scope = this.siteScope;
+      const sites = scope.options();
+      let cur = scope.get();
+
+      // A remembered site can be deleted between visits. The pointer is then stale, not a choice —
+      // drop it and let the operator pick again rather than showing a name the estate does not have.
+      if (cur && sites.length && !sites.some(x => x.oid === cur)) {
+        scope.set('', { silent: true });
+        cur = '';
+      }
+      // A one-site estate has exactly one answer, and making the operator choose it is ceremony.
+      if (!cur && sites.length === 1) {
+        scope.set(sites[0].oid, { silent: true });
+        cur = sites[0].oid;
+      }
+
+      const chosen = sites.find(x => x.oid === cur);
+      const label = chosen ? chosen.name : (sites.length ? 'Select a site' : 'No sites');
+
+      // Same shape Configuration's group uses, so it inherits the flyout wholesale — hover to open,
+      // anchored right, dismissed on scroll. `site` marks an entry as a scope change rather than a
+      // destination; initFlyouts reads it the way it reads data-goto-tab.
+      // The oid beside each name, because two sites can be called the same thing and the name is
+      // the only other thing on the row. It is also what every reference in the configuration and
+      // every row in the database is keyed by, so it is the value an operator ends up needing when
+      // a site has to be matched against something outside this screen.
+      const subs = sites.map(x => ({
+        // First eight characters: enough to tell two sites apart at a glance and to match against a
+        // log line, without a 36-character column deciding how wide the panel is. The whole value is
+        // on the row's title for the times it has to be copied.
+        id: x.oid, label: x.name, href: '#', site: x.oid,
+        note: String(x.oid).slice(0, 8), title: x.oid,
+        active: x.oid === cur,
+      }));
+      if (!sites.length) {
+        subs.push({ id: '', label: 'Add a site in Configuration \u25b8 Sites',
+                    href: 'settings?tab=sites', note: '', active: false });
+      }
+
+      const data = JSON.stringify(subs).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      host.innerHTML =
+        `<button type="button" class="nav-group-toggle nav-site-toggle${chosen ? '' : ' is-unset'}"
+                 data-tooltip="${this.esc(label)}" data-label="Site" data-subitems="${data}"
+                 aria-haspopup="true" aria-expanded="false">
+           <svg class="nav-site-ic" width="17" height="17" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"
+                aria-hidden="true">
+             <path d="M12 21s7-5.686 7-11a7 7 0 1 0-14 0c0 5.314 7 11 7 11z"/>
+             <circle cx="12" cy="10" r="2.6"/>
+           </svg>
+           <span class="nav-site-nm">${this.esc(label)}</span>
+           <svg class="nav-site-caret" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+             <polyline points="9 6 15 12 9 18"/>
+           </svg>
+         </button>`;
+
+      this.syncScopeGating();
+    },
+
+    // The links this scope governs are unusable without it, so they say so rather than opening on
+    // a page that can only apologise. Marked rather than hidden: a section that disappears reads as
+    // a feature this build does not have.
+    syncScopeGating() {
+      const chosen = !!this.siteScope.get();
+      // The rows slide away rather than sitting there greyed out: with no site there is nothing
+      // behind them to show, and a list of four dead links is a worse answer than no list.
+      document.getElementById('navScopedBody')?.classList.toggle('is-open', chosen);
+      document.querySelectorAll('.nav-item[data-scoped="1"]').forEach((el) => {
+        el.classList.toggle('nav-disabled', !chosen);
+        if (chosen) {
+          el.setAttribute('href', el.dataset.page || '#');
+          el.setAttribute('data-tooltip', el.dataset.label || '');
+        } else {
+          el.setAttribute('href', '#');
+          el.setAttribute('data-tooltip', (el.dataset.label || '') + ' (select a site first)');
+        }
+      });
+    },
     enhanceSelects(container) {
       if (container) container.querySelectorAll('select').forEach(s => this.enhanceSelect(s));
     },

@@ -409,6 +409,20 @@
     const foot = document.getElementById('cmFoot');
     if (st && st.status === 'complete') {
       setProg(100, 'Published', 'ok');
+
+      // Re-read the page behind the modal, exactly as the refresh button does. Until now the
+      // operator had to press it themselves: a published site appeared in the list, or a deleted
+      // one left it, only on the next manual refresh — so the screen that had just been changed was
+      // the one screen still showing the old answer. Convergence is the right moment for it, not
+      // the click on Done: by the time the modal is closed the page underneath is already current.
+      //
+      // The page's own handler, so each one reloads the way it knows how; every settings module's
+      // reload goes through NMS.utils.loadSettings, which is also what refills the sidebar's site
+      // switcher. No fallback to location.reload() — that would tear down this modal mid-sentence.
+      if (typeof window.NMS._onRefresh === 'function') {
+        try { window.NMS._onRefresh(); } catch (_) { /* a page that cannot reload still published */ }
+      }
+
       foot.innerHTML = `<button class="btn-primary btn-sm" id="cmDone">Done</button>`;
       document.getElementById('cmDone').onclick = closeModal;
       return;
