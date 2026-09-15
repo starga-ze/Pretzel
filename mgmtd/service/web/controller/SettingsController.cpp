@@ -132,14 +132,8 @@ void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpReq
     auto badRequest = [&](const char* error) { fill(resp, 400, json{{"error", error}}.dump()); };
 
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return badRequest("invalid JSON body");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     // Accounts are the one domain a commit may not carry unless the person publishing it may
     // manage accounts. Everything else on this appliance is open to both roles; this is not,
@@ -381,14 +375,8 @@ void SettingsController::saveConfig(MgmtdServiceManager& sm, const pz::http::Htt
 {
     (void)sm;
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     const std::string path = savedConfigFile(input.value("name", std::string()));
     if (path.empty())

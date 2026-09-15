@@ -137,14 +137,8 @@ void AiController::credentialStore(MgmtdServiceManager& sm, const pz::http::Http
                                    pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     const std::string id = input.value("id", std::string());
     const char* scope = credentialScope(id);

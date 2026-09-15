@@ -139,15 +139,10 @@ void sendConnectorTest(MgmtdServiceManager& sm, std::uint32_t ticket, json input
 void ApiController::keygenTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
+    if (!parseBody(req, resp, input))
+        return;
+
         LOG_INFO("handle keygen test json dump : {}", input.dump());
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
 
     if (const auto err = connectorTestInputError(input, false); !err.empty())
     {
@@ -167,14 +162,8 @@ void ApiController::keygenTest(MgmtdServiceManager& sm, const pz::http::HttpRequ
 void ApiController::endpointTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     if (const auto err = connectorTestInputError(input, true); !err.empty())
     {
@@ -199,14 +188,8 @@ void ApiController::endpointTest(MgmtdServiceManager& sm, const pz::http::HttpRe
 void ApiController::saseTest(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     // No api-key requirement: the browser only holds the plaintext right after it was pasted, and
     // collectord falls back to the key stored for this device.
@@ -227,14 +210,8 @@ void ApiController::saseTest(MgmtdServiceManager& sm, const pz::http::HttpReques
 void ApiController::saseKeyStore(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     if (input.value("oid", std::string()).empty() || input.value("api_key", std::string()).empty())
         return fill(resp, 400, R"({"error":"the device and api-key are both required"})");
@@ -254,14 +231,8 @@ void ApiController::saseKeyStore(MgmtdServiceManager& sm, const pz::http::HttpRe
 void ApiController::credentialStore(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     const auto secrets = input.value("secrets", json::object());
     const bool havePassword = secrets.is_object() && !secrets.value("password", std::string()).empty();
@@ -282,14 +253,8 @@ void ApiController::credentialStore(MgmtdServiceManager& sm, const pz::http::Htt
 void ApiController::tlsProbe(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     if (input.value("target", std::string()).empty())
         return fill(resp, 400, R"({"error":"target is required"})");

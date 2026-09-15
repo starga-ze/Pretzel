@@ -1,5 +1,7 @@
 #include "http/UrlEncode.h"
 
+#include <cstddef>
+
 namespace pz::http
 {
 
@@ -26,6 +28,48 @@ std::string urlEncode(const std::string& raw)
             out.push_back(hex[c & 0xF]);
         }
     }
+    return out;
+}
+
+std::string urlDecode(const std::string& encoded)
+{
+    auto hexVal = [](unsigned char c) -> int
+    {
+        if (c >= '0' && c <= '9')
+            return c - '0';
+        if (c >= 'a' && c <= 'f')
+            return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F')
+            return c - 'A' + 10;
+        return -1;
+    };
+
+    std::string out;
+    out.reserve(encoded.size());
+
+    for (std::size_t i = 0; i < encoded.size(); ++i)
+    {
+        if (encoded[i] == '+')
+        {
+            out.push_back(' ');
+            continue;
+        }
+
+        if (encoded[i] == '%' && i + 2 < encoded.size())
+        {
+            const int hi = hexVal(static_cast<unsigned char>(encoded[i + 1]));
+            const int lo = hexVal(static_cast<unsigned char>(encoded[i + 2]));
+            if (hi >= 0 && lo >= 0)
+            {
+                out.push_back(static_cast<char>((hi << 4) | lo));
+                i += 2;
+                continue;
+            }
+        }
+
+        out.push_back(encoded[i]);
+    }
+
     return out;
 }
 

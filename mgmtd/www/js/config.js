@@ -103,10 +103,8 @@
   async function load() {
     await loadKeyState();
     try {
-      const r = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (r.status === 401) { location.href = '/'; return; }
-      const d = await r.json();
-      window.NMS.draft.checkBase(d.version);
+      const d = await window.NMS.utils.loadSettings();
+      if (!d) return;
       const site = ((d.scopes || {}).pretzel || {}).site || {};
       // Config stores two type-specific arrays; the editor works on one merged list tagged with
       // device_type, and splitForConfig() puts them back on commit.
@@ -325,22 +323,13 @@
 
   // Validate the getPrismaAccessIP api-key against the tenant; on success probed seals + stores it in
   // sase_device.api_key_enc. Same ticket/poll shape as the API Key tests.
-  async function runSaseTest(payload) {
-    const start = await fetch('/api/connector/sase-test', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (start.status === 401) { location.href = '/'; return { ok: false, message: 'session expired' }; }
-    const started = await start.json().catch(() => null);
-    if (!start.ok || !started || !started.ticket) throw new Error((started && started.error) || 'could not start the test');
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
-        { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      const d = await r.json().catch(() => null);
-      if (d && d.status === 'done') return d;
-    }
-    throw new Error('the test timed out');
-  }
+  // A SASE health check reaches a Palo Alto cloud API rather than a box on the customer's network,
+  // so it gets the slower cadence: a cold control plane answers in seconds.
+  const runSaseTest = (payload) =>
+    window.NMS.utils.runConnectorTest('/api/connector/sase-test', payload,
+                                      { everyMs: 1000, tries: 30,
+                                        startError: 'could not start the test',
+                                        timeoutError: 'the test timed out' });
 
   // Pull the URL, header-api-key and request body out of the command Prisma Access hands out, e.g.
   //   curl -X POST -d @option.txt -H "header-api-key: <key>" "https://api.prod8…/getPrismaAccessIP/v2"
@@ -361,42 +350,24 @@
 
   // Seal + store a SASE device's api-key on the appliance. Called on Save, so the key survives a
   // browser refresh (and a publish) without ever being staged to localStorage or running_config.
-  async function saveApiKey(oid, apiKey) {
-    const start = await fetch('/api/connector/sase-key', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oid, api_key: apiKey }) });
-    if (start.status === 401) { location.href = '/'; return { ok: false, message: 'session expired' }; }
-    const started = await start.json().catch(() => null);
-    if (!start.ok || !started || !started.ticket) throw new Error((started && started.error) || 'could not save the api-key');
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 500));
-      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
-        { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      const d = await r.json().catch(() => null);
-      if (d && d.status === 'done') return d;
-    }
-    throw new Error('saving the api-key timed out');
-  }
+  // The api-key never goes in running_config — collectord seals it and engined stores it on the
+  // device row — so saving it is a daemon round trip like the tests above, not a config change.
+  const saveApiKey = (oid, apiKey) =>
+    window.NMS.utils.runConnectorTest('/api/connector/sase-key', { oid, api_key: apiKey },
+                                      { everyMs: 500, tries: 20,
+                                        startError: 'could not save the api-key',
+                                        timeoutError: 'saving the api-key timed out' });
 
   // Credential-less TLS handshake to an NGFW: returns { ok, fingerprint, cert_subject,
   // fingerprint_trusted, message }. Same ticket/poll shape as the API Key tests — mgmtd hands the
   // handshake to collectord, which is the daemon that will actually talk to this device.
-  async function runTlsProbe(payload) {
-    const start = await fetch('/api/connector/tls-probe', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (start.status === 401) { location.href = '/'; return { ok: false, message: 'session expired' }; }
-    const started = await start.json().catch(() => null);
-    if (!start.ok || !started || !started.ticket) throw new Error((started && started.error) || 'could not start the probe');
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
-        { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      const d = await r.json().catch(() => null);
-      if (d && d.status === 'done') return d;
-    }
-    throw new Error('the probe timed out');
-  }
+  // A slower cadence than the credential tests: this one opens a TLS connection to a device that
+  // may simply not answer, and 30s is the wait before calling that unreachable.
+  const runTlsProbe = (payload) =>
+    window.NMS.utils.runConnectorTest('/api/connector/tls-probe', payload,
+                                      { everyMs: 1000, tries: 30,
+                                        startError: 'could not start the probe',
+                                        timeoutError: 'the probe timed out' });
 
   // `oid` is carried out-of-band (draftOid) so it survives the device-type rebuild and stays
   // immutable for the device's lifetime.

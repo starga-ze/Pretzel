@@ -70,14 +70,8 @@ void UserController::credentials(MgmtdServiceManager& sm, const pz::http::HttpRe
 void UserController::credentialStore(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     const std::string oid = input.value("oid", std::string());
     const std::string username = input.value("username", std::string());

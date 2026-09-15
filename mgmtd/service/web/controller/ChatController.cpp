@@ -191,14 +191,8 @@ void ChatController::models(MgmtdServiceManager& sm, const pz::http::HttpRequest
 void ChatController::send(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     json input;
-    try
-    {
-        input = json::parse(req.body);
-    }
-    catch (const std::exception&)
-    {
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
-    }
+    if (!parseBody(req, resp, input))
+        return;
 
     const std::string message = input.value("message", std::string());
     if (message.empty())
@@ -383,9 +377,9 @@ void ChatController::sessionDelete(MgmtdServiceManager& sm, const pz::http::Http
     if (owner.empty())
         return fill(resp, 401, R"({"error":"unauthorized"})");
 
-    json input = json::parse(req.body, nullptr, false);
-    if (input.is_discarded())
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    json input;
+    if (!parseBody(req, resp, input))
+        return;
 
     const std::string oid = input.value("oid", std::string());
     if (oid.empty())
@@ -414,9 +408,9 @@ void ChatController::sessionPatch(MgmtdServiceManager& sm, const pz::http::HttpR
     if (owner.empty())
         return fill(resp, 401, R"({"error":"unauthorized"})");
 
-    json input = json::parse(req.body, nullptr, false);
-    if (input.is_discarded())
-        return fill(resp, 400, R"({"error":"invalid JSON body"})");
+    json input;
+    if (!parseBody(req, resp, input))
+        return;
 
     const std::string oid = input.value("oid", std::string());
     if (oid.empty())

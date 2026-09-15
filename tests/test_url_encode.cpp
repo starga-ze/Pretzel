@@ -94,3 +94,58 @@ TEST(UrlEncode, IsNotIdempotent)
     // again somewhere up the stack.
     EXPECT_EQ("%2520", urlEncode(urlEncode(" ")));
 }
+
+// ── urlDecode ─────────────────────────────────────────────────────────────────────────────────
+//
+// The inverse lived in mgmtd's WebUtil while the forward direction lived here, which is how a
+// third copy nearly got written. They belong together: the pair has one asymmetry, and it is only
+// visible when you can see both.
+
+TEST(UrlDecode, ReversesWhatUrlEncodeProduces)
+{
+    for (const char* raw : {"", "plain", "a b", "a/b?c=d&e", "%", "+", "ünïcode", "tab\there",
+                            "!*'();:@&=+$,/?#[]"})
+    {
+        EXPECT_EQ(raw, pz::http::urlDecode(pz::http::urlEncode(raw))) << "raw '" << raw << "'";
+    }
+}
+
+TEST(UrlDecode, DecodesPercentEscapesInEitherCase)
+{
+    EXPECT_EQ("a b", pz::http::urlDecode("a%20b"));
+    EXPECT_EQ("a/b", pz::http::urlDecode("a%2Fb"));
+    EXPECT_EQ("a/b", pz::http::urlDecode("a%2fb")) << "lower-case hex is just as valid";
+    EXPECT_EQ("ünïcode", pz::http::urlDecode("%C3%BCn%C3%AFcode")) << "multi-byte UTF-8 survives byte by byte";
+}
+
+TEST(UrlDecode, ReadsPlusAsASpace)
+{
+    // The one asymmetry in the pair. A query string is form-encoded, so '+' is a space there —
+    // while urlEncode never emits '+', because %20 is correct in both a query and a path.
+    EXPECT_EQ("a b", pz::http::urlDecode("a+b"));
+    EXPECT_EQ("a b", pz::http::urlDecode("a%20b"));
+    EXPECT_EQ("a%20b", pz::http::urlEncode("a b")) << "the forward direction stays path-safe";
+}
+
+TEST(UrlDecode, LeavesAMalformedEscapeAsTyped)
+{
+    // Dropping it would make the handler see a different value than the operator sees in the
+    // address bar, and the difference would only show up as a filter that matches nothing.
+    EXPECT_EQ("100%", pz::http::urlDecode("100%"));
+    EXPECT_EQ("50%x", pz::http::urlDecode("50%x"));
+    EXPECT_EQ("%zz", pz::http::urlDecode("%zz"));
+    EXPECT_EQ("%2", pz::http::urlDecode("%2")) << "truncated at the end of the value";
+}
+
+TEST(UrlDecode, PassesThroughWhatNeedsNoDecoding)
+{
+    EXPECT_EQ("", pz::http::urlDecode(""));
+    EXPECT_EQ("abcDEF012-._~", pz::http::urlDecode("abcDEF012-._~"));
+}
+
+TEST(UrlDecode, DecodesAnEscapedPercentWithoutRunningOnIntoTheNextByte)
+{
+    // "%2520" is an escaped "%20": one round of decoding yields "%20", not a space.
+    EXPECT_EQ("%20", pz::http::urlDecode("%2520"));
+    EXPECT_EQ(" ", pz::http::urlDecode(pz::http::urlDecode("%2520")));
+}

@@ -1109,6 +1109,64 @@
       throw new Error('timed out waiting for an answer');
     },
 
+    // The connector-test shape, which four pages were each writing out: POST the (possibly
+    // uncommitted) target to mgmtd, get a ticket back, poll one fixed result endpoint until the
+    // answer is done. The browser cannot reach a customer's firewall, so every one of these is a
+    // round trip through collectord and the wait is measured in seconds, not milliseconds.
+    //
+    // Three things the copies did not agree on, settled here:
+    //   · 401. Only one of the four redirected to login, so a test started after the session
+    //     expired failed with a parse error on the login page instead of a sign-in prompt.
+    //   · 404. Worth its own message — it means the build is older than the page, not that the
+    //     device is unreachable.
+    //   · The first poll waits before asking. A device exchange has never finished in under a
+    //     tick, and asking immediately only costs a round trip.
+    // Every settings editor opens the same way: read the whole configuration document, tell the
+    // draft layer which version this page was built against, and take its own slice. Eight pages
+    // were spelling that out line for line — including the version check, which is what makes the
+    // draft refuse to publish on top of a configuration that moved underneath it.
+    //
+    // Answers null when the session has expired (the page is already navigating to login), so the
+    // caller's whole error path is `if (!d) return;`.
+    async loadSettings() {
+      const d = await this.fetchJSON('/api/settings', { headers: { Accept: 'application/json' } });
+      if (!d) return null;
+      window.NMS.draft.checkBase(d.version);
+      return d;
+    },
+
+    async runConnectorTest(dispatchUrl, payload, opts) {
+      const o = Object.assign(
+        { everyMs: 700, tries: 40, resultUrl: '/api/connector/test-result', startError: '', timeoutError: '' },
+        opts || {});
+
+      const start = await fetch(dispatchUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      // Unlike fetchJSON, this answers with a shaped result rather than null: the page is on its
+      // way to the login screen either way, and a null would throw out of the caller's first
+      // property read before the navigation lands.
+      if (start.status === 401) { window.location.href = '/'; return { ok: false, message: 'session expired' }; }
+      if (start.status === 404) throw new Error('backend test endpoint is not available');
+
+      const started = await start.json().catch(() => null);
+      if (!start.ok || !started || !started.ticket)
+        throw new Error((started && started.error) || o.startError || ('HTTP ' + start.status));
+
+      const url = o.resultUrl + (o.resultUrl.indexOf('?') === -1 ? '?' : '&') + 'ticket=' + started.ticket;
+      for (let i = 0; i < o.tries; i++) {
+        await new Promise(r => setTimeout(r, o.everyMs));
+        const r = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        if (r.status === 401) { window.location.href = '/'; return { ok: false, message: 'session expired' }; }
+        const d = await r.json().catch(() => null);
+        if (d && d.status === 'done') return d;
+      }
+      throw new Error(o.timeoutError || 'timed out waiting for the device');
+    },
+
     async fetchJSON(url, opts) {
       const r = await fetch(url, Object.assign({ credentials: 'same-origin' }, opts));
       if (r.status === 401) { window.location.href = '/'; return null; }

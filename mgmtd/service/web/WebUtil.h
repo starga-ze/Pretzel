@@ -1,39 +1,16 @@
 #pragma once
 
 #include "http/HttpMessage.h"
+#include "http/UrlEncode.h"
 
-#include <cctype>
+#include <nlohmann/json.hpp>
+
 #include <sstream>
 #include <string>
 #include <utility>
 
 namespace pz::mgmtd
 {
-
-// Percent-decode a query value ('+' is a space), so a filter term can carry spaces and punctuation.
-inline std::string urlDecode(const std::string& in)
-{
-    std::string out;
-    out.reserve(in.size());
-    for (std::size_t i = 0; i < in.size(); ++i)
-    {
-        if (in[i] == '+')
-        {
-            out.push_back(' ');
-        }
-        else if (in[i] == '%' && i + 2 < in.size() && std::isxdigit((unsigned char)in[i + 1]) &&
-                 std::isxdigit((unsigned char)in[i + 2]))
-        {
-            out.push_back(static_cast<char>(std::stoi(in.substr(i + 1, 2), nullptr, 16)));
-            i += 2;
-        }
-        else
-        {
-            out.push_back(in[i]);
-        }
-    }
-    return out;
-}
 
 // One query-string value from a request target, decoded; empty when absent. Every GET route that
 // takes filters parses its target this way, so the parser lives here rather than once per controller.
@@ -49,7 +26,7 @@ inline std::string queryParam(const std::string& target, const std::string& key)
     {
         const auto eq = token.find('=');
         if (eq != std::string::npos && token.substr(0, eq) == key)
-            return urlDecode(token.substr(eq + 1));
+            return pz::http::urlDecode(token.substr(eq + 1));
     }
     return {};
 }
@@ -62,6 +39,32 @@ inline void fill(pz::http::HttpResponse& r, int status, std::string body,
     r.status = status;
     r.contentType = std::move(contentType);
     r.body = std::move(body);
+}
+
+// Read a request body that must be a JSON object, or answer 400 and say so.
+//
+// Every handler that takes a body was writing this itself, and each copy stopped one step short:
+// it checked that the body PARSED, not that it was an object. A body of `[]`, `42` or `null`
+// parses perfectly and then throws out of the first `input.value(...)` — nlohmann's value() is an
+// object accessor — and there is no try/catch between here and the socket, so a well-formed but
+// wrong-shaped body took the daemon down rather than earning a 400. Requiring the object here is
+// what makes that a refusal instead.
+//
+// Returns false when it has already filled `resp`; the caller's whole error path is `return`.
+inline bool parseBody(const pz::http::HttpRequest& req, pz::http::HttpResponse& resp, nlohmann::json& out)
+{
+    out = nlohmann::json::parse(req.body, nullptr, /*allow_exceptions=*/false);
+    if (out.is_discarded())
+    {
+        fill(resp, 400, R"({"error":"invalid JSON body"})");
+        return false;
+    }
+    if (!out.is_object())
+    {
+        fill(resp, 400, R"({"error":"request body must be a JSON object"})");
+        return false;
+    }
+    return true;
 }
 
 // The session cookie value, or empty. Shared by the router's auth gate and the handlers that read

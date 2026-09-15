@@ -51,10 +51,8 @@
   // ── Data load ────────────────────────────────────────────────────────────────
   async function load() {
     try {
-      const r = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (r.status === 401) { location.href = '/'; return; }
-      const d = await r.json();
-      window.NMS.draft.checkBase(d.version);
+      const d = await window.NMS.utils.loadSettings();
+      if (!d) return;
       const site = ((d.scopes || {}).pretzel || {}).site || {};
       deployed = (Array.isArray(site.sites) ? site.sites : []).map(normalize);
     } catch (_) { deployed = []; }

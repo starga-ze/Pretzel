@@ -168,10 +168,8 @@
 
   async function load() {
     try {
-      const r = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (r.status === 401) { location.href = '/'; return; }
-      const d = await r.json();
-      window.NMS.draft.checkBase(d.version);
+      const d = await window.NMS.utils.loadSettings();
+      if (!d) return;
       deployed = normalize((d.scopes || {})[SCOPE] || {});
     } catch (_) { deployed = []; }
     const staged = window.NMS.draft.get(DRAFT_KEY, null);

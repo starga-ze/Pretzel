@@ -241,10 +241,8 @@
   // ── Data load ────────────────────────────────────────────────────────────────
   async function load() {
     try {
-      const r = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (r.status === 401) { location.href = '/'; return; }
-      const d = await r.json();
-      window.NMS.draft.checkBase(d.version);
+      const d = await window.NMS.utils.loadSettings();
+      if (!d) return;
       const api = ((d.scopes || {}).pretzel || {}).connector || {};
       deployed = (Array.isArray(api.endpoints) ? api.endpoints : []).map(normalize);
     } catch (_) { deployed = []; }
@@ -738,26 +736,10 @@
   const POLL_MS = 700;
   const POLL_LIMIT = 40;
 
-  async function runDeviceTest(path, payload) {
-    const start = await fetch(path, {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (start.status === 404) throw new Error('backend test endpoint is not available');
-    const started = await start.json().catch(() => null);
-    if (!start.ok || !started || !started.ticket)
-      throw new Error((started && started.error) || ('HTTP ' + start.status));
-
-    for (let i = 0; i < POLL_LIMIT; i++) {
-      await new Promise(r => setTimeout(r, POLL_MS));
-      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
-                            { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      const d = await r.json().catch(() => null);
-      if (d && d.status === 'done') return d;
-    }
-    throw new Error('timed out waiting for the device');
-  }
+  // Dispatch-and-poll lives in NMS.utils: three pages were carrying a copy of it, and only one of
+  // them redirected to login when the session had expired mid-test.
+  const runDeviceTest = (path, payload) =>
+    window.NMS.utils.runConnectorTest(path, payload, { everyMs: POLL_MS, tries: POLL_LIMIT });
 
   const stepRow = (label, st) => window.NMS.testPanel.step(label, st);
 

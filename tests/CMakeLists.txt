@@ -147,3 +147,9 @@ pz_add_test(test-settings-validation  test_settings_validation.cpp  GTest::gtest
 target_sources(test-settings-validation PRIVATE
     ${CMAKE_SOURCE_DIR}/mgmtd/service/web/controller/SettingsValidation.cpp)
 target_include_directories(test-settings-validation PRIVATE ${CMAKE_SOURCE_DIR}/mgmtd)
+
+# mgmtd's web helpers. Header-only, so only the include path is needed — no controller, no service
+# manager. parseBody is the reason this exists: it is the one gate every handler's body goes
+# through, and the per-controller copies it replaced all missed the same case.
+pz_add_test(test-web-util           test_web_util.cpp           GTest::gtest_main)
+target_include_directories(test-web-util PRIVATE ${CMAKE_SOURCE_DIR}/mgmtd)

@@ -132,10 +132,8 @@
   // ── Data load ────────────────────────────────────────────────────────────────
   async function load() {
     try {
-      const r = await fetch('/api/settings', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (r.status === 401) { location.href = '/'; return; }
-      const d = await r.json();
-      window.NMS.draft.checkBase(d.version);
+      const d = await window.NMS.utils.loadSettings();
+      if (!d) return;
       const api = ((d.scopes || {}).pretzel || {}).connector || {};
       deployed = (Array.isArray(api.api_credentials) ? api.api_credentials : []).map(normalize);
     } catch (_) { deployed = []; }
@@ -691,47 +689,19 @@
 
   // Seal + store this key's account credential on the appliance. Called on Save, so the password
   // survives a refresh, a different browser and a different machine — it is the same ticket/poll
-  // shape as the tests, since collectord (which holds credentials.key) does the sealing.
-  async function storeCredential(oid, username, password) {
-    const start = await fetch('/api/connector/credential', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ oid, secrets: { username, password } }),
-    });
-    if (start.status === 401) { location.href = '/'; return { ok: false, message: 'session expired' }; }
-    const started = await start.json().catch(() => null);
-    if (!start.ok || !started || !started.ticket)
-      throw new Error((started && started.error) || 'could not save the password');
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 500));
-      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
-                            { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      const d = await r.json().catch(() => null);
-      if (d && d.status === 'done') return d;
-    }
-    throw new Error('saving the password timed out');
-  }
+  // shape as the tests, since collectord (which holds credentials.key) does the sealing — only
+  // quicker: nothing is dialled, the daemon just encrypts and hands the blob to engined.
+  const storeCredential = (oid, username, password) =>
+    window.NMS.utils.runConnectorTest('/api/connector/credential',
+                                      { oid, secrets: { username, password } },
+                                      { everyMs: 500, tries: 20,
+                                        startError: 'could not save the password',
+                                        timeoutError: 'saving the password timed out' });
 
-  async function runDeviceTest(path, payload) {
-    const start = await fetch(path, {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (start.status === 404) throw new Error('backend test endpoint is not available');
-    const started = await start.json().catch(() => null);
-    if (!start.ok || !started || !started.ticket)
-      throw new Error((started && started.error) || ('HTTP ' + start.status));
-
-    for (let i = 0; i < POLL_LIMIT; i++) {
-      await new Promise(r => setTimeout(r, POLL_MS));
-      const r = await fetch('/api/connector/test-result?ticket=' + started.ticket,
-                            { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      const d = await r.json().catch(() => null);
-      if (d && d.status === 'done') return d;
-    }
-    throw new Error('timed out waiting for the device');
-  }
+  // Dispatch-and-poll lives in NMS.utils: three pages were carrying a copy of it, and only one of
+  // them redirected to login when the session had expired mid-test.
+  const runDeviceTest = (path, payload) =>
+    window.NMS.utils.runConnectorTest(path, payload, { everyMs: POLL_MS, tries: POLL_LIMIT });
 
   const stepRow = (label, st) => window.NMS.testPanel.step(label, st);
 
