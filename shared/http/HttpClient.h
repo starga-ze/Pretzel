@@ -12,10 +12,11 @@
 namespace pz::http
 {
 
-// Outbound HTTPS with certificate pinning, for reaching managed devices. Two daemons drive it —
-// probed runs the connector tests and credential auto-refresh, collectord runs the periodic
-// collection — so the transport lives in shared alongside the inbound HttpServer that apid and
-// mgmtd share, rather than inside either daemon.
+// Outbound HTTPS with certificate pinning, for reaching managed devices. collectord is the only
+// daemon that drives it — it owns every vendor HTTP call (connector tests, credential keygen and
+// refresh, SASE health, periodic collection), while probed stays ICMP-only and holds no
+// credentials. The transport still lives in shared, alongside the inbound HttpServer that apid and
+// mgmtd share, rather than inside the one daemon that happens to call it today.
 //
 // Devices like PAN-OS ship a self-signed certificate whose CN is the chassis serial, so hostname
 // verification can never pass and the usual answer — disabling verification — leaves the
@@ -65,5 +66,14 @@ struct ClientResponse
 using ResponseHandler = std::function<void(ClientResponse)>;
 
 void requestAsync(boost::asio::io_context& ioc, ClientRequest req, ResponseHandler onDone);
+
+// Blocking form: runs the same exchange on a private io_context and returns when it settles. The
+// per-phase deadlines still bound it, so it cannot hang longer than ClientRequest::timeout.
+//
+// Use this ONLY where the caller has no event loop to pump and is expected to stall — authd's
+// OIDC token exchange and JWKS fetch, which sit inside a synchronous request/response path. A
+// daemon with a tick loop must use requestAsync instead: blocking there stops every other service
+// in the process, not just the one making the call.
+ClientResponse requestSync(ClientRequest req);
 
 }

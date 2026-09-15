@@ -1,6 +1,7 @@
 #include "service/auth/OktaClient.h"
 
-#include "io/HttpsClient.h"
+#include "http/HttpClient.h"
+#include "http/UrlEncode.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
@@ -21,6 +22,40 @@ namespace pz::authd
 
 namespace
 {
+
+// Okta is reached over a public CA, so the shared client verifies the chain and hostname instead
+// of pinning. Its outcome is split across three fields — the transport result, whether the request
+// was written at all, and the HTTP status — so fold them back into the single "did this work"
+// question the two call sites below ask.
+pz::http::ClientRequest idpRequest(const std::string& host, std::uint16_t port, const std::string& target,
+                                   int timeoutMs, bool verifyTls)
+{
+    pz::http::ClientRequest req;
+    req.host = host;
+    req.port = port;
+    req.target = target;
+    req.verifyCa = verifyTls;
+    req.timeout = std::chrono::milliseconds(timeoutMs);
+    req.headers.emplace_back("User-Agent", "pretzel-authd/1.0");
+    req.headers.emplace_back("Accept", "application/json");
+    return req;
+}
+
+bool succeeded(const pz::http::ClientResponse& res)
+{
+    return res.requestSent && res.status >= 200 && res.status < 300;
+}
+
+std::string failureText(const pz::http::ClientResponse& res)
+{
+    if (!res.error.empty())
+        return res.error;
+    if (!res.tlsOk)
+        return "TLS handshake failed";
+    if (!res.requestSent)
+        return "server certificate rejected";
+    return "status " + std::to_string(res.status);
+}
 
 std::uint64_t nowSec()
 {
@@ -214,12 +249,12 @@ OktaClient::StartResult OktaClient::buildAuthorizeUrl()
     const std::string sha = sha256Raw(txn.codeVerifier);
     const std::string challenge = base64UrlEncode(reinterpret_cast<const unsigned char*>(sha.data()), sha.size());
 
-    using HC = pz::net::HttpsClient;
+    using pz::http::urlEncode;
     std::string url = "https://" + ep->host;
     if (ep->port != 443)
         url += ":" + std::to_string(ep->port);
-    url += ep->basePath + "/v1/authorize" + "?client_id=" + HC::urlEncode(m_cfg.clientId) + "&response_type=code" +
-           "&scope=" + HC::urlEncode(m_cfg.scopes) + "&redirect_uri=" + HC::urlEncode(m_cfg.redirectUri) +
+    url += ep->basePath + "/v1/authorize" + "?client_id=" + urlEncode(m_cfg.clientId) + "&response_type=code" +
+           "&scope=" + urlEncode(m_cfg.scopes) + "&redirect_uri=" + urlEncode(m_cfg.redirectUri) +
            "&state=" + state + "&nonce=" + txn.nonce + "&code_challenge=" + challenge + "&code_challenge_method=S256";
 
     m_txns[state] = std::move(txn);
@@ -258,29 +293,23 @@ OktaClient::Result OktaClient::exchangeAndVerify(const std::string& code, const 
         return r;
     }
 
-    using HC = pz::net::HttpsClient;
+    using pz::http::urlEncode;
     const std::string body = "grant_type=authorization_code"
                              "&code=" +
-                             HC::urlEncode(code) + "&redirect_uri=" + HC::urlEncode(m_cfg.redirectUri) +
-                             "&client_id=" + HC::urlEncode(m_cfg.clientId) +
-                             "&client_secret=" + HC::urlEncode(m_cfg.clientSecret) +
+                             urlEncode(code) + "&redirect_uri=" + urlEncode(m_cfg.redirectUri) +
+                             "&client_id=" + urlEncode(m_cfg.clientId) +
+                             "&client_secret=" + urlEncode(m_cfg.clientSecret) +
                              "&code_verifier=" + txn.codeVerifier;
 
-    HC::Request req;
+    auto req = idpRequest(ep->host, ep->port, ep->basePath + "/v1/token", m_cfg.timeoutMs, m_cfg.verifyTls);
     req.method = "POST";
-    req.host = ep->host;
-    req.port = ep->port;
-    req.target = ep->basePath + "/v1/token";
     req.body = body;
-    req.contentType = "application/x-www-form-urlencoded";
-    req.verifyTls = m_cfg.verifyTls;
-    req.timeoutMs = m_cfg.timeoutMs;
+    req.headers.emplace_back("Content-Type", "application/x-www-form-urlencoded");
 
-    const auto resp = HC::send(req);
-    if (!resp.ok)
+    const auto resp = pz::http::requestSync(std::move(req));
+    if (!succeeded(resp))
     {
-        r.error =
-            "token endpoint failed: " + (resp.error.empty() ? ("status " + std::to_string(resp.status)) : resp.error);
+        r.error = "token endpoint failed: " + failureText(resp);
         return r;
     }
 
@@ -432,11 +461,11 @@ bool OktaClient::verifySignatureRs256(const std::string& signingInput, const std
         return false;
     }
 
-    using HC = pz::net::HttpsClient;
-    const auto resp = HC::get(ep->host, ep->port, ep->basePath + "/v1/keys", m_cfg.timeoutMs, m_cfg.verifyTls);
-    if (!resp.ok)
+    const auto resp = pz::http::requestSync(
+        idpRequest(ep->host, ep->port, ep->basePath + "/v1/keys", m_cfg.timeoutMs, m_cfg.verifyTls));
+    if (!succeeded(resp))
     {
-        errOut = "jwks fetch failed";
+        errOut = "jwks fetch failed: " + failureText(resp);
         return false;
     }
 

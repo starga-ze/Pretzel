@@ -66,7 +66,7 @@ bool sameFingerprint(const std::string& a, const std::string& b)
 
 }
 
-ClientSession::ClientSession(net::io_context& ioc, ClientRequest req, ResponseHandler onDone)
+HttpClientSession::HttpClientSession(net::io_context& ioc, ClientRequest req, ResponseHandler onDone)
     : m_req(std::move(req)),
       m_onDone(std::move(onDone)),
       m_sslCtx(ssl::context::tls_client),
@@ -75,7 +75,7 @@ ClientSession::ClientSession(net::io_context& ioc, ClientRequest req, ResponseHa
 {
 }
 
-void ClientSession::run()
+void HttpClientSession::run()
 {
     try
     {
@@ -88,7 +88,7 @@ void ClientSession::run()
     }
 }
 
-void ClientSession::start()
+void HttpClientSession::start()
 {
     m_sslCtx.set_options(ssl::context::default_workarounds | ssl::context::no_sslv2 |
                          ssl::context::no_sslv3 | ssl::context::no_tlsv1 | ssl::context::no_tlsv1_1);
@@ -140,21 +140,21 @@ void ClientSession::start()
     m_stage = "resolve";
     arm();
     m_resolver.async_resolve(m_req.host, std::to_string(m_req.port),
-                             beast::bind_front_handler(&ClientSession::onResolve, shared_from_this()));
+                             beast::bind_front_handler(&HttpClientSession::onResolve, shared_from_this()));
 }
 
-void ClientSession::arm()
+void HttpClientSession::arm()
 {
     beast::get_lowest_layer(m_stream).expires_after(m_req.timeout);
 }
 
-void ClientSession::fail(beast::error_code ec)
+void HttpClientSession::fail(beast::error_code ec)
 {
     m_out.error = m_stage + ": " + ec.message();
     finish();
 }
 
-void ClientSession::finish()
+void HttpClientSession::finish()
 {
     if (m_done)
         return;
@@ -167,7 +167,7 @@ void ClientSession::finish()
         m_onDone(std::move(m_out));
 }
 
-void ClientSession::onResolve(beast::error_code ec, tcp::resolver::results_type results)
+void HttpClientSession::onResolve(beast::error_code ec, tcp::resolver::results_type results)
 {
     if (ec)
         return fail(ec);
@@ -175,10 +175,10 @@ void ClientSession::onResolve(beast::error_code ec, tcp::resolver::results_type 
     m_stage = "connect";
     arm();
     beast::get_lowest_layer(m_stream).async_connect(
-        results, beast::bind_front_handler(&ClientSession::onConnect, shared_from_this()));
+        results, beast::bind_front_handler(&HttpClientSession::onConnect, shared_from_this()));
 }
 
-void ClientSession::onConnect(beast::error_code ec, const tcp::endpoint&)
+void HttpClientSession::onConnect(beast::error_code ec, const tcp::endpoint&)
 {
     if (ec)
         return fail(ec);
@@ -186,10 +186,10 @@ void ClientSession::onConnect(beast::error_code ec, const tcp::endpoint&)
     m_stage = "handshake";
     arm();
     m_stream.async_handshake(ssl::stream_base::client,
-                             beast::bind_front_handler(&ClientSession::onHandshake, shared_from_this()));
+                             beast::bind_front_handler(&HttpClientSession::onHandshake, shared_from_this()));
 }
 
-void ClientSession::onHandshake(beast::error_code ec)
+void HttpClientSession::onHandshake(beast::error_code ec)
 {
     if (ec)
         return fail(ec);
@@ -226,10 +226,10 @@ void ClientSession::onHandshake(beast::error_code ec)
     m_out.requestSent = true;
     arm();
     beast::http::async_write(m_stream, m_httpReq,
-                             beast::bind_front_handler(&ClientSession::onWrite, shared_from_this()));
+                             beast::bind_front_handler(&HttpClientSession::onWrite, shared_from_this()));
 }
 
-void ClientSession::onWrite(beast::error_code ec, std::size_t)
+void HttpClientSession::onWrite(beast::error_code ec, std::size_t)
 {
     if (ec)
         return fail(ec);
@@ -237,10 +237,10 @@ void ClientSession::onWrite(beast::error_code ec, std::size_t)
     m_stage = "read";
     arm();
     beast::http::async_read(m_stream, m_buffer, m_httpRes,
-                            beast::bind_front_handler(&ClientSession::onRead, shared_from_this()));
+                            beast::bind_front_handler(&HttpClientSession::onRead, shared_from_this()));
 }
 
-void ClientSession::onRead(beast::error_code ec, std::size_t)
+void HttpClientSession::onRead(beast::error_code ec, std::size_t)
 {
     if (ec)
         return fail(ec);

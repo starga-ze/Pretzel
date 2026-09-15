@@ -13,7 +13,10 @@ and two integration points below are still open.
 - `service/auth/AuthAction.{h,cpp}`     — response action (echoes src + seqNo)
 - `service/auth/AuthService.{h,cpp}`    — local verify + Okta orchestration + Tx
 - `service/auth/OktaClient.{h,cpp}`     — OIDC: authorize URL, code exchange, id_token verify
-- `io/HttpsClient.{h,cpp}`              — Boost.Beast/OpenSSL client (copy of collectord's; dedupe later)
+
+Outbound HTTPS to the IdP uses `shared/http/HttpClient` (`pz::http::requestSync`) — the same client
+collectord drives, on its CA-verifying path. The `io/HttpsClient` copy that used to live here is
+gone; it never loaded the host CA bundle, so chain verification could not succeed against a real IdP.
 
 Wiring edits: `IpcProtocol.{h,cpp}` (new cmds), `AuthdEvent.h`/`AuthdAction.h` (Auth domain),
 `AuthdEventFactory.cpp` (cmd→event), `AuthdServiceManager.{h,cpp}` (register + configure),

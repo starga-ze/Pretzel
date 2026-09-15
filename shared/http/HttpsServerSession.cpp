@@ -1,4 +1,4 @@
-#include "http/HttpsSession.h"
+#include "http/HttpsServerSession.h"
 
 #include "http/HttpBeast.h"
 #include "http/HttpHandler.h"
@@ -9,25 +9,25 @@
 namespace pz::http
 {
 
-HttpsSession::HttpsSession(tcp::socket socket, HttpHandler* handler,
+HttpsServerSession::HttpsServerSession(tcp::socket socket, HttpHandler* handler,
                            std::shared_ptr<boost::asio::ssl::context> sslContext, std::string serverName)
     : m_stream(std::move(socket), *sslContext), m_handler(handler), m_serverName(std::move(serverName))
 {
 }
 
-void HttpsSession::run()
+void HttpsServerSession::run()
 {
     m_handler->addSession(shared_from_this());
     doHandshake();
 }
 
-void HttpsSession::doHandshake()
+void HttpsServerSession::doHandshake()
 {
     m_stream.async_handshake(boost::asio::ssl::stream_base::server,
-                             beast::bind_front_handler(&HttpsSession::onHandshake, shared_from_this()));
+                             beast::bind_front_handler(&HttpsServerSession::onHandshake, shared_from_this()));
 }
 
-void HttpsSession::onHandshake(beast::error_code ec)
+void HttpsServerSession::onHandshake(beast::error_code ec)
 {
     if (ec)
     {
@@ -39,15 +39,15 @@ void HttpsSession::onHandshake(beast::error_code ec)
     doRead();
 }
 
-void HttpsSession::doRead()
+void HttpsServerSession::doRead()
 {
     m_request = {};
 
     beast::http::async_read(m_stream, m_buffer, m_request,
-                            beast::bind_front_handler(&HttpsSession::onRead, shared_from_this()));
+                            beast::bind_front_handler(&HttpsServerSession::onRead, shared_from_this()));
 }
 
-void HttpsSession::onRead(beast::error_code ec, std::size_t)
+void HttpsServerSession::onRead(beast::error_code ec, std::size_t)
 {
     if (ec == beast::http::error::end_of_stream)
     {
@@ -65,7 +65,7 @@ void HttpsSession::onRead(beast::error_code ec, std::size_t)
     m_handler->ingress(detail::toRequest(m_request), m_id);
 }
 
-void HttpsSession::send(HttpResponse response)
+void HttpsServerSession::send(HttpResponse response)
 {
     bool close = false;
     auto res = detail::toBeastResponse(m_request, std::move(response), m_serverName, close);
@@ -73,10 +73,10 @@ void HttpsSession::send(HttpResponse response)
     m_responseHolder = res;
 
     beast::http::async_write(m_stream, *res,
-                             beast::bind_front_handler(&HttpsSession::onWrite, shared_from_this(), close));
+                             beast::bind_front_handler(&HttpsServerSession::onWrite, shared_from_this(), close));
 }
 
-void HttpsSession::onWrite(bool close, beast::error_code ec, std::size_t)
+void HttpsServerSession::onWrite(bool close, beast::error_code ec, std::size_t)
 {
     if (ec)
     {
@@ -95,12 +95,12 @@ void HttpsSession::onWrite(bool close, beast::error_code ec, std::size_t)
     doRead();
 }
 
-void HttpsSession::doClose()
+void HttpsServerSession::doClose()
 {
-    m_stream.async_shutdown(beast::bind_front_handler(&HttpsSession::onShutdown, shared_from_this()));
+    m_stream.async_shutdown(beast::bind_front_handler(&HttpsServerSession::onShutdown, shared_from_this()));
 }
 
-void HttpsSession::onShutdown(beast::error_code ec)
+void HttpsServerSession::onShutdown(beast::error_code ec)
 {
     if (ec && ec != boost::asio::error::eof)
     {

@@ -5,10 +5,10 @@
 namespace pz::http
 {
 
-class HttpSessionBase
+class HttpServerSessionBase
 {
 public:
-    virtual ~HttpSessionBase() = default;
+    virtual ~HttpServerSessionBase() = default;
 
     virtual void send(HttpResponse response) = 0;
 

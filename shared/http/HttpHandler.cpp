@@ -1,6 +1,6 @@
 #include "http/HttpHandler.h"
 
-#include "http/HttpSessionBase.h"
+#include "http/HttpServerSessionBase.h"
 #include "router/RxRouter.h"
 #include "util/Logger.h"
 
@@ -14,7 +14,7 @@ void HttpHandler::setRxRouter(pz::router::RxRouter* rxRouter)
     m_rxRouter = rxRouter;
 }
 
-SessionId HttpHandler::addSession(std::shared_ptr<HttpSessionBase> session)
+SessionId HttpHandler::addSession(std::shared_ptr<HttpServerSessionBase> session)
 {
     const SessionId id = ++m_nextId;
     session->setId(id);
@@ -48,7 +48,7 @@ void HttpHandler::egress(HttpResponse response, SessionId id)
         return;
     }
 
-    std::shared_ptr<HttpSessionBase> session = it->second;
+    std::shared_ptr<HttpServerSessionBase> session = it->second;
     session->send(std::move(response));
 }
 

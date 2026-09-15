@@ -70,3 +70,46 @@ pz_add_test(test-ngfw-model         test_ngfw_model.cpp         GTest::gtest_mai
 target_sources(test-ngfw-model PRIVATE
     ${CMAKE_SOURCE_DIR}/topologyd/service/topology/NgfwModel.cpp)
 target_include_directories(test-ngfw-model PRIVATE ${CMAKE_SOURCE_DIR}/topologyd)
+
+# probed's ICMP wire codec. Three translation units with no socket, no engine and no service
+# behind them: the codec turns an IcmpPacket into bytes and back, which is the whole reason the
+# framing logic was kept out of IcmpConnection.
+pz_add_test(test-icmp-codec         test_icmp_codec.cpp         GTest::gtest_main)
+target_sources(test-icmp-codec PRIVATE
+    ${CMAKE_SOURCE_DIR}/probed/icmp/IcmpCodec.cpp
+    ${CMAKE_SOURCE_DIR}/probed/icmp/IcmpPacket.cpp
+    ${CMAKE_SOURCE_DIR}/probed/icmp/IcmpProtocol.cpp)
+target_include_directories(test-icmp-codec PRIVATE ${CMAKE_SOURCE_DIR}/probed)
+
+# authd's OIDC client. Only OktaClient.cpp is pulled in — not SamlClient — so the test needs no
+# xmlsec and no libxml2. The suite stays on the offline half of the client: the authorize URL it
+# builds, and the callback guards that run before the token endpoint is ever called.
+pz_add_test(test-okta-client        test_okta_client.cpp)
+target_sources(test-okta-client PRIVATE
+    ${CMAKE_SOURCE_DIR}/authd/service/auth/OktaClient.cpp)
+target_include_directories(test-okta-client PRIVATE ${CMAKE_SOURCE_DIR}/authd)
+
+# authd's SAML client. Unlike the OIDC one this drags in real dependencies — xmlsec for signature
+# verification and zlib for the HTTP-Redirect DEFLATE — so the test declares the same packages
+# authd itself does. zlib is wanted twice over: SamlClient deflates, and the test inflates the
+# result back to XML to check what the IdP would actually receive.
+pkg_check_modules(XMLSEC QUIET xmlsec1-openssl)
+find_package(ZLIB QUIET)
+if(XMLSEC_FOUND AND ZLIB_FOUND)
+    pz_add_test(test-saml-client    test_saml_client.cpp)
+    target_sources(test-saml-client PRIVATE
+        ${CMAKE_SOURCE_DIR}/authd/service/auth/SamlClient.cpp)
+    target_include_directories(test-saml-client PRIVATE ${CMAKE_SOURCE_DIR}/authd ${XMLSEC_INCLUDE_DIRS})
+    target_link_libraries(test-saml-client PRIVATE ${XMLSEC_LIBRARIES} ZLIB::ZLIB)
+    target_compile_options(test-saml-client PRIVATE ${XMLSEC_CFLAGS_OTHER})
+else()
+    message(STATUS "xmlsec1-openssl or zlib not found — skipping test-saml-client")
+endif()
+
+# apid's HTTP routing. Extracted out of IngestService into its own translation unit precisely so it
+# could be linked without the service manager, the action queue and the Tx router behind it — the
+# routing decision is pure, everything else in that class is plumbing.
+pz_add_test(test-ingest-routing     test_ingest_routing.cpp)
+target_sources(test-ingest-routing PRIVATE
+    ${CMAKE_SOURCE_DIR}/apid/service/ingest/IngestRouting.cpp)
+target_include_directories(test-ingest-routing PRIVATE ${CMAKE_SOURCE_DIR}/apid)

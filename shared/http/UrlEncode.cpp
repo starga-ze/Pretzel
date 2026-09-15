@@ -1,7 +1,5 @@
 #include "http/UrlEncode.h"
 
-#include <cctype>
-
 namespace pz::http
 {
 
@@ -12,7 +10,11 @@ std::string urlEncode(const std::string& raw)
     out.reserve(raw.size() * 3);
     for (unsigned char c : raw)
     {
-        const bool unreserved = std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~';
+        // Spelled out rather than std::isalnum: that one answers per the active C locale, and the
+        // RFC 3986 unreserved set is fixed. A locale that classed extra bytes as alphanumeric
+        // would leave them unescaped in a query string.
+        const bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                                c == '-' || c == '_' || c == '.' || c == '~';
         if (unreserved)
         {
             out.push_back(static_cast<char>(c));

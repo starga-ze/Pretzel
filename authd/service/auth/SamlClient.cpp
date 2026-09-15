@@ -1,6 +1,6 @@
 #include "service/auth/SamlClient.h"
 
-#include "io/HttpsClient.h"
+#include "http/UrlEncode.h"
 #include "util/Logger.h"
 
 #include <libxml/parser.h>
@@ -309,14 +309,14 @@ SamlClient::StartResult SamlClient::buildAuthnRedirectUrl(const std::string& rel
         return r;
     }
 
-    using HC = pz::net::HttpsClient;
-    const std::string enc = HC::urlEncode(base64Encode(deflated.data(), deflated.size()));
+    using pz::http::urlEncode;
+    const std::string enc = urlEncode(base64Encode(deflated.data(), deflated.size()));
 
     std::string url = m_cfg.idpSsoUrl;
     url += (url.find('?') == std::string::npos) ? '?' : '&';
     url += "SAMLRequest=" + enc;
     if (!relayState.empty())
-        url += "&RelayState=" + HC::urlEncode(relayState);
+        url += "&RelayState=" + urlEncode(relayState);
 
     r.success = true;
     r.redirectUrl = std::move(url);

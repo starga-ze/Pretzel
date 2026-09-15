@@ -93,7 +93,7 @@ IpcWireHeader sampleHeader()
     h.src = static_cast<std::uint8_t>(IpcDaemon::Mgmtd);
     h.dst = static_cast<std::uint8_t>(IpcDaemon::Collectord);
     h.flags = IpcProtocol::toFlag(IpcFlag::Request);
-    h.cmd = static_cast<std::uint16_t>(IpcCmd::ApiConnectorTestRequest);
+    h.cmd = static_cast<std::uint16_t>(IpcCmd::ApiKeygenRequest);
     h.reserved = 0;
     h.seqNo = 0x12345678u;
     h.payloadLen = 0x00ABCDEFu;
@@ -167,12 +167,18 @@ TEST(IpcProtocolNaming, UnknownDaemonNameIsRejectedRatherThanGuessed)
 TEST(IpcProtocolNaming, EveryCommandHasAName)
 {
     // A command added to the enum but not to cmdToStr shows up as the fallback string, which
-    // makes every log line about it useless. These are the ones the API connector path uses.
+    // makes every log line about it useless. These are the ones the API connector path uses —
+    // one request command per operation, all answered by the single ApiConnectorTestResponse.
     const IpcCmd cmds[] = {IpcCmd::ClientHello,
                            IpcCmd::ServerHello,
                            IpcCmd::LocalUserUpdate,
                            IpcCmd::ApiCredentialStateUpdate,
-                           IpcCmd::ApiConnectorTestRequest,
+                           IpcCmd::ApiKeygenRequest,
+                           IpcCmd::ApiEndpointTestRequest,
+                           IpcCmd::ApiSaseTestRequest,
+                           IpcCmd::ApiTlsProbeRequest,
+                           IpcCmd::ApiSaseKeyStoreRequest,
+                           IpcCmd::ApiCredentialStoreRequest,
                            IpcCmd::ApiConnectorTestResponse,
                            IpcCmd::AuthSamlAcsRequest,
                            IpcCmd::AuthSamlAcsResponse};
@@ -188,7 +194,7 @@ TEST(IpcProtocolNaming, EveryCommandHasAName)
 
 TEST(IpcProtocolNaming, DistinctCommandsHaveDistinctNames)
 {
-    EXPECT_STRNE(IpcProtocol::cmdToStr(IpcCmd::ApiConnectorTestRequest),
+    EXPECT_STRNE(IpcProtocol::cmdToStr(IpcCmd::ApiKeygenRequest),
                  IpcProtocol::cmdToStr(IpcCmd::ApiConnectorTestResponse));
     EXPECT_STRNE(IpcProtocol::cmdToStr(IpcCmd::ApiCredentialStateUpdate),
                  IpcProtocol::cmdToStr(IpcCmd::LocalUserUpdate));

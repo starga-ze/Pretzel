@@ -23,8 +23,6 @@ public:
 private:
     void route(const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 
-    std::string bearerToken(const std::string& authorization) const;
-
     std::string m_ingestToken;
 };
 

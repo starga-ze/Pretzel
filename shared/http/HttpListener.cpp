@@ -1,8 +1,8 @@
 #include "http/HttpListener.h"
 
 #include "http/HttpHandler.h"
-#include "http/HttpSession.h"
-#include "http/HttpsSession.h"
+#include "http/HttpServerSession.h"
+#include "http/HttpsServerSession.h"
 #include "util/Logger.h"
 
 #include <functional>
@@ -84,11 +84,11 @@ void HttpListener::onAccept(boost::system::error_code ec, tcp::socket socket)
     {
         if (m_sslContext)
         {
-            std::make_shared<HttpsSession>(std::move(socket), m_handler.get(), m_sslContext, m_serverName)->run();
+            std::make_shared<HttpsServerSession>(std::move(socket), m_handler.get(), m_sslContext, m_serverName)->run();
         }
         else
         {
-            std::make_shared<HttpSession>(std::move(socket), m_handler.get(), m_serverName)->run();
+            std::make_shared<HttpServerSession>(std::move(socket), m_handler.get(), m_serverName)->run();
         }
     }
     else

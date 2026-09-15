@@ -1,10 +1,8 @@
 #pragma once
 
-#include "http/HttpSessionBase.h"
+#include "http/HttpServerSessionBase.h"
 
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/ssl/context.hpp>
-#include <boost/asio/ssl/stream.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/http.hpp>
 
@@ -19,30 +17,23 @@ using tcp = boost::asio::ip::tcp;
 
 class HttpHandler;
 
-class HttpsSession : public std::enable_shared_from_this<HttpsSession>, public HttpSessionBase
+class HttpServerSession : public std::enable_shared_from_this<HttpServerSession>, public HttpServerSessionBase
 {
 public:
-    HttpsSession(tcp::socket socket, HttpHandler* handler, std::shared_ptr<boost::asio::ssl::context> sslContext,
-                 std::string serverName);
+    HttpServerSession(tcp::socket socket, HttpHandler* handler, std::string serverName);
 
     void run();
 
     void send(HttpResponse response) override;
 
 private:
-    void doHandshake();
-    void onHandshake(beast::error_code ec);
-
     void doRead();
     void onRead(beast::error_code ec, std::size_t bytesTransferred);
-
     void onWrite(bool close, beast::error_code ec, std::size_t bytesTransferred);
-
     void doClose();
-    void onShutdown(beast::error_code ec);
 
 private:
-    boost::asio::ssl::stream<tcp::socket> m_stream;
+    tcp::socket m_socket;
     beast::flat_buffer m_buffer;
     beast::http::request<beast::http::string_body> m_request;
     HttpHandler* m_handler;

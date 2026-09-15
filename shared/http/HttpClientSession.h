@@ -20,20 +20,20 @@ namespace net = boost::asio;
 namespace ssl = net::ssl;
 using tcp = net::ip::tcp;
 
-// One outbound HTTPS exchange, structured to mirror the inbound HttpSession: a self-owning session
-// whose phases are named member functions wired with beast::bind_front_handler — no lambdas. Each
-// async step re-arms the deadline and forwards to the next on_* member; a single finish() is the
-// only exit.
+// One outbound HTTPS exchange, structured to mirror the inbound HttpServerSession: a self-owning
+// session whose phases are named member functions wired with beast::bind_front_handler — no
+// lambdas. Each async step re-arms the deadline and forwards to the next on_* member; a single
+// finish() is the only exit.
 //
 // resolve → connect → handshake → [pin gate] → write → read → finish
 //
 // The pin is checked in onHandshake, before anything is written, so a man-in-the-middle never
 // receives the credential. The session holds itself alive through shared_from_this until it
 // settles, so there is no run loop for the caller's frame to block on.
-class ClientSession : public std::enable_shared_from_this<ClientSession>
+class HttpClientSession : public std::enable_shared_from_this<HttpClientSession>
 {
 public:
-    ClientSession(net::io_context& ioc, ClientRequest req, ResponseHandler onDone);
+    HttpClientSession(net::io_context& ioc, ClientRequest req, ResponseHandler onDone);
 
     // Never throws: a failure during setup still has to reach the handler, or the caller's ticket
     // stays pending forever.

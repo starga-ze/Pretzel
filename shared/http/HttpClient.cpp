@@ -13,9 +13,9 @@ void requestAsync(boost::asio::io_context& ioc, ClientRequest req, ResponseHandl
 {
     try
     {
-        // onDone is copied rather than moved: ClientSession::run() cannot throw, so reaching the
+        // onDone is copied rather than moved: HttpClientSession::run() cannot throw, so reaching the
         // catch means the session was never constructed and never took ownership of the handler.
-        std::make_shared<ClientSession>(ioc, std::move(req), onDone)->run();
+        std::make_shared<HttpClientSession>(ioc, std::move(req), onDone)->run();
     }
     catch (const std::exception& e)
     {
@@ -24,6 +24,22 @@ void requestAsync(boost::asio::io_context& ioc, ClientRequest req, ResponseHandl
         if (onDone)
             onDone(std::move(out));
     }
+}
+
+ClientResponse requestSync(ClientRequest req)
+{
+    boost::asio::io_context ioc;
+
+    ClientResponse out;
+    out.error = "request never settled";
+
+    requestAsync(ioc, std::move(req), [&out](ClientResponse res) { out = std::move(res); });
+
+    // run() returns once the session has finished and released itself; the deadlines inside bound
+    // how long that can take, so there is no separate guard here.
+    ioc.run();
+
+    return out;
 }
 
 }

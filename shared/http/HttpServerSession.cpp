@@ -1,4 +1,4 @@
-#include "http/HttpSession.h"
+#include "http/HttpServerSession.h"
 
 #include "http/HttpBeast.h"
 #include "http/HttpHandler.h"
@@ -7,26 +7,26 @@
 namespace pz::http
 {
 
-HttpSession::HttpSession(tcp::socket socket, HttpHandler* handler, std::string serverName)
+HttpServerSession::HttpServerSession(tcp::socket socket, HttpHandler* handler, std::string serverName)
     : m_socket(std::move(socket)), m_handler(handler), m_serverName(std::move(serverName))
 {
 }
 
-void HttpSession::run()
+void HttpServerSession::run()
 {
     m_handler->addSession(shared_from_this());
     doRead();
 }
 
-void HttpSession::doRead()
+void HttpServerSession::doRead()
 {
     m_request = {};
 
     beast::http::async_read(m_socket, m_buffer, m_request,
-                            beast::bind_front_handler(&HttpSession::onRead, shared_from_this()));
+                            beast::bind_front_handler(&HttpServerSession::onRead, shared_from_this()));
 }
 
-void HttpSession::onRead(beast::error_code ec, std::size_t)
+void HttpServerSession::onRead(beast::error_code ec, std::size_t)
 {
     if (ec == beast::http::error::end_of_stream)
     {
@@ -44,7 +44,7 @@ void HttpSession::onRead(beast::error_code ec, std::size_t)
     m_handler->ingress(detail::toRequest(m_request), m_id);
 }
 
-void HttpSession::send(HttpResponse response)
+void HttpServerSession::send(HttpResponse response)
 {
     bool close = false;
     auto res = detail::toBeastResponse(m_request, std::move(response), m_serverName, close);
@@ -52,10 +52,10 @@ void HttpSession::send(HttpResponse response)
     m_responseHolder = res;
 
     beast::http::async_write(m_socket, *res,
-                             beast::bind_front_handler(&HttpSession::onWrite, shared_from_this(), close));
+                             beast::bind_front_handler(&HttpServerSession::onWrite, shared_from_this(), close));
 }
 
-void HttpSession::onWrite(bool close, beast::error_code ec, std::size_t)
+void HttpServerSession::onWrite(bool close, beast::error_code ec, std::size_t)
 {
     if (ec)
     {
@@ -74,7 +74,7 @@ void HttpSession::onWrite(bool close, beast::error_code ec, std::size_t)
     doRead();
 }
 
-void HttpSession::doClose()
+void HttpServerSession::doClose()
 {
     beast::error_code ec;
     m_socket.shutdown(tcp::socket::shutdown_send, ec);

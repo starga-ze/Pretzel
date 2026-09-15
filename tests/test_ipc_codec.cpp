@@ -24,7 +24,7 @@ namespace
 constexpr std::size_t kHeaderLen = sizeof(IpcWireHeader);
 
 std::unique_ptr<IpcMessage> makeMessage(const std::string& payload,
-                                        IpcCmd cmd = IpcCmd::ApiConnectorTestRequest,
+                                        IpcCmd cmd = IpcCmd::ApiKeygenRequest,
                                         std::uint32_t seqNo = 42)
 {
     auto msg = std::make_unique<IpcMessage>();
