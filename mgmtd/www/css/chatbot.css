@@ -492,7 +492,6 @@ body.page-chatbot .content-body {
   padding: 8px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
   background: var(--surface-2, var(--surface)); border: 1px solid var(--border); color: var(--text);
 }
-.chat-f-note { margin: 0; font-size: 11px; color: var(--text-muted); line-height: 1.55; }
 
 /* ── Thread ─────────────────────────────────────────────────────────────────── */
 .chat-thread {

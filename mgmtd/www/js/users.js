@@ -222,9 +222,7 @@
     const staged = pending.has(u.oid);
     const marks = [];
     if (isSelf(u)) marks.push('<span class="usr-tag">you</span>');
-    if (staged && pending.get(u.oid) === null) marks.push('<span class="usr-tag is-drop">removing</span>');
-    else if (staged) marks.push('<span class="usr-tag is-staged">password staged</span>');
-    else if (creds !== null && !pwStored(u.oid)) marks.push('<span class="usr-tag is-drop">no password</span>');
+    if (staged && pending.get(u.oid) !== null) marks.push('<span class="usr-tag is-staged">password staged</span>');
     return `<div class="cell-name">${esc(u.username)}${marks.join('')}${
       u.description ? `<span class="ai-fam">${esc(u.description)}</span>` : ''}</div>`;
   }
@@ -245,6 +243,14 @@
         text: (u) => u.username,
         searchText: (u) => `${u.username} ${u.description}`,
         cell: nameCell },
+      { key: 'password', label: 'Password', cls: 'col-pw', sort: false,
+        text: (u) => (pwEffective(u.oid) ? 'set' : 'not set'),
+        cell: (u) => {
+          if (creds === null) return '<span class="muted">—</span>';
+          if (pending.get(u.oid) === null) return '<span class="usr-tag is-drop">removing</span>';
+          if (!pwEffective(u.oid)) return '<span class="usr-tag is-drop">not set</span>';
+          return `<span class="usr-pw mono-val">${'•'.repeat(12)}</span>`;
+        } },
       { key: 'role', label: 'Role', cls: 'col-role', filter: 'enum',
         text: (u) => roleOf(u.role).label,
         cell: (u) => `<span class="usr-role is-${esc(u.role)}">${esc(roleOf(u.role).label)}</span>` },
@@ -259,8 +265,8 @@
                     : 'Remove';
           const blocked = isSelf(u) || state.list.length < 2 || lastAdmin;
           return `
-          <button class="icon-btn" data-edit="${i}" title="Set password">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          <button class="icon-btn" data-edit="${i}" title="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
           </button>
           <button class="icon-btn danger" data-del="${i}" title="${esc(why)}"${blocked ? ' disabled' : ''}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -307,14 +313,14 @@
     const staged = pending.has(draft.oid) && pending.get(draft.oid) !== null;
 
     return `
-      <div class="field-row"><label>Username</label>
+      <div class="field-row"><label${isNew ? ' class="req"' : ''}>Username</label>
         ${isNew
           ? `<input type="text" data-f="username" spellcheck="false" autocomplete="off"
                     value="${esc(draft.username)}">`
           : `<div class="ep-fixed">${esc(draft.username)}</div>`}
       </div>
 
-      <div class="field-row"><label>Role</label>
+      <div class="field-row"><label class="req">Role</label>
         <select data-f="role">
           ${ROLES.map(r => `<option value="${esc(r.id)}"${
             r.id === draft.role ? ' selected' : ''}>${esc(r.label)}</option>`).join('')}
@@ -331,10 +337,10 @@
             <button class="btn-sm" id="usrPwUndo" type="button">Undo</button>
           </div>
         </div>` : `
-        <div class="field-row"><label>Password</label>
+        <div class="field-row"><label${isNew ? ' class="req"' : ''}>Password</label>
           <input type="password" data-pw="password" autocomplete="new-password" spellcheck="false"
                  value="${esc(pwDraft)}"></div>
-        <div class="field-row"><label>Password Confirm</label>
+        <div class="field-row"><label${isNew ? ' class="req"' : ''}>Password Confirm</label>
           <input type="password" data-pw="confirm" autocomplete="new-password" spellcheck="false"
                  value="${esc(pwConfirm)}"></div>`}`;
   }

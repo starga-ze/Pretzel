@@ -380,6 +380,18 @@ void ApiService::route(CollectordServiceManager& sm, const ApiEvent& event)
             m_credentialController.storeCredential(*this, sm, seqNo, input);
         break;
 
+    // The AI model refresh and the key it waits on. The controller holds the pairing, so the
+    // service does no more here than it does for the tests above.
+    case ApiEventType::RefreshAiModels:
+        if (decodeTest(event, seqNo, input))
+            m_aiModelController.refresh(sm, seqNo, input);
+        break;
+
+    case ApiEventType::ReceiveAiKeyState:
+        if (decodeTest(event, seqNo, input))
+            m_aiModelController.receiveKey(sm, seqNo, input);
+        break;
+
     // Repo + scheduling: these stay in the service (shared key cache; when-to-run timing).
     case ApiEventType::ReceiveKeyState:
         handleKeyState(sm, event);

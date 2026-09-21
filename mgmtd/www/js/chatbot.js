@@ -2315,9 +2315,13 @@
     c.messages.push(userMsg);
     c.updatedAt = now;
 
-    // What the appliance needs to file this turn. `seq` counts stored messages, not what is on
-    // screen: a wait bubble and a notice are this console's own furniture and are never written,
-    // so numbering by the rendered list would leave gaps the next load reads as missing turns.
+    // What the appliance needs to file this turn.
+    //
+    // No `seq`. This used to send one, counted from the messages this tab was holding, and the
+    // appliance wrote it down — so a tab with a shorter view of the conversation than the store
+    // had would number its turns over rows that already existed, and they were silently dropped.
+    // engined numbers them now, from the rows it has. The two oids stay: they are what says a
+    // retry is the same message rather than a new one.
     const answerOid = randId('m_', 10);
     const turnMeta = {
       service: c.mode || 'chat',
@@ -2325,7 +2329,6 @@
       draft: c.draft || '',
       question_oid: userMsg.id,
       answer_oid: answerOid,
-      seq: c.messages.filter(m => m.kind === 'text' && (m.role === 'user' || m.role === 'assistant')).length - 1,
     };
 
     // The wait is a sequence of steps the operator should see happen, not a hidden pause before
@@ -2866,25 +2869,20 @@
         <label class="chat-f">
           <span class="chat-f-l">Name <em>optional</em></span>
           <input id="nsName" type="text" maxlength="80" autocomplete="off"
-                 value="${esc(c ? (c.title || '') : '')}"
-                 placeholder="What this session is for"/>
+                 value="${esc(c ? (c.title || '') : '')}"/>
         </label>
         ${c ? `
         <label class="chat-f">
           <span class="chat-f-l">Model</span>
           <span class="chat-f-fixed">${esc(modelLabel(convoModel(c)))}</span>
-        </label>
-        <p class="chat-f-note">Changed from the composer, where it applies to the next message —
-          a session is not relabelled after the fact as having run on something it did not.</p>`
+        </label>`
         : `
         <label class="chat-f">
           <span class="chat-f-l">Model</span>
           <select id="nsModel">
             ${list.map(m => `<option value="${esc(m.id)}"${m.id === state.model ? ' selected' : ''}>${esc(m.label)}</option>`).join('')}
           </select>
-        </label>
-        <p class="chat-f-note">Kept on the session, so the thread reads back as the one that
-          answered it. Changeable later from the composer.</p>`}`;
+        </label>`}`;
       modal.hidden = false;
       window.NMS.utils.enhanceSelects(modalBody);
       setTimeout(() => document.getElementById('nsName')?.focus(), 0);

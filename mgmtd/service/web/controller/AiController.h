@@ -2,6 +2,11 @@
 
 #include "http/HttpMessage.h"
 
+namespace pz::ipc
+{
+class IpcMessage;
+}
+
 namespace pz::mgmtd
 {
 
@@ -33,6 +38,28 @@ public:
 
     // POST /api/ai/credential — { id, api_key } to store one, { id, clear: true } to remove it.
     void credentialStore(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // GET /api/ai/models — the model catalog, per vendor, as the vendors last listed it.
+    //
+    // Read straight from ai_provider_model (collectord fetches it, engined writes it, mgmtd may
+    // read) rather than shipped inside the console's JavaScript, which is where it used to live and
+    // where it could only be corrected by a release.
+    void models(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // POST /api/ai/models/update — { provider } to re-fetch one vendor's list.
+    //
+    // Delegated to collectord for the reason the connector tests are: it owns every outbound vendor
+    // call and is the only daemon with an io_context to run one on. Answers 202 with a ticket; the
+    // browser polls the route below. No key in the body — the vendor's key is already sealed in
+    // engined's store, and collectord opens it there.
+    void modelsUpdate(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // GET /api/ai/models/update-result?ticket= — what that refresh found, once it lands.
+    void modelsUpdateResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // collectord's answer, filed under the ticket the browser is holding. Called from the WebIpcEvent
+    // handler on AiModelUpdateResponse.
+    void onModelsUpdateResponse(MgmtdServiceManager& sm, const pz::ipc::IpcMessage& msg);
 };
 
 }

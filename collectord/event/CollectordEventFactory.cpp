@@ -80,6 +80,12 @@ std::unique_ptr<CollectordEvent> CollectordEventFactory::create(std::unique_ptr<
     case pz::ipc::IpcCmd::ApiCredentialStateResponse:
         return std::make_unique<ApiEvent>(ApiEventType::ReceiveKeyState, std::move(msg));
 
+    case pz::ipc::IpcCmd::AiModelUpdateRequest:
+        return std::make_unique<ApiEvent>(ApiEventType::RefreshAiModels, std::move(msg));
+
+    case pz::ipc::IpcCmd::AiCredentialStateResponse:
+        return std::make_unique<ApiEvent>(ApiEventType::ReceiveAiKeyState, std::move(msg));
+
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;

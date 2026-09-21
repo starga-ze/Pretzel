@@ -143,9 +143,15 @@
       if (!staleBase) return;
       const { from, to } = staleBase;
       staleBase = null;
-      alert(`Staged changes were discarded.\n\nThey were made against configuration version ${from}, `
-        + `but the appliance is now on version ${to} — the configuration they referred to no longer `
-        + `exists (a reset or a rollback). Nothing was published.`);
+      // Two paragraphs rather than a \n\n: the dialog escapes its text into a <p>, where a newline
+      // is whitespace. `detail` is the second paragraph the notice already renders.
+      window.NMS.notice({
+        title: 'Staged changes discarded',
+        message: 'Staged changes were discarded. Nothing was published.',
+        detail: `They were made against configuration version ${from}, but the appliance is now on `
+              + `version ${to} — the configuration they referred to no longer exists `
+              + `(a reset or a rollback).`,
+      });
     }, 0);
   });
 
@@ -281,6 +287,43 @@
   //
   // Promise-based rather than callback: the callers are `async` already, and `if (!await ...) return;`
   // reads the way the `if (!confirm(...)) return;` it replaces did.
+  // The same dialog with one button, in place of window.alert.
+  //
+  // For the reason NMS.confirm exists: the native one is drawn by the browser, in the operating
+  // system's language and typography, with the page's own hostname above the message — so the one
+  // moment the console most needs to look like this appliance was the one moment it did not.
+  //
+  // Promise-based like its neighbour, so a caller can await the acknowledgement; callers that do not
+  // care simply do not await.
+  window.NMS.notice = function (opts) {
+    const o = typeof opts === 'string' ? { message: opts } : (opts || {});
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        closeModal();
+        resolve();
+      };
+
+      const body = `<p class="cf-msg">${esc(o.message || '')}</p>`
+        + (o.detail ? `<p class="cf-detail">${esc(o.detail)}</p>` : '');
+      const ov = window.NMS.modal.open(
+        o.title || 'Notice', body,
+        `<button class="btn-primary btn-sm" id="cfOk">${esc(o.okLabel || 'OK')}</button>`);
+
+      ov.querySelector('#cfOk').addEventListener('click', done);
+      ov.querySelector('#cfOk').focus();
+      ov.addEventListener('click', (e) => { if (e.target === ov) done(); }, { once: true });
+      ov.querySelector('#cmClose')?.addEventListener('click', done, { once: true });
+      document.addEventListener('keydown', function onKey(e) {
+        if (e.key !== 'Escape' && e.key !== 'Enter') return;
+        document.removeEventListener('keydown', onKey);
+        done();
+      });
+    });
+  };
+
   window.NMS.confirm = function (opts) {
     const o = typeof opts === 'string' ? { message: opts } : (opts || {});
     return new Promise((resolve) => {

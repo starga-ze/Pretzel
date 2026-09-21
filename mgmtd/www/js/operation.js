@@ -25,14 +25,7 @@
   // Trim Postgres' fractional seconds + offset tail: "2026-07-27 14:08:00.435975+09" -> "…14:08:00".
   const trimTs = (s) => (s ? String(s).split('.')[0] : '—');
 
-  const svg = (inner) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
-  const IC = {
-    view: svg('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'),
-    save: svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>'),
-    load: svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'),
-    imp: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>'),
-    exp: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'),
-  };
+  const IC = window.NMS.utils.icons;
 
   let running = null;   // { version, committed_at, config }
   let msg = null;       // { text, err } — transient feedback on the page
@@ -64,40 +57,49 @@
           </div>
         </div>
 
-        <div class="info-card op-card">
-          <div class="info-card-title">Running Configuration
-            <span class="info-hint">${running ? 'v' + esc(running.version) : '—'}</span></div>
+        <div class="op-grid">
+          <div class="info-card op-card">
+            <div class="info-card-title">Running Configuration
+              <span class="info-hint">${running ? 'v' + esc(running.version) : '—'}</span></div>
 
-          <div class="info-row"><span class="info-label">Version</span>
-            <span class="info-value">${running ? esc(running.version) : '—'}</span></div>
-          <div class="info-row"><span class="info-label">Committed</span>
-            <span class="info-value">${running ? esc(trimTs(running.committed_at)) : '—'}</span></div>
+            <div class="info-row"><span class="info-label">Version</span>
+              <span class="info-value">${running ? esc(running.version) : '—'}</span></div>
+            <div class="info-row"><span class="info-label">Committed</span>
+              <span class="info-value">${running ? esc(trimTs(running.committed_at)) : '—'}</span></div>
 
-          ${staged ? '<p class="field-hint"><b class="rc-dirty">Staged changes are not included.</b></p>' : ''}
+            ${staged ? '<p class="field-hint"><b class="rc-dirty">Staged changes are not included.</b></p>' : ''}
 
-          <div class="op-toolbar">
-            <button class="op-btn" id="opView" ${running ? '' : 'disabled'}>${IC.view}<span>View</span></button>
-            <span class="op-sep"></span>
-            <button class="op-btn" id="opImport" title="Upload a config file to the appliance">${IC.imp}<span>Import</span></button>
-            <button class="op-btn" id="opExport" title="Download a saved config to this device">${IC.exp}<span>Export</span></button>
-            <span class="op-sep"></span>
-            <button class="op-btn" id="opSave" ${running ? '' : 'disabled'} title="Snapshot the running config to the appliance">${IC.save}<span>Save</span></button>
-            <button class="op-btn op-btn-load" id="opLoad" title="Apply a saved config and reload">${IC.load}<span>Load</span></button>
-            <input type="file" id="opFile" accept="application/json,.json" hidden>
+            <div class="op-toolbar">
+              <button class="op-btn" id="opView" ${running ? '' : 'disabled'}>${IC.view}<span>View</span></button>
+              <span class="op-sep"></span>
+              <button class="op-btn" id="opImport" title="Upload a config file to the appliance">${IC.imp}<span>Import</span></button>
+              <button class="op-btn" id="opExport" title="Download a saved config to this device">${IC.exp}<span>Export</span></button>
+              <span class="op-sep"></span>
+              <button class="op-btn" id="opSave" ${running ? '' : 'disabled'} title="Snapshot the running config to the appliance">${IC.save}<span>Save</span></button>
+              <button class="op-btn op-btn-primary" id="opLoad" title="Apply a saved config and reload">${IC.load}<span>Load</span></button>
+              <input type="file" id="opFile" accept="application/json,.json" hidden>
+            </div>
+
+            ${msg ? `<div class="op-msg ${msg.err ? 'err' : 'ok'}">${esc(msg.text)}</div>` : ''}
           </div>
 
-          ${msg ? `<div class="op-msg ${msg.err ? 'err' : 'ok'}">${esc(msg.text)}</div>` : ''}
-        </div>
+          <!-- techdoc.js, benchtest-card.js and ai-model-card.js own these. Mounted rather than
+               inlined because the render above replaces #contentBody wholesale, which would wipe
+               anything they drew.
 
-        <!-- techdoc.js and benchtest-card.js own these. Mounted rather than inlined because the
-             render above replaces #contentBody wholesale, which would wipe anything they drew. -->
-        <div id="techdocMount"></div>
-        <div id="benchtestMount"></div>
+               Inside .op-grid with the card above, so all four are grid items and lay out two
+               across. Each mount holds exactly one card, which is what lets the wrapper stand in
+               for it as the item. -->
+          <div id="techdocMount"></div>
+          <div id="benchtestMount"></div>
+          <div id="aiModelMount"></div>
+        </div>
       </div>`;
 
     wire();
     if (window.NMS.techdoc) window.NMS.techdoc.mount();
     if (window.NMS.benchtestCard) window.NMS.benchtestCard.mount();
+    if (window.NMS.aiModelCard) window.NMS.aiModelCard.mount();
   }
 
   function setMsg(text, err) { msg = { text, err: !!err }; render(); }

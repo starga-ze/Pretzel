@@ -229,6 +229,12 @@ void push(MgmtdServiceManager& sm, const char* reason, const std::string* overri
             continue;
 
         json entry = {{"id", id}, {"models", p.value("models", json::array())}};
+        // The vendor-level default, when the console hoisted one off its models. Copied through
+        // rather than picked apart: it is the same field pretzel-ai reads, and a push that dropped
+        // it would leave every model falling back to max_tokens — which the gpt-5 generation
+        // rejects outright, so the whole vendor stops answering.
+        if (const std::string tp = p.value("token_param", std::string()); !tp.empty())
+            entry["token_param"] = tp;
         if (const auto it = keys.find(id); it != keys.end())
         {
             entry["api_key"] = it->second;

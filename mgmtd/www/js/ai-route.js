@@ -566,7 +566,7 @@
       : `<div class="ep-fixed">${esc(s.label)}<span class="lbl-sub">${esc(s.note)}</span></div>`;
 
     return `
-      <div class="field-row"><label>Service</label>${picker}</div>
+      <div class="field-row"><label class="req">Service</label>${picker}</div>
       ${s.unsupported ? `<div class="gr-notice">${esc(s.unsupported)}</div>` : ''}
 
       <div class="ed-sec">
@@ -607,9 +607,9 @@
         <div class="ed-sec-h">Prisma AIRS</div>
         <div class="field-row"><label>Endpoint</label>
           <input type="text" value="${esc(g.endpoint)}" readonly></div>
-        <div class="field-row"><label>Profile name</label>
+        <div class="field-row"><label class="req">Profile name</label>
           <input type="text" data-f="airs.profile_name" spellcheck="false"
-                 value="${esc(draft.airs.profile_name)}" placeholder="AIRS_Security_Profile"></div>
+                 value="${esc(draft.airs.profile_name)}"></div>
         <div class="field-row has-unit"><label>Timeout</label>
           <input type="number" data-f="airs.timeout_sec" min="1" step="1"
                  value="${esc(String(draft.airs.timeout_sec))}"><span class="gr-unit">seconds</span></div>
@@ -631,8 +631,7 @@
       <div class="ed-sec">
         <div class="ed-sec-h">Turn shape</div>
         <div class="field-row"><label>System prompt</label>
-          <textarea data-f="shape.system_prompt" rows="3"
-            placeholder="Leave empty to use pretzel-ai's own default">${esc(draft.shape.system_prompt)}</textarea></div>
+          <textarea data-f="shape.system_prompt" rows="3">${esc(draft.shape.system_prompt)}</textarea></div>
         <div class="field-row"><label>Max tokens</label>
           <input type="number" data-f="shape.max_tokens" min="1" step="1"
                  value="${esc(String(draft.shape.max_tokens))}"></div>
@@ -678,7 +677,7 @@
     const at = sealed ? (creds[id] || {}).updated_at : '';
     return `<div class="gr-key">
         <input type="password" data-key="${esc(id)}" autocomplete="off" spellcheck="false"
-               placeholder="${sealed ? 'Sealed — type to replace' : 'Paste the API key'}"
+               placeholder="${sealed ? 'Sealed — type to replace' : ''}"
                value="${esc(keyDraft[id] || '')}">
         ${sealed ? `<button class="btn-sm danger" data-key-clear="${esc(id)}" type="button">Remove</button>` : ''}
       </div>

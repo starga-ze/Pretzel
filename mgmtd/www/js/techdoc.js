@@ -17,6 +17,7 @@
 
   window.NMS = window.NMS || {};
   const { esc } = window.NMS.utils;
+  const IC = window.NMS.utils.icons;
 
   const POLL_MS = 1000;
   const TICKET_MS = 400;
@@ -92,10 +93,10 @@
 
         <div class="op-toolbar">
           <button class="op-btn" id="tdView" ${status && status.documents ? '' : 'disabled'}>
-            <span>View</span></button>
+            ${IC.view}<span>View</span></button>
           <span class="op-sep"></span>
-          <button class="op-btn op-btn-load" id="tdUpdate" ${running ? 'disabled' : ''}>
-            <span>${running ? 'Updating…' : 'Update'}</span></button>
+          <button class="op-btn op-btn-primary" id="tdUpdate" ${running ? 'disabled' : ''}>
+            ${IC.update}<span>${running ? 'Updating…' : 'Update'}</span></button>
         </div>
       </div>`;
 

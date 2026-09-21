@@ -152,6 +152,41 @@ CREATE TABLE IF NOT EXISTS ai_route_credential_state (
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- The models each vendor's account actually serves, as the vendor's own list endpoint last
+-- answered. Pure state, and the config-vs-state line runs exactly where it does for the tables
+-- above: the operator declares WHICH models this appliance may ask for — that is providers.list in
+-- running_config — and these rows are the menu they choose from. Writing the menu into
+-- running_config would mint a configuration version every time a vendor shipped a model, and would
+-- put a fact nobody authored into the operator's review diff.
+--
+-- Filled by collectord, which owns every outbound vendor call, and written by engined, which owns
+-- every table. mgmtd only reads it: the console's model picker is a SELECT against these rows
+-- rather than a list shipped inside its JavaScript, which is the thing that went stale between
+-- releases and could only be corrected by a release.
+--
+-- Keyed on (provider, model_id) and carrying no oid. Every configuration object has one, because
+-- an operator created it and may rename it; a row here is the vendor's own name for something the
+-- vendor owns, so there is no identity for an oid to preserve. Re-fetching a vendor replaces its
+-- rows, and a model that came back under the same name is the same row rather than a new one.
+--
+--   label        the vendor's display name where they give one (Anthropic display_name, Gemini
+--                displayName). OpenAI gives none, so it falls back to model_id.
+--   token_param  which name the output cap goes out under when pretzel-ai calls this model. NOT
+--                from the vendor — none of the three report it — so collectord derives it while
+--                refining the list. A column rather than a compiled-in map because a derivation
+--                that guesses wrong fails the turn, and an operator must be able to correct it
+--                without waiting for a release.
+--   fetched_at   when the vendor last answered for this row. A vendor whose fetch fails keeps the
+--                rows it had, so this is also how the console says how stale a menu is.
+CREATE TABLE IF NOT EXISTS ai_provider_model (
+    provider     TEXT        NOT NULL CHECK (provider IN ('openai', 'google', 'anthropic')),
+    model_id     TEXT        NOT NULL,
+    label        TEXT,
+    token_param  TEXT,
+    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (provider, model_id)
+);
+
 -- API collection samples: what each connector's scheduled endpoint poll returned. Pure state
 -- (system-produced, never operator-declared), written only by engined from collectord's IPC — the same
 -- config-vs-state split that keeps issued keys out of running_config. Raw response + call metadata

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "service/api/controller/AiModelController.h"
 #include "service/api/controller/ConnectorController.h"
 #include "service/api/controller/CredentialController.h"
 #include "service/api/controller/NgfwController.h"
@@ -233,6 +234,7 @@ private:
     SaseController m_saseController;
     ConnectorController m_connectorController;
     StatusController m_statusController;
+    AiModelController m_aiModelController;
     std::vector<ApiEndpoint> m_endpoints;
     std::vector<ApiConnector> m_connectors;
 };

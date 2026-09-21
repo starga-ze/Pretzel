@@ -137,8 +137,9 @@ void storeTurn(MgmtdServiceManager& sm, const MgmtdServiceManager::ChatContext& 
     if (ctx.sessionOid.empty() || ctx.ownerOid.empty() || ctx.questionOid.empty())
         return;
 
+    // No seq on either half: engined assigns it from what the session already holds. The order
+    // within the turn is the order of this array, and the question is first.
     json question = {{"oid", ctx.questionOid},
-                     {"seq", ctx.seq},
                      {"role", "user"},
                      {"content", ctx.question}};
 
@@ -148,7 +149,6 @@ void storeTurn(MgmtdServiceManager& sm, const MgmtdServiceManager::ChatContext& 
     // bubble and no way to tell a blocked turn from an unreachable vendor.
     const bool answered = answer.value("ok", false);
     json reply = {{"oid", ctx.answerOid},
-                  {"seq", ctx.seq + 1},
                   {"role", "assistant"},
                   {"content", answered ? answer.value("reply", std::string())
                                        : answer.value("error", std::string())},
@@ -222,7 +222,6 @@ void ChatController::send(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
     ctx.question = message;
     ctx.questionOid = input.value("question_oid", std::string());
     ctx.answerOid = input.value("answer_oid", std::string());
-    ctx.seq = input.value("seq", 0);
     sm.setChatContext(ticket, std::move(ctx));
 
     // Delegated through the router, same as the old IPC path — the controller does not know or

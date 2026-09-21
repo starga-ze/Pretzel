@@ -246,6 +246,132 @@ BEGIN
     END IF;
 END $rename_keyenc$;
 
+-- ── The AI assistant's sealed keys, and the model catalog they fetch ────────────
+-- Mirrored from kSchemaDDL in shared/db/Database.cpp, which is what actually runs at boot. These
+-- three were missing here until 2026-09-21 — the file claimed a mirror it was not keeping, which
+-- is worse than no mirror at all: a reader consults this to learn the shape of the store and would
+-- have concluded the appliance has nowhere to put a vendor key.
+
+CREATE TABLE IF NOT EXISTS ai_provider_credential_state (
+    id             TEXT PRIMARY KEY CHECK (id IN ('openai', 'google', 'anthropic')),
+    key_enc        TEXT,            -- AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext)
+    last_test_at   TIMESTAMPTZ,
+    last_test_ok   BOOLEAN,
+    last_test_note TEXT,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Upgrade path for the CHECK above, and for two constraint names left behind by earlier renames.
+--
+-- The vendor list is closed the same way the route's pair is: a provider whose endpoint is not
+-- compiled into pretzel-ai cannot serve a turn, so a row for one is key material nothing can spend.
+-- One such row was found on 2026-09-07 — 'claude', left over from before the provider was renamed
+-- to 'anthropic' — and it was invisible to the console, which filters the credential endpoint by
+-- the same list. engined now prunes these on every commit; the constraint is what stops one being
+-- written in the first place, and it is the asymmetry with the table below that let it happen.
+--
+-- Violating rows are DELETEd rather than left for the ALTER to trip over. A constraint that cannot
+-- be added fails ensureSchema, which fails engined's preflight, which stops the appliance booting —
+-- and the rows it would trip over are, by the definition the constraint states, meaningless.
+DO $ai_provider_cred_upgrade$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ai_gateway_credential_state_pkey') THEN
+        ALTER TABLE ai_provider_credential_state
+            RENAME CONSTRAINT ai_gateway_credential_state_pkey TO ai_provider_credential_state_pkey;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                    WHERE conname = 'ai_provider_credential_state_id_check') THEN
+        DELETE FROM ai_provider_credential_state WHERE id NOT IN ('openai', 'google', 'anthropic');
+        ALTER TABLE ai_provider_credential_state
+            ADD CONSTRAINT ai_provider_credential_state_id_check
+            CHECK (id IN ('openai', 'google', 'anthropic'));
+    END IF;
+END
+$ai_provider_cred_upgrade$;
+
+-- Renamed from ai_guardrail_credential_state on 2026-09-07, when the console page it belongs to
+-- became AI Route. RENAME rather than a new table plus a copy: the rows hold sealed key material,
+-- and a migration that re-inserts them is a migration that can half-succeed and leave an appliance
+-- with a key it can no longer open. Guarded both ways so it is a no-op on a fresh database (no old
+-- table) and on one already migrated (new table present), and it must stay AHEAD of the CREATE
+-- below — running that first would make an empty table for the rename to refuse.
+DO $ai_route_cred_rename$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = current_schema() AND table_name = 'ai_guardrail_credential_state')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                        WHERE table_schema = current_schema() AND table_name = 'ai_route_credential_state')
+    THEN
+        ALTER TABLE ai_guardrail_credential_state RENAME TO ai_route_credential_state;
+        -- RENAME TO does not carry the constraint names with it, and a table whose primary key
+        -- still says ai_guardrail_ reads in \\d as though the rename half happened.
+        ALTER TABLE ai_route_credential_state
+            RENAME CONSTRAINT ai_guardrail_credential_state_pkey TO ai_route_credential_state_pkey;
+        ALTER TABLE ai_route_credential_state
+            RENAME CONSTRAINT ai_guardrail_credential_state_id_check TO ai_route_credential_state_id_check;
+    END IF;
+END
+$ai_route_cred_rename$;
+
+-- The route's API keys, sealed the same way and for the same reasons as the providers' above.
+--
+-- Its own table rather than a reserved id in that one. The two are the same shape and could have
+-- shared, but they are not the same kind of thing: a provider row is one of a set an operator adds
+-- to and removes from, and these are single facts about this appliance — there is one scan service
+-- and one gateway account, and a second row for either would not mean anything. Sharing would also
+-- have made every query that means "the vendors" carry a filter to exclude the rows that are not
+-- vendors, which is the shape of bug that gets written once and found much later.
+--
+-- Two rows at most, and the check says which: 'airs' is the scan service's subscription, 'portkey'
+-- the AI gateway's. Both are configured on the same console page and both are a single fact about
+-- this appliance rather than one of a set, which is what separates them from the vendors next door.
+-- Enumerated rather than left open so a caller that thought it was writing a keyed store cannot
+-- invent a third id nothing downstream reads.
+CREATE TABLE IF NOT EXISTS ai_route_credential_state (
+    id             TEXT PRIMARY KEY CHECK (id IN ('airs', 'portkey')),
+    key_enc        TEXT,            -- AES-256-GCM, base64(nonce ‖ tag ‖ ciphertext)
+    last_test_at   TIMESTAMPTZ,
+    last_test_ok   BOOLEAN,
+    last_test_note TEXT,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- The models each vendor's account actually serves, as the vendor's own list endpoint last
+-- answered. Pure state, and the config-vs-state line runs exactly where it does for the tables
+-- above: the operator declares WHICH models this appliance may ask for — that is providers.list in
+-- running_config — and these rows are the menu they choose from. Writing the menu into
+-- running_config would mint a configuration version every time a vendor shipped a model, and would
+-- put a fact nobody authored into the operator's review diff.
+--
+-- Filled by collectord, which owns every outbound vendor call, and written by engined, which owns
+-- every table. mgmtd only reads it: the console's model picker is a SELECT against these rows
+-- rather than a list shipped inside its JavaScript, which is the thing that went stale between
+-- releases and could only be corrected by a release.
+--
+-- Keyed on (provider, model_id) and carrying no oid. Every configuration object has one, because
+-- an operator created it and may rename it; a row here is the vendor's own name for something the
+-- vendor owns, so there is no identity for an oid to preserve. Re-fetching a vendor replaces its
+-- rows, and a model that came back under the same name is the same row rather than a new one.
+--
+--   label        the vendor's display name where they give one (Anthropic display_name, Gemini
+--                displayName). OpenAI gives none, so it falls back to model_id.
+--   token_param  which name the output cap goes out under when pretzel-ai calls this model. NOT
+--                from the vendor — none of the three report it — so collectord derives it while
+--                refining the list. A column rather than a compiled-in map because a derivation
+--                that guesses wrong fails the turn, and an operator must be able to correct it
+--                without waiting for a release.
+--   fetched_at   when the vendor last answered for this row. A vendor whose fetch fails keeps the
+--                rows it had, so this is also how the console says how stale a menu is.
+CREATE TABLE IF NOT EXISTS ai_provider_model (
+    provider     TEXT        NOT NULL CHECK (provider IN ('openai', 'google', 'anthropic')),
+    model_id     TEXT        NOT NULL,
+    label        TEXT,
+    token_param  TEXT,
+    fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (provider, model_id)
+);
+
 -- API collection samples: what each connector's scheduled endpoint poll returned. Pure state
 -- (system-produced, never operator-declared), written only by engined from collectord's IPC — the same
 -- config-vs-state split that keeps issued keys out of running_config. Raw response + call metadata

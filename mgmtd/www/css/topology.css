@@ -364,6 +364,10 @@
 .topo-svc.tone-swg    { --topo-tone: var(--tc-swg); }
 .topo-svc.tone-portal { --topo-tone: var(--tc-portal); }
 .topo-svc.tone-rn     { --topo-tone: var(--tc-rn); }
+/* The remote-network lane keeps the grid — three columns, same widths, so its name and its card line
+   up with the lanes above it — and simply leaves the middle column empty: there is no load balancer in
+   front of an RN-SPN. Its slot label is set like every other lane's, because a lane that coloured its
+   own labels read as a different kind of row rather than as the same row carrying something else. */
 
 /* A lane the tenant does not run. The same hatch the endpoint cards use for "nothing flows here",
    so the eye learns the treatment once and reads it the same wherever it appears — dormant, not
@@ -406,13 +410,16 @@
   display: flex; flex-direction: column; gap: 1px;
   border: 1px solid color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 34%, transparent);
   background: color-mix(in srgb, var(--topo-tone, var(--tc-gw)) 12%, var(--tc-well));
-  color: var(--tc-ink); border-radius: 7px; padding: 2px 7px; min-width: 104px;
+  color: var(--tc-ink); border-radius: 7px; padding: 2px 7px; width: 104px;
   transition: transform var(--tr), border-color var(--tr), background var(--tr), box-shadow var(--tr);
 }
 .topo-node:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--topo-tone) 22%, var(--tc-well)); }
 .topo-node.selected { border-color: var(--topo-tone); box-shadow: 0 0 0 2px color-mix(in srgb, var(--topo-tone) 35%, transparent); }
 .topo-node-ip { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: -.02em; }
-.topo-node-sub { font-size: 8px; color: var(--tc-dim); display: flex; align-items: center; gap: 4px; }
+.topo-node-sub {
+  font-size: 8px; color: var(--tc-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .topo-node.is-lb { --topo-tone: var(--tc-lb); border-style: solid; }
 /* Only an explicit `network_load_balancer_active: false` is drawn as idle. An absent flag is not a
    negative answer, so it keeps the ordinary treatment. */
@@ -446,6 +453,7 @@
 /* The L4→L7 hop a full-tunnel browser session takes inside the fabric. */
 .topo-link.kind-chain    { stroke: var(--tc-chain); stroke-width: 1.5; opacity: .65; stroke-dasharray: 7 3; }
 .topo-link.kind-pending  { stroke: var(--tc-pending); stroke-width: 1.4; opacity: .75; stroke-dasharray: 3 6; }
+
 .topo-link.is-dimmed     { opacity: .08; }
 
 /* The moving packet. Size and hue say which lane it belongs to; the motion says the path is live.
@@ -560,6 +568,12 @@
 }
 .topo-lane-nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topo-lane b { color: var(--tc-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* More branches than the card names. It is a row so the list does not end on a ragged edge, and it
+   carries no dot and no link: nothing behind it is drawn. */
+.topo-lane.is-more {
+  border-style: dashed; color: var(--tc-faint); font-size: 9px; justify-content: center;
+}
 
 .topo-note { font-size: 8.5px; line-height: 1.4; color: var(--tc-faint); }
 
@@ -701,6 +715,11 @@
    What tells them apart is what leaves them: see the sideways path in geometry(), which is how the
    connector's link says it never touches the firewall the Service Connection lands on. */
 .topo-priv-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* The egress half of the data plane: the two ways out of the fabric into the customer's own estate.
+   Inside the frame because they carry user traffic like every lane above them, separated by a
+   hairline because they are the other end of the flow rather than another region. */
+.topo-plane-f { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--tc-line); }
 
 /* All three columns end on the same line, because a column that stops short reads as content missing
    rather than as content that fit. In the outer columns the cards are the SAME height — `1 1 0`, not

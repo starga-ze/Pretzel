@@ -125,6 +125,16 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "ApiCredentialStoreRequest";
     case IpcCmd::AiCredentialStateUpdate:
         return "AiCredentialStateUpdate";
+    case IpcCmd::AiModelUpdateRequest:
+        return "AiModelUpdateRequest";
+    case IpcCmd::AiModelUpdateResponse:
+        return "AiModelUpdateResponse";
+    case IpcCmd::AiModelUpdate:
+        return "AiModelUpdate";
+    case IpcCmd::AiCredentialStateRequest:
+        return "AiCredentialStateRequest";
+    case IpcCmd::AiCredentialStateResponse:
+        return "AiCredentialStateResponse";
     case IpcCmd::ApiConnectorTestResponse:
         return "ApiConnectorTestResponse";
     case IpcCmd::ApiCredentialStateRequest:
@@ -200,6 +210,8 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiSaseKeyStoreRequest:
     case IpcCmd::ApiCredentialStoreRequest:
     case IpcCmd::ApiConnectorTestResponse:
+    case IpcCmd::AiModelUpdateRequest:
+    case IpcCmd::AiModelUpdateResponse:
         return CmdCategory::DeviceOp;
 
     // Mutate engined's store — dst must be Engined.
@@ -213,11 +225,14 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiCollectionSample:
     case IpcCmd::SaseApiKeyUpdate:
     case IpcCmd::SaseHealthResult:
+    case IpcCmd::AiModelUpdate:
         return CmdCategory::Write;
 
     // Query another daemon's store or derived view.
     case IpcCmd::ApiCredentialStateRequest:
     case IpcCmd::ApiCredentialStateResponse:
+    case IpcCmd::AiCredentialStateRequest:
+    case IpcCmd::AiCredentialStateResponse:
     case IpcCmd::TopologyRequest:
     case IpcCmd::TopologyResponse:
         return CmdCategory::Read;

@@ -167,15 +167,18 @@
   }
 
   // ── Editor ───────────────────────────────────────────────────────────────────
-  function fieldRow(label, key, val, ph) {
-    return `<div class="field-row"><label>${esc(label)}</label>
-      <input data-f="${esc(key)}" value="${esc(val)}" placeholder="${esc(ph || '')}"/></div>`;
+  // `req` marks the label, not the input: what the form needs is a property of the field, and the
+  // asterisk replaces the example-and-"optional" placeholders that used to say it one input at a
+  // time. See .field-row > label.req in main.css.
+  function fieldRow(label, key, val, req) {
+    return `<div class="field-row"><label${req ? ' class="req"' : ''}>${esc(label)}</label>
+      <input data-f="${esc(key)}" value="${esc(val)}"/></div>`;
   }
 
   function editorForm(s) {
     return `
-      ${fieldRow('Site Name', 'name', s.name, 'e.g. Seoul DC-1')}
-      ${fieldRow('Description', 'description', s.description, 'optional')}`;
+      ${fieldRow('Site Name', 'name', s.name, true)}
+      ${fieldRow('Description', 'description', s.description)}`;
   }
 
   function collect(body) {

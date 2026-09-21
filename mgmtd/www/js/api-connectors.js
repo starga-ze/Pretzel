@@ -99,7 +99,11 @@
     if (!siteOid) return '<option value="">— select a site first —</option>';
     const inSite = objects().filter(o => o.site === siteOid);
     if (!inSite.length) return '<option value="">— no devices in this site —</option>';
-    return ['<option value="">— select a device —</option>'].concat(
+    // The "nothing chosen yet" row, and only while nothing is chosen. Kept because a select with no
+    // such row has no way to be unset — it would open on the first item and an operator could save a
+    // choice they never made — and dropped once there IS a choice, where it is a line that says what
+    // the closed select already shows.
+    return (selectedOid ? [] : ['<option value="">— select a device —</option>']).concat(
       inSite.map(o => {
         const taken = boundElsewhere(o.oid, selfOid);
         const label = `${o.name || o.target} (${o.target})${taken ? ' — already bound' : ''}`;
@@ -284,7 +288,7 @@
         text: siteText, cell: siteCell },
       { key: 'device', label: 'Device', cls: 'col-obj', filter: 'text',
         text: objectText, cell: objectCell },
-      { key: 'api_key', label: 'API Key', cls: 'col-authp', filter: 'enum',
+      { key: 'api_key', label: 'API Credential', cls: 'col-authp', filter: 'enum',
         text: profileText, cell: profileCell },
       { key: 'collection', label: 'Endpoint Control', cls: 'col-ep', filter: 'text',
         text: collectionText,
@@ -374,7 +378,7 @@
     if (!usable.length) {
       return `<option value="">— no ${esc((deviceType || 'ngfw').toUpperCase())} endpoint defined —</option>`;
     }
-    return ['<option value="">— select an endpoint —</option>'].concat(
+    return (selected ? [] : ['<option value="">— select an endpoint —</option>']).concat(
       usable.map(e => `<option value="${esc(e.oid)}" ${selected === e.oid ? 'selected' : ''}>${esc(e.name)}</option>`)
     ).join('');
   }
@@ -419,7 +423,11 @@
             <span>sec</span>
           </label>
           <label class="item-en" title="Enable collection of this endpoint">
-            <input type="checkbox" data-i="enabled" ${i.enabled ? 'checked' : ''}/><span>Enable</span>
+            <!-- .tgl is the console's own switch. It was defined in main.css and used nowhere, so
+                 every on/off in the app was still an operating-system checkbox. -->
+            <span class="tgl"><input type="checkbox" data-i="enabled" ${i.enabled ? 'checked' : ''}/>
+              <span class="tgl-track"></span></span>
+            <span>Enable</span>
           </label>
           <span class="item-ctl-spacer"></span>
           <button class="btn-sm" data-item-test type="button"
@@ -433,34 +441,31 @@
   function editorForm(c) {
     // Site is derived from the bound device when editing an existing connector.
     const curSite = (objectByOid(c.object) || {}).site || '';
-    const siteOpts = ['<option value="">— select a site —</option>'].concat(
+    const siteOpts = (curSite ? [] : ['<option value="">— select a site —</option>']).concat(
       sites().map(s => `<option value="${esc(s.oid)}" ${curSite === s.oid ? 'selected' : ''}>${esc(s.name)}</option>`)
     ).join('');
 
-    const profOpts = ['<option value="">— select a profile —</option>'].concat(
+    const profOpts = (c.auth_profile ? [] : ['<option value="">— select a profile —</option>']).concat(
       profiles().map(p =>
         `<option value="${esc(p.oid)}" ${c.auth_profile === p.oid ? 'selected' : ''}>${esc(p.name)}</option>`)
     ).join('');
 
     return `
-      <div class="field-row"><label>Name</label>
-        <input data-f="name" value="${esc(c.name)}" placeholder="e.g. core-fw-01"/></div>
+      <div class="field-row"><label class="req">Name</label>
+        <input data-f="name" value="${esc(c.name)}"/></div>
       <div class="field-row"><label>Description</label>
-        <input data-f="description" value="${esc(c.description)}" placeholder="optional"/></div>
+        <input data-f="description" value="${esc(c.description)}"/></div>
 
       <div class="editor-sec">TARGET &amp; CREDENTIAL</div>
-      <div class="field-row"><label>Site</label>
+      <div class="field-row"><label class="req">Site</label>
         <select data-sitesel>${siteOpts}</select></div>
-      <div class="field-row"><label>Device</label>
+      <div class="field-row"><label class="req">Device</label>
         <select data-f="object" data-devsel>${deviceOptsForSite(curSite, c.object, c.oid)}</select></div>
-      <div class="field-row"><label>API Key</label>
+      <div class="field-row"><label class="req">API Credential</label>
         <select data-f="auth_profile">${profOpts}</select></div>
 
-      <div class="editor-sec">ENDPOINT CONTROL</div>
-      <p class="field-hint">Which <a href="settings?tab=api-endpoint">endpoints</a> this device is
-        polled for, and how often.</p>
       <div class="item-head">
-        <label>Endpoints</label>
+        <label class="req">Endpoints</label>
         <button class="btn-sm" id="acItemAdd" type="button">+ Endpoint</button>
       </div>
       <div class="item-list" id="acItemList">${(c.items.length ? c.items : [normalizeItem({})])
@@ -493,6 +498,10 @@
   // Save is blocked only by what makes a connector meaningless, and the reason is shown rather
   // than left for the operator to guess at a greyed-out button.
   function saveBlocker(c) {
+    // A connector is a row in a list and a name in a log line; without one there is nothing to call
+    // it. Every other object in Configuration requires a name — site, API Credential, endpoint — and
+    // this one was the exception by omission rather than by design.
+    if (!c.name) return 'Give this connector a name.';
     if (!c.object) return 'Pick the device this connector collects from.';
     if (!c.auth_profile) return 'Pick the API key used against it.';
     if (!c.items.length) return 'Add at least one endpoint to collect.';
@@ -548,7 +557,7 @@
 
     row.querySelector('[data-item-test]').addEventListener('click', () => {
       const oid = row.querySelector('[data-i="endpoint"]').value;
-      if (!oid) { alert('Pick an endpoint on this row first.'); return; }
+      if (!oid) { window.NMS.notice('Pick an endpoint on this row first.'); return; }
       runApiTest(row, oid);
     });
   }
@@ -600,7 +609,7 @@
     document.getElementById('acSave').onclick = () => {
       const c = collect(body);
       const reason = saveBlocker(c);
-      if (reason) { alert(reason); return; }
+      if (reason) { window.NMS.notice(reason); return; }
       if (editIdx == null) state.connectors.push(c); else state.connectors[editIdx] = c;
       stage();
       closeEditor(); render();
@@ -647,11 +656,11 @@
   // is why this reads as "the credentials are right there" when the test says otherwise.
   function credentialProblem(c) {
     const key = window.NMS.apiKeys ? window.NMS.apiKeys.byOid(c.auth_profile) : null;
-    if (!key) return 'That API Key no longer exists — pick another.';
+    if (!key) return 'That API Credential no longer exists — pick another.';
 
-    const name = key.name || 'this API Key';
+    const name = key.name || 'this API Credential';
     if (!key.username) {
-      return `API Key "${name}" has no username. Set it on the API Key page.`;
+      return `API Credential "${name}" has no username. Set it on the API Credential page.`;
     }
 
     // Nothing else is checked here. Whether a key was already issued is collectord's to know — it

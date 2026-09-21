@@ -19,6 +19,14 @@ enum class ApiCredentialEventType : std::uint32_t
     // secret that arrives already encrypted and lands in a table rather than running_config — so
     // it rides this service instead of earning one of its own.
     ReceiveAiCredential = 4,
+    // collectord asking for ONE vendor's sealed key, for the model-catalog refresh. Distinct from
+    // ReceiveStateRequest, which answers with every issued device key: the two read different
+    // tables, and an answer carrying both would hand each caller the other's key material.
+    ReceiveAiCredentialRequest = 5,
+    // collectord handing back what a vendor listed, to replace that vendor's rows in
+    // ai_provider_model. A write, like the three above, and for the same reason: collectord makes
+    // the outbound call and engined owns the table.
+    ReceiveAiModels = 6,
 };
 
 class ApiCredentialEvent final : public EnginedEvent

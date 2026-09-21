@@ -203,4 +203,124 @@ void AiController::credentialStore(MgmtdServiceManager& sm, const pz::http::Http
     fill(resp, 202, json{{"id", id}, {"status", "pending"}}.dump());
 }
 
+
+// ── The model catalog ───────────────────────────────────────────────────────────
+
+// What each vendor last listed, grouped the way the provider editor renders it.
+//
+// Shaped { openai: { fetched_at, models: [...] }, ... } rather than one flat array: every caller
+// asks about one vendor at a time, and a flat list would make each of them group it again. A vendor
+// that has never been fetched is absent rather than an empty entry — "not fetched yet" and "this
+// account serves nothing" are different states and the console says different things about them.
+void AiController::models(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    (void)sm;
+    (void)req;
+
+    json out = json::object();
+
+    try
+    {
+        // Ordered by id so the picker's rows do not move between fetches. Postgres has no reason to
+        // return them in a stable order otherwise, and a list that reshuffles on every refresh is a
+        // list an operator cannot scan.
+        for (const auto& row : pz::db::Database::instance().queryRows(
+                 "SELECT provider, model_id, COALESCE(label, model_id), COALESCE(token_param, ''), "
+                 "COALESCE(to_char(fetched_at, 'YYYY-MM-DD\"T\"HH24:MI:SSOF'), '') "
+                 "FROM ai_provider_model ORDER BY provider, model_id"))
+        {
+            if (row.size() < 5 || row[0].empty() || row[1].empty())
+                continue;
+
+            const std::string& provider = row[0];
+            if (!out.contains(provider))
+                out[provider] = json{{"fetched_at", row[4]}, {"models", json::array()}};
+
+            json model{{"id", row[1]}, {"label", row[2]}};
+            // Absent rather than empty when unset: the commit payload carries token_param only when
+            // there is one, and an empty string there would travel to pretzel-ai as a parameter name.
+            if (!row[3].empty())
+                model["token_param"] = row[3];
+
+            out[provider]["models"].push_back(std::move(model));
+        }
+    }
+    catch (const std::exception& ex)
+    {
+        LOG_WARN("ai model catalog query failed: {}", ex.what());
+        return fill(resp, 500, R"({"error":"the model catalog could not be read"})");
+    }
+
+    fill(resp, 200, out.dump());
+}
+
+// Ask collectord to re-fetch one vendor's list.
+//
+// The vendor is checked here rather than left to collectord: mgmtd is holding a browser on the
+// ticket, and a request that names something no daemon can serve should fail where the operator is
+// looking, not as a ticket that resolves to an error a hop later.
+void AiController::modelsUpdate(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
+{
+    json input;
+    if (!parseBody(req, resp, input))
+        return;
+
+    const std::string provider = input.value("id", input.value("provider", std::string()));
+    if (!knownProvider(provider))
+        return fill(resp, 400, json{{"error", "unknown provider '" + provider + "'"}}.dump());
+
+    const std::uint32_t ticket = sm.nextAiModelTicket();
+
+    const std::string payload = json{{"provider", provider}}.dump();
+
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
+    msg->setDst(pz::ipc::IpcDaemon::Collectord);
+    msg->setCmd(pz::ipc::IpcCmd::AiModelUpdateRequest);
+    msg->setSeqNo(ticket);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+    msg->setPayload(std::vector<std::uint8_t>(payload.begin(), payload.end()));
+
+    sm.txRouter().handleIpcMessage(std::move(msg));
+
+    LOG_INFO("ai model refresh delegated to collectord (ticket={}, provider={})", ticket, provider);
+    fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
+}
+
+void AiController::modelsUpdateResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
+                                      pz::http::HttpResponse& resp)
+{
+    const std::string raw = queryParam(req.target, "ticket");
+    const auto ticket = static_cast<std::uint32_t>(std::strtoul(raw.c_str(), nullptr, 10));
+
+    if (ticket == 0)
+        return fill(resp, 400, R"({"error":"bad ticket"})");
+
+    auto result = sm.takeAiModelResult(ticket);
+    if (!result)
+        return fill(resp, 200, R"({"status":"pending"})");
+
+    json body = json::parse(*result, nullptr, false);
+    if (body.is_discarded())
+        return fill(resp, 500, R"({"status":"done","ok":false,"message":"malformed refresh result"})");
+
+    body["status"] = "done";
+    fill(resp, 200, body.dump());
+}
+
+void AiController::onModelsUpdateResponse(MgmtdServiceManager& sm, const pz::ipc::IpcMessage& msg)
+{
+    const auto& pl = msg.getPayload();
+    if (pl.empty())
+    {
+        // The browser is holding this ticket. Dropping the message would leave it polling until its
+        // own timeout, so the ticket is answered with the failure instead — same as the tests.
+        LOG_WARN("empty ai model refresh response (seq={}) — answering the ticket as failed", msg.getSeqNo());
+        sm.setAiModelResult(msg.getSeqNo(), R"({"ok":false,"message":"the daemon returned an empty result"})");
+        return;
+    }
+
+    sm.setAiModelResult(msg.getSeqNo(), std::string(pl.begin(), pl.end()));
+}
+
 }

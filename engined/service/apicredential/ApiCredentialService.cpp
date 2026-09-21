@@ -35,6 +35,26 @@ void ApiCredentialService::handleEvent(EnginedServiceManager& serviceManager, co
         return sendState(serviceManager, requester, in ? in->getSeqNo() : 0);
     }
 
+    if (event.type() == ApiCredentialEventType::ReceiveAiCredentialRequest)
+    {
+        // Answered to whoever asked, like sendState above. collectord is the only asker today; it
+        // is read off the message rather than assumed for the same reason.
+        const pz::ipc::IpcDaemon requester = in ? in->getSrc() : pz::ipc::IpcDaemon::Collectord;
+        const auto& pl = in ? in->getPayload() : std::vector<std::uint8_t>{};
+        return sendAiCredential(serviceManager, requester, in ? in->getSeqNo() : 0,
+                                std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
+    }
+
+    if (event.type() == ApiCredentialEventType::ReceiveAiModels)
+    {
+        if (in && !in->getPayload().empty())
+        {
+            const auto& pl = in->getPayload();
+            storeAiModels(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
+        }
+        return;
+    }
+
     if (event.type() == ApiCredentialEventType::ReceiveSaseApiKey)
     {
         if (in && !in->getPayload().empty())
@@ -380,6 +400,135 @@ void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, pz::
     serviceManager.txRouter().handleIpcMessage(std::move(msg));
 
     LOG_INFO("api key state sent (keys={})", keys.size());
+}
+
+// One vendor's key, still sealed.
+//
+// A row with no key is answered as an empty `key_enc` rather than as an error: "this vendor has no
+// key stored" is a state the asker has to render either way, and making it a transport failure
+// would leave the operator's ticket to time out instead of saying so.
+void ApiCredentialService::sendAiCredential(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
+                                            std::uint32_t seqNo, const std::string& payloadJson)
+{
+    std::string id;
+    try
+    {
+        id = nlohmann::json::parse(payloadJson).value("id", "");
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("malformed AiCredentialStateRequest ({}) — dropping", e.what());
+        return;
+    }
+
+    if (id.empty())
+    {
+        LOG_WARN("AiCredentialStateRequest without id — dropping");
+        return;
+    }
+
+    std::string sealed;
+    for (const auto& row : pz::db::Database::instance().queryRows(
+             "SELECT COALESCE(key_enc, '') FROM ai_provider_credential_state WHERE id = $1", {id}))
+    {
+        if (!row.empty())
+            sealed = row[0];
+    }
+
+    const std::string payload = nlohmann::json{{"id", id}, {"key_enc", sealed}}.dump();
+
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Engined);
+    msg->setDst(requester);
+    msg->setCmd(pz::ipc::IpcCmd::AiCredentialStateResponse);
+    msg->setSeqNo(seqNo);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Response));
+    msg->setPayload(std::vector<std::uint8_t>(payload.begin(), payload.end()));
+
+    serviceManager.txRouter().handleIpcMessage(std::move(msg));
+
+    LOG_DEBUG("ai credential state sent (id={}, stored={})", id, !sealed.empty());
+}
+
+// What the vendor listed, replacing that vendor's rows.
+//
+// DELETE then INSERT in one transaction, and only ever for the vendor named in the payload. The
+// delete has to happen — a model the vendor retired must stop being selectable — but it must not
+// be able to land without the insert that follows it, or an operator's picker empties on a write
+// that half-succeeded. collectord already refuses to send an empty list for the same reason.
+void ApiCredentialService::storeAiModels(const std::string& payloadJson)
+{
+    nlohmann::json root;
+    try
+    {
+        root = nlohmann::json::parse(payloadJson);
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("malformed AiModelUpdate ({}) — dropping", e.what());
+        return;
+    }
+
+    const std::string provider = root.value("provider", "");
+    if (provider.empty() || !root.contains("models") || !root["models"].is_array())
+    {
+        LOG_WARN("AiModelUpdate without a provider or a model list — dropping");
+        return;
+    }
+
+    if (root["models"].empty())
+    {
+        // Defence in depth: the sender already refuses this. An empty list would delete every row
+        // for the vendor and write none back, which is how a picker goes blank on a vendor that
+        // merely changed its response shape.
+        LOG_WARN("AiModelUpdate for '{}' carries no models — dropping rather than emptying the catalog",
+                 provider);
+        return;
+    }
+
+    auto& db = pz::db::Database::instance();
+
+    if (!db.exec("BEGIN"))
+    {
+        LOG_WARN("ai model catalog update could not open a transaction (provider={})", provider);
+        return;
+    }
+
+    bool ok = db.exec("DELETE FROM ai_provider_model WHERE provider = $1", {provider});
+
+    std::size_t written = 0;
+    for (const auto& m : root["models"])
+    {
+        if (!ok)
+            break;
+
+        const std::string id = m.value("id", "");
+        if (id.empty())
+            continue;
+
+        ok = db.exec("INSERT INTO ai_provider_model (provider, model_id, label, token_param, fetched_at) "
+                     "VALUES ($1, $2, $3, $4, now())",
+                     {provider, id, m.value("label", id), m.value("token_param", "")});
+        if (ok)
+            ++written;
+    }
+
+    if (!ok || written == 0)
+    {
+        db.exec("ROLLBACK");
+        LOG_WARN("ai model catalog update rolled back (provider={}, written={}) — the stored list is unchanged",
+                 provider, written);
+        return;
+    }
+
+    if (!db.exec("COMMIT"))
+    {
+        db.exec("ROLLBACK");
+        LOG_WARN("ai model catalog update could not commit (provider={})", provider);
+        return;
+    }
+
+    LOG_INFO("ai model catalog updated (provider={}, models={})", provider, written);
 }
 
 }

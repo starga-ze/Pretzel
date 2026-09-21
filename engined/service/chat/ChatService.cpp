@@ -120,33 +120,45 @@ void ChatService::storeTurn(const std::string& payloadJson)
         if (oid.empty())
             continue;
 
-        // A message is written once. mgmtd files a turn when pretzel-ai answers, and a retry that
-        // arrived twice must not double the conversation.
+        // A message is written once, and `oid` is what says so. mgmtd files a turn when pretzel-ai
+        // answers, and a retry that arrived twice must not double the conversation.
         //
-        // DO NOTHING with no conflict target on purpose: chat_message has TWO unique constraints,
-        // the oid primary key and UNIQUE (session, seq). Naming only the oid left the second one
-        // to raise, so a retry that re-used a seq under a fresh oid failed the insert instead of
-        // being absorbed - and a failed insert here loses that half-turn silently, which is how a
-        // conversation ends up with a question and no answer.
-        const bool ok = db.exec(
+        // The sequence number is assigned HERE, from the rows that exist, rather than taken from
+        // the payload. It used to come from the browser - a count of what that tab happened to be
+        // holding - and a tab whose view of the conversation was shorter than the stored one sent
+        // numbers already taken. With DO NOTHING untargeted those collisions were absorbed as if
+        // they were retries, so every turn after 2026-09-02 was dropped and the log below still
+        // counted them as stored. The conflict target is `oid` now, which is the only thing that
+        // legitimately repeats; a seq cannot collide because nothing outside this statement picks
+        // one. Same rule the rest of ChatContext already follows: what this side can establish,
+        // this side establishes.
+        const auto written = db.queryRows(
             "INSERT INTO chat_message "
             "  (oid, session, seq, role, content, model, ok, code, latency_ms, scan) "
-            "VALUES ($1, $2, $3::int, $4, $5, NULLIF($6,''), "
-            "        CASE WHEN $7 = '' THEN NULL ELSE $7::boolean END, "
-            "        NULLIF($8,''), CASE WHEN $9 = '' THEN NULL ELSE $9::int END, "
-            "        CASE WHEN $10 = '' THEN NULL ELSE $10::jsonb END) "
-            "ON CONFLICT DO NOTHING",
-            {oid, session, std::to_string(m.value("seq", 0)), str(m, "role"), str(m, "content"),
+            "VALUES ($1, $2, "
+            "        (SELECT COALESCE(MAX(seq), -1) + 1 FROM chat_message WHERE session = $2), "
+            "        $3, $4, NULLIF($5,''), "
+            "        CASE WHEN $6 = '' THEN NULL ELSE $6::boolean END, "
+            "        NULLIF($7,''), CASE WHEN $8 = '' THEN NULL ELSE $8::int END, "
+            "        CASE WHEN $9 = '' THEN NULL ELSE $9::jsonb END) "
+            "ON CONFLICT (oid) DO NOTHING "
+            "RETURNING seq",
+            {oid, session, str(m, "role"), str(m, "content"),
              str(m, "model"),
              m.contains("ok") && m["ok"].is_boolean() ? (m["ok"].get<bool>() ? "true" : "false") : "",
              str(m, "code"),
              m.contains("latency_ms") && m["latency_ms"].is_number()
                  ? std::to_string(m["latency_ms"].get<int>()) : "",
              m.contains("scan") && !m["scan"].is_null() ? m["scan"].dump() : ""});
-        if (ok)
+
+        // RETURNING is what makes the count honest. `exec` reports whether the STATEMENT ran, and
+        // an absorbed conflict runs perfectly while writing nothing - which is how a silent drop
+        // came to be logged as a store for nineteen days.
+        if (!written.empty())
             ++stored;
         else
-            LOG_WARN("chat_message write failed (session={}, oid={})", session, oid);
+            LOG_WARN("chat_message not written (session={}, oid={}) - already stored, or the "
+                     "insert was refused", session, oid);
     }
 
     // The content is never logged. It is whatever an employee typed, and this log is read by

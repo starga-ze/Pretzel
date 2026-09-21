@@ -227,9 +227,11 @@
   }
 
   // ── Editor (slide-over) ─────────────────────────────────────────────────────
-  function fieldRow(label, key, val, ph) {
-    return `<div class="field-row"><label>${esc(label)}</label>
-      <input data-f="${esc(key)}" value="${esc(val)}" placeholder="${esc(ph || '')}"/></div>`;
+  // `req` marks the label; the examples and "optional" hints that used to sit inside every input
+  // are gone. See .field-row > label.req in main.css.
+  function fieldRow(label, key, val, req) {
+    return `<div class="field-row"><label${req ? ' class="req"' : ''}>${esc(label)}</label>
+      <input data-f="${esc(key)}" value="${esc(val)}"/></div>`;
   }
 
   function editorForm(d) {
@@ -237,25 +239,27 @@
       `<option value="${esc(k)}" ${d.device_type === k ? 'selected' : ''}>${esc(label)}</option>`).join('');
 
     const sites = (window.NMS.sites && window.NMS.sites.list()) || [];
-    const siteOpts = ['<option value="">— none —</option>'].concat(
+    const siteOpts = (d.site ? [] : ['<option value="">— none —</option>']).concat(
       sites.map(s => `<option value="${esc(s.oid)}" ${d.site === s.oid ? 'selected' : ''}>${esc(s.name)}</option>`)
     ).join('');
 
     return `
-      ${fieldRow('Name', 'name', d.name, 'e.g. core-fw-01')}
-      ${fieldRow('Description', 'description', d.description, 'optional')}
-      <div class="field-row"><label>Site</label>
+      ${fieldRow('Name', 'name', d.name, true)}
+      ${fieldRow('Description', 'description', d.description)}
+      <div class="field-row"><label class="req">Site</label>
         <select data-f="site">${siteOpts}</select></div>
       ${sites.length ? '' :
         `<p class="field-hint"><a href="settings?tab=sites">Create a site first</a> to place this device.</p>`}
 
       <div class="editor-sec">ACCESS</div>
-      <div class="field-row"><label>Device Type</label>
+      <div class="field-row"><label class="req">Device Type</label>
         <select data-f="device_type" data-typesel>${typeOpts}</select></div>
+      <!-- Derived, not chosen: the device type decides it, which is why the field is disabled and
+           why it carries no asterisk. A mark on a field an operator cannot fill tells them to do
+           something there is nothing to do about. -->
       <div class="field-row"><label>Access Type</label>
         <input value="${esc(accessLabel(d.device_type))}" disabled/></div>
-      <p class="field-hint">Follows the device type.</p>
-      ${fieldRow(accessLabel(d.device_type), 'target', d.target, accessPlaceholder(d.device_type))}
+      ${fieldRow(accessLabel(d.device_type), 'target', d.target, true)}
       ${d.device_type === 'sase' ? healthSection(d, d.health || {}) : ngfwStatusSection(d)}`;
   }
 
@@ -265,14 +269,21 @@
   function ngfwStatusSection(d) {
     return `
       <div class="editor-sec">STATUS &amp; CERTIFICATE</div>
-      <p class="field-hint">Pin the TLS certificate now so an API key can be issued later.</p>
-      ${d.fingerprint
-        ? `<div class="fp-box"><div class="fp-label">Pinned certificate (SHA-256)</div>
-             <code class="fp-val">${esc(d.fingerprint)}</code>
-             <button class="btn-sm btn-danger" id="devUnpin" type="button">Clear pin</button></div>`
-        : ''}
-      <div class="field-row" style="margin-top:6px"><label></label>
-        <button class="btn-sm" id="devCertProbe" type="button">${d.fingerprint ? 'Re-test connection' : 'Test connection'}</button></div>
+      <div class="field-row"><label class="req">TLS certificate</label>
+        ${d.fingerprint
+          ? `<div class="fp-box"><div class="fp-label">Pinned (SHA-256)</div>
+               <code class="fp-val">${esc(d.fingerprint)}</code>
+               <!-- Both acts on the pin, on one line and beside the thing they act on. Re-pin
+                    first: it is the ordinary one, and Clear is the one that throws something
+                    away. -->
+               <div class="fp-acts">
+                 <button class="btn-sm" id="devCertProbe" type="button">Re-pin certificate</button>
+                 <button class="btn-sm btn-danger" id="devUnpin" type="button">Clear pin</button>
+               </div></div>`
+          : `<div class="fp-box is-unset"><span class="fp-unset">Not pinned</span></div>`}
+      </div>
+      ${d.fingerprint ? '' : `<div class="field-row"><label></label>
+        <button class="btn-sm btn-primary" id="devCertProbe" type="button">Pin certificate</button></div>`}
       <div id="devCertResult" class="field-hint" style="min-height:18px"></div>`;
   }
 
@@ -285,10 +296,10 @@
   // (sase_device.api_key_enc) and this shows bullets. Run the check itself from the device list.
   const KEY_MASK = '••••••••••••••••';
 
-  function readonlyRow(label, key, val, placeholder, mono) {
+  function readonlyRow(label, key, val, mono) {
     return `<div class="field-row"><label>${esc(label)}</label>
       <input ${key ? `data-f="${esc(key)}"` : ''} class="${mono ? 'mono-val' : ''}" readonly
-             value="${esc(val)}" placeholder="${esc(placeholder || '')}"/></div>`;
+             value="${esc(val)}"/></div>`;
   }
 
   function healthSection(d, health) {
@@ -298,27 +309,25 @@
       ? { val: KEY_MASK, hint: 'read from the command — saved when you press Save' }
       : keyStored[d.oid]
         ? { val: KEY_MASK, hint: 'stored on the appliance (sealed)' }
-        : { val: '', hint: 'paste the command above to set it' };
+        // Nothing yet, and nothing to say about it: an empty readonly field is empty, the same as
+        // the two beside it. The instruction that used to sit here told an operator to do the thing
+        // the button below is for.
+        : { val: '', hint: '' };
 
     return `
       <div class="editor-sec">SASE INFRASTRUCTURE CHECK</div>
-      <p class="field-hint">SASE has no address to ping — reachability is a live
-        <code>getPrismaAccessIP</code> read against the tenant's infrastructure API. These three come
-        from the command Prisma Access gives you; paste it below to fill them in. The api-key is sealed
-        on the appliance and never written to the configuration. Run the check from the device list.</p>
 
-      ${readonlyRow('Infrastructure URL', 'health_url', health.url || '', 'read from the command', true)}
-      <div class="field-row"><label>API key</label>
-        <input class="mono-val" readonly value="${esc(keyState.val)}" placeholder="${esc(keyState.hint)}"/></div>
-      ${keyState.val ? `<p class="field-hint" style="margin-top:-6px">${esc(keyState.hint)}</p>` : ''}
-      ${readonlyRow('Request body', 'health_body', health.body || '', 'read from the command', true)}
-
-      <div class="field-row" style="margin-top:10px"><label>Command from Prisma Access</label>
-        <textarea data-f="paste_cmd" rows="3" spellcheck="false" autocomplete="off"
-          placeholder='curl -X POST -d @option.txt -H "header-api-key: ..." "https://api.prod8.datapath.prismaaccess.com/getPrismaAccessIP/v2"'></textarea></div>
+      <div class="field-row"><label class="req">Copy API Command</label>
+        <textarea data-f="paste_cmd" rows="3" spellcheck="false" autocomplete="off"></textarea></div>
       <div class="field-row"><label></label>
-        <button class="btn-sm" id="devParseCmd" type="button">Read from command</button></div>
-      <div id="devParseResult" class="field-hint" style="min-height:16px"></div>`;
+        <button class="btn-sm${health.url ? '' : ' btn-primary'}" id="devParseCmd" type="button">Read from command</button></div>
+      <div id="devParseResult" class="field-hint" style="min-height:16px"></div>
+
+      ${readonlyRow('Infrastructure URL', 'health_url', health.url || '', true)}
+      <div class="field-row"><label>API key</label>
+        <input class="mono-val" readonly value="${esc(keyState.val)}"/></div>
+      ${keyState.hint ? `<p class="field-hint" style="margin-top:-6px">${esc(keyState.hint)}</p>` : ''}
+      ${readonlyRow('Request body', 'health_body', health.body || '', true)}`;
   }
 
   // Validate the getPrismaAccessIP api-key against the tenant; on success probed seals + stores it in
@@ -336,6 +345,23 @@
   // The body is commonly `-d @file`, which the browser cannot read; that is not a failure — the file
   // is the documented all/all/all request, so that is what gets used.
   const DEFAULT_PROBE_BODY = '{"serviceType":"all","addrType":"all","location":"all"}';
+
+  // What a usable command has to contain, said as the one thing that is wrong.
+  //
+  // The old check only refused a command with NEITHER a URL nor a key, so one carrying a URL and no
+  // key filled two fields, left the third empty, and reported success — and the health check then
+  // failed later with an authentication error nobody connected back to this paste. The endpoint is
+  // checked too: these three fields configure a getPrismaAccessIP read specifically, and a different
+  // command parsed into them produces a check that runs and tests the wrong thing.
+  function prismaCommandError(cmd, p) {
+    if (!cmd.trim()) return 'Paste the command first.';
+    if (!p.url) return 'No https URL in that command.';
+    if (!/^https:\/\//i.test(p.url)) return 'The URL must be https.';
+    if (!/getPrismaAccessIP/i.test(p.url))
+      return 'That URL is not a getPrismaAccessIP endpoint — copy the infrastructure command.';
+    if (!p.apiKey) return 'No header-api-key in that command.';
+    return '';
+  }
 
   function parsePrismaCommand(cmd) {
     const url = (cmd.match(/https:\/\/[^\s"']+/) || [''])[0];
@@ -393,6 +419,18 @@
     });
   }
 
+  // innerHTML alone leaves a raw <select>; enhanceSelects is what gives it the console's own
+  // dropdown. Both always, from one place — the editor re-renders on five different events and a
+  // plain assignment on any of them put an OS menu back in the form. This module was the only
+  // Configuration tab that never called it, which is why its two menus were drawn by the operating
+  // system while every other tab's were drawn by the console.
+  function paintEditor(d) {
+    const body = document.getElementById('devBody');
+    if (!body) return;
+    body.innerHTML = editorForm(d);
+    window.NMS.utils.enhanceSelects(body);
+  }
+
   function openEditor(idx) {
     editIdx = idx;
     const d = idx == null ? blank() : normalize(JSON.parse(JSON.stringify(state.devices[idx])));
@@ -400,7 +438,7 @@
     draftFingerprint = d.fingerprint || '';
     draftApiKey = '';   // a stored key stays on the appliance; the editor opens showing bullets
     document.getElementById('devTitle').textContent = idx == null ? 'Add Device' : 'Edit Device';
-    document.getElementById('devBody').innerHTML = editorForm(d);
+    paintEditor(d);
     document.getElementById('devFoot').innerHTML = `
       ${idx == null ? '' : '<button class="btn-sm btn-danger" id="devDelete">Delete</button>'}
       <span style="flex:1"></span>
@@ -447,7 +485,7 @@
     // Device type drives the access labels and placeholder, so switching rebuilds the form —
     // entered values and the oid survive through collectForm.
     body.querySelector('[data-typesel]')?.addEventListener('change', () => {
-      body.innerHTML = editorForm(collectForm(body));
+      paintEditor(collectForm(body));
       wireEditor();
     });
 
@@ -455,7 +493,7 @@
       draftFingerprint = '';
       const d = collectForm(body);
       if (editIdx != null) { state.devices[editIdx].fingerprint = ''; stage(); }
-      body.innerHTML = editorForm(d);
+      paintEditor(d);
       wireEditor();
     });
 
@@ -464,19 +502,16 @@
     document.getElementById('devParseCmd')?.addEventListener('click', () => {
       const out = document.getElementById('devParseResult');
       const cmd = body.querySelector('[data-f="paste_cmd"]')?.value || '';
-      if (!cmd.trim()) {
-        out.innerHTML = '<span style="color:var(--text-danger,#c33)">Paste the command first.</span>';
-        return;
-      }
       const p = parsePrismaCommand(cmd);
-      if (!p.url && !p.apiKey) {
-        out.innerHTML = '<span style="color:var(--text-danger,#c33)">No URL or api-key found in that command.</span>';
+      const err = prismaCommandError(cmd, p);
+      if (err) {
+        out.innerHTML = `<span style="color:var(--text-danger,#c33)">${esc(err)}</span>`;
         return;
       }
       const d = collectForm(body);
       d.health = { url: p.url || (d.health && d.health.url) || '', body: p.body || (d.health && d.health.body) || '' };
       if (p.apiKey) draftApiKey = p.apiKey;
-      body.innerHTML = editorForm(d);
+      paintEditor(d);
       wireEditor();
       const got = [p.url ? 'URL' : '', p.apiKey ? 'api-key' : '', p.body ? 'body' : ''].filter(Boolean).join(', ');
       document.getElementById('devParseResult').innerHTML =
@@ -528,7 +563,7 @@
       document.getElementById('devTrustFp').addEventListener('click', () => {
         draftFingerprint = res.fingerprint;
         if (editIdx != null) { state.devices[editIdx].fingerprint = res.fingerprint; stage(); }
-        body.innerHTML = editorForm(collectForm(body));   // re-render so the pinned box shows
+        paintEditor(collectForm(body));   // re-render so the pinned box shows
         wireEditor();
       });
     });
@@ -555,11 +590,11 @@
         if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
         try {
           const res = await saveApiKey(d.oid, draftApiKey);
-          if (!res.ok) { alert(res.message || 'The api-key could not be saved.'); return; }
+          if (!res.ok) { window.NMS.notice(res.message || 'The api-key could not be saved.'); return; }
           keyStored[d.oid] = true;
           draftApiKey = '';
         } catch (e) {
-          alert(e.message || 'The api-key could not be saved.');
+          window.NMS.notice(e.message || 'The api-key could not be saved.');
           return;
         } finally {
           if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
@@ -594,9 +629,9 @@
   async function runSaseRowTest(idx) {
     const d = state.devices[idx];
     if (!d || d.device_type !== 'sase') return;
-    if (!(d.health && d.health.url)) { alert('Paste the command first — edit the device.'); return; }
+    if (!(d.health && d.health.url)) { window.NMS.notice('Paste the command first — edit the device.'); return; }
     if (!keyStored[d.oid] && !draftApiKey) {
-      alert('No api-key is stored for this device yet — edit it, paste the command and save.');
+      window.NMS.notice('No api-key is stored for this device yet — edit it, paste the command and save.');
       return;
     }
 

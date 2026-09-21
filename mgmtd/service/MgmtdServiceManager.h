@@ -80,6 +80,14 @@ public:
     void setApiTestResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeApiTestResult(std::uint32_t ticket);
 
+    // The same arrangement again for an AI model-catalog refresh: collectord calls the vendor's
+    // list endpoint, which is an internet round trip, and answers on the ticket the browser polls.
+    // Its own store rather than the connector tests' above — the two answer different routes and
+    // share only the shape — and its own counter with it, so a ticket cannot name a result in the
+    // other map.
+    void setAiModelResult(std::uint32_t ticket, std::string resultJson);
+    std::optional<std::string> takeAiModelResult(std::uint32_t ticket);
+
     // The same arrangement for one assistant turn: pretzel-ai calls the vendor, which takes
     // seconds, and answers on the ticket the browser is polling. Filed by the WebIpcEvent handler,
     // drained by the poll route — both on the main loop, so no lock.
@@ -112,7 +120,10 @@ public:
         std::string question;
         std::string questionOid;
         std::string answerOid;
-        int seq{0};          // the question's; the answer takes seq + 1
+        // No seq. It used to be carried from the browser through to the write, which made the
+        // ordering of a stored conversation a fact a tab asserted rather than one the store knew —
+        // the single exception to the rule this struct's comment states. engined numbers the rows
+        // from the rows it has.
     };
     void setChatContext(std::uint32_t ticket, ChatContext ctx);
     std::optional<ChatContext> takeChatContext(std::uint32_t ticket);
@@ -176,6 +187,7 @@ public:
     std::uint32_t nextSsoTicket();
     std::uint32_t nextApiTestTicket();
     std::uint32_t nextChatTicket();
+    std::uint32_t nextAiModelTicket();
 
 private:
     MgmtdEventFactory* m_eventFactory{nullptr};
@@ -201,6 +213,7 @@ private:
     pz::algorithm::TicketMap<std::string> m_ssoResults;
 
     pz::algorithm::TicketMap<std::string> m_apiTestResults;
+    pz::algorithm::TicketMap<std::string> m_aiModelResults;
 
     pz::algorithm::TicketMap<std::string> m_chatResults;
     pz::algorithm::TicketMap<std::string> m_chatPartials;

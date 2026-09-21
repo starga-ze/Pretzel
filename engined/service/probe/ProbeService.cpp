@@ -233,7 +233,19 @@ void ProbeService::projectInventory()
                 "health_body=EXCLUDED.health_body, updated_at=now()",
                 {r.oid, r.site, r.target, r.name, r.description, r.healthUrl, r.healthBody});
     }
-    db.exec("DELETE FROM sase_device WHERE oid <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
+    // Rows holding a sealed api-key are spared, and that is the whole of the condition.
+    //
+    // A key is stored the moment the operator presses Save, but the device it belongs to only
+    // reaches the config on Publish. Between the two there is a row carrying nothing but the key —
+    // exactly what this DELETE was written to remove — and this runs on every probe result, not
+    // only on a commit. So adding a SASE device and pasting its command lost the key to the next
+    // probe cycle, and the device came up on Publish with api_key_enc NULL (measured 2026-09-21:
+    // two devices, keys stored at 14:31:20 and 14:32:47, both gone by the 14:33:53 projection).
+    //
+    // An orphan that never gets committed now keeps one sealed string. That is the cheaper of the
+    // two failures: the other one silently discards a credential the operator just entered.
+    db.exec("DELETE FROM sase_device WHERE api_key_enc IS NULL "
+            "AND oid <> ALL(ARRAY(SELECT jsonb_array_elements_text($1::jsonb)))",
             {inventory::oidsOf(projection.sase).dump()});
 }
 

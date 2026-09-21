@@ -53,6 +53,17 @@ private:
     // Answers ApiCredentialStateRequest with every issued key, sealed, routed back to `requester`
     // (probed or collectord). seqNo is the requester's correlation value and is echoed back.
     void sendState(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester, std::uint32_t seqNo);
+
+    // Answers AiCredentialStateRequest with ONE vendor's key, still sealed. The asker opens it with
+    // credentials.key, so this side never holds a plaintext vendor key either — the same contract
+    // sendState() keeps for the device keys.
+    void sendAiCredential(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
+                          std::uint32_t seqNo, const std::string& payloadJson);
+
+    // Replaces one vendor's rows in ai_provider_model with what the vendor last listed. Whole-vendor
+    // rather than per-model: the list IS the vendor's answer, so a model that has gone must go with
+    // it, and a merge would leave retired models selectable forever.
+    void storeAiModels(const std::string& payloadJson);
 };
 
 }

@@ -57,6 +57,9 @@ void WebService::handleIpcEvent(MgmtdServiceManager& sm, const WebIpcEvent& even
     case WebIpcEventType::ApiConnectorTestResponse:
         return m_apiController.onTestResponse(sm, *msg);
 
+    case WebIpcEventType::AiModelUpdateResponse:
+        return m_aiController.onModelsUpdateResponse(sm, *msg);
+
     default:
         LOG_WARN("unhandled web IPC event (type={})", static_cast<std::uint32_t>(event.type()));
         return;
@@ -171,6 +174,20 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
             Match::Exact,  WebRoute::AiCredentials,     Access::Authenticated, false},
         {"POST", "/api/ai/credential",
             Match::Exact,  WebRoute::AiCredentialStore, Access::Authenticated, false},
+
+        // The assistant's model catalog. Not configuration either — the vendors decide what they
+        // serve — so it is fetched into a table and read from there rather than committed.
+        //
+        // The two /models rows are Prefix, not Exact, for the reason the topology row gives: the
+        // result poll travels as ?ticket=<n>, and an Exact row stops matching the moment a query
+        // string is appended. Ordered longest-first so /models/update-result is not swallowed by
+        // the /models prefix above it.
+        {"GET",  "/api/ai/models/update-result",
+            Match::Prefix, WebRoute::AiModelsUpdateResult, Access::Authenticated, false},
+        {"POST", "/api/ai/models/update",
+            Match::Exact,  WebRoute::AiModelsUpdate,    Access::Authenticated, false},
+        {"GET",  "/api/ai/models",
+            Match::Exact,  WebRoute::AiModels,          Access::Authenticated, false},
 
         // The assistant's conversations. Kept on the appliance so they survive a sign-out and are
         // there from a second machine — which is what they were not while they lived in a browser.
@@ -362,6 +379,10 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
 
     case WebRoute::AiCredentials:      return m_aiController.credentials(sm, req, resp);
     case WebRoute::AiCredentialStore:  return m_aiController.credentialStore(sm, req, resp);
+    case WebRoute::AiModels:           return m_aiController.models(sm, req, resp);
+    case WebRoute::AiModelsUpdate:     return m_aiController.modelsUpdate(sm, req, resp);
+    case WebRoute::AiModelsUpdateResult:
+        return m_aiController.modelsUpdateResult(sm, req, resp);
 
     case WebRoute::ChatSessions:       return m_chatController.sessions(sm, req, resp);
     case WebRoute::ChatSession:        return m_chatController.session(sm, req, resp);

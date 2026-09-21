@@ -58,7 +58,6 @@
       // the operator is asked the question at the moment they can answer it.
       headers: [{ name: 'x-panw-region', value: '' }],
       params: [],
-      hint: 'Region required: americas, au, ca, de, europe, in, jp, sg, uk.',
     },
     // Strata Cloud Manager — the tenant's own configuration plane, read with the same OAuth and the
     // same tsg_id scope as ZTNA. It differs only in host and path layout, and it takes no region
@@ -68,7 +67,6 @@
       url: 'https://api.strata.paloaltonetworks.com/config/deployment/v1/service-connections',
       headers: [],
       params: [],
-      hint: 'No region header — the tenant is the token scope.',
     },
     // Listed but not selectable, so the menu is honest about what exists rather than implying the
     // list is complete.
@@ -316,8 +314,7 @@
     id: 'cfg.endpoints',
     tableClass: 'cfg-table-endpoint',
     searchPlaceholder: 'Search endpoints…',
-    empty: `<div class="cfg-empty">No API endpoints yet — click <b>Add Endpoint</b> to define one.
-              An endpoint is device-independent; a test names the API Key to run it against.</div>`,
+    empty: `<div class="cfg-empty">No API endpoints yet — click <b>Add Endpoint</b> to define one.</div>`,
     onRows: wireRows,
     columns: [
       { key: 'name', label: 'Name', cls: 'col-name', filter: 'text',
@@ -362,8 +359,6 @@
 
         <div id="epTable"></div>
 
-        <p class="cfg-foot-note">Reusable across devices. The PAN-OS release is part of the path,
-          so name endpoints accordingly.</p>
       </div>
 
       <div class="slideover-overlay" id="epOverlay"></div>
@@ -399,10 +394,10 @@
       <div class="field-row"><label>Device type</label>
         <div class="ep-fixed">${esc(DEVICE_TYPES.find(d => d.id === e.device_type).label)}
           <span class="lbl-sub">${esc(DEVICE_TYPES.find(d => d.id === e.device_type).sub)}</span></div></div>
-      <div class="field-row"><label>Name</label>
-        <input data-f="name" value="${esc(e.name)}" placeholder="${isSase(e) ? 'e.g. ZTNA connector groups' : 'e.g. address objects'}"/></div>
+      <div class="field-row"><label class="req">Name</label>
+        <input data-f="name" value="${esc(e.name)}"/></div>
       <div class="field-row"><label>Description</label>
-        <input data-f="description" value="${esc(e.description)}" placeholder="optional"/></div>`;
+        <input data-f="description" value="${esc(e.description)}"/></div>`;
 
     return head + (isSase(e) ? saseForm(e) : ngfwForm(e)) +
       `<div class="ep-preview"><span class="ep-preview-h">Calls</span>
@@ -426,23 +421,19 @@
 
       <div id="epCall" class="call-${e.subtype === 'xml' ? 'xml' : 'rest'}">
         <div class="call-block call-rest-block">
-          <div class="field-row"><label>Endpoint</label>
-            <input data-f="rest-path" value="${esc(restData.path)}" placeholder="${esc(TYPE_DEFAULTS.rest.path)}"/></div>
-          <p class="field-hint">Key attached as an <code>X-PAN-KEY</code> header.</p>
+          <div class="field-row"><label class="req">Endpoint</label>
+            <input data-f="rest-path" value="${esc(restData.path)}"/></div>
           <div class="param-head">
             <label>Query parameters</label>
             <button class="btn-sm" id="epParamAdd" type="button">+ Param</button>
           </div>
           <div class="param-list" id="epParamList">${(restData.params.length ? restData.params : [{ name: '', value: '' }])
             .map(paramRow).join('')}</div>
-          <p class="field-hint">Values are percent-encoded for you — type them raw.</p>
         </div>
 
         <div class="call-block call-xml-block">
-          <div class="field-row"><label>Endpoint <span class="lbl-sub">— full XML API URL</span></label>
-            <input data-f="xml-url" value="${esc(rawXmlUrl(xmlData))}"
-              placeholder="/api?type=op&amp;cmd=&lt;show&gt;&lt;system&gt;&lt;info/&gt;&lt;/system&gt;&lt;/show&gt;"/></div>
-          <p class="field-hint">Paste from the firewall's API browser. The key is added for you.</p>
+          <div class="field-row"><label class="req">Endpoint <span class="lbl-sub">— full XML API URL</span></label>
+            <input data-f="xml-url" value="${esc(rawXmlUrl(xmlData))}"/></div>
         </div>
       </div>`;
   }
@@ -464,29 +455,24 @@
       <div class="editor-sec">CALL</div>
       ${subtypeRow(e)}
 
-      <div class="field-row"><label>Endpoint <span class="lbl-sub">— full URL</span></label>
-        <input data-f="sase-url" value="${esc(saseUrlOf(e))}"
-          placeholder="${esc(spec.url || 'https://api.sase.paloaltonetworks.com/…')}"/></div>
+      <div class="field-row"><label class="req">Endpoint <span class="lbl-sub">— full URL</span></label>
+        <input data-f="sase-url" value="${esc(saseUrlOf(e))}"/></div>
       <div class="ep-derived">
         <div><span class="ep-derived-k">Host</span><code id="epHostOut">${esc(e.host) || '—'}</code></div>
         <div><span class="ep-derived-k">Path</span><code id="epPathOut">${esc(e.path) || '—'}</code></div>
       </div>
-      <p class="field-hint">Host and path are split out of the URL; a query string moves into the
-        parameters below.${spec.hint ? ' ' + esc(spec.hint) : ''}</p>
 
       <div class="param-head">
         <label>Headers</label>
         <button class="btn-sm" id="epHeaderAdd" type="button">+ Header</button>
       </div>
       <div class="param-list" id="epHeaderList">${headers.map(paramRow).join('')}</div>
-      <p class="field-hint"><code>Authorization</code> is added for you — do not set it here.</p>
 
       <div class="param-head">
         <label>Query parameters</label>
         <button class="btn-sm" id="epParamAdd" type="button">+ Param</button>
       </div>
-      <div class="param-list" id="epParamList">${params.map(paramRow).join('')}</div>
-      <p class="field-hint">Values are percent-encoded for you — type them raw.</p>`;
+      <div class="param-list" id="epParamList">${params.map(paramRow).join('')}</div>`;
   }
 
   // The URL shown in the single input: host + path only. The query lives in the parameter rows, so
@@ -579,7 +565,6 @@
         <span class="ep-pick-s">${esc(d.sub)}</span></label>`).join('');
 
     window.NMS.modal.open('Add Endpoint', `
-      <p class="cm-lead">What does this endpoint call? This cannot be changed later.</p>
       <div class="ep-picks">${opts}</div>`,
       `<button class="btn-sm" id="cmDone">Cancel</button>
        <span style="flex:1"></span>
@@ -598,7 +583,13 @@
     draftOid = e.oid;
     draftDeviceType = e.device_type;
     document.getElementById('epTitle').textContent = idx == null ? 'Add Endpoint' : 'Edit Endpoint';
-    document.getElementById('epBody').innerHTML = editorForm(e);
+    const epBody = document.getElementById('epBody');
+    epBody.innerHTML = editorForm(e);
+    // The console's own dropdown in place of the operating system's. The hidden <select> stays as
+    // the value store and still fires a bubbling 'change', so the wiring below is unaffected. This
+    // module never called it, which is why its SubType menu was drawn by the OS while the same menu
+    // on every other Configuration tab was drawn by the console.
+    window.NMS.utils.enhanceSelects(epBody);
     document.getElementById('epFoot').innerHTML = `
       ${idx == null ? '' : '<button class="btn-sm btn-danger" id="epDelete">Delete</button>'}
       <span style="flex:1"></span>
@@ -792,7 +783,7 @@
     });
 
     if (!keys.length) {
-      alert(`No API Credential is bound to a ${e.device_type.toUpperCase()} device yet — add one under ` +
+      window.NMS.notice(`No API Credential is bound to a ${e.device_type.toUpperCase()} device yet — add one under ` +
             'API Profile ▸ API Credential first.');
       return;
     }
@@ -807,7 +798,7 @@
       <p class="cm-lead">Runs <code>${esc(effectiveUrl(e))}</code> ${isSase(e)
         ? 'for the tenant the chosen credential belongs to.'
         : 'against the device the chosen key belongs to.'}</p>
-      <div class="field-row"><label>API Credential</label>
+      <div class="field-row"><label class="req">API Credential</label>
         <select id="epTestKey">${opts}</select></div>`,
       `<button class="btn-sm" id="cmDone">Cancel</button>
        <span style="flex:1"></span>
@@ -820,10 +811,10 @@
   async function runEndpointTest(idx, keyOid) {
     const e = state.endpoints[idx];
     const keyRecord = window.NMS.apiKeys ? window.NMS.apiKeys.byOid(keyOid) : null;
-    if (!keyRecord) { alert('That API Key no longer exists.'); return; }
+    if (!keyRecord) { window.NMS.notice('That API Credential no longer exists.'); return; }
 
     const dev = window.NMS.devices ? window.NMS.devices.byOid(keyRecord.device) : null;
-    if (!dev) { alert('The key references a device that no longer exists.'); return; }
+    if (!dev) { window.NMS.notice('The key references a device that no longer exists.'); return; }
 
     // Name the API Key (api_key_oid) so probed rides on the key already issued for this profile
     // instead of re-issuing one on every endpoint test. The password is only a fallback for the
@@ -831,7 +822,7 @@
     const hasStored = window.NMS.apiKeys ? window.NMS.apiKeys.hasKey(keyOid) : false;
     const held = window.NMS.apiKeySecrets ? window.NMS.apiKeySecrets.for(keyOid) : {};
     if (!hasStored && !held.password) {
-      alert('That API Key has no key issued yet — enter its password on the API Key page and run the key generation once.');
+      window.NMS.notice('That API Credential has no key issued yet — enter its password on the API Credential page and run the key generation once.');
       return;
     }
 

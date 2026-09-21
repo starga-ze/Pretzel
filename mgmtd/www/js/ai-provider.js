@@ -38,9 +38,13 @@
  * POST /api/ai/credential in onPublished, where it is sealed with AES-256-GCM and handed to engined.
  *
  * The model list is a fixed set of checkboxes per vendor. No search — the lists are short enough to
- * read — and no free-text row: a name an operator has to type exactly is a name they will mistype,
- * and a model that is missing from VENDORS below is a change to this file, where it can be given a
- * readable label and the token-parameter quirk its generation needs.
+ * read — and no free-text row: a name an operator has to type exactly is a name they will mistype.
+ *
+ * Those checkboxes used to be built from a table in this file, which meant a model released after a
+ * build could not be selected until the next one. They come from GET /api/ai/models now — what each
+ * vendor last told the appliance it serves, fetched by collectord and stored in ai_provider_model.
+ * A vendor whose catalog has never been fetched has nothing to pick, and the editor says so and
+ * points at the card that fetches it rather than pretending the account is empty.
  */
 (function () {
   'use strict';
@@ -54,45 +58,33 @@
   const activeTab = () => new URLSearchParams(location.search).get('tab') || window.NMS.settingsDefaultTab;
   const { esc } = window.NMS.utils;
 
-  // ── The vendors, and what they serve ─────────────────────────────────────────
-  // A picking list, not a policy: it is what this console knows to offer, and an operator may still
-  // type in one it has never heard of. Kept to the 2025-and-later generations — the older ones are
-  // a long tail nobody is deploying an appliance against, and a list nobody can read is a list
-  // nobody checks.
+  // ── The vendors ──────────────────────────────────────────────────────────────
+  // Closed, and closed downstream too: each id is an endpoint compiled into pretzel-ai, a sealed
+  // key slot under the same name, and a row the commit schema will accept. A fourth would name a
+  // vendor nothing can serve.
   //
-  // This WILL go stale: vendors ship models on their own schedule and this file does not. That is
-  // why the editor keeps a free-text row beside the checkboxes — a model the list does not carry is
-  // an ordinary thing, not an error.
+  // What they SERVE is not here. It used to be, and it went stale between releases by construction
+  // — vendors ship models on their own schedule and this file does not. These two fields are what
+  // is genuinely this console's to know: how to write the vendor's name, and what family to call
+  // it. `keyHint` went with the placeholder that showed it.
   const VENDORS = [
-    {
-      id: 'openai', label: 'OpenAI', family: 'GPT', keyHint: 'sk-…',
-      models: [
-        { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra', token_param: 'max_completion_tokens' },
-        { id: 'gpt-5.6-sol',   label: 'GPT-5.6 Sol',   token_param: 'max_completion_tokens' },
-        { id: 'gpt-5.6-luna',  label: 'GPT-5.6 Luna',  token_param: 'max_completion_tokens' },
-      ],
-    },
-    {
-      id: 'google', label: 'Google', family: 'Gemini', keyHint: 'AI Studio API key',
-      models: [
-        { id: 'gemini-3.6-flash',      label: 'Gemini 3.6 Flash' },
-        { id: 'gemini-3.5-flash',      label: 'Gemini 3.5 Flash' },
-        { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite' },
-      ],
-    },
-    {
-      id: 'anthropic', label: 'Anthropic', family: 'Claude', keyHint: 'sk-ant-…',
-      models: [
-        { id: 'claude-opus-5',   label: 'Claude Opus 5' },
-        { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
-        { id: 'claude-fable-5',  label: 'Claude Fable 5' },
-        { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-      ],
-    },
+    { id: 'openai',    label: 'OpenAI',    family: 'GPT' },
+    { id: 'google',    label: 'Google',    family: 'Gemini' },
+    { id: 'anthropic', label: 'Anthropic', family: 'Claude' },
   ];
 
+  // What each vendor last listed, from GET /api/ai/models:
+  //   { <provider>: { fetched_at, models: [{ id, label, token_param? }] } }
+  //
+  // Null while unread, and an absent vendor means "never fetched" — which the picker renders as a
+  // pointer at the AI Model card rather than as an empty account.
+  let catalog = null;
+
   const vendorOf = (id) => VENDORS.find(v => v.id === id) || VENDORS[0];
-  const catalogOf = (id) => vendorOf(id).models;
+  const catalogOf = (id) => {
+    const e = catalog && catalog[id];
+    return (e && Array.isArray(e.models)) ? e.models : [];
+  };
   const knownModel = (pid, mid) => catalogOf(pid).find(m => m.id === mid) || null;
 
   // ── State ────────────────────────────────────────────────────────────────────
@@ -137,20 +129,58 @@
   // What the appliance will hold after Publish — the staged change laid over what it holds now.
   const keyEffective = (id) => (pending.has(id) ? pending.get(id) !== null : keySealed(id));
 
+  // pretzel-ai's own fallback when nothing names one (src/deployment/catalog.py). Spelled out here
+  // because hoisting has to compare EFFECTIVE values: a model that says nothing is not a model with
+  // no answer, it is a model that answers "max_tokens", and hoisting a different string above it
+  // would silently change what that model sends.
+  const DEFAULT_TOKEN_PARAM = 'max_tokens';
+
+  const effectiveTokenParam = (id, m) => {
+    const known = knownModel(id, String(m.id));
+    return String((m && m.token_param) || (known && known.token_param) || DEFAULT_TOKEN_PARAM);
+  };
+
+  // The token parameter to hoist onto the vendor: whichever its models say most often.
+  //
+  // Majority rather than unanimity. Requiring every model to agree meant one exception among sixty
+  // put the string back on all sixty-one — the arrangement that made running_config repeat itself
+  // in the first place. With the majority hoisted, the exceptions are the only ones that write it,
+  // which is what "provider default plus overrides" is supposed to mean.
+  function dominantTokenParam(id, models) {
+    const seen = new Map();
+    for (const m of models) {
+      const tp = effectiveTokenParam(id, m);
+      seen.set(tp, (seen.get(tp) || 0) + 1);
+    }
+    let best = '', bestN = 0;
+    for (const [tp, n] of seen) {
+      if (n > bestN) { best = tp; bestN = n; }
+    }
+    return best;
+  }
+
   function normalizeEntry(p) {
     const id = (p && p.id) || '';
-    return {
-      id,
-      models: (Array.isArray(p && p.models) ? p.models : [])
-        .filter(m => m && typeof m === 'object' && m.id)
-        .map(m => {
-          const known = knownModel(id, String(m.id));
-          const out = { id: String(m.id), label: String(m.label || (known && known.label) || m.id) };
-          const tp = m.token_param || (known && known.token_param);
-          if (tp) out.token_param = String(tp);
-          return out;
-        }),
-    };
+    const raw = (Array.isArray(p && p.models) ? p.models : [])
+      .filter(m => m && typeof m === 'object' && m.id);
+    const shared = dominantTokenParam(id, raw);
+
+    const out = { id };
+    // Never written when it is only the fallback everything already resolves to: a vendor whose
+    // models all take max_tokens says nothing, exactly as it did before any of this existed.
+    if (shared && shared !== DEFAULT_TOKEN_PARAM) out.token_param = shared;
+
+    out.models = raw.map(m => {
+      const known = knownModel(id, String(m.id));
+      const entry = { id: String(m.id), label: String(m.label || (known && known.label) || m.id) };
+      // Only the exceptions, and they carry the EFFECTIVE value rather than what they happened to
+      // be stored with — a model inheriting a hoisted string it does not want has to say so.
+      const tp = effectiveTokenParam(id, m);
+      if (tp !== (out.token_param || DEFAULT_TOKEN_PARAM)) entry.token_param = tp;
+      return entry;
+    });
+
+    return out;
   }
 
   const normalize = (c) => {
@@ -185,6 +215,18 @@
       creds = d.providers || {};
       sealingAvailable = d.sealing_available !== false;
     } catch (_) { creds = null; }
+  }
+
+  // What the vendors last listed. Read on the same terms as the credential state above: a failure
+  // leaves it empty rather than throwing, because the editor has something to say about a vendor
+  // with no catalog and nothing to say about a page that did not render.
+  async function loadCatalog() {
+    try {
+      const r = await fetch('/api/ai/models', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      catalog = (d && typeof d === 'object' && !d.error) ? d : {};
+    } catch (_) { catalog = {}; }
   }
 
   const commitPayload = () => [{ scope: SCOPE, domain: 'providers', values: { list: state.list } }];
@@ -322,12 +364,21 @@
   }
 
   // Body-mounted so the table's overflow cannot crop it, and shared by every row.
+  // Hiding is deferred so the pointer can travel from the cell into the card without the card
+  // disappearing on the way. Sixty-one models do not fit on screen, so the card scrolls — and a
+  // scrollable thing that vanishes when reached for is a thing that cannot be scrolled.
+  let popHideTimer = null;
+  const cancelPopHide = () => { clearTimeout(popHideTimer); popHideTimer = null; };
+  const schedulePopHide = () => { cancelPopHide(); popHideTimer = setTimeout(hideModelPop, 140); };
+
   function modelPopEl() {
     let el = document.getElementById('aiModelPop');
     if (!el) {
       el = document.createElement('div');
       el.id = 'aiModelPop';
       el.className = 'ep-pop';
+      el.addEventListener('mouseenter', cancelPopHide);
+      el.addEventListener('mouseleave', schedulePopHide);
       document.body.appendChild(el);
     }
     return el;
@@ -343,14 +394,36 @@
       + p.models.map(m => modelRowHtml(m, true)).join('');
     pop.classList.add('open');
 
-    // Directly below the cell, left edges aligned; flipped above only if it would leave the viewport.
+    // Measured at its natural height first: the cap below is only worth applying when the list
+    // genuinely does not fit, and a stale one from the last provider would cut a short list short.
+    pop.style.maxHeight = 'none';
+
+    const GAP = 6, EDGE = 8;
     const r = cell.getBoundingClientRect();
     const pw = pop.offsetWidth, ph = pop.offsetHeight;
+
     let left = r.left;
-    if (left + pw > window.innerWidth - 8) left = window.innerWidth - 8 - pw;
-    let top = r.bottom + 6;
-    if (top + ph > window.innerHeight - 8 && r.top - 6 - ph > 8) top = r.top - 6 - ph;
-    pop.style.left = `${Math.max(8, left) + window.scrollX}px`;
+    if (left + pw > window.innerWidth - EDGE) left = window.innerWidth - EDGE - pw;
+
+    // Below, then above, then whichever side has more room with the card capped to it. The third
+    // case is what sixty-one models hit: neither side fits, so the card takes the taller side and
+    // scrolls inside itself rather than running off the screen.
+    const below = window.innerHeight - r.bottom - GAP - EDGE;
+    const above = r.top - GAP - EDGE;
+    let top;
+    if (ph <= below) {
+      top = r.bottom + GAP;
+    } else if (ph <= above) {
+      top = r.top - GAP - ph;
+    } else if (below >= above) {
+      pop.style.maxHeight = `${below}px`;
+      top = r.bottom + GAP;
+    } else {
+      pop.style.maxHeight = `${above}px`;
+      top = EDGE;
+    }
+
+    pop.style.left = `${Math.max(EDGE, left) + window.scrollX}px`;
     pop.style.top = `${top + window.scrollY}px`;
   }
 
@@ -369,8 +442,8 @@
       tbody.querySelectorAll('[data-del]').forEach(b =>
         b.addEventListener('click', () => removeEntry(+b.dataset.del)));
       tbody.querySelectorAll('[data-models]').forEach(cell => {
-        cell.addEventListener('mouseenter', () => showModelPop(cell));
-        cell.addEventListener('mouseleave', hideModelPop);
+        cell.addEventListener('mouseenter', () => { cancelPopHide(); showModelPop(cell); });
+        cell.addEventListener('mouseleave', schedulePopHide);
       });
     },
     columns: [
@@ -446,18 +519,153 @@
   // ── Editor ───────────────────────────────────────────────────────────────────
   const isPicked = (mid) => draft.models.some(m => m.id === mid);
 
-  // Checkboxes and nothing else. The operator is choosing from what their account serves, and a
-  // name they would have to type exactly is a name they will mistype; a search box over a list this
-  // short would be furniture. A model the console has not heard of is added by shipping it here.
+  // The picker's own view state, outside `draft` because none of it is part of the provider: it is
+  // where the operator is looking, not what they have chosen. Reset when the editor opens.
+  let modelQuery = '';
+
+  // How many picks are named individually before the rest become a count. Deliberately small: at
+  // eight the row wrapped to three lines and pushed the list it is supposed to help off screen,
+  // which is the opposite of what it is for. Five fits one line at this width.
+  const CHIP_LIMIT = 5;
+
+  const matchesQuery = (m, q) =>
+    !q || m.id.toLowerCase().indexOf(q) !== -1 || String(m.label || '').toLowerCase().indexOf(q) !== -1;
+
+  // What is selected, named, above the list.
+  //
+  // This replaced a "Selected only" toggle, and the toggle was the weaker answer to the same
+  // question: the header says HOW MANY are picked and the rows tint green, so the only thing left
+  // to ask is WHICH — and that is not a thing to hide behind a button and then have to turn off
+  // again. Named here, removable here, and visible while the operator searches for the next one.
+  function pickChips() {
+    if (!draft.models.length) return '';
+
+    // Everything picked is a state the count already states, and sixty-one names do not add to it.
+    // Naming them would be a wall of chips answering a question nobody has.
+    const all = catalogOf(draft.id);
+    if (all.length && draft.models.length === all.length) {
+      return `<div class="ai-chips" id="aiPickChips">
+          <span class="ai-chip-more">All ${all.length} selected.</span>
+        </div>`;
+    }
+
+    const shown = draft.models.slice(0, CHIP_LIMIT);
+    const rest = draft.models.length - shown.length;
+    return `<div class="ai-chips" id="aiPickChips">
+        ${shown.map(m => `<button type="button" class="ai-chip" data-unpick="${esc(m.id)}"
+              title="Remove ${esc(m.id)}">${esc(m.label || m.id)}<span aria-hidden="true">&times;</span></button>`).join('')}
+        ${rest > 0 ? `<span class="ai-chip-more">+${rest} more</span>` : ''}
+      </div>`;
+  }
+
+  // Sixty-odd models per vendor, so a plain column of checkboxes is not a list an operator reads —
+  // it is one they scroll past. Three things make it usable:
+  //
+  //   search      the model they want has a name they already know, and typing four characters of
+  //               it beats scrolling a list ordered by a vendor's naming scheme
+  //   chips       what is picked, named, without scrolling to find the ticks
+  //   Select all  scoped to what the search is showing, so "every gpt-5.6" is one click. Clearing
+  //               is NOT scoped — a Clear that left hidden selections behind would be a Clear that
+  //               did not clear, and the count beside it would say so while looking wrong.
+  //
+  // An empty catalog is a state, not an impossibility: the list comes from the vendor, so a vendor
+  // nobody has fetched yet has none. Said as the thing to do about it — the fetch lives on
+  // Operation ▸ AI Model — rather than drawn as an account that serves nothing.
   function modelPicker() {
-    return `<div class="ai-pick">
-        ${catalogOf(draft.id).map(m => `
-          <label class="ai-pick-row${isPicked(m.id) ? ' on' : ''}">
-            <input type="checkbox" data-pick="${esc(m.id)}" ${isPicked(m.id) ? 'checked' : ''}/>
+    const all = catalogOf(draft.id);
+    if (!all.length) {
+      return `<p class="field-hint">No models have been fetched for
+                ${esc(vendorOf(draft.id).label)} yet. Store its API key here, publish, then run
+                Update on the <b>AI Model</b> card in System Management ▸ Operation.</p>`;
+    }
+
+    const q = modelQuery.trim().toLowerCase();
+
+    // Every row is rendered and the hidden ones are marked, not dropped. Filtering then costs one
+    // attribute per row instead of rebuilding the list, which is what keeps the search box's focus
+    // and caret where the operator left them.
+    return `<div class="ai-pick-tools">
+        <span class="ai-pick-search-wrap">
+          ${window.NMS.utils.icons.search}
+          <input type="search" class="ai-pick-search" id="aiPickSearch" autocomplete="off"
+                 placeholder="Search ${esc(String(all.length))} models…" value="${esc(modelQuery)}">
+        </span>
+        <button type="button" class="ai-pick-act" data-pickall>Select all</button>
+        <button type="button" class="ai-pick-act ai-pick-act-clear" data-pickclear>Clear</button>
+      </div>
+      ${pickChips()}
+      <div class="ai-pick" id="aiPickList">
+        ${all.map(m => `
+          <label class="ai-pick-row${isPicked(m.id) ? ' on' : ''}" data-row="${esc(m.id)}"
+                 ${matchesQuery(m, q) ? '' : 'hidden'}>
+            <span class="tgl"><input type="checkbox" data-pick="${esc(m.id)}" ${isPicked(m.id) ? 'checked' : ''}/>
+              <span class="tgl-track"></span></span>
             <span class="ai-pick-name">${esc(m.label)}</span>
             <span class="ai-pick-id mono-val">${esc(m.id)}</span>
           </label>`).join('')}
-      </div>`;
+      </div>
+      <p class="ai-pick-empty" id="aiPickEmpty" ${all.some(m => matchesQuery(m, q)) ? 'hidden' : ''}>Nothing matches.</p>`;
+  }
+
+  // Selection changes do NOT repaint the editor. Sixty rows rebuilt on every tick is visible work,
+  // and it would take the search box's focus with it on the one interaction most likely to be
+  // followed by more typing. The four things a pick can change are touched directly instead.
+  function syncPick() {
+    const body = document.getElementById('aiBody');
+    if (!body || !draft) return;
+
+    const all = catalogOf(draft.id);
+    const q = modelQuery.trim().toLowerCase();
+    let visible = 0;
+
+    body.querySelectorAll('[data-row]').forEach((row) => {
+      const m = all.find(x => x.id === row.dataset.row);
+      if (!m) return;
+      const on = isPicked(m.id);
+      row.classList.toggle('on', on);
+      const box = row.querySelector('[data-pick]');
+      if (box) box.checked = on;
+
+      const show = matchesQuery(m, q);
+      row.hidden = !show;
+      if (show) visible++;
+    });
+
+    const empty = document.getElementById('aiPickEmpty');
+    if (empty) empty.hidden = visible > 0;
+
+    const count = document.getElementById('aiPickCount');
+    if (count) count.textContent = `${draft.models.length} of ${all.length} selected`;
+
+    // The chip row is the one part that is rebuilt: its contents ARE the selection, so there is
+    // nothing to toggle in place. It holds no focus worth preserving — the search box does, and it
+    // is not inside this.
+    const chips = body.querySelector('#aiPickChips');
+    const tools = body.querySelector('.ai-pick-tools');
+    const html = pickChips();
+    if (chips) chips.outerHTML = html || '<div class="ai-chips" id="aiPickChips" hidden></div>';
+    else if (html && tools) tools.insertAdjacentHTML('afterend', html);
+    wireChips();
+  }
+
+  // Re-wired after every rebuild of the row above.
+  function wireChips() {
+    document.getElementById('aiPickChips')?.querySelectorAll('[data-unpick]').forEach(
+      chip => chip.addEventListener('click', () => {
+        draft.models = draft.models.filter(m => m.id !== chip.dataset.unpick);
+        saveNote = '';
+        syncPick();
+      }));
+  }
+
+  // One model, as it is carried in the provider entry. The label and the token parameter come from
+  // the catalog rather than being invented here: they are what the vendor said, and what pretzel-ai
+  // needs to call the model.
+  function pickEntry(mid) {
+    const known = knownModel(draft.id, mid);
+    const entry = { id: mid, label: (known && known.label) || mid };
+    if (known && known.token_param) entry.token_param = known.token_param;
+    return entry;
   }
 
   // Just the field. What a key is, where it goes and when it is applied is the page's business,
@@ -475,10 +683,14 @@
     // Three states, told apart by the placeholder alone: nothing stored, something stored, and
     // something staged over it. The mask is a sentinel, never a value — it is not submitted, so
     // leaving the field untouched cannot overwrite a sealed key with dots.
+    //
+    // The fourth case — nothing stored — is now empty rather than the vendor's key format. What a
+    // key looks like is a thing the operator is holding, not a thing the form has to tell them,
+    // and it was the only one of the four that described instead of reported.
     const placeholder = staged === null ? 'removed on publish'
       : staged !== undefined ? `${mask}  staged`
       : sealed ? mask
-      : v.keyHint;
+      : '';
 
     return `<div class="ai-key-row">
         <input type="password" data-k autocomplete="off" spellcheck="false" class="mono-val"
@@ -510,12 +722,12 @@
       : `<div class="ep-fixed">${esc(v.label)}<span class="lbl-sub">${esc(v.family)}</span></div>`;
 
     return `
-      <div class="field-row"><label>Provider</label>${picker}</div>
-      <div class="field-row"><label>API key</label>${keyBlock(v)}</div>
+      <div class="field-row"><label class="req">Provider</label>${picker}</div>
+      <div class="field-row"><label class="req">API key</label>${keyBlock(v)}</div>
 
       <div class="ed-sec">
         <div class="ed-sec-h">Models
-          <span class="info-hint">${draft.models.length} of ${catalogOf(draft.id).length} selected</span></div>
+          <span class="info-hint" id="aiPickCount">${draft.models.length} of ${catalogOf(draft.id).length} selected</span></div>
         ${modelPicker()}
       </div>`;
   }
@@ -543,6 +755,9 @@
       draft = clone(state.list[idx]);
     }
     keyDraft = ''; saveNote = '';
+    // The picker's view state belongs to the sitting, not to the provider: an editor opened again
+    // should show the whole list, not the last search someone left in it.
+    modelQuery = '';
 
     document.getElementById('aiTitle').textContent = idx == null ? 'Add Provider' : 'Edit Provider';
     document.getElementById('aiFoot').innerHTML = `
@@ -589,8 +804,14 @@
     // accident, but it is committed to by the same button.
     if (keyDraft) pending.set(draft.id, keyDraft);
 
-    if (editIdx == null) state.list.push(draft);
-    else state.list[editIdx] = draft;
+    // Through normalizeEntry, which is what hoists a token parameter the whole vendor agrees on off
+    // its models. The draft carries it per model because that is how the picker builds an entry
+    // (pickEntry reads the catalogue), and storing the draft raw meant an edit put back the very
+    // repetition a load had just removed — the entries that came from the server were slim and the
+    // ones an operator touched were not.
+    const entry = normalizeEntry(draft);
+    if (editIdx == null) state.list.push(entry);
+    else state.list[editIdx] = entry;
 
     stage();
     closeEditor();
@@ -607,22 +828,50 @@
       draft.models = [];
       keyDraft = '';
       saveNote = '';
+      // The catalogue changed underneath it, so a search over the old vendor's names means nothing.
+      modelQuery = '';
       paintEditor();
     });
 
     body.querySelectorAll('[data-pick]').forEach(box => box.addEventListener('change', () => {
       const mid = box.dataset.pick;
       if (box.checked) {
-        const known = knownModel(draft.id, mid);
-        const entry = { id: mid, label: (known && known.label) || mid };
-        if (known && known.token_param) entry.token_param = known.token_param;
-        if (!draft.models.some(m => m.id === mid)) draft.models.push(entry);
+        if (!draft.models.some(m => m.id === mid)) draft.models.push(pickEntry(mid));
       } else {
         draft.models = draft.models.filter(m => m.id !== mid);
       }
       saveNote = '';
-      paintEditor();
+      syncPick();
     }));
+
+    // `input`, not `change`: the list narrows as it is typed, which is the whole point of having
+    // it. No debounce — the filter is an attribute per row over a list of sixty.
+    body.querySelector('#aiPickSearch')?.addEventListener('input', (e) => {
+      modelQuery = e.target.value;
+      syncPick();
+    });
+
+    // Scoped to what the search is showing. Selecting every model a vendor serves is rarely what
+    // anyone means; selecting every one matching "gpt-5.6" often is.
+    body.querySelector('[data-pickall]')?.addEventListener('click', () => {
+      const q = modelQuery.trim().toLowerCase();
+      catalogOf(draft.id).forEach((m) => {
+        if (!matchesQuery(m, q)) return;
+        if (!draft.models.some(x => x.id === m.id)) draft.models.push(pickEntry(m.id));
+      });
+      saveNote = '';
+      syncPick();
+    });
+
+    // NOT scoped. A Clear that left the hidden selections behind would leave a count the operator
+    // cannot account for from what is on screen.
+    body.querySelector('[data-pickclear]')?.addEventListener('click', () => {
+      draft.models = [];
+      saveNote = '';
+      syncPick();
+    });
+
+    wireChips();
 
     const keyInput = body.querySelector('[data-k]');
     // No repaint on input: a repaint per keystroke would take the caret with it.
@@ -677,18 +926,25 @@
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
-  const refresh = async () => { await Promise.all([load(), loadCreds()]); render(); };
+  const refresh = async () => { await Promise.all([load(), loadCreds(), loadCatalog()]); render(); };
 
   function activate() {
     render();
     // Key state is only worth reading once the tab is actually open — every Configuration tab loads
     // this module. The table repaints when it lands, because the API Key column depends on it.
     if (creds === null) loadCreds().then(paintTable);
+    // The catalogue is re-read on EVERY activation, not only when it has never been read. It is
+    // filled from outside this page — Operation ▸ AI Model ▸ Update — so a `=== null` guard meant
+    // an operator who fetched a vendor's models and came straight here was shown the empty answer
+    // this tab had cached, with no way to correct it short of reloading the console.
+    loadCatalog().then(() => { paintTable(); if (draft) paintEditor(); });
     window.NMS.onRefresh(refresh);
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
-    await load();
+    // Together: normalizeEntry falls back to the catalog for a label a stored entry does not carry,
+    // so reading the config first would resolve those against an empty one.
+    await Promise.all([loadCatalog(), load()]);
     if (activeTab() === TAB) activate();
     document.dispatchEvent(new Event('nms:ai-provider-ready'));
   });

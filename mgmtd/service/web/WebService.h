@@ -82,6 +82,9 @@ enum class WebRoute
     // AiController — the assistant's vendor keys, which cannot ride a commit.
     AiCredentials,      // GET  /api/ai/credentials
     AiCredentialStore,  // POST /api/ai/credential
+    AiModels,           // GET  /api/ai/models
+    AiModelsUpdate,     // POST /api/ai/models/update
+    AiModelsUpdateResult, // GET /api/ai/models/update-result?ticket=
 
     ChatSessions,       // GET  /api/chat/sessions
     ChatSession,        // GET  /api/chat/session?oid=

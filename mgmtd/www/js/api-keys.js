@@ -58,6 +58,31 @@
   };
   const credSpec = (deviceType) => CREDENTIALS[deviceType] || CREDENTIALS.ngfw;
 
+  // How a key is kept alive, decided by what issued it rather than by the operator.
+  //
+  // A PAN-OS key does not expire, so there is nothing for a schedule to do and 'auto' would be a
+  // timer re-issuing a credential that was still good. A Prisma Access bearer token expires in about
+  // fifteen minutes, so 'manual' would be a key that is dead by the time anyone uses it — the only
+  // question left is how often, and the answer has to leave room before the token lapses.
+  //
+  // Offered as a Manual/Auto pair for both, it was a question with one right answer on each side and
+  // a way to get it wrong on either.
+  const SASE_INTERVAL_MIN = 1;
+  const SASE_INTERVAL_MAX = 10;
+  const SASE_INTERVAL_DEFAULT = 5;
+
+  const refreshPolicy = (spec) => spec.hostEndpoint
+    ? { mode: 'auto', fixed: true, min: SASE_INTERVAL_MIN, max: SASE_INTERVAL_MAX,
+        deflt: SASE_INTERVAL_DEFAULT }
+    : { mode: 'manual', fixed: true };
+
+  const clampInterval = (v, pol) => {
+    if (!pol.max) return 0;
+    const n = Number(v);
+    if (!(n > 0)) return pol.deflt;
+    return Math.min(pol.max, Math.max(pol.min, Math.round(n)));
+  };
+
   // The password never comes back from the appliance — only whether one is sealed there. So a saved
   // credential is rendered as bullets, the same way the SASE device editor renders its api-key: the
   // field shows a mask and a line saying where the secret lives. The mask is a sentinel, not a value;
@@ -204,7 +229,11 @@
     if (!siteOid) return '<option value="">— select a site first —</option>';
     const inSite = devices().filter(d => d.site === siteOid);
     if (!inSite.length) return '<option value="">— no devices in this site —</option>';
-    return ['<option value="">— select a device —</option>'].concat(
+    // The "nothing chosen yet" row, and only while nothing is chosen. Kept because a select with no
+    // such row has no way to be unset — it would open on the first item and an operator could save a
+    // choice they never made — and dropped once there IS a choice, where it is a line that says what
+    // the closed select already shows.
+    return (selectedOid ? [] : ['<option value="">— select a device —</option>']).concat(
       inSite.map(d => `<option value="${esc(d.oid)}" ${d.oid === selectedOid ? 'selected' : ''}>${
         esc(d.name || d.target)} (${esc(window.NMS.devices.typeLabel(d.device_type))})</option>`)
     ).join('');
@@ -452,69 +481,60 @@
   }
 
   // ── Editor ───────────────────────────────────────────────────────────────────
-  function fieldRow(label, key, val, type, ph) {
-    return `<div class="field-row"><label>${esc(label)}</label>
+  // `req` marks the label; per-field example placeholders are gone. See main.css.
+  function fieldRow(label, key, val, type, req) {
+    return `<div class="field-row"><label${req ? ' class="req"' : ''}>${esc(label)}</label>
         <input type="${type === 'password' ? 'password' : 'text'}"${
           type === 'password' ? ' autocomplete="new-password"' : ''} data-f="${esc(key)}"
-          value="${esc(val)}" placeholder="${esc(ph || '')}"/></div>`;
+          value="${esc(val)}"/></div>`;
   }
 
   function editorForm(k) {
     const dev = devices().find(d => d.oid === k.device);
     const spec = credSpec(dev ? dev.device_type : 'ngfw');
+    const pol = refreshPolicy(spec);
     const held = secrets.for(k.oid);
 
-    const siteOpts = ['<option value="">— select a site —</option>'].concat(
+    const siteOpts = (draftSite ? [] : ['<option value="">— select a site —</option>']).concat(
       sites().map(s => `<option value="${esc(s.oid)}" ${draftSite === s.oid ? 'selected' : ''}>${esc(s.name)}</option>`)
     ).join('');
 
-    // Three states, in the order they happen: typed but not yet saved → sealed on the appliance →
-    // nothing yet. Only the middle one survives a refresh, and it is server truth (has_credential),
-    // so another host or browser session sees the bullets too.
-    const pwState = held.password
-      ? { val: KEY_MASK, hint: 'entered — sealed on the appliance when you press Save' }
-      : held.has_credential
-        ? { val: KEY_MASK, hint: 'stored on the appliance (sealed) — type to replace it' }
-        : { val: '', hint: '' };
+    // Bullets when there is a password behind them, empty when there is not — typed but unsaved and
+    // sealed on the appliance look the same, and the second is server truth (has_credential), so
+    // another host or browser session sees the bullets too. The sentence that used to say which of
+    // the two it was is gone; the mask is the whole of what this field reports now.
+    const pwVal = (held.password || held.has_credential) ? KEY_MASK : '';
 
     const creds = spec.supported
-      ? spec.fields.map(([f, label, type, ph]) => {
-          if (type !== 'password') return fieldRow(label, f, k[f] || '', type, ph);
-          return fieldRow(label, f, pwState.val, type, pwState.val ? '' : ph)
-               + (pwState.hint ? `<p class="field-hint" style="margin-top:-6px">${esc(pwState.hint)}</p>` : '');
-        }).join('')
+      ? spec.fields.map(([f, label, type]) =>
+          type === 'password' ? fieldRow(label, f, pwVal, type, true)
+                              : fieldRow(label, f, k[f] || '', type, true)).join('')
       : `<p class="field-hint">${esc(spec.note || 'Not supported yet.')}</p>`;
 
     return `
-      ${fieldRow('Name', 'name', k.name, 'text', 'e.g. sherpain-fw key')}
-      <div class="field-row"><label>Site</label>
+      ${fieldRow('Name', 'name', k.name, 'text', true)}
+      <div class="field-row"><label class="req">Site</label>
         <select data-sitesel>${siteOpts}</select></div>
-      <div class="field-row"><label>Device</label>
+      <div class="field-row"><label class="req">Device</label>
         <select data-f="device" data-devsel>${deviceOptsForSite(draftSite, k.device)}</select></div>
-      ${dev ? `<p class="field-hint">Device type <b>${esc(window.NMS.devices.typeLabel(dev.device_type))}</b>
-                 — reached at <code>${esc(dev.target)}</code>.</p>` : ''}
 
       <div class="editor-sec">KEY GENERATION</div>
-      ${fieldRow(spec.hostEndpoint ? 'Token endpoint' : 'Endpoint', 'endpoint', k.endpoint, 'text', spec.keygenHint)}
-      <p class="field-hint">${spec.hostEndpoint
-        ? 'Token host and path.'
-        : 'Path only — the host comes from the device.'}</p>
+      ${fieldRow(spec.hostEndpoint ? 'Token endpoint' : 'Endpoint', 'endpoint', k.endpoint, 'text', true)}
 
       <div class="editor-sec">CREDENTIAL</div>
       ${creds}
 
       <div class="editor-sec">REFRESH</div>
       <div class="field-row"><label>Mode</label>
-        <div class="ak-refresh">
-          <label class="ak-radio"><input type="radio" name="rmode" value="manual" ${k.refresh_mode !== 'auto' ? 'checked' : ''}/> Manual</label>
-          <label class="ak-radio"><input type="radio" name="rmode" value="auto" ${k.refresh_mode === 'auto' ? 'checked' : ''}/> Auto</label>
-        </div></div>
-      <div class="field-row" id="akIntervalRow" style="${k.refresh_mode === 'auto' ? '' : 'display:none'}">
-        <label>Interval (min)</label>
-        <input type="number" min="1" data-f="refresh_interval_min" value="${esc(k.refresh_interval_min || 60)}"/></div>
+        <input value="${pol.mode === 'auto' ? 'Auto' : 'Manual'}" disabled/></div>
+      ${pol.max ? `
+        <div class="field-row"><label class="req">Interval (min)</label>
+          <input type="number" min="${pol.min}" max="${pol.max}" step="1"
+                 data-f="refresh_interval_min"
+                 value="${esc(String(clampInterval(k.refresh_interval_min, pol)))}"/></div>` : ''}
       <p class="field-hint">${spec.hostEndpoint
-        ? 'SASE tokens expire in ~15 minutes. Auto re-issues on the interval.'
-        : 'NGFW keys do not expire; Auto is optional.'}</p>`;
+        ? `SASE keys expire after 15 minutes. ${pol.min}–${pol.max} minutes can be set.`
+        : 'NGFW keys do not expire.'}</p>`;
   }
 
   function collect(body) {
@@ -522,15 +542,20 @@
       const el = body.querySelector(`[data-f="${f}"]`);
       return el ? el.value.trim() : '';
     };
-    const rmode = body.querySelector('input[name="rmode"]:checked');
+    // The device decides the mode, so it is read from the device rather than from the form. A form
+    // that no longer offers the choice must not still carry an answer to it.
+    const device = g('device');
+    const dev = devices().find(d => d.oid === device);
+    const pol = refreshPolicy(credSpec(dev ? dev.device_type : 'ngfw'));
+
     const out = normalize({
       oid: draftOid,
       name: g('name'),
-      device: g('device'),
+      device,
       endpoint: g('endpoint'),
       username: g('username'),
-      refresh_mode: rmode ? rmode.value : 'manual',
-      refresh_interval_min: g('refresh_interval_min'),
+      refresh_mode: pol.mode,
+      refresh_interval_min: clampInterval(g('refresh_interval_min'), pol),
     });
 
     // Typed passwords go straight to the browser-held store, never into the record. The mask is what
@@ -564,12 +589,6 @@
 
   function wireEditor() {
     const body = document.getElementById('akBody');
-
-    // Auto/Manual toggles the interval row.
-    body.querySelectorAll('input[name="rmode"]').forEach(r => r.addEventListener('change', () => {
-      const row = body.querySelector('#akIntervalRow');
-      if (row) row.style.display = (r.value === 'auto' && r.checked) ? '' : 'none';
-    }));
 
     // Picking a site re-scopes the device list and clears any prior device.
     body.querySelector('[data-sitesel]')?.addEventListener('change', (e) => {
@@ -638,11 +657,11 @@
         if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
         try {
           const res = await storeCredential(k.oid, k.username, typed);
-          if (!res.ok) { alert(res.message || 'The password could not be saved.'); return; }
+          if (!res.ok) { window.NMS.notice(res.message || 'The password could not be saved.'); return; }
           secrets.drop(k.oid);
           await loadKeyState();   // pick up has_credential so the row renders *****
         } catch (e) {
-          alert(e.message || 'The password could not be saved.');
+          window.NMS.notice(e.message || 'The password could not be saved.');
           return;
         } finally {
           if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
@@ -725,14 +744,14 @@
   async function runKeygenTest(idx) {
     const k = state.keys[idx];
     const dev = deviceOf(k);
-    if (!dev) { alert('This key references a device that no longer exists.'); return; }
+    if (!dev) { window.NMS.notice('This key references a device that no longer exists.'); return; }
 
     const held = secrets.for(k.oid);
     const isSase = dev.device_type === 'sase';
     // A stored credential is enough: collectord opens its own sealed copy, so a test runs from a
     // browser that never saw the password. Only a key with neither has nothing to try.
     if (!held.password && !held.has_credential) {
-      alert(isSase ? 'Enter the Client Secret first — edit the key and save it.'
+      window.NMS.notice(isSase ? 'Enter the Client Secret first — edit the key and save it.'
                    : 'Enter the password first — edit the key and save it.');
       return;
     }

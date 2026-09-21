@@ -21,6 +21,10 @@ enum class ApiEventType : std::uint32_t
     RunTlsProbe = 7,      // → CredentialController: TLS-only handshake, return the cert fingerprint
     StoreSaseKey = 8,     // → StatusController: seal a SASE health api-key and hand it to engined
     StoreCredential = 9,  // → CredentialController: seal an account credential and hand it to engined
+    // AI model catalog. Two events for one operation because the key it needs lives in engined's
+    // store: the first asks for it, the second arrives with it and makes the vendor call.
+    RefreshAiModels = 10,    // → AiModelController: fetch one vendor's model list
+    ReceiveAiKeyState = 11,  // → AiModelController: the sealed vendor key the refresh was waiting on
     // Schedule-driven (injected by ApiService::schedule, not from the wire).
     Setup = 5,        // one-shot after bootstrap: fetch issued keys + arm periodic collection
     RunPeriodic = 6,  // recurring: SASE health probe + credential auto-refresh (each self-gated)

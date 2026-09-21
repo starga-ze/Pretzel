@@ -195,6 +195,16 @@ std::optional<std::string> MgmtdServiceManager::takeApiTestResult(std::uint32_t 
     return m_apiTestResults.take(ticket);
 }
 
+void MgmtdServiceManager::setAiModelResult(std::uint32_t ticket, std::string resultJson)
+{
+    m_aiModelResults.put(ticket, std::move(resultJson));
+}
+
+std::optional<std::string> MgmtdServiceManager::takeAiModelResult(std::uint32_t ticket)
+{
+    return m_aiModelResults.take(ticket);
+}
+
 void MgmtdServiceManager::setChatContext(std::uint32_t ticket, ChatContext ctx)
 {
     // Bounded the same way the results are, and for the same reason: a browser that navigated away
@@ -280,6 +290,11 @@ std::uint32_t MgmtdServiceManager::nextSsoTicket()
 std::uint32_t MgmtdServiceManager::nextApiTestTicket()
 {
     return m_apiTestResults.next();
+}
+
+std::uint32_t MgmtdServiceManager::nextAiModelTicket()
+{
+    return m_aiModelResults.next();
 }
 
 bool MgmtdServiceManager::beginCorpusRefresh()

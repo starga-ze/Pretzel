@@ -26,7 +26,12 @@
  *   MU-SPN   Mobile User Security Processing Node — where mobile-user traffic terminates. The SAME
  *            node type serves GlobalProtect AND Explicit Proxy; the API reports them as two
  *            serviceTypes with their own addresses, not as two kinds of node.
- *   RN-SPN   Remote Network SPN — where branch IPsec tunnels terminate.
+ *   RN-SPN   Remote Network SPN — where branch IPsec tunnels terminate. A remote network is a
+ *            SITE, not a class of user: one tunnel from a branch device onboards the whole subnet
+ *            behind it. Its addresses come in two roles that face opposite ways — a service IP is
+ *            what the branch dials IN to, an active address is where its traffic egresses FROM —
+ *            and a tenant is regularly issued one address for both, so the lane draws them as two
+ *            slots and marks the shared address rather than listing it twice as two nodes.
  *   SC-CAN   Service Connection Corporate Access Node — the path to the customer's data centre.
  *            An SC-CAN performs NO inspection, which is why the on-premise NGFW at the far end is
  *            drawn as part of this picture: that is where private-app policy is actually enforced.
@@ -34,20 +39,22 @@
  * Three kinds of endpoint reach the fabric, and they do NOT map one-to-one onto one node each:
  *
  *   GlobalProtect app        L4 tunnel to the GP Gateway on an MU-SPN
- *   Prisma Access Browser    L7 proxy session to the Explicit Proxy (SWG)
+ *   Prisma Browser          L7 proxy session to the Explicit Proxy (SWG). Renamed from "Prisma
+ *                            Access Browser" — the SASE status page lists it as Prisma Browser.
  *   Browser + PAC            same SWG, reached by PAC rules instead of the managed browser
  *
- * The two are chained, not exclusive: with GlobalProtect up in full tunnel, a Prisma Access Browser
+ * The two are chained, not exclusive: with GlobalProtect up in full tunnel, a Prisma Browser
  * (or PAC'd browser) session still goes into the L4 tunnel first and is proxied by the SWG behind
  * it — GP Gateway → Explicit Proxy → internet, both hops inside Prisma Access. Only under split
  * tunnel / proxy mode does the proxy session leave the endpoint directly. The drawing carries both:
  * a direct lane from the browser rows, and a chained hop from the gateway group to the proxy group.
  *
- * Prisma Access is Mobile Users + Remote Networks + Service Connections. This API sees only the
- * first, and the SCM deployment read adds the Service Connections. RN is therefore drawn as a real
- * lane in the picture but marked "API pending" — the
- * shape is already correct, so when the IPsec / routing / ZTNA-connector reads land they fill lanes
- * that already exist rather than forcing the page to be redrawn.
+ * Prisma Access is Mobile Users + Remote Networks + Service Connections. This API answers for the
+ * first two — it reports remote_network addresses for every region a branch is onboarded to — and
+ * the SCM deployment read adds the Service Connections. What it does NOT answer for RN is the branch
+ * itself: no site names, no tunnel state, no advertised subnets, no BGP. So the RN lane is drawn
+ * from addresses only, and says so; when the remote-network read lands it fills a lane that already
+ * exists rather than forcing the page to be redrawn.
  *
  * Honesty about "live"
  * --------------------
@@ -62,6 +69,10 @@
   // Live re-runs exactly what the topbar's refresh button runs (NMS.onRefresh → load), on a timer.
   // One minute matches the tenant probe's own cycle, so a faster poll could only ever redraw the
   // same answer; the interval is stated on the button rather than left to be guessed at.
+  // How many branches the endpoint card names before it stops. Past this the rows stop being a card
+  // and become a table, and the drawer is where a list belongs.
+  const RN_SITE_ROWS = 6;
+
   const REFRESH_MS = 60000;
   const REFRESH_LABEL = '1m';
 
@@ -115,7 +126,9 @@
     active: 'egress address',
     network_load_balancer: 'load balancer',
     auth_cache_service: 'auth cache',
-    service_ip: 'IPsec service IP',
+    // Palo Alto's own word for it: the Service Endpoint Address on an IPSec termination node, which
+    // is what a branch CPE is configured to dial. "Service IP" is the field name, not the concept.
+    service_ip: 'service endpoint',
     pre_allocated: 'pre-allocated',
   };
 
@@ -240,7 +253,7 @@
           zone: z.zone || '',
           raw: a,
         };
-        node.key = (z.zone || '') + '|' + node.address;
+        node.key = nodeKey(z.zone, node.address, node.addressType);
         node.age = node.created ? Math.max(0, now - node.created) : 0;
         node.isNew = !!prev && !prev.has(node.key);
         live.add(node.key);
@@ -290,14 +303,14 @@
     if (prev) prev.forEach((k) => { if (!live.has(k)) gone.push(k); });
     zones.forEach((z) => {
       z.groups.forEach((g) => {
-        g.goneNodes = gone.filter(k => k.indexOf(z.name + '|') === 0 &&
-                                       (prevSvc[k] === g.svc)).map(k => ({ key: k, address: k.split('|')[1] }));
+        g.goneNodes = gone.filter(k => k.indexOf(z.name + '|') === 0 && (prevSvc[k] === g.svc))
+                          .map(k => ({ key: k, address: k.split('|')[1], addressType: k.split('|')[2] || '' }));
       });
     });
 
     seen[tenant.oid] = live;
     zonesRaw.forEach((z) => (z.address_details || []).forEach((a) => {
-      prevSvc[(z.zone || '') + '|' + (a.address || '')] = a.serviceType || 'unknown';
+      prevSvc[nodeKey(z.zone, a.address, a.addressType)] = a.serviceType || 'unknown';
     }));
 
     // Data-plane regions first — that is where user traffic actually lands — and among those, the
@@ -307,15 +320,52 @@
                          (b.lanes - a.lanes) || (b.addrs - a.addrs) || a.name.localeCompare(b.name));
     zones.forEach((z, i) => { z.zi = i; });
 
-    const counts = { gw: 0, swg: 0, portal: 0, rn: 0, lb: 0, egressIps: [] };
+    // A remote network is counted in three figures rather than one. Its addresses play OPPOSITE
+    // roles — a service IP is where a branch dials IN, an active address is where its traffic leaves
+    // FROM — and a small tenant is issued the same address for both. One figure over the two said
+    // "2 addresses" about one address, and put an inbound tunnel endpoint in the allow-list card,
+    // which is the one place on this page where a wrong address is acted on rather than read.
+    const counts = { gw: 0, swg: 0, portal: 0, lb: 0,
+                     rnEgress: 0, rnService: 0, rnPre: 0, rnZones: 0, rnSites: [], egressIps: [] };
+    const egressSeen = new Set();
+    // The branch sites themselves. `node_name` is the one field in this payload that names a thing
+    // the customer owns rather than a thing Prisma Access allocated, and it only ever appears on
+    // remote_network entries. It is a LIST because several sites share one address: they are
+    // onboarded to the same IPsec termination node, which is what the aggregate-bandwidth model does.
+    const rnSite = new Map();
     zones.forEach((z) => z.groups.forEach((g) => {
       counts.lb += g.lbs.length;
       if (g.svc === 'gp_gateway') counts.gw += g.nodes.length;
       if (g.svc === 'swg_proxy') counts.swg += g.nodes.length;
       if (g.svc === 'gp_portal') counts.portal += g.nodes.length;
-      if (g.svc === 'remote_network') counts.rn += g.nodes.length;
-      if (g.spec.egress) g.nodes.forEach(n => counts.egressIps.push({ address: n.address, zone: z.name }));
+      if (g.svc === 'remote_network' && !g.absent && g.nodes.length) {
+        counts.rnZones++;
+        counts.rnEgress  += g.nodes.filter(n => n.addressType === 'active').length;
+        counts.rnService += g.nodes.filter(n => n.addressType === 'service_ip').length;
+        counts.rnPre     += g.nodes.filter(n => n.addressType === 'pre_allocated').length;
+        g.nodes.forEach(n => (Array.isArray(n.raw && n.raw.node_name) ? n.raw.node_name : [])
+          .forEach((nm) => {
+            const name = String(nm || '').trim();
+            if (!name) return;
+            const e = rnSite.get(name) || { name, zones: [] };
+            if (e.zones.indexOf(z.name) < 0) e.zones.push(z.name);
+            rnSite.set(name, e);
+          }));
+      }
+      // Only `active` is an egress address. A service IP is the far end of a branch's tunnel and a
+      // pre-allocated one carries nothing yet; an allow-list built from either is wrong in a way
+      // nobody notices until the traffic it was meant to admit is the traffic it blocks. Deduplicated
+      // on zone and address, so a region that answers twice for one address still lists it once.
+      if (g.spec.egress) g.nodes.forEach((n) => {
+        if (n.addressType !== 'active') return;
+        const k = z.name + '|' + n.address;
+        if (egressSeen.has(k)) return;
+        egressSeen.add(k);
+        counts.egressIps.push({ address: n.address, zone: z.name });
+      });
     }));
+
+    counts.rnSites = [...rnSite.values()].sort((a, b) => a.name.localeCompare(b.name));
 
     // The regions that carry user traffic are the picture; portals and the global auth cache are
     // supporting cast and get a compact strip rather than a lane of their own.
@@ -324,6 +374,14 @@
 
     return { tenant, zones, dataZones, ctlZones, counts };
   }
+  // An address is identified by its ROLE as well as by itself. A remote network is regularly issued
+  // one address that answers twice — once as the service IP a branch dials in to, once as the egress
+  // source its traffic leaves from — and keyed on the address alone the two entries collided: one
+  // drawer for two roles, one anchor for two cards. The role is part of what the tenant answered, so
+  // it is part of the identity. `|` stays the separator and the address stays the second field, which
+  // is what the withdrawal list reads back out.
+  const nodeKey = (zone, addr, type) => (zone || '') + '|' + (addr || '') + '|' + (type || '');
+
   const prevSvc = {};   // node key → serviceType, so a departed address keeps its lane
   const order = (svc) => (svc === 'gp_gateway' ? 0 : svc === 'swg_proxy' ? 1 : svc === 'gp_portal' ? 2 : 3);
 
@@ -423,20 +481,55 @@
         <div class="topo-lane" id="ep-gp"><span class="topo-mini-dot" style="--topo-tone:var(--tc-gw)"></span>
           <span class="topo-lane-nm">GlobalProtect app</span><span class="topo-lane-l">L4</span></div>
         <div class="topo-lane" id="ep-pab"><span class="topo-mini-dot" style="--topo-tone:var(--tc-swg)"></span>
-          <span class="topo-lane-nm">Prisma Access Browser</span><span class="topo-lane-l">L7</span></div>
+          <span class="topo-lane-nm">Prisma Browser</span><span class="topo-lane-l">L7</span></div>
         <div class="topo-lane" id="ep-pac"><span class="topo-mini-dot" style="--topo-tone:var(--tc-swg)"></span>
           <span class="topo-lane-nm">Browser + PAC</span><span class="topo-lane-l">L7</span></div>`,
         false, 'mu');
 
-    // Remote networks are NOT waiting on another API: this one reports serviceType remote_network for
-    // every region a branch is onboarded to, and those show up as RN-SPN inside the regions. With
-    // none onboarded there is no RN-SPN to draw and no traffic to imply, so the endpoint sits here
-    // disabled and unconnected rather than as a lane that looks like it is waiting for something.
-    const rn = c.rn
-      ? endCard('end-rn', 'rn', ICONS.branch, 'Remote Users', 'RN · users behind a branch', `
-          <div class="topo-end-line"><span class="topo-mini-dot" style="--topo-tone:var(--tc-rn)"></span>
-            RN-SPN addresses <b>${c.rn}</b></div>`, false, 'rn')
-      : endCard('end-rn', 'pending', ICONS.branch, 'Remote Users', 'RN · users behind a branch', `
+    // "Remote Users" was the wrong noun and it cost the picture the one thing that makes an RN
+    // different from an MU: nothing here is a user. A branch device builds ONE IPsec tunnel and the
+    // whole subnet behind it is onboarded — people, printers, servers alike, none of them running an
+    // agent, none of them authenticating. It is a site, so it is named as one.
+    //
+    // Built as the Mobile Users card is built: a row per fact about how this endpoint attaches, each
+    // row the place a link physically leaves. The variety on the MU card is the three modes; on this
+    // one it is the two addresses, which point in opposite directions — `IN` is what a branch
+    // firewall is configured to dial, `OUT` is what the internet sees its traffic come from. Naming
+    // the direction on each row is the whole reason to draw them as rows rather than as one figure.
+    const rnLane = (id, tone, name, tag, n) =>
+      `<div class="topo-lane"${id ? ` id="${id}"` : ''}><span class="topo-mini-dot" style="--topo-tone:var(--tc-${tone})"></span>
+         <span class="topo-lane-nm">${esc(name)}</span>${n === undefined ? '' : `<b>${n}</b>`}
+         <span class="topo-lane-l">${esc(tag)}</span></div>`;
+
+    // The rows ARE the branches. This card is the endpoint — the thing at the customer's end of the
+    // tunnel — so naming it "Branch IPsec tunnel" and counting addresses under it described the
+    // fabric's side of the link from the customer's side of the picture. The API has been answering
+    // with the site names all along (`node_name`); they were being thrown away.
+    const sites = c.rnSites || [];
+    const shownSites = sites.slice(0, RN_SITE_ROWS);
+    const siteRows = shownSites.map((x, i) =>
+      `<div class="topo-lane" id="ep-rn-${i}" title="${esc(x.name + ' — onboarded in ' + x.zones.join(', '))}">
+         <span class="topo-mini-dot" style="--topo-tone:var(--tc-rn)"></span>
+         <span class="topo-lane-nm">${esc(x.name)}</span><span class="topo-lane-l">L3</span></div>`).join('') +
+      (sites.length > shownSites.length
+        ? `<div class="topo-lane is-more">+${sites.length - shownSites.length} more</div>` : '');
+
+    const rn = (c.rnEgress || c.rnService)
+      // No names is a real answer from an older tenant, not a reason to draw nothing: the generic
+      // row still stands and still carries the link, with the two address roles counted beside it.
+      ? endCard('end-rn', 'rn', ICONS.branch, 'Remote Networks',
+                sites.length ? 'RN · branch sites over IPsec' : 'RN · a branch subnet, not a user',
+        sites.length ? siteRows : `
+          ${rnLane('ep-rn', 'rn', 'Branch IPsec tunnel', 'L3')}
+          ${rnLane('', 'rn', 'Tunnel endpoint', 'IN', c.rnService)}
+          ${rnLane('', 'rn', 'Egress address', 'OUT', c.rnEgress)}
+          ${c.rnPre ? rnLane('', 'pending', 'Pre-allocated', 'RSVD', c.rnPre) : ''}`, false, 'rn')
+      // Nothing onboarded is the tenant's own answer, not a read still to come: this same API reports
+      // serviceType remote_network for every region a branch is onboarded to. The row still stands —
+      // it is the way in this endpoint would use — and carries no link, because there is no RN-SPN
+      // for one to land on.
+      : endCard('end-rn', 'pending', ICONS.branch, 'Remote Networks', 'RN · a branch subnet, not a user', `
+          ${rnLane('', 'pending', 'Branch IPsec tunnel', 'L3')}
           <div class="topo-end-line"><span class="topo-tag pending">not configured</span></div>`, true, 'rn');
 
     return `<div class="topo-col topo-col-edge">${mu}${rn}</div>`;
@@ -469,9 +562,9 @@
   // (ep_regional_fqdn), not an optional layer, so there is no flag to report. Rendering an absent
   // flag as "active" would be inventing an answer the API never gave.
   function lbState(n) {
-    if (n.lbActive === true) return 'load balancer · active';
-    if (n.lbActive === false) return 'allocated · not in use';
-    return n.regionalFqdn ? 'load balancer · regional' : 'load balancer · state not reported';
+    if (n.lbActive === true) return 'active';
+    if (n.lbActive === false) return 'allocated · idle';
+    return n.regionalFqdn ? 'regional entry point' : 'state not reported';
   }
 
   function nodeCard(n, cls) {
@@ -486,9 +579,64 @@
   }
 
   // An address the tenant stopped answering with, shown once in the lane it used to sit in.
-  const goneCardsOf = (g) => (g.goneNodes || []).map(x =>
+  const goneCards = (list) => (list || []).map(x =>
     `<span class="topo-node is-gone"><span class="topo-node-ip">${esc(x.address)}</span>
        <span class="topo-node-sub">withdrawn</span></span>`).join('');
+  const goneCardsOf = (g) => goneCards(g.goneNodes);
+
+  // A remote network is not built like an MU-SPN and must not borrow its grid. Nothing load-balances
+  // in front of it — a branch's IPsec tunnel terminates on the SPN itself — and its addresses are not
+  // a pool of equivalent nodes. They are ROLES: a service endpoint is the peer address a branch CPE
+  // dials, an active address is the source the internet sees that branch's traffic leave from. Drawn
+  // per role, a tenant issued a single address for both got it printed twice and read as two nodes,
+  // so the cards are per ADDRESS and the slot names the role.
+  function rnGroup(z, g, gi) {
+    const byAddr = new Map();
+    g.nodes.forEach((n) => {
+      const e = byAddr.get(n.address) || { node: n, roles: [] };
+      // The drawer opens on the card, so the card is keyed on the egress entry where there is one:
+      // that is the address an operator is looking up when they click it.
+      if (n.addressType === 'active') e.node = n;
+      if (e.roles.indexOf(n.addressType) < 0) e.roles.push(n.addressType);
+      byAddr.set(n.address, e);
+    });
+
+    const allEndpoints = byAddr.size > 0 &&
+      [...byAddr.values()].every(e => e.roles.indexOf('service_ip') >= 0);
+
+    // Named by the tenant on the service-endpoint entry: the node the branch tunnels terminate on.
+    // It belongs to the address, not to a column of its own, so it rides the card's title.
+    const fqdn = (g.nodes.find(n => n.raw && n.raw.node_fqdn) || { raw: {} }).raw.node_fqdn || '';
+
+    const cards = [...byAddr.values()].map((e) => {
+      const roles = e.roles.slice().sort((a, b) => (a === 'service_ip' ? -1 : 1));
+      const sub = allEndpoints ? z.name + ' · address' : (ADDR_LABEL[roles[0]] || roles[0] || 'node');
+      const n = e.node;
+      return `<button class="topo-node ${n.isNew ? 'is-new' : ''}" data-node="${esc(n.key)}" type="button"
+                title="${esc(n.address + ' · ' + roles.map(r => ADDR_LABEL[r] || r).join(' · ') +
+                             (fqdn ? ' · ' + fqdn : ''))}">
+          <span class="topo-node-ip">${esc(n.address)}</span>
+          <span class="topo-node-sub">${esc(sub)}</span>
+        </button>`;
+    }).join('');
+
+    // An NLB in front of an RN-SPN would be news. It is not expected and it is not hidden.
+    const lbCards = g.lbs.map(n => nodeCard(n, 'is-lb' + (n.isNew ? ' is-new' : ''))).join('');
+    const gone = goneCardsOf(g);
+
+    return `<div class="topo-svc tone-rn is-rn" id="svc-${z.zi}-${gi}">
+        <div class="topo-svc-h">
+          <div class="topo-svc-nm" title="${esc(g.spec.label)}">${esc(g.spec.label)}</div>
+          <div class="topo-svc-sub">${esc(g.spec.sub)}</div>
+          ${g.spec.note ? `<div class="topo-svc-note">${esc(g.spec.note)}</div>` : ''}
+        </div>
+        <div class="topo-slot"><span class="topo-slot-l">${
+          allEndpoints ? 'Service endpoints' : 'Addresses'} · ${byAddr.size}</span>
+          <div class="topo-nodes">${lbCards}${cards}${gone
+            || (byAddr.size || lbCards ? '' : '<span class="topo-empty-slot">no address</span>')}</div></div>
+        <span></span>
+      </div>`;
+  }
 
   function svcGroup(z, g, gi) {
     // A slot the tenant has not bought. It keeps its lane's tone and its id, so it still occupies
@@ -508,6 +656,8 @@
           ${gone ? `<div class="topo-nodes">${gone}</div>` : '<span></span>'}
         </div>`;
     }
+
+    if (g.svc === 'remote_network') return rnGroup(z, g, gi);
 
     const lbCards = g.lbs.map(n => nodeCard(n, 'is-lb' + (n.lbActive === false ? ' is-standby' : '') +
                                                (n.isNew ? ' is-new' : ''))).join('')
@@ -544,9 +694,15 @@
     // and its header must not count nodes that are not there.
     const gw = z.groups.find(g => g.svc === 'gp_gateway' && !g.absent);
     const swg = z.groups.find(g => g.svc === 'swg_proxy' && !g.absent);
+    // RN is one of the three baseline lanes and was the one the header never mentioned — a region
+    // could carry branch traffic and read, at a glance, as though it carried none. It is counted on
+    // its EGRESS addresses: those track the SPNs the location has spun up for remote networks, where
+    // a service endpoint is one published entry point however much capacity sits behind it.
+    const rn = z.groups.find(g => g.svc === 'remote_network' && !g.absent);
     const counts = [
       gw ? `<span class="topo-count"><span class="topo-mini-dot" style="--topo-tone:var(--tc-gw)"></span>GW <b>${gw.nodes.length}</b></span>` : '',
       swg ? `<span class="topo-count"><span class="topo-mini-dot" style="--topo-tone:var(--tc-swg)"></span>SWG <b>${swg.nodes.length}</b></span>` : '',
+      rn ? `<span class="topo-count" title="RN-SPN egress addresses — one per SPN carrying this region's branch traffic"><span class="topo-mini-dot" style="--topo-tone:var(--tc-rn)"></span>RN <b>${rn.nodes.filter(n => n.addressType === 'active').length}</b></span>` : '',
       `<span class="topo-count"><span class="topo-mini-dot" style="--topo-tone:var(--tc-lb)"></span>NLB <b>${z.groups.reduce((a, g) => a + g.lbs.length, 0)}</b></span>`,
     ].filter(Boolean).join('');
 
@@ -566,31 +722,19 @@
       </div>`;
   }
 
-  // The private estate, in one band across the foot of the canvas: the two ways in (Service
-  // Connection and ZTNA Connector — a tenant may run either or both) on top, and what they reach
-  // underneath. Keeping the four together is what makes every link between them a short hop.
-  // The two ways into the customer's own estate — a tenant may run either or both. They belong at
-  // the foot of the fabric column: the last thing inside Prisma Access before the picture crosses to
-  // on-premise.
-  // The private-application hand-off. Both halves are now real: the Service Connections the tenant
-  // has declared, and the ZTNA connectors it runs with whether each one's tunnel and control plane
-  // are up.
+  // The private-application hand-off. Both halves are real: the Service Connections the tenant has
+  // declared, and the ZTNA connectors it runs with whether each one's tunnel and control plane are up.
   //
   // The two are read from different APIs and mean different things. The ZTNA read reports HEALTH —
-  // it is why that half carries dots. The Service Connection read is SCM's deployment config: it
-  // says which connections exist and how each is built, and nothing about whether one is carrying
-  // traffic. That half therefore carries no dots; inventing a green one would be the worst kind of
-  // wrong, since a Service Connection is exactly the thing an operator checks when the data centre
-  // has gone unreachable.
+  // it is why that half carries dots. The Service Connection read is SCM's deployment config: it says
+  // which connections exist and how each is built, and nothing about whether one is carrying traffic.
+  // That half therefore carries no dots; inventing a green one would be the worst kind of wrong,
+  // since a Service Connection is exactly the thing an operator checks when the data centre has gone
+  // unreachable.
   //
   // A connector is drawn as its own endpoint, not as something hanging off a firewall. They run on
   // hosts behind the customer's network and dial OUT to the fabric themselves; the firewall they sit
   // behind is not a peer and there is no link to draw between them.
-  // The ZTNA half. It sits beside the Service Connection because a tenant may run either or both and
-  // the pair is the answer to one question — how does the fabric reach the private estate. What sets
-  // them apart is not where they are drawn but what is drawn FROM them: the Service Connection lands
-  // on the firewall, and the connector does not. That difference is carried entirely by its link,
-  // which leaves the stack sideways rather than dropping through it.
   function ztnaLane(tenant) {
     const z = (tenant && tenant.ztna) || {};
     const groups = Array.isArray(z.groups) ? z.groups : [];
@@ -611,18 +755,16 @@
       </div>`;
   }
 
-  // The private estate, top to bottom: the two hand-offs side by side, the firewall the IPsec one
-  // lands on, and what sits behind that.
   function handoffSplit(tenant) {
     const s = (tenant && tenant.sc) || {};
-
     const scConns = Array.isArray(s.connections) ? s.connections : [];
+
     // Names, not counts, for this one. A Service Connection is the thing an operator asks for by
     // name when the data centre has gone quiet, and its region is the other half of that name — two
     // values that identify it, where "1 connection" identifies nothing. Two chips is the budget:
     // enough to name a small tenant outright, and past that the count in the overflow chip says how
-    // much more the drawer holds. Everything else about them — tunnel, subnets, SNAT, BGP — is a
-    // list, and lists live in the drawer.
+    // much more the drawer holds.
+    //
     // A connection is BUILT when the peer address on its IKE gateway is an address configured on a
     // firewall we manage — the two ends naming each other, each from the side that owns the fact.
     // topologyd resolves that (service-connection → ipsec_tunnel → ike gateway → peer_address) and
@@ -636,26 +778,17 @@
             const nm = c.name || c.id || 'connection';
             const where = c.region || c.region_tag || '';
             const why = c.linked
-              ? 'built — peer ' + c.peer_ip + ' is ' + (c.linked_device_name || 'a managed firewall') +
-                ' ' + (c.linked_interface || '')
-              : c.peer_ip ? 'peer ' + c.peer_ip + ' is not an address on any firewall in this scope'
-              : c.peer_fqdn ? 'peer is an FQDN (' + c.peer_fqdn + '), which cannot be matched'
-              : c.peer_dynamic ? 'peer address is dynamic, so there is nothing to match'
-              : 'no peer address resolved from this connection';
+              ? 'built — peer ' + c.peer_ip + ' is ' + (c.linked_device_name || 'a managed firewall')
+              : 'declared in SCM — its peer is not an address on a firewall we manage';
             return `<span class="topo-chip" title="${esc(nm + (where ? ' · ' + where : '') + ' · ' + why)}">
-                <span class="topo-mini-dot" style="--topo-tone:var(${
-                  c.linked ? '--tc-ok' : '--tc-faint'})"></span>
                 <span class="topo-chip-nm">${esc(nm)}</span>
-                ${where ? `<span class="topo-chip-z">${esc(where)}</span>` : ''}
-              </span>`;
+                ${where ? `<span class="topo-chip-z">${esc(where)}</span>` : ''}</span>`;
           }).join('')}${
           scConns.length > 2 ? `<span class="topo-chip is-more">+${scConns.length - 2}</span>` : ''}</div>`
       : `<span class="topo-tag pending">not configured</span>`;
 
-    // No wrapper. The three of these are cards in the middle column exactly as the two bands above
-    // them are, and nesting them in a stack of their own gave that stack its own spacing — so the
-    // column ran at one rhythm down to the hand-offs and a different one below them. Flattened, one
-    // gap governs the whole column and every card in it is spaced like every other.
+    // No wrapper beyond the split. The two of these are cards in the middle column exactly as the
+    // bands above them are, and one gap governs the whole column.
     return `<div class="topo-priv-split">
         <div class="topo-half topo-pa ${scConns.length ? '' : 'is-pending'}" id="dst-sc">
           ${detailBtn('sc', '', 'Service Connection')}
@@ -708,7 +841,7 @@
   // The regions are the tallest thing on the page, and an operator watching the private hand-off or
   // comparing regions at the summary level does not always want all of it. Collapsed, the frame keeps
   // its counts and its links — it simply stops listing every node.
-  function planeFrame(m) {
+  function planeFrame(m, tenant) {
     const open = state.planeOpen;
     const shown = shownZones(m);
     const hidden = m.dataZones.length - shown.length;
@@ -728,7 +861,10 @@
               <span class="topo-more-x" aria-hidden="true">${open ? '−' : '+'}</span>${
               open ? 'show one region' : 'view all regions'}</span>` : ''}
         </button>
-        <div class="topo-plane-b">${shown.map(zoneLane).join('')}</div>
+        <div class="topo-plane-b" id="plane-regions">${shown.map(zoneLane).join('')}</div>
+        <div class="topo-plane-f">
+          ${handoffSplit(tenant)}
+        </div>
       </div>`;
   }
 
@@ -812,8 +948,7 @@
             <div class="topo-pa-zone">
               <span class="topo-pa-zone-t">Prisma Access</span>
               ${ctlStrip(m)}
-              ${planeFrame(m)}
-              ${handoffSplit(m.tenant)}
+              ${planeFrame(m, m.tenant)}
             </div>
             ${onPremCards()}
           </div>
@@ -1465,7 +1600,12 @@
         if (!g.nodes.length && !g.lbs.length) return;
 
         if (g.spec.flow === 'rn') {
-          out.push({ from: 'end-rn', to: gid, kind: 'rn', zone: z.name });
+          // A line per branch, not one line for the lane: each site builds its own tunnel, and they
+          // converge on the shared termination node because that is what the fabric does with them.
+          const rows = (m.counts.rnSites || []).slice(0, RN_SITE_ROWS)
+            .map((x, i) => ({ x, i })).filter(r => r.x.zones.indexOf(z.name) >= 0);
+          if (rows.length) rows.forEach(r => out.push({ from: 'ep-rn-' + r.i, to: gid, kind: 'rn', zone: z.name }));
+          else out.push({ from: 'ep-rn', to: gid, kind: 'rn', zone: z.name });
         } else if (g.spec.flow === 'swg') {
           // Direct proxy sessions (split tunnel / proxy mode) come straight from the two browser rows.
           out.push({ from: 'ep-pab', to: gid, kind: 'swg', zone: z.name });
@@ -1510,34 +1650,25 @@
     const scBuilt = (((m.tenant || {}).sc || {}).connections || []).some(c => c.linked);
 
     if (m.dataZones.length) {
-      // No coarse RN line when nothing is onboarded: a line into the fabric would imply an RN-SPN
-      // that does not exist. When one does exist it is drawn per region, above.
-
-      out.push({ from: 'data-plane', to: 'dst-sc', kind: scBuilt ? 'sc' : 'pending', zone: 'all' });
-      out.push({ from: 'data-plane', to: 'dst-ztna', kind: 'pending', zone: 'all' });
+      // The source is the regions section rather than the frame: the hand-offs are inside that frame
+      // now, and a card cannot point at something it contains.
+      out.push({ from: 'plane-regions', to: 'dst-sc', kind: scBuilt ? 'sc' : 'pending', zone: 'all' });
+      out.push({ from: 'plane-regions', to: 'dst-ztna', kind: 'pending', zone: 'all' });
     }
 
     // The portal is what the GlobalProtect app talks to before it has a gateway at all.
     if (m.ctlZones.length) out.push({ from: 'ep-gp', to: 'ctl-strip', kind: 'ctl', zone: 'all' });
 
-    // The private estate is now one vertical stack under the hand-offs that reach it, so these are
-    // plain top-to-bottom hops between neighbours and need no routing at all — geometry() draws a
-    // stacked pair from the bottom edge to the top edge on its own.
     // Not `short`. That flag caps a line at one packet, which is right for a hop between two cards
     // sitting on top of each other — an NLB to its node — but this one spans the width of the stack
-    // and a single dot on it read as a stray mark rather than as traffic. It gets the standard count
-    // for its length, the same as the line feeding it from the fabric above.
+    // and a single dot on it read as a stray mark rather than as traffic.
     out.push({ from: 'dst-sc', to: 'dst-fw', kind: scBuilt ? 'sc' : 'pending', zone: 'all' });
     out.push({ from: 'dst-fw', to: 'dst-apps', kind: 'pending', zone: 'all', short: true });
 
     // No connector-to-firewall link, deliberately. A connector dials OUT to the fabric from a host
     // inside the estate; the firewall it happens to sit behind is not a peer and no tunnel is built
-    // to it. Drawing one would put the connector on the Service Connection's footing, which is the
-    // single thing about this half of the picture worth getting right.
-    //
-    // So the connector has exactly one link, and it goes straight to the applications — down the
-    // outside of the stack and in from the far side. Drawn as a drop through the middle it would
-    // read as passing through the firewall; the detour IS the statement.
+    // to it. So the connector has exactly one link and it goes straight to the applications — down
+    // the outside of the stack and in from the far side. The detour IS the statement.
     out.push({ from: 'dst-ztna', to: 'dst-apps', kind: 'pending', zone: 'all', enter: 'right' });
     return out;
   }
@@ -1813,11 +1944,25 @@
 
     const row = kvRow;
 
+    // The lane merges an address that answered in more than one role into one card, so the panel it
+    // opens has to account for all of them — otherwise clicking the shared address would show only
+    // half of what the tenant said about it.
+    const same = g.nodes.concat(g.lbs, g.aux).filter(x => x.address === n.address);
+    const roles = same.map(x => ADDR_LABEL[x.addressType] || x.addressType)
+                      .filter((v, i, a) => a.indexOf(v) === i).join(' · ');
+    // Only remote networks carry these, and they are the two most useful fields in the payload: the
+    // customer's own names for the branches, and the node their tunnels land on.
+    const rnNames = same.reduce((a, x) => a.concat(Array.isArray(x.raw && x.raw.node_name)
+      ? x.raw.node_name : []), []).filter((v, i, a) => a.indexOf(v) === i);
+    const rnFqdn = (same.find(x => x.raw && x.raw.node_fqdn) || { raw: {} }).raw.node_fqdn || '';
+
     drawer(n.address, `
       <dl class="topo-kv">
         ${row('Region', z.name)}
         ${row('Service', g.spec.label)}
-        ${row('Role', ADDR_LABEL[n.addressType] || n.addressType)}
+        ${row('Role', roles)}
+        ${row('Remote networks', rnNames.join(' · '))}
+        ${row('IPSec termination node', rnFqdn, true)}
         ${row('Address', n.address, true)}
         ${row('Created', n.created ? window.NMS.utils.fmtTs(n.created * 1000) : '')}
         ${n.allowListed === undefined ? '' : row('Allow-listed', n.allowListed ? 'yes' : 'no')}
@@ -1880,7 +2025,7 @@
     if (kind === 'mu') {
       const c = m ? m.counts : { gw: 0, swg: 0, portal: 0 };
       return drawer('Mobile Users', `
-        ${kv([kvRow('Endpoint kinds', 'GlobalProtect app · Prisma Access Browser · Browser + PAC'),
+        ${kv([kvRow('Endpoint kinds', 'GlobalProtect app · Prisma Browser · Browser + PAC'),
               kvRow('GP gateway addresses', c.gw), kvRow('Explicit Proxy addresses', c.swg),
               kvRow('GP portal addresses', c.portal)])}
         ${sec('How a session gets in')}
@@ -1899,9 +2044,23 @@
 
     if (kind === 'rn') {
       const zones = m ? m.dataZones.filter(z => z.groups.some(g => g.svc === 'remote_network' && !g.absent)) : [];
-      return drawer('Remote Users', `
-        ${kv([kvRow('RN-SPN addresses', (m && m.counts.rn) || 0),
-              kvRow('Regions onboarded', zones.length)])}
+      const c = m ? m.counts : { rnEgress: 0, rnService: 0, rnPre: 0 };
+      return drawer('Remote Networks', `
+        ${kv([kvRow('Regions onboarded', zones.length),
+              kvRow('Branches onboarded', (c.rnSites || []).length || ''),
+              kvRow('Service endpoints', c.rnService),
+              kvRow('Egress addresses', c.rnEgress),
+              c.rnPre ? kvRow('Pre-allocated', c.rnPre) : ''])}
+        ${(m && (m.counts.rnSites || []).length)
+          ? sec('Branches onboarded') + `<div class="topo-dl">${m.counts.rnSites.map(x =>
+              `<div class="topo-dl-r"><span class="topo-dl-n">${esc(x.name)}</span>
+                 <span class="topo-dl-t">${esc(x.zones.join(', '))}</span></div>`).join('')}</div>`
+          : ''}
+        ${sec('What a remote network is')}
+        ${hint(`A <b>site</b>, not a class of user. A branch device — firewall, SD-WAN edge, router —
+                builds one IPsec tunnel to a Prisma Access location, and the whole subnet behind it is
+                onboarded: people, printers and servers alike, none of them running an agent. That is
+                the difference from Mobile Users, where what attaches is one endpoint at a time.`)}
         ${zones.length
           ? sec('Where branch tunnels land') + zones.map(z => {
               const g = z.groups.find(x => x.svc === 'remote_network' && !x.absent);
@@ -1914,8 +2073,23 @@
           : sec('Not configured') + hint(`No remote network is onboarded in this tenant. This same API
               reports <code>serviceType: remote_network</code> for every region a branch is onboarded
               to, so an empty answer here is the tenant's answer, not a missing read.`)}
+        ${sec('The two roles an address plays')}
+        ${hint(`They point in opposite directions and are read by different people. A <b>service
+                endpoint</b> is the peer address a branch CPE is configured to dial — inbound only, and
+                never a source. An <b>egress address</b> is the source the internet sees that branch's
+                traffic leave FROM, and it is the one a SaaS allow-list carries. Traffic from a branch
+                to a private app is neither: it crosses the fabric to a Service Connection keeping the
+                branch's own subnet as its source, which is why those subnets are advertised at all.
+                A tenant is often issued one address for both roles, and the lane draws it as one card
+                carrying both badges rather than as two addresses.`)}
+        ${sec('Why a new egress address appears')}
+        ${hint(`Remote-network bandwidth is bought per compute location and shared, and when it grows
+                past what one SPN carries the location spins up another — which arrives here as a new
+                egress address. A scale-out on this lane is capacity, not a new branch.`)}
         ${sec('Not readable from this API')}
-        ${hint('BGP routes and per-branch bandwidth need the remote-network read, which is not collected.')}`);
+        ${hint(`Tunnel state, advertised subnets, ECMP and BGP need the remote-network read, which is
+                not collected. The branch NAMES are not among them — <code>node_name</code> is in this
+                payload, and it is what the endpoint card lists.`)}`);
     }
 
     if (kind === 'ctl') {
@@ -1939,7 +2113,7 @@
     // which level of the drawing is the clickable one.
     if (kind === 'plane') {
       const zones = m ? m.dataZones : [];
-      const c = m ? m.counts : { gw: 0, swg: 0, rn: 0, lb: 0 };
+      const c = m ? m.counts : { gw: 0, swg: 0, rnEgress: 0, rnService: 0, lb: 0 };
       const addrs = (g) => g.lbs.concat(g.nodes, g.aux).map(n => `<div class="topo-dl-r">
           <span class="topo-dl-k">${esc(ADDR_LABEL[n.addressType] || n.addressType)}</span>
           <span class="topo-dl-v mono">${esc(n.address)}</span></div>`).join('');
@@ -1948,7 +2122,8 @@
         ${kv([kvRow('Traffic regions', zones.length),
               kvRow('GlobalProtect gateway addresses', c.gw),
               kvRow('Explicit Proxy addresses', c.swg),
-              kvRow('RN-SPN addresses', c.rn),
+              kvRow('RN-SPN egress addresses', c.rnEgress),
+              kvRow('RN-SPN tunnel endpoints', c.rnService),
               kvRow('Load balancers', c.lb)])}
         ${zones.map(z => sec(z.name) + kv([
             kvRow('Kind', z.dataplane ? 'traffic region' : 'portal region'),
@@ -1968,7 +2143,14 @@
         ${sec('What the addresses are')}
         ${hint(`Sessions arrive on a region's <b>load balancer</b>. The addresses listed under it are
                 <b>egress</b> — the source IPs the internet sees, and what a SaaS allow-list carries.
-                A lane marked not configured is the tenant's answer, not a missing read.`)}`);
+                A lane marked not configured is the tenant's answer, not a missing read.`)}
+        ${sec('What the fabric connects')}
+        ${hint(`Remote networks are meshed with each other by the fabric, with nothing to configure.
+                Mobile users are <b>not</b> — the mobile-user infrastructure is not meshed — so
+                reaching a branch goes through a <b>Service Connection</b> acting as the hub. The same
+                applies from the Explicit Proxy lane, where private-app access is supported but has to
+                be enabled, and this page cannot see whether it was. None of this is drawn: nothing
+                here is observed, and routable is not the same as permitted.`)}`);
     }
 
     if (kind === 'net') {

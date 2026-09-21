@@ -159,6 +159,27 @@ enum class IpcCmd : std::uint16_t
     // unused rather than reassigned so an old peer's frame is rejected, not silently misrouted.
     AiCredentialStateUpdate = 147,    // mgmtd → engined: {id, key_enc} — already sealed,
                                            //   or {id, clear:true} to remove one
+
+    // ── AI model catalog (what each vendor's account serves) ──
+    //
+    // The console used to ship this list inside its JavaScript, so a model released after a build
+    // could not be selected until the next one. It is fetched from the vendor now, and the edges
+    // below are the same three the connector tests already use — mgmtd delegates, collectord makes
+    // the outbound call, engined writes the outcome — because collectord is the daemon that owns
+    // every vendor HTTP call and engined the only one that owns a table.
+    AiModelUpdateRequest = 148,   // mgmtd → collectord: refresh this vendor's model list
+    AiModelUpdateResponse = 149,  // collectord → mgmtd: what the fetch found, by seqNo
+    AiModelUpdate = 150,          // collectord → engined: the refined list, to replace that
+                                  //   vendor's rows in ai_provider_model
+
+    // collectord asks engined for the vendors' keys, and engined answers with the SEALED blobs —
+    // collectord opens them with credentials.key, so the plaintext never crosses the socket. The
+    // same exchange the API credentials already have (ApiCredentialState{Request,Response}), and a
+    // separate pair rather than a widened one: the two stores are different tables holding
+    // different kinds of credential, and a response carrying both would hand every caller of
+    // either one the other's key material.
+    AiCredentialStateRequest = 151,
+    AiCredentialStateResponse = 152,
 };
 
 // Coarse role of a command, orthogonal to its domain. Feeds IpcProtocol::isRoutingAllowed, which

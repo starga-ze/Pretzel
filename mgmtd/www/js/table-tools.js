@@ -74,6 +74,10 @@
   const opLabel = (op) => (TEXT_OPS.find(([k]) => k === op) || TEXT_OPS[0])[1];
   const opNeedsValue = (op) => op !== 'empty' && op !== 'not_empty';
 
+  // Narrower than this a column shows neither its label nor its content, and a drag that let one
+  // reach zero would lose the grip that could bring it back.
+  const MIN_COL_PX = 56;
+
   // ── View persistence ────────────────────────────────────────────────────────
   // Per browser tab, next to the staged drafts (js/commit.js): a narrowed table is part of what the
   // operator is doing right now, not a preference to carry to the next session.
@@ -151,7 +155,7 @@
 
     // View state, restored from the store but validated against the columns as they are NOW: a
     // column that was renamed or dropped must not leave an invisible filter narrowing the table.
-    const view = { q: '', sort: [], filters: {} };
+    const view = { q: '', sort: [], filters: {}, widths: {} };
     (function restore() {
       const saved = loadView(id);
       if (!saved) return;
@@ -160,6 +164,15 @@
         view.sort = saved.sort
           .filter(s => s && canSort(colOf(s.key)))
           .map(s => ({ key: s.key, dir: s.dir === 'desc' ? 'desc' : 'asc' }));
+      }
+      // Widths are px, keyed by column. Validated against the columns as they are now for the same
+      // reason the filters are: a width left behind by a column that no longer exists would be
+      // applied to whichever column happens to hold that key next.
+      if (saved.widths && typeof saved.widths === 'object') {
+        Object.keys(saved.widths).forEach(k => {
+          const w = Number(saved.widths[k]);
+          if (colOf(k) && w >= MIN_COL_PX) view.widths[k] = Math.round(w);
+        });
       }
       if (saved.filters && typeof saved.filters === 'object') {
         Object.keys(saved.filters).forEach(k => {
@@ -360,7 +373,13 @@
         ].filter(Boolean).join(' ');
         const aria = s ? (s.dir === 'asc' ? 'ascending' : 'descending') : (sortable ? 'none' : '');
 
-        if (!sortable && !filterable) return `<th class="${esc(cls)}">${esc(c.label || '')}</th>`;
+        // Every column takes a width when one has been set, whether or not it can be sorted — the
+        // action column is the one an operator most often wants narrower.
+        const w = view.widths[c.key] ? ` style="width:${view.widths[c.key]}px"` : '';
+        const grip = `<span class="th-grip" data-grip="${esc(c.key)}" aria-hidden="true"></span>`;
+
+        if (!sortable && !filterable)
+          return `<th class="${esc(cls)}" data-k="${esc(c.key)}"${w}>${esc(c.label || '')}${grip}</th>`;
 
         const arrow = sortable
           ? `<span class="th-arrow" aria-hidden="true"></span>${
@@ -372,11 +391,11 @@
                      title="Filter by ${esc(c.label || c.key)}">${SVG_FUNNEL}</button>`
           : '';
 
-        return `<th class="${esc(cls)}" data-k="${esc(c.key)}"
+        return `<th class="${esc(cls)}" data-k="${esc(c.key)}"${w}
                     ${sortable ? 'tabindex="0" role="columnheader"' : ''}
                     ${aria ? `aria-sort="${aria}"` : ''}
                     ${sortable ? `title="Sort by ${esc(c.label || c.key)} — shift-click to add a second key"` : ''}>
-            <span class="th-in"><span class="th-label">${esc(c.label || '')}</span>${arrow}${funnel}</span>
+            <span class="th-in"><span class="th-label">${esc(c.label || '')}</span>${arrow}${funnel}</span>${grip}
           </th>`;
       }).join('') + '</tr>';
     }
@@ -458,6 +477,11 @@
       const tbody = host.querySelector('tbody');
       if (thead) thead.innerHTML = headHtml();
       if (tbody) tbody.innerHTML = bodyHtml(visible);
+
+      // headHtml writes the widths back onto the new cells; this puts the table into fixed layout
+      // so they are obeyed rather than treated as a suggestion the content can outvote.
+      const tbl = host.querySelector('table');
+      if (tbl) tbl.classList.toggle('is-sized', Object.keys(view.widths).length > 0);
 
       const chips = host.querySelector('.tbl-chips');
       if (chips) chips.innerHTML = chipsHtml();
@@ -694,6 +718,67 @@
         `<table class="cfg-table tbl ${esc(spec.tableClass || '')}">
            <thead></thead><tbody></tbody>
          </table>`;
+
+      // ── Column resize ───────────────────────────────────────────────────────
+      //
+      // Delegated from the host because thead is rewritten on every paint — sort, filter, search and
+      // every refresh — so a listener on the grip itself would last until the next keystroke.
+      //
+      // The first drag pins EVERY column at the width it currently has and switches the table to
+      // fixed layout. Without that, dragging one column makes the browser re-solve the auto layout
+      // for all of them, so the others visibly jump while the pointer is still down.
+      const table = host.querySelector('table');
+      let drag = null;
+
+      host.addEventListener('pointerdown', (e) => {
+        const grip = e.target.closest('.th-grip');
+        if (!grip || !table) return;
+
+        e.preventDefault();
+        e.stopPropagation();          // not a sort click
+
+        if (!table.classList.contains('is-sized')) {
+          table.querySelectorAll('thead th[data-k]').forEach((th) => {
+            const k = th.dataset.k;
+            if (!view.widths[k]) view.widths[k] = Math.round(th.getBoundingClientRect().width);
+            th.style.width = view.widths[k] + 'px';
+          });
+          table.classList.add('is-sized');
+        }
+
+        const th = grip.closest('th');
+        drag = { key: grip.dataset.grip, th, x0: e.clientX, w0: th.getBoundingClientRect().width };
+        grip.setPointerCapture(e.pointerId);
+        document.body.classList.add('is-col-resizing');
+      });
+
+      host.addEventListener('pointermove', (e) => {
+        if (!drag) return;
+        const w = Math.max(MIN_COL_PX, Math.round(drag.w0 + (e.clientX - drag.x0)));
+        drag.th.style.width = w + 'px';
+        view.widths[drag.key] = w;
+      });
+
+      const endDrag = () => {
+        if (!drag) return;
+        drag = null;
+        document.body.classList.remove('is-col-resizing');
+        persist();                    // written once, at the end, not on every pointermove
+      };
+      host.addEventListener('pointerup', endDrag);
+      host.addEventListener('pointercancel', endDrag);
+
+      // A double-click on the grip gives the column back to the layout.
+      host.addEventListener('dblclick', (e) => {
+        if (!e.target.closest('.th-grip')) return;
+        view.widths = {};
+        if (table) {
+          table.classList.remove('is-sized');
+          table.querySelectorAll('thead th').forEach(th => { th.style.width = ''; });
+        }
+        persist();
+        paint();
+      });
 
       const q = host.querySelector('.tbl-q');
       q.addEventListener('input', debounce(() => { view.q = q.value; persist(); paint(); }, 140));

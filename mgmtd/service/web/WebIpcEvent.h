@@ -33,6 +33,8 @@ enum class WebIpcEventType : std::uint32_t
     // trip. It used to be delegated to a daemon that has since been deleted; mgmtd now seals in
     // AiController and writes straight to engined, so there is no response to file. The number
     // stays spent rather than reused.
+    AiModelUpdateResponse = 7,   // collectord fetched a vendor's
+                                 //   model list                   → AiController
 };
 
 class WebIpcEvent final : public MgmtdEvent

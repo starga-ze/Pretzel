@@ -219,12 +219,12 @@ html, body {
   color: var(--sb-muted);
 }
 
-/* 13 + the 3px a row carries below it = 16 above every section label. The number matters less
+/* 11 + the 1px a row carries below it = 12 above every section label. The number matters less
    than its being one number: a section that followed a row had 12 and a section that opened a tier
    had 16, so the column's rhythm changed at exactly the points a reader uses to find their place.
    The tier heading gives up its own bottom padding to keep the sum the same on that side. */
 .nav-section-label {
-  padding: 13px 9px 3px;
+  padding: 11px 9px 3px;
   white-space: nowrap;
   overflow: hidden;
   opacity: 1;
@@ -243,7 +243,7 @@ html, body {
    corners. The number is load-bearing twice more below: the space above a section label is this
    plus the label's own top padding, and the two have to add to 16. */
 .nav-item,
-.nav-group { margin-bottom: 3px; }
+.nav-group { margin-bottom: 1px; }
 /* The wrapper carries it once; the button inside must not add a second. */
 .nav-group > .nav-item { margin-bottom: 0; }
 /* The site switcher is a group sitting on a heading line, not a row in the list. */
@@ -259,7 +259,11 @@ html, body {
   opacity: .6;
   cursor: pointer;
   text-decoration: none;
-  font-size: 12px;
+  /* Down from 12 in two steps. The rail's other rows come down with it (.nav-theme, .nav-logout
+     below) and so does the icon, so the hierarchy between them and the balance inside a row are
+     the ones they were — the footer's rows stay a half step smaller than the navigation's rather
+     than catching up to it. */
+  font-size: 11px;
   font-weight: 500;
   user-select: none;
   white-space: nowrap;
@@ -276,7 +280,7 @@ html, body {
 }
 
 .nav-icon {
-  width: 15px; height: 15px;
+  width: 14px; height: 14px;
   flex-shrink: 0;
   stroke-width: 1.7;
 }
@@ -316,7 +320,7 @@ html, body {
      one row sat ~3px shorter than the rest and the Configuration ▸ System Operation step read as
      a break in the rhythm. */
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11px;
   line-height: inherit;
   font-weight: 500;
   text-align: left;
@@ -341,15 +345,15 @@ html, body {
 .nav-subitem {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px 6px 36px;
+  gap: 9px;
+  padding: 5px 8px 5px 36px;
   margin: 1px 0;
-  border-radius: 8px;
+  border-radius: 7px;
   color: var(--sb-text);
   opacity: .55;
   cursor: pointer;
   text-decoration: none;
-  font-size: 12.5px;
+  font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -430,14 +434,14 @@ html, body {
 .nav-flyout-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   padding: 5px 9px;
   margin: 1px 0;
-  border-radius: 6px;
+  border-radius: 7px;
   color: var(--sb-text);
   opacity: .82;
   text-decoration: none;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
   transition: background var(--tr), opacity var(--tr), color var(--tr);
@@ -464,8 +468,8 @@ html, body {
    this control is styled against the sidebar palette and does not flip with the page. */
 .nav-theme { width: 100%; background: none; border: none; font: inherit; text-align: left; }
 /* Smaller than a navigation row: this is a setting, not a destination. */
-.nav-theme .nav-label { font-size: 11.5px; font-weight: 500; opacity: .85; }
-.nav-theme .nav-icon { width: 15px; height: 15px; }
+.nav-theme .nav-label { font-size: 10.5px; font-weight: 500; opacity: .85; }
+.nav-theme .nav-icon { width: 14px; height: 14px; }
 .nav-theme-ic { display: inline-flex; flex: 0 0 auto; }
 .nav-theme .nav-sw {
   margin-left: auto; position: relative; flex: 0 0 auto;
@@ -502,7 +506,7 @@ html, body {
   font-family: inherit;
   text-align: left;
 }
-.nav-logout .nav-label { font-size: 11.5px; font-weight: 500; }
+.nav-logout .nav-label { font-size: 10.5px; font-weight: 500; }
 .nav-logout .nav-icon { width: 15px; height: 15px; }
 .nav-logout:hover { color: var(--danger, #e5484d); opacity: 1; }
 
@@ -2984,7 +2988,39 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .ov-dev-meta { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
 .ov-dev .type-badge { font-size: 10px; padding: 1px 7px; }
 .ov-empty { padding: 8px 0 0; font-size: 11px; color: var(--text-muted); font-style: italic; }
-/* Operation page: one info-card (home look), with Save/Load/Export sharing a modal picker. */
+/* Operation page: four info-cards (home look), two across. One column stacked them into a strip
+   an operator had to scroll to see the last of, while the right half of the page stayed empty. */
+.op-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+  margin-top: 4px;
+  /* No width cap. The cap was two cards at their old fixed width, which on a wide console left the
+     right third of the page empty while the cards sat squeezed against the left. The columns take
+     the width they are given and the rows inside them space out, which is what the page is for. */
+}
+/* Grid items must be allowed to be narrower than their content, or a long value (a model id, a
+   saved-config name) pushes the column wider than its share and the two stop being equal. */
+.op-grid > * { min-width: 0; }
+/* Inside the grid the column decides the width, and the gap decides the spacing. */
+.op-grid .op-card { max-width: none; margin-top: 0; }
+/* Below this the two columns are narrower than the cards want to be, so they stack. */
+@media (max-width: 1100px) {
+  .op-grid { grid-template-columns: minmax(0, 1fr); max-width: 620px; }
+}
+/* Per-vendor outcome of a model-catalog refresh, in the window that runs it. Same badge shape as
+   the tech-doc run states next door; its own prefix because the two carry different words and one
+   changing is no reason for the other to. */
+.aim-state {
+  font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.aim-state-waiting { color: var(--text-muted); background: var(--surface-2); }
+.aim-state-running { color: var(--accent);     background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.aim-state-ok      { color: var(--green);  background: color-mix(in srgb, var(--green) 12%, transparent); }
+.aim-state-failed  { color: var(--red);        background: color-mix(in srgb, var(--red) 12%, transparent); }
+.aim-state-skipped { color: var(--text-muted); background: var(--surface-2); }
 .op-card { max-width: 620px; margin-top: 4px; }
 /* Action toolbar — uniform icon buttons, logically grouped by separators. */
 .op-toolbar { display: flex; align-items: stretch; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
@@ -2998,9 +3034,13 @@ a.details-btn { display: inline-block; text-decoration: none; }
 .op-btn:hover { border-color: var(--text-muted); }
 .op-btn:disabled { opacity: .5; cursor: default; }
 .op-btn svg { width: 14px; height: 14px; flex: 0 0 auto; }
-/* Load carries the reload, so it wears a soft warning tint to stand apart. */
-.op-btn-load { background: rgba(234, 88, 12, .10); border-color: rgba(234, 88, 12, .35); color: var(--ink-orange); }
-.op-btn-load:hover { background: rgba(234, 88, 12, .16); border-color: rgba(234, 88, 12, .55); }
+/* The one action a card exists for: Load on Running Configuration, Update on Tech Documentation
+   and on AI Model. Named for the role, not for Load, which is what it was called while it was the
+   only one — and which is why AI Model's Update went out looking like an Import. Every other button
+   on these cards is a plain .op-btn, so "accented" means "this is the button" rather than "someone
+   thought this one mattered". */
+.op-btn-primary { background: rgba(234, 88, 12, .10); border-color: rgba(234, 88, 12, .35); color: var(--ink-orange); }
+.op-btn-primary:hover { background: rgba(234, 88, 12, .16); border-color: rgba(234, 88, 12, .55); }
 .op-sep { width: 1px; background: var(--border); margin: 2px 3px; }
 .op-when { font-size: 11px; color: var(--text-muted); }
 .op-msg { margin-top: 12px; font-size: 12px; }
@@ -3070,6 +3110,31 @@ a.details-btn { display: inline-block; text-decoration: none; }
 
 /* probe targets table */
 .cfg-table { width: 100%; border-collapse: collapse; }
+/* ── Resizable columns ───────────────────────────────────────────────────────
+   Applied by table-tools.js on the first drag, and re-applied on every repaint while any width is
+   set. Fixed layout is what makes the widths binding — in auto layout the content outvotes them and
+   a dragged column springs back as soon as a long cell renders. */
+.cfg-table.is-sized { table-layout: fixed; }
+.cfg-table.is-sized th, .cfg-table.is-sized td { overflow: hidden; text-overflow: ellipsis; }
+/* The grip sits ON the boundary — half in this column, half in the next — so the pointer finds it
+   where the line is rather than where the cell ends. The last one is harmless: dragging it widens
+   the last column, which is the same thing it does anywhere else. */
+.cfg-table th { position: relative; }
+.th-grip {
+  position: absolute; top: 0; right: -3px; width: 7px; height: 100%;
+  cursor: col-resize; z-index: 1;
+  /* touch-action so a drag on a touch screen resizes instead of scrolling the table. */
+  touch-action: none;
+}
+.th-grip::after {
+  content: ""; position: absolute; top: 25%; bottom: 25%; left: 3px; width: 1px;
+  background: var(--border); opacity: 0; transition: opacity .12s, background .12s;
+}
+.th-grip:hover::after { opacity: 1; background: var(--accent); }
+/* While dragging, the cursor belongs to the whole page: the pointer leaves the 7px grip long before
+   the drag ends, and without this it flickers back to a text caret over every cell it crosses. */
+body.is-col-resizing { cursor: col-resize; user-select: none; }
+body.is-col-resizing .th-grip::after { opacity: 1; background: var(--accent); }
 .cfg-table th {
   text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
   color: var(--text-muted); font-weight: 600; padding: 9px 14px; border-bottom: 1px solid var(--border);
@@ -3127,6 +3192,18 @@ a.details-btn { display: inline-block; text-decoration: none; }
 
 .field-row { margin-bottom: 13px; }
 .field-row > label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; font-weight: 600; }
+/* Required, marked on the label rather than explained under the field. It replaces a placeholder
+   per field saying "optional" or showing an example — a sentence inside every input, repeated down
+   the form, that an operator reads once and then has to look past on every visit. The mark says
+   the one thing the form cannot show by shape, and says it where the eye already is.
+   A class on the label, so a module opts a field in without changing how it renders one. */
+.field-row > label.req::after,
+.field-label.req::after {
+  content: "*";
+  margin-left: 3px;
+  color: var(--ink-red);
+  font-weight: 700;
+}
 .field-row input, .field-row select {
   width: 100%; padding: 8px 11px; border: 1px solid var(--border); border-radius: 8px;
   font-size: 13px; background: var(--surface); color: var(--text); font-family: inherit;
@@ -3584,7 +3661,7 @@ a.details-btn { display: inline-block; text-decoration: none; }
 @media (prefers-reduced-motion: reduce) { .nav-tier-caret { transition: none; } }
 
 .nav-tier-ic {
-  width: 15px; height: 15px; flex: 0 0 auto;
+  width: 14px; height: 14px; flex: 0 0 auto;
   stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
   color: var(--sb-active-cl);
 }
@@ -3616,6 +3693,10 @@ a.details-btn { display: inline-block; text-decoration: none; }
 /* No room, and nothing to point at: the rail it would fold is hidden at this width too. A tier
    folded here is simply four fewer icons, which is what folding it meant. */
 .sidebar.collapsed .nav-tier-caret { display: none; }
+/* Not a control at this width either — see tierOpenState. Pressing the SITE heading here opens the
+   site list, which is the switcher's doing and stays; pressing SHARED's glyph now does nothing
+   rather than folding a tier with no way to say it is folded and no handle to unfold it. */
+.sidebar.collapsed .nav-tier-label { cursor: default; }
 
 /* The switcher survives too, as the icon it can afford to be. Hovering it opens the same flyout
    Configuration uses — the site list, with the one you are in marked — so the rail can still say
@@ -3692,7 +3773,7 @@ a.details-btn { display: inline-block; text-decoration: none; }
   display: inline-flex; align-items: center; gap: 3px;
   width: auto; max-width: 100%;                     /* .nav-group-toggle says 100% */
   padding: 0 1px; cursor: pointer;
-  font-size: 11.5px; font-weight: 700;              /* .nav-group-toggle says 12px/500 */
+  font-size: 10.5px; font-weight: 700;              /* .nav-group-toggle says 11px/500 */
   letter-spacing: 0; text-transform: none;          /* the heading's casing is not the site's name */
   color: var(--sb-active-cl);                       /* the chosen site, in the colour a choice is made in */
   background: none; border: 0;
@@ -3761,8 +3842,11 @@ a.details-btn { display: inline-block; text-decoration: none; }
   border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text);
 }
 .item-int:focus { outline: none; border-color: var(--accent); }
-.item-en { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted);
+.item-en { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-muted);
   white-space: nowrap; cursor: pointer; }
+/* The switch reads as on or off by itself, so the word beside it follows the state rather than
+   sitting at one weight over both. */
+.item-en:has(input:checked) { color: var(--text); }
 .item-row .icon-btn { width: 28px; height: 28px; flex: 0 0 auto; }
 .item-row .icon-btn svg { width: 14px; height: 14px; }
 
@@ -3920,6 +4004,17 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .fp-trusted { font-size: 10.5px; font-weight: 700; color: var(--green); }
 .fp-box { margin: 4px 0 12px; }
 .fp-label { font-size: 10px; color: var(--text-muted); margin-bottom: 4px; }
+/* The unpinned state, said in the field rather than left as an empty space above a button. A
+   device with no pin cannot have an API key issued against it, so "nothing here yet" is the one
+   thing this row has to be able to show. */
+/* The pin's two actions, side by side under the fingerprint they belong to. */
+.fp-acts { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.fp-box.is-unset { margin: 0 0 12px; }
+.fp-unset {
+  display: block; padding: 8px 11px;
+  border: 1px dashed var(--border); border-radius: 8px;
+  font-size: 12px; color: var(--text-muted);
+}
 
 /* enable/disable toggle switch */
 .tgl { position: relative; display: inline-block; width: 32px; height: 17px; cursor: pointer; }
@@ -4063,9 +4158,6 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .cfg-table-apikey .col-status  { width: 8%;  white-space: nowrap; }
 .cfg-table-apikey .col-act     { width: 15%; text-align: right; }
 /* API Credential editor refresh controls. */
-.ak-refresh { display: flex; gap: 16px; align-items: center; }
-.ak-radio { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
-.ak-radio input { margin: 0; }
 
 /* API Endpoint: Name | Description | Device Type | SubType | Endpoint | Status */
 .cfg-table-endpoint .col-name   { width: 15%; }
@@ -4364,6 +4456,13 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .mdl-id::before { content: "|"; color: var(--border); margin-right: 6px; }
 .mdl-more { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
 #aiModelPop .mdl-row { padding: 1px 0; }
+/* Scoped to this card, not to .ep-pop: the endpoints page's popovers are short and are meant to
+   stay untouchable, and this is the only one that holds a list long enough to need scrolling.
+   `pointer-events` has to come back with it — the base class turns it off, and a card the pointer
+   cannot enter is a card that cannot be scrolled. The height cap itself is set by showModelPop,
+   which is the only place that knows how much room the cell left. */
+#aiModelPop { overflow-y: auto; overscroll-behavior: contain; }
+#aiModelPop.open { pointer-events: auto; }
 
 /* The outcome of a key store, reported on the page because Publish has closed the panel by then. */
 .ai-banner {
@@ -4392,18 +4491,91 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .ai-key-row input::placeholder { letter-spacing: .5px; }
 
 /* One row per model: the whole row is the hit target, not just the box. */
+/* Search + the two bulk actions, above the list. Sixty models per vendor is a list to search, not
+   to scroll, and the row that does it should read as a toolbar rather than as three form buttons:
+   the field carries the weight, the actions sit beside it as text. */
+.ai-pick-tools { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.ai-pick-search-wrap { position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
+.ai-pick-search-wrap svg {
+  position: absolute; left: 9px; width: 13px; height: 13px;
+  color: var(--text-muted); pointer-events: none;
+}
+.ai-pick-search {
+  width: 100%; min-width: 0;
+  padding: 6px 10px 6px 28px; font-family: inherit; font-size: 12px;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  transition: border-color .12s;
+}
+.ai-pick-search:focus { outline: none; border-color: var(--accent); }
+.ai-pick-search::placeholder { color: var(--text-muted); }
+/* The clear affordance browsers draw inside a search input is another × next to the chips' own,
+   in a shape this console does not use anywhere else. */
+.ai-pick-search::-webkit-search-cancel-button { display: none; }
+/* Quieter than the field they sit beside, but still buttons. Transparent at rest was too quiet:
+   with no border and no fill they read as two labels, and an operator cannot see what is clickable
+   until they happen to hover it. A resting border and a faint fill is enough — they stay secondary
+   to the search box without pretending not to be controls. */
+.ai-pick-act {
+  flex: 0 0 auto;
+  padding: 6px 10px; font-family: inherit; font-size: 11.5px; font-weight: 600;
+  color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px; cursor: pointer; white-space: nowrap;
+  transition: color .12s, background .12s, border-color .12s;
+}
+.ai-pick-act:hover { border-color: var(--text-muted); }
+/* The two do opposite things, so they are not the same button twice. Clear takes the console's
+   destructive tint — the same one .btn-sm.danger uses — held back to the hover so a row of two
+   buttons is not half warning at rest. */
+.ai-pick-act-clear { color: var(--text-muted); }
+.ai-pick-act-clear:hover {
+  color: var(--ink-red); background: var(--tint-red); border-color: var(--ink-red);
+}
+
+/* What is picked, named. Replaces a "Selected only" toggle: the question was never "hide the rest",
+   it was "which ones", and that is a thing to show rather than a mode to enter and leave. */
+.ai-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 8px; }
+.ai-chips[hidden] { display: none; }
+.ai-chip {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  padding: 2px 6px 2px 8px; font-family: inherit; font-size: 10.5px; font-weight: 600;
+  color: var(--text-muted); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: color .12s, border-color .12s;
+}
+/* Green on hover only. A row of green pills read as a status banner rather than as a list of
+   things the operator can take back, which is what they are. */
+.ai-chip:hover { color: var(--ink-green); border-color: var(--ink-green); }
+.ai-chip span { font-size: 12px; line-height: 1; opacity: .55; }
+.ai-chip:hover span { opacity: 1; }
+.ai-chip-more { align-self: center; font-size: 11px; color: var(--text-muted); }
+.ai-pick-empty { margin: 8px 0 0; font-size: 11.5px; color: var(--text-muted); font-style: italic; }
 .ai-pick {
   border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface);
+  /* Capped and scrolled: the editor's own footer (Cancel/Save) must stay reachable without
+     scrolling past sixty rows to find it. */
+  max-height: 320px; overflow-y: auto;
 }
 .ai-pick-row {
-  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto;
+  /* 32px for the switch, then the name, then the id. */
+  display: grid; grid-template-columns: 32px minmax(0, 1fr) auto;
   gap: 10px; align-items: center;
-  padding: 9px 12px; border-top: 1px solid var(--border);
+  padding: 7px 12px; border-top: 1px solid var(--border);
   font-size: 12px; cursor: pointer;
 }
+/* One line each. A vendor's display names run long — "Deep Research Max Preview (Apr-21-2026)" —
+   and wrapping them made rows three deep, so a list of sixty could not be scanned by eye. */
+.ai-pick-row .ai-pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The search filters by setting `hidden` on a row, and this is what makes that do anything. The
+   browser's own `[hidden] { display: none }` lives in the user-agent stylesheet, and ANY author
+   rule setting `display` beats it whatever its specificity — so the `display: grid` above quietly
+   cancelled every hide, and the filter ran correctly over rows that all stayed on screen. */
+.ai-pick-row[hidden] { display: none; }
 .ai-pick-row:first-child { border-top: none; }
 .ai-pick-row:hover { background: var(--surface-2); }
-.ai-pick-row.on { background: var(--tint-green); }
+/* No fill. The switch says on or off by itself and the name follows it; a tint behind both was a
+   third way to say the same thing, and with every row selected it was just a green block. */
+.ai-pick-row.on .ai-pick-name { color: var(--ink-green); }
 .ai-pick-row input { margin: 0; cursor: pointer; }
 .ai-pick-name { font-weight: 600; }
 .ai-pick-id {
@@ -4620,6 +4792,10 @@ textarea.is-invalid {
 .cfg-table-user td { font-size: 11px; padding: 7px 12px; vertical-align: middle; }
 .cfg-table-user .col-name { width: auto; }
 .cfg-table-user .col-role { width: 16%; }
+/* The password column: dots when one is held, a tag when it is not. The secret never reaches the
+   browser, so the dots state that one exists rather than render it. */
+.cfg-table-user .col-pw { width: 18%; }
+.usr-pw { color: var(--text-muted); letter-spacing: 1px; font-size: 11px; }
 .cfg-table-user .col-act  { width: 10%; text-align: right; white-space: nowrap; }
 .cfg-table-user td.col-act .icon-btn { width: 26px; height: 26px; margin-left: 6px; }
 .cfg-table-user td.col-act .icon-btn svg { width: 13px; height: 13px; }
