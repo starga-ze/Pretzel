@@ -422,6 +422,11 @@ message CorpusStatus {
 message ListDocumentsRequest {
   string product = 1;
   string docset  = 2;   // "" means the product's top level
+
+  // A substring of a URL or a title. When set it is the whole request: the search runs across
+  // the corpus and product/docset are ignored, because someone who types a term is asking the
+  // corpus a question rather than narrowing the book they happen to have open.
+  string query = 3;
 }
 
 message DocumentSummary {
@@ -434,6 +439,11 @@ message DocumentSummary {
 message DocumentList {
   repeated DocumentSummary documents = 1;
   string error = 2;
+
+  // Matches before the cap. Equal to the length of `documents` except on a capped search, where
+  // the difference is the whole point: a console showing 200 rows out of 1,432 has to say so, or
+  // the operator reads the cap as the answer.
+  int32 total = 3;
 }
 
 // --- Benchmark sets ----------------------------------------------------------------------

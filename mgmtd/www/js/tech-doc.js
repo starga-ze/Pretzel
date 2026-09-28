@@ -18,11 +18,28 @@
   const TICKET_TRIES = 90;
   const PAGE = 100;
 
+  // Short enough that the list feels like it is following the typing, long enough that a word
+  // typed at speed is one search rather than eight. The answer costs a ticket poll on top of
+  // this (see awaitTicket), so the floor on a result is roughly this plus TICKET_MS.
+  const DEBOUNCE_MS = 300;
+  // One or two characters match thousands of documents and say nothing about which. The search
+  // stays idle until the term is worth asking about.
+  const MIN_QUERY = 3;
+
   let status = null;
   let docs = null;          // loaded lazily, per product
   let openProduct = null;
-  let filter = '';
   let shown = PAGE;
+
+  // The search box is a corpus-wide search, not a filter over what is drawn: matching on the
+  // product and book names alone (which is what this box used to do) could not find a document
+  // by its title, and the titles are what a reader knows. Searching URLs as well as titles is
+  // what keeps the old behaviour available — a product name is a path segment, so typing
+  // "globalprotect" still gathers that product.
+  let query = '';
+  let results = null;       // the last completed search: {query, items, total, error}
+  let searchSeq = 0;        // the answer to anything but the newest search is discarded
+  let searchTimer = null;
 
   const num = (n) => {
     if (n === null || n === undefined || n === '') return '—';
@@ -82,10 +99,14 @@
     }
 
     const products = byProduct();
-    const q = filter.trim().toLowerCase();
-    const visible = q ? products.filter(p => p.name.toLowerCase().includes(q)
-                        || p.rows.some(r => (r.docset || '').toLowerCase().includes(q)))
-                      : products;
+    const searchingNow = query.trim().length >= MIN_QUERY;
+
+    // The caret survives the redraw. This replaces #contentBody wholesale, and a search answer
+    // lands while the reader is still typing, so without this the box they are typing into is
+    // destroyed under them mid-word. Read before the write, restored after it.
+    const box = document.getElementById('tdpSearch');
+    const caret = box && document.activeElement === box
+      ? [box.selectionStart, box.selectionEnd] : null;
 
     el.innerHTML = `
       <div class="cfg-page">
@@ -108,14 +129,21 @@
             status.last_run_at ? esc(String(status.last_run_at).slice(0, 19).replace('T', ' ')) : '—'}</span></div>
         </div>
 
-        <input class="tdp-search" id="tdpSearch" type="search" placeholder="Filter products and books…"
-               value="${esc(filter)}" autocomplete="off">
+        <input class="tdp-search" id="tdpSearch" type="search"
+               placeholder="Search documents by title or URL…"
+               value="${esc(query)}" autocomplete="off">
 
-        <div class="tdp-tree">${visible.map(productBlock).join('') ||
-          '<div class="cm-loading">Nothing matches that filter.</div>'}</div>
+        ${searchingNow
+          ? `<div class="tdp-tree">${searchPanel()}</div>`
+          : `<div class="tdp-tree">${products.map(productBlock).join('')
+              || '<div class="cm-loading">The corpus is empty. Run an update from the Operation page.</div>'}</div>`}
       </div>`;
 
     wire();
+    if (caret) {
+      const again = document.getElementById('tdpSearch');
+      if (again) { again.focus(); again.setSelectionRange(caret[0], caret[1]); }
+    }
   }
 
   function productBlock(p) {
@@ -141,8 +169,8 @@
       </details>`;
   }
 
-  function docList() {
-    const rows = docs.items.slice(0, shown).map(d => `
+  function docRow(d) {
+    return `
       <div class="tdp-doc">
         <div class="tdp-doc-main">
           <span class="tdp-doc-title">${esc(d.title)}</span>
@@ -151,7 +179,38 @@
         </div>
         <span class="tdp-doc-n">${num(d.char_count)}</span>
         <span class="tdp-doc-when">${d.lastmod ? esc(String(d.lastmod).slice(0, 10)) : '—'}</span>
-      </div>`).join('');
+      </div>`;
+  }
+
+  // The search's own result list. Flat rather than grouped under the tree: a match is a document,
+  // and the product it belongs to is already the first segment of the URL under every title.
+  function searchPanel() {
+    // Stale results are not shown under a term they do not answer, so the panel reads "Searching"
+    // for both the debounce window and the request itself — from here they are one wait.
+    if (!results || results.query !== query.trim()) {
+      return '<div class="cm-loading">Searching…</div>';
+    }
+    if (results.error) return `<div class="cm-loading">${esc(results.error)}</div>`;
+    if (!results.items.length) {
+      return `<div class="cm-loading">No document's title or URL contains
+              “${esc(results.query)}”.</div>`;
+    }
+    // Said whenever the server capped the answer, because the cap is not the count: a reader who
+    // is told "200 matches" when there are 1,432 refines nothing and trusts the wrong number.
+    const capped = results.total > results.items.length;
+    return `
+      <div class="tdp-docs">
+        <div class="tdp-doc-head">
+          <span>${capped ? `First ${num(results.items.length)} of ${num(results.total)} matches`
+                         : `${num(results.total)} match${results.total === 1 ? '' : 'es'}`}</span>
+          <span class="tdp-doc-cols"><span>chars</span><span>updated</span></span>
+        </div>
+        ${results.items.map(docRow).join('')}
+      </div>`;
+  }
+
+  function docList() {
+    const rows = docs.items.slice(0, shown).map(docRow).join('');
     const more = docs.items.length > shown;
     return `
       <div class="tdp-docs">
@@ -167,12 +226,12 @@
   function wire() {
     const search = document.getElementById('tdpSearch');
     if (search) {
+      // The caret is restored by render() itself, because an arriving search answer redraws
+      // this box just as a keystroke does and both have to leave the typing where it was.
       search.addEventListener('input', (e) => {
-        filter = e.target.value;
-        const at = e.target.selectionStart;
+        query = e.target.value;
+        scheduleSearch();
         render();
-        const again = document.getElementById('tdpSearch');
-        if (again) { again.focus(); again.setSelectionRange(at, at); }
       });
     }
     document.querySelectorAll('.tdp-book').forEach((b) => {
@@ -187,6 +246,36 @@
       });
     });
     document.getElementById('tdpMore')?.addEventListener('click', () => { shown += PAGE; render(); });
+  }
+
+  function scheduleSearch() {
+    clearTimeout(searchTimer);
+    const term = query.trim();
+    if (term.length < MIN_QUERY) {
+      // Below the floor there is nothing to wait for, and an answer still in flight is no longer
+      // wanted: bumping the sequence is what makes it arrive into nothing.
+      searchSeq++;
+      results = null;
+      return;
+    }
+    searchTimer = setTimeout(() => runSearch(term), DEBOUNCE_MS);
+  }
+
+  async function runSearch(term) {
+    // Every answer carries the sequence it was asked under. Typing produces overlapping requests
+    // and they need not come back in order - the ticket poll makes a slow one slower - so an
+    // older answer landing last would otherwise replace the newest list with a stale one.
+    const mine = ++searchSeq;
+    const r = await api('/api/techdoc/documents?q=' + encodeURIComponent(term));
+    const d = r && r.ok ? await r.json().catch(() => null) : null;
+    const out = d && d.ticket ? await awaitTicket(d.ticket) : null;
+    if (mine !== searchSeq) return;
+
+    results = (!out || out.error)
+      ? { query: term, items: [], total: 0,
+          error: out ? out.error : 'pretzel-ai did not answer in time.' }
+      : { query: term, items: out.documents || [], total: Number(out.total) || 0, error: null };
+    render();
   }
 
   async function openBook(product, docset) {

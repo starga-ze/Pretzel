@@ -246,7 +246,7 @@ struct GrpcClientHandler::Impl
         case GrpcCmd::CorpusStatus:
             return client.corpusStatus(error);
         case GrpcCmd::CorpusDocuments:
-            return client.corpusDocuments(task.message, task.docset, error);
+            return client.corpusDocuments(task.message, task.docset, task.query, error);
 
         case GrpcCmd::BenchtestDatasets:
             return client.benchtestDatasets(task.search, error);

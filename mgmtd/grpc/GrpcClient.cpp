@@ -249,11 +249,12 @@ std::string GrpcClient::corpusStatus(std::string& error)
 }
 
 std::string GrpcClient::corpusDocuments(const std::string& product, const std::string& docset,
-                                        std::string& error)
+                                        const std::string& query, std::string& error)
 {
     v1::ListDocumentsRequest request;
     request.set_product(product);
     request.set_docset(docset);
+    request.set_query(query);
 
     grpc::ClientContext ctx;
     v1::DocumentList reply;

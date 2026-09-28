@@ -35,6 +35,11 @@ struct GrpcMessage
     // CorpusDocuments only: which book's documents to list.
     std::string docset;
 
+    // CorpusDocuments only: a URL/title substring to search the whole corpus for. Set means
+    // search, and the two fields above are then ignored — the corpus browser's one box asks
+    // the corpus rather than filtering whichever book is open.
+    std::string query;
+
     // Chat: one earlier turn of the same conversation, as (role, content).
     struct Turn
     {
@@ -219,13 +224,14 @@ struct GrpcMessage
     }
 
     static GrpcMessage corpus(GrpcCmd cmd, std::uint32_t ticket, std::string scope = {},
-                              std::string docset = {})
+                              std::string docset = {}, std::string query = {})
     {
         GrpcMessage out;
         out.cmd = cmd;
         out.ticket = ticket;
         out.message = std::move(scope);
         out.docset = std::move(docset);
+        out.query = std::move(query);
         return out;
     }
 };

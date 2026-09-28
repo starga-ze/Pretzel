@@ -27,6 +27,11 @@ namespace
 // crawler's filter, and a slug is all it is ever allowed to be.
 constexpr std::size_t kMaxScopeChars = 64;
 
+// A search term is prose, not a slug, so it is bounded rather than character-checked: it reaches
+// the store as a bound query parameter and never as SQL. The cap is what stops a pathological
+// target turning into a corpus-wide scan per keystroke.
+constexpr std::size_t kMaxQueryChars = 128;
+
 bool validScope(const std::string& scope)
 {
     if (scope.size() > kMaxScopeChars)
@@ -69,17 +74,32 @@ void TechDocController::status(MgmtdServiceManager& sm, const pz::http::HttpRequ
 void TechDocController::documents(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
                                   pz::http::HttpResponse& resp)
 {
-    const std::string product = queryParam(req.target, "product");
-    const std::string docset = queryParam(req.target, "docset");
-    if (!validScope(product))
-        return fill(resp, 400, R"({"error":"invalid product"})");
-    // The docset is a path segment like the product, and reaches the same SQL filter.
-    if (!validScope(docset))
-        return fill(resp, 400, R"({"error":"invalid docset"})");
+    // Two questions on one route, because both answer with the same document list and the
+    // console shows them in the same place: `q` searches the corpus by URL and title, while
+    // product/docset browse one book.
+    const std::string query = queryParam(req.target, "q");
+    if (query.size() > kMaxQueryChars)
+        return fill(resp, 400, R"({"error":"query too long"})");
+
+    // The slug rules apply to the browse fields, and only when they are the ones being read. A
+    // search ignores them downstream, so validating whatever the console left in the URL would
+    // refuse a perfectly good search on the strength of a field nothing is going to look at.
+    std::string product;
+    std::string docset;
+    if (query.empty())
+    {
+        product = queryParam(req.target, "product");
+        docset = queryParam(req.target, "docset");
+        if (!validScope(product))
+            return fill(resp, 400, R"({"error":"invalid product"})");
+        // The docset is a path segment like the product, and reaches the same SQL filter.
+        if (!validScope(docset))
+            return fill(resp, 400, R"({"error":"invalid docset"})");
+    }
 
     const std::uint32_t ticket = sm.nextChatTicket();
     sm.txRouter().handleGrpcMessage(
-        GrpcMessage::corpus(GrpcCmd::CorpusDocuments, ticket, product, docset));
+        GrpcMessage::corpus(GrpcCmd::CorpusDocuments, ticket, product, docset, query));
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 

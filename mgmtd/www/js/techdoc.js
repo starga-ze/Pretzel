@@ -311,14 +311,18 @@
   }
 
   // ── Mount ────────────────────────────────────────────────────────────────────
+  // operation.js calls this on every render of the Operation page (reload, tab switch, Refresh,
+  // any Save/Load/Import), so it must not open the window: doing so put the progress window back
+  // in front of an operator who had closed it, every time the page redrew. Adopting a run only
+  // means the card reads "View progress" and the poll keeps it true; the window is opened by that
+  // button and nothing else.
   async function mount() {
     render();
     if (!status) { await loadStatus(); render(); }
-    // An update started before this page loaded is still running on the appliance; adopt it rather
-    // than showing a resting card that lies about the state.
+    if (polling) return;
     const r = await api('/api/techdoc/progress');
     const d = r && r.ok ? await r.json().catch(() => null) : null;
-    if (d && d.running) { prog = d.idle ? null : d; step = 'running'; render(); renderWindow(); pollProgress(); }
+    if (d && d.running && !polling) { prog = d.idle ? null : d; render(); pollProgress(); }
   }
 
   window.NMS.techdoc = { mount, stop: stopPolling };

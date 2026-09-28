@@ -78,10 +78,11 @@ public:
     // What the store holds right now, for the card's resting state.
     std::string corpusStatus(std::string& error);
 
-    // Titles and URLs under one product/book. Bodies are not returned: they run to megabytes and
-    // nothing in the browser reads them.
+    // Titles and URLs under one product/book, or — when `query` is set — the corpus-wide search
+    // for it, in which case product and docset are ignored. Bodies are not returned either way:
+    // they run to megabytes and nothing in the browser reads them.
     std::string corpusDocuments(const std::string& product, const std::string& docset,
-                                std::string& error);
+                                const std::string& query, std::string& error);
 
     // Runs the crawl, calling on_progress once per progress message. Blocks for as long as the
     // crawl takes, so callers run it on a worker thread. Returning early from on_progress is not
