@@ -4332,6 +4332,31 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .td-state-failed    { color: var(--red);    background: color-mix(in srgb, var(--red) 12%, transparent); }
 .td-state-cancelled { color: var(--text-muted); background: var(--surface-2); }
 
+/* ── Confirm dialogs ───────────────────────────────────────────────────────────
+   One shape for every "are you sure" window: a line saying what the action does, the facts
+   that decide it as label/value rows, and a note only where there is a caution. The facts
+   used to live at the tail of the explaining sentence, which put the two numbers an operator
+   actually weighs - how much is stored, how long it takes - in the least readable position
+   on the card. */
+.dlg-lede { margin: 0; font-size: 13px; line-height: 1.55; }
+.dlg-facts {
+  display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px;
+  margin: 14px 0 0; padding: 12px 14px; font-size: 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+}
+.dlg-facts dt { color: var(--text-muted); }
+.dlg-facts dd { margin: 0; color: var(--text); font-variant-numeric: tabular-nums; }
+/* Quieter than .td-warning on purpose. At the confirm step the risk is still hypothetical;
+   the loud banner is kept for the running window, where closing the page destroys work in
+   flight. Shouting identically in both teaches the eye to skip both. */
+.dlg-note {
+  margin: 14px 0 0; padding: 9px 12px; font-size: 12px; line-height: 1.5;
+  color: var(--orange); border-left: 2px solid var(--orange);
+  background: color-mix(in srgb, var(--orange) 6%, transparent);
+  border-radius: 0 6px 6px 0;
+}
+.dlg-note b { font-weight: 600; }
+
 /* The window-holding warning. Deliberately loud: the crawl belongs to this browser session and
    closing the page stops it, which the operator has to know before starting, not after. */
 .td-warning {
@@ -4349,7 +4374,30 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 .td-prog-meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
 /* What the HEAD pass found. Shown because the difference between "21,916 listed" and "17,300 to
    fetch" is otherwise an unexplained gap between the sitemap and the result. */
-.td-survey { margin-top: 8px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* Three labelled counts on one row, laid out like .td-counts below it so the survey's
+   totals and the fetch's totals read as the same kind of line. */
+/* One row per stage, each named on the left. The survey's four readings and the fetch's two
+   counters used to sit as two unlabelled rows of numbers, which left the reader to work out
+   that they belong to different halves of the run and are counted against different totals. */
+.td-stage { display: flex; gap: 12px; align-items: baseline; margin-top: 8px; font-size: 11px;
+            color: var(--text); font-variant-numeric: tabular-nums; }
+.td-stage-name { flex: 0 0 44px; color: var(--text-muted); font-size: 10px; font-weight: 600;
+                 text-transform: uppercase; letter-spacing: .04em; }
+.td-stage-vals { display: flex; gap: 16px; flex-wrap: wrap; min-width: 0; }
+.td-stage b { color: var(--text); }
+/* The stage that has not started yet. Dimmed rather than hidden so the card keeps one shape
+   for the whole run and the reader is never surprised by a row appearing. */
+.td-stage-idle { opacity: .45; }
+/* Ok is the only coloured bucket, because it is the only one that says something the plain
+   number does not: these are the pages the crawl will actually go and fetch. The rest are
+   ordinary readings - a sitemap that lists a few hundred withdrawn pages is not a fault - and
+   colouring them would spend the reader's attention on facts that do not need it. */
+.td-stage .td-ok, .td-stage .td-ok b { color: var(--green); }
+/* The page the crawl is on. One line, clipped rather than wrapped: the URL changes several
+   times a second and a line that reflows would make the whole card jump under the reader. */
+.td-here { margin-top: 8px; font-size: 11px; color: var(--text-muted);
+           font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .85; }
 .td-counts { display: flex; gap: 16px; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
 .td-counts b { color: var(--text); font-variant-numeric: tabular-nums; }
 .td-cancel { color: var(--red); }

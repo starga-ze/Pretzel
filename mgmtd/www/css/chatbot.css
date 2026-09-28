@@ -75,6 +75,9 @@ body.page-chatbot .content-body {
   position: relative; z-index: 1;
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 6px 0; border: none; background: none; cursor: pointer;
+  /* A <button> takes the browser's own font family unless told otherwise, so these two tabs were
+     set in the system UI font while every word around them used the console's. */
+  font-family: inherit;
   font-size: 11.5px; font-weight: 500; color: var(--text-muted);
   transition: color var(--tr);
 }
@@ -198,7 +201,8 @@ body.page-chatbot .content-body {
 .chat-rmenu-i {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 7px 9px; border: none; border-radius: 6px; background: none;
-  cursor: pointer; text-align: left; color: var(--text); font-size: 12px;
+  cursor: pointer; text-align: left; color: var(--text);
+  font-family: inherit; font-size: 12px;
 }
 .chat-rmenu-i:hover { background: var(--surface-hover); }
 .chat-rmenu-i svg { width: 13px; height: 13px; flex: none; }
@@ -457,7 +461,7 @@ body.page-chatbot .content-body {
 .chat-modal-h h2 { margin: 0; font-size: 14px; font-weight: 700; }
 .chat-modal-x {
   border: none; background: none; cursor: pointer; line-height: 1;
-  font-size: 20px; color: var(--text-muted); padding: 0 2px;
+  font-family: inherit; font-size: 20px; color: var(--text-muted); padding: 0 2px;
 }
 .chat-modal-x:hover { color: var(--text); }
 .chat-modal-b { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 13px; }

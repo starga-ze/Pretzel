@@ -22,11 +22,19 @@
   const POLL_MS = 1000;
   const TICKET_MS = 400;
   const TICKET_TRIES = 90;
-  const WARNING = 'This operation is not performed asynchronously. Please do not close this window.';
+  // The run belongs to the appliance, not to this window: mgmtd holds the stream and keeps the
+  // progress in a slot on the server, and this page only polls it. Closing the tab, logging out
+  // or opening the console somewhere else changes nothing about the crawl - reopening this card
+  // re-attaches to it. Two earlier versions of this line said the opposite ("not performed
+  // asynchronously", then "closing the page stops it") and both were wrong; the only thing that
+  // stops a run is the Cancel button.
+  const WARNING = 'This runs on the appliance and keeps going if you close this window. '
+                + 'Use Cancel to stop it.';
 
   let status = null;   // CorpusStatus
   let prog = null;     // RefreshProgress + {running, idle}
   let timer = null;
+  let polling = false; // a poll chain is alive; see stopPolling
   let step = null;     // null | 'confirm' | 'running' | 'ended'
   let note = null;
 
@@ -95,8 +103,8 @@
           <button class="op-btn" id="tdView" ${status && status.documents ? '' : 'disabled'}>
             ${IC.view}<span>View</span></button>
           <span class="op-sep"></span>
-          <button class="op-btn op-btn-primary" id="tdUpdate" ${running ? 'disabled' : ''}>
-            ${IC.update}<span>${running ? 'Updating…' : 'Update'}</span></button>
+          <button class="op-btn op-btn-primary" id="tdUpdate">
+            ${IC.update}<span>${running ? 'View progress' : 'Update'}</span></button>
         </div>
       </div>`;
 
@@ -106,7 +114,11 @@
       // itself (StaticFileCache::normalize), so "/tech-doc" is the address and "/tech-doc.html"
       // is a file that happens to answer — and answers with no page shell around it.
       () => { location.href = '/tech-doc'; });
-    document.getElementById('tdUpdate')?.addEventListener('click', openConfirm);
+    // While a run is in flight this is the way back INTO it. It used to be disabled and read
+    // "Updating…", so an operator who closed the progress window had no route back to it short
+    // of reloading the page - and the run they were watching was still going.
+    document.getElementById('tdUpdate')?.addEventListener('click',
+      running ? openProgress : openConfirm);
   }
 
   // ── The window ───────────────────────────────────────────────────────────────
@@ -116,18 +128,41 @@
     const ov = modal().open(title, bodyHtml, footHtml);
     ov.querySelectorAll('[data-act]').forEach(
       el => el.addEventListener('click', () => ACTIONS[el.dataset.act]?.()));
+
+    // The shared modal's own X and backdrop call closeModal(), which removes a class and tells
+    // nobody. This module therefore never learned the window had gone, left `step` at 'running',
+    // and the next poll a second later put it straight back on screen - the window could not be
+    // dismissed at all while a crawl ran. Routed through ACTIONS.close so every way out of the
+    // window leaves the same state behind.
+    //
+    // Assigned rather than addEventListener, and that is load-bearing: paint() runs on every
+    // poll, while #cmClose and the overlay are created once and reused by every page that opens
+    // a modal. addEventListener would stack a new handler on them each second.
+    // Guarded on `step` because the overlay is shared: leave this page with a modal-less commit
+    // review open later and the handler would still be sitting on it, dismissing someone else's
+    // dialog into this module's state. When this card has nothing open, `step` is null and this
+    // is a no-op.
+    const dismiss = () => { if (step) ACTIONS.close(); };
+    ov.onclick = (e) => { if (e.target === ov) dismiss(); };
+    const x = ov.querySelector('#cmClose');
+    if (x) x.onclick = dismiss;
     return ov;
   }
 
   function renderWindow() {
     if (step === 'confirm') {
+      const lastRun = status && status.last_run_at
+        ? String(status.last_run_at).slice(0, 10) : '—';
       return paint('Update Tech Documentation', `
-        <p>The sitemap is surveyed first — a HEAD for every URL, which resolves the ones that
-           redirect and drops the ones that are gone — and then the pages that survive are
-           fetched. The last run stored ${num(status && status.documents)} documents and took
-           about an hour.</p>
-        <div class="td-warning">${esc(WARNING)}</div>
-        <p class="field-hint">Cancelling part-way is safe: documents already written stay written.</p>`,
+        <p class="dlg-lede">Re-fetches every page the sitemap lists and replaces the corpus.</p>
+        <dl class="dlg-facts">
+          <dt>Stored now</dt><dd>${num(status && status.documents)} documents</dd>
+          <dt>Last updated</dt><dd>${esc(lastRun)}</dd>
+          <dt>Takes</dt><dd>about an hour</dd>
+        </dl>
+        <div class="dlg-note"><b>Runs on the appliance.</b> You can close this window or log out
+          while it works, and any operator can reopen the card to watch it. Cancelling part-way
+          is safe — documents already written stay written.</div>`,
         `<button class="btn-sm" data-act="close">Cancel</button>
          <button class="btn-sm btn-primary" data-act="start">Start update</button>`);
     }
@@ -136,28 +171,59 @@
       const p = prog || {};
       const surveying = p.stage === 'survey';
       const done = p.done || 0, total = p.total || 0;
-      const pct = total && !surveying ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 0;
       const ended = step === 'ended';
-      // The survey has no per-item progress to report — it is one pass of HEADs — so the bar
-      // sweeps rather than fills, and says what it is doing instead of pretending to a percentage.
-      const surveyLine = (p.survey_ok || p.survey_redirect || p.survey_missing)
-        ? `<div class="td-survey">${num(p.survey_ok)} pages · ${num(p.survey_redirect)} redirect
-             onto another · ${num(p.survey_missing)} gone
-             <span class="info-hint">of ${num(p.listed)} listed</span></div>`
+      // The page the daemon is on. The whole point of the line: a run is forty minutes and the
+      // counters move in steps, so this is what tells an operator it is alive and where it is.
+      // Trimmed to the path — the host is the same 21,644 times and only costs reading room.
+      const here = (p.current_url || '').replace(/^https?:\/\/[^/]+\//, '');
+      const hereLine = here && !ended
+        ? `<div class="td-here" title="${esc(p.current_url)}">${esc(here)}</div>` : '';
+      // Labelled rather than narrated. The prose version - "1,593 pages · 15 redirect onto
+      // another · 68 gone" - made the reader work out what each number counted every time they
+      // looked, and the first one carried no label at all. The count of URLs surveyed so far is
+      // not repeated here: the line above it already says `${done} / ${total}`.
+      // All four buckets, always, so the row's shape never changes mid-run and the four numbers
+      // can be read as adding up to the count surveyed. Unreachable was hidden while zero at
+      // first; that read as "there is no such bucket" rather than "it has not happened", and a
+      // column appearing part-way through is missed by anyone not watching at that moment.
+      const unreachable = p.survey_unknown || 0;
+      // Four readings that sum to the URLs surveyed, and whose Ok is the fetch's own total.
+      // The survey probes redirect destinations too, so every one of these numbers is an answer
+      // about a URL rather than a step in an explanation.
+      const surveyLine = (p.survey_ok || p.survey_redirect || p.survey_missing || unreachable)
+        ? `<div class="td-stage">
+             <span class="td-stage-name">Survey</span>
+             <span class="td-stage-vals">
+               <span class="td-ok">Ok <b>${num(p.survey_ok)}</b> pages</span>
+               <span>Redirect <b>${num(p.survey_redirect)}</b> pages</span>
+               <span>Not found <b>${num(p.survey_missing)}</b> pages</span>
+               <span>Unreachable <b>${num(unreachable)}</b> pages</span>
+             </span>
+           </div>`
         : '';
+
+      // The fetch row keeps its place during the survey so the two phases are visible as one
+      // shape from the start, but reads "—" rather than 0: nothing has been written yet, and a
+      // zero there reports a failure where the honest answer is "not this phase".
+      const countsLine = `
+          <div class="td-stage${surveying ? ' td-stage-idle' : ''}">
+            <span class="td-stage-name">Fetch</span>
+            <span class="td-stage-vals">
+              <span>stored <b>${surveying ? '—' : num(p.stored)}</b></span>
+              <span>skipped <b>${surveying ? '—' : num(p.rejected)}</b></span>
+            </span>
+          </div>`;
       return paint(ended ? 'Update finished' : 'Updating Tech Documentation', `
         <div class="td-progress">
           <div class="td-bar"><div class="td-bar-fill${ended ? '' : ' td-bar-live'}"
-               style="width:${surveying ? 100 : pct}%${surveying ? ';opacity:.35' : ''}"></div></div>
+               style="width:${pct}%"></div></div>
           <div class="td-prog-meta">
-            <span>${surveying ? `surveying ${num(total)} URLs…` : `${num(done)} / ${num(total)}`}</span>
+            <span>${surveying ? `surveying ${num(done)} / ${num(total)} URLs` : `${num(done)} / ${num(total)}`}</span>
             <span class="info-hint">${esc(p.stage || '')}</span>
           </div>
-          ${surveyLine}
-          <div class="td-counts">
-            <span>stored <b>${num(p.stored)}</b></span>
-            <span>skipped <b>${num(p.rejected)}</b></span>
-          </div>
+          ${hereLine}
+          ${surveyLine}${countsLine}
         </div>
         ${ended ? '' : `<div class="td-warning">${esc(WARNING)}</div>`}
         ${note ? `<div class="op-msg ${note.err ? 'err' : 'ok'}">${esc(note.text)}</div>` : ''}`,
@@ -166,8 +232,24 @@
     }
   }
 
+  // Re-attach to a run already in flight. The poll is usually still alive (see close below),
+  // so this only has to put the window back on screen.
+  function openProgress() {
+    note = null; step = 'running'; renderWindow();
+    if (!polling) pollProgress();
+  }
+
   const ACTIONS = {
-    close() { stopPolling(); step = null; modal().close(); render(); },
+    close() {
+      modal().close();
+      step = null;
+      // The poll outlives the window while the crawl does. The card reads `prog.running` to
+      // decide whether its button says Update or View progress, and a stopped poll freezes
+      // that at whatever was true when the window closed - offering Update on an appliance
+      // that is mid-run, which then answers 409.
+      if (!(prog && prog.running)) stopPolling();
+      render();
+    },
     start() { doUpdate(); },
     cancel() { doCancel(); },
   };
@@ -193,22 +275,33 @@
     renderWindow();
   }
 
-  function stopPolling() { if (timer) { clearTimeout(timer); timer = null; } }
+  // `polling` rather than a null check on `timer`: pollProgress clears the handle on entry and
+  // only sets a new one after an await, so there is a window each second where a poll is in
+  // flight and `timer` is null. Reading that as "not polling" starts a second chain, and two
+  // chains double the request rate for the rest of the run.
+  function stopPolling() { polling = false; if (timer) { clearTimeout(timer); timer = null; } }
 
   async function pollProgress() {
     stopPolling();
+    polling = true;
     const r = await api('/api/techdoc/progress');
     const d = r && r.ok ? await r.json().catch(() => null) : null;
 
     if (d && !d.idle) {
       prog = d;
       if (d.final || !d.running) {
-        step = 'ended';
+        const watching = step === 'running';
         await loadStatus();
         note = d.error ? { text: 'Update failed: ' + d.error, err: true }
              : d.stage === 'cancelled' ? { text: 'Cancelled. Documents already written were kept.', err: false }
              : { text: `Update complete — ${num(d.stored)} documents.`, err: false };
-        render(); renderWindow();
+        // Only reopen the window for someone who still had it open. A run finishing is not a
+        // reason to put a modal in front of an operator who closed it and went back to work;
+        // the card behind it carries the new document count either way.
+        step = watching ? 'ended' : null;
+        render();
+        if (watching) renderWindow();
+        stopPolling();
         return;
       }
     }

@@ -162,14 +162,22 @@
     if (modalStep.at === 'confirm') {
       const ready = VENDORS.filter(v => keyed && keyed.has(v.id));
       const without = VENDORS.filter(v => !(keyed && keyed.has(v.id)));
+      // Which vendors this touches is the one thing that decides the action, so it is a fact
+      // row rather than the footnote it used to be. Same shape as the tech-doc window.
       return paint('Update AI models',
-        `<p>Every vendor with an API key stored is asked for the models this appliance's account
-            serves. Each one's list is replaced by what comes back; a vendor that cannot be reached
-            keeps the list it has.</p>
-         <p class="field-hint">Will be asked: ${ready.map(v => esc(v.label)).join(', ') || 'none'}.
-            ${without.length
-              ? `Skipped for want of an API key: ${without.map(v => esc(v.label)).join(', ')}.`
-              : ''}</p>`,
+        `<p class="dlg-lede">Asks each vendor for the models this appliance's account serves and
+            replaces the stored list with what comes back.</p>
+         <dl class="dlg-facts">
+           <dt>Will be asked</dt>
+           <dd>${ready.map(v => esc(v.label)).join(', ') || 'none'}</dd>
+           ${without.length ? `<dt>Skipped</dt>
+             <dd>${without.map(v => esc(v.label)).join(', ')} — no API key</dd>` : ''}
+         </dl>
+         ${ready.length
+           ? `<div class="dlg-note">A vendor that cannot be reached keeps the list it has, so a
+                failed update never empties a catalogue.</div>`
+           : `<div class="dlg-note">No vendor has an API key stored, so there is nothing to ask.
+                Add a key under Configuration before updating.</div>`}`,
         `<button class="btn-sm" data-act="close">Cancel</button>
          <button class="btn-sm btn-primary" data-act="start" ${ready.length ? '' : 'disabled'}>Update all</button>`);
     }
