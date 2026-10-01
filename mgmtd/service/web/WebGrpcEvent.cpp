@@ -18,6 +18,7 @@ WebGrpcEventType webGrpcEventFor(GrpcCmd cmd) noexcept
     case GrpcCmd::ListModels:    return WebGrpcEventType::ModelListResponse;
     case GrpcCmd::CorpusStatus:  return WebGrpcEventType::CorpusStatusResponse;
     case GrpcCmd::CorpusDocuments: return WebGrpcEventType::CorpusDocumentList;
+    case GrpcCmd::CorpusExceptions: return WebGrpcEventType::CorpusExceptionList;
     case GrpcCmd::CorpusRefresh: return WebGrpcEventType::CorpusRefreshProgress;
     case GrpcCmd::BenchtestDatasets:
     case GrpcCmd::BenchtestUpload:
@@ -83,6 +84,7 @@ void WebGrpcEvent::dispatch(MgmtdServiceManager& serviceManager)
     // both are "one JSON document, collected once by whoever asked".
     case WebGrpcEventType::CorpusStatusResponse:
     case WebGrpcEventType::CorpusDocumentList:
+    case WebGrpcEventType::CorpusExceptionList:
     case WebGrpcEventType::BenchtestResponse:
     case WebGrpcEventType::ModelListResponse:
         serviceManager.setChatResult(m_ticket, std::move(m_json));

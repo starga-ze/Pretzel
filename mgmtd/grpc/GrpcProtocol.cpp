@@ -14,6 +14,7 @@ const char* grpcCmdToStr(GrpcCmd cmd) noexcept
     case GrpcCmd::CorpusRefresh: return "CorpusRefresh";
     case GrpcCmd::CorpusCancel:  return "CorpusCancel";
     case GrpcCmd::CorpusDocuments: return "CorpusDocuments";
+    case GrpcCmd::CorpusExceptions: return "CorpusExceptions";
     case GrpcCmd::BenchtestDatasets: return "BenchtestDatasets";
     case GrpcCmd::BenchtestUpload:   return "BenchtestUpload";
     case GrpcCmd::BenchtestDelete:   return "BenchtestDelete";

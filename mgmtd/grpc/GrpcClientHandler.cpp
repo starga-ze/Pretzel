@@ -246,7 +246,10 @@ struct GrpcClientHandler::Impl
         case GrpcCmd::CorpusStatus:
             return client.corpusStatus(error);
         case GrpcCmd::CorpusDocuments:
-            return client.corpusDocuments(task.message, task.docset, task.query, error);
+            return client.corpusDocuments(task.message, task.docset, task.query, task.corpusVersion, task.corpusVersionSet, task.offset, task.limit, error);
+
+        case GrpcCmd::CorpusExceptions:
+            return client.corpusExceptions(task.runId, task.query, task.offset, task.limit, error);
 
         case GrpcCmd::BenchtestDatasets:
             return client.benchtestDatasets(task.search, error);
@@ -369,7 +372,7 @@ struct GrpcClientHandler::Impl
                                 task.technique, task.search, task.workers, task.name,
                                 task.note, onProgress, error);
         else
-            client.refreshCorpus(task.message, onProgress, error);
+            client.refreshCorpus(task.message, task.dryRun, onProgress, error);
 
         // Only synthesize a terminal message when the server never sent one; otherwise the
         // server's own final message is the more accurate account of what happened.

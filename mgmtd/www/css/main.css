@@ -4327,10 +4327,6 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 
 /* Shown beside the date only when the last run did not end "ok" — a green tick next to a
    timestamp is decoration, an interrupted crawl is information. */
-.td-state { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em; }
-.td-state-running   { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.td-state-failed    { color: var(--red);    background: color-mix(in srgb, var(--red) 12%, transparent); }
-.td-state-cancelled { color: var(--text-muted); background: var(--surface-2); }
 
 /* ── Confirm dialogs ───────────────────────────────────────────────────────────
    One shape for every "are you sure" window: a line saying what the action does, the facts
@@ -4365,41 +4361,14 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
   border: 1px solid color-mix(in srgb, var(--orange) 30%, var(--border)); border-radius: 8px;
 }
 
-.td-progress { margin-top: 14px; }
 .td-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--border); }
 .td-bar-fill { height: 100%; background: var(--accent); transition: width .3s ease; }
-/* A bar that is still moving should look like it, so a stalled crawl is visibly stalled. */
-.td-bar-live { background-image: linear-gradient(90deg, transparent 0 40%, rgba(255,255,255,.35) 50%, transparent 60% 100%); background-size: 200% 100%; animation: tdSweep 1.4s linear infinite; }
-@keyframes tdSweep { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 .td-prog-meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
-/* What the HEAD pass found. Shown because the difference between "21,916 listed" and "17,300 to
-   fetch" is otherwise an unexplained gap between the sitemap and the result. */
-/* Three labelled counts on one row, laid out like .td-counts below it so the survey's
-   totals and the fetch's totals read as the same kind of line. */
-/* One row per stage, each named on the left. The survey's four readings and the fetch's two
-   counters used to sit as two unlabelled rows of numbers, which left the reader to work out
-   that they belong to different halves of the run and are counted against different totals. */
-.td-stage { display: flex; gap: 12px; align-items: baseline; margin-top: 8px; font-size: 11px;
-            color: var(--text); font-variant-numeric: tabular-nums; }
-.td-stage-name { flex: 0 0 44px; color: var(--text-muted); font-size: 10px; font-weight: 600;
-                 text-transform: uppercase; letter-spacing: .04em; }
-.td-stage-vals { display: flex; gap: 16px; flex-wrap: wrap; min-width: 0; }
-.td-stage b { color: var(--text); }
-/* The stage that has not started yet. Dimmed rather than hidden so the card keeps one shape
-   for the whole run and the reader is never surprised by a row appearing. */
-.td-stage-idle { opacity: .45; }
-/* Ok is the only coloured bucket, because it is the only one that says something the plain
-   number does not: these are the pages the crawl will actually go and fetch. The rest are
-   ordinary readings - a sitemap that lists a few hundred withdrawn pages is not a fault - and
-   colouring them would spend the reader's attention on facts that do not need it. */
-.td-stage .td-ok, .td-stage .td-ok b { color: var(--green); }
 /* The page the crawl is on. One line, clipped rather than wrapped: the URL changes several
    times a second and a line that reflows would make the whole card jump under the reader. */
 .td-here { margin-top: 8px; font-size: 11px; color: var(--text-muted);
            font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .85; }
-.td-counts { display: flex; gap: 16px; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
-.td-counts b { color: var(--text); font-variant-numeric: tabular-nums; }
 .td-cancel { color: var(--red); }
 
 /* ── The corpus browser (tech-doc.js, /tech-doc.html) ──────────────────────────
@@ -4877,3 +4846,84 @@ textarea.is-invalid {
 .usr-tag.is-staged { color: var(--ink-orange); background: var(--tint-orange); }
 .usr-tag.is-drop   { color: var(--ink-red); background: var(--tint-red); }
 
+
+/* Corpus update and category browser. */
+
+/* The run's three outcomes. Only Unknown is tinted, and that asymmetry is the point: Collected
+   and Excluded are verdicts about the page, while Unknown is this crawler saying it could not
+   read it — the one number an operator can actually act on. */
+.td-buckets { display: grid; gap: 6px; margin: 16px 0 10px; }
+.td-bucket {
+  display: grid; grid-template-columns: 76px 1fr; align-items: baseline; gap: 12px;
+  padding: 7px 10px; border-radius: 6px; background: var(--surface-2); font-size: 12px;
+}
+.td-bucket-n { font-size: 16px; font-weight: 700; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.td-bucket-name { color: var(--text); }
+.td-bucket-watch { background: var(--tint-orange); }
+.td-bucket-watch .td-bucket-n, .td-bucket-watch .td-bucket-name { color: var(--ink-orange); }
+
+
+/* The pages a run did not collect, listed so an operator can open one and disagree with it. */
+/* The disclosure and the panel it opens are one card: the panel carries the same border and
+   drops its top edge, so the seam between them is the disclosure's own bottom line. */
+/* A button inherits neither the page's font nor its weight, so both are stated the way .btn-sm
+   states them — without that this renders in the browser's own UI font beside text that does not. */
+.td-disclose {
+  display: flex; align-items: center; gap: 9px; width: 100%; margin-top: 4px;
+  padding: 8px 11px; background: none; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font-ui);
+  text-align: left; cursor: pointer;
+}
+.td-disclose:hover { border-color: var(--accent); color: var(--accent); }
+.td-disclose[aria-expanded="true"] { border-radius: 6px 6px 0 0; border-bottom-color: transparent; }
+/* Drawn rather than typed, so it turns with the state instead of swapping one glyph for another. */
+.td-disclose-caret {
+  width: 0; height: 0; border-left: 5px solid currentColor;
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  opacity: .65; transition: transform .12s ease;
+}
+.td-disclose[aria-expanded="true"] .td-disclose-caret { transform: rotate(90deg); }
+/* The note under a collapsed disclosure is a separate thought, not its caption. */
+.td-note { margin-top: 14px; }
+
+/* The filters stay put and only the rows scroll: a dozen reasons that scrolled away took the
+   counts with them, and comparing counts is what the row of them is for. */
+.td-exc-panel {
+  border: 1px solid var(--border); border-top: 0; border-radius: 0 0 6px 6px; padding: 10px 11px;
+}
+.td-chips { margin-bottom: 8px; }
+.td-chip-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 5px; }
+.td-chip-label { flex: 0 0 62px; padding-top: 4px; font-size: 11px; color: var(--text-muted); }
+.td-chip-label.is-watch { color: var(--ink-orange); }
+.td-chip-set { display: flex; flex-wrap: wrap; gap: 5px; }
+.td-chip { white-space: nowrap; }
+.td-chip b { margin-left: 2px; font-variant-numeric: tabular-nums; }
+.td-chip.is-on { border-color: var(--accent); color: var(--accent); }
+/* Not hidden, because "checked, and it did not happen" is worth reading — fetch_failed at nought
+   says the throttle held. Dimmed and inert so it never competes with a count that matters. */
+.td-chip.is-nil { opacity: .4; cursor: default; }
+.td-exc-rows { max-height: 300px; overflow-y: auto; }
+.td-exc { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.td-exc a { color: var(--text); text-decoration: none; word-break: break-all; }
+.td-exc a:hover { color: var(--accent); text-decoration: underline; }
+.td-exc-to { margin-top: 2px; font-size: 11px; color: var(--text-muted); }
+.td-exc-tag {
+  margin-left: 8px; padding: 1px 6px; border-radius: 4px; font-size: 10px; white-space: nowrap;
+  color: var(--text-muted); background: var(--surface-2);
+}
+.td-exc-tag.is-watch { color: var(--ink-orange); background: var(--tint-orange); }
+@media (max-width: 700px) {
+  .td-bucket { grid-template-columns: 60px 1fr; }
+}
+.tdp-book.active { border-color: var(--accent); color: var(--accent); }
+.tdp-doc-meta { color: var(--text-muted); font-size: 10px; margin-top: 4px; }
+.tdp-doc-title { color: var(--text); text-decoration: none; }
+a.tdp-doc-title:hover { color: var(--accent); text-decoration: underline; }
+.tdp-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; font-size: 12px; }
+@media (max-width: 700px) {
+  .tdp-doc { grid-template-columns: 1fr; gap: 4px; }
+  .tdp-doc-n, .tdp-doc-when { text-align: left; }
+  .tdp-doc-title { white-space: normal; }
+  .tdp-docs { margin-left: 0; }
+}
+.tdp-search-label { display: block; font-size: 12px; color: var(--text-muted); margin-top: 16px; }

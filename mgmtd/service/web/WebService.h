@@ -106,6 +106,7 @@ enum class WebRoute
     TechDocProgress,  // GET  /api/techdoc/progress
     TechDocCancel,    // POST /api/techdoc/cancel
     TechDocDocuments, // GET  /api/techdoc/documents?product=&docset=
+    TechDocExceptions,// GET  /api/techdoc/exceptions?run=&reason=&offset=&limit=
 
     // BenchtestController — the benchtest sets, read here and written from Operation.
     BenchtestDatasets,   // GET    /api/benchtest/datasets?q=

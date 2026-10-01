@@ -34,11 +34,18 @@ struct GrpcMessage
 
     // CorpusDocuments only: which book's documents to list.
     std::string docset;
+    std::string corpusVersion;
+    bool corpusVersionSet{false};
+    bool dryRun{false};
 
     // CorpusDocuments only: a URL/title substring to search the whole corpus for. Set means
     // search, and the two fields above are then ignored — the corpus browser's one box asks
     // the corpus rather than filtering whichever book is open.
     std::string query;
+
+    // CorpusExceptions reuses `runId`, `offset` and `limit` from the benchtest block below, and
+    // carries its one reason filter in `query` — the two calls never share a message, and a
+    // second set of identically-named fields would only invite reading the wrong one.
 
     // Chat: one earlier turn of the same conversation, as (role, content).
     struct Turn
@@ -232,6 +239,19 @@ struct GrpcMessage
         out.message = std::move(scope);
         out.docset = std::move(docset);
         out.query = std::move(query);
+        return out;
+    }
+
+    static GrpcMessage corpusExceptions(std::uint32_t ticket, std::int64_t runId,
+                                        std::string reason, std::int32_t offset, std::int32_t limit)
+    {
+        GrpcMessage out;
+        out.cmd = GrpcCmd::CorpusExceptions;
+        out.ticket = ticket;
+        out.runId = runId;
+        out.query = std::move(reason);
+        out.offset = offset;
+        out.limit = limit;
         return out;
     }
 };

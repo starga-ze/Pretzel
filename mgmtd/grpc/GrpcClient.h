@@ -82,12 +82,18 @@ public:
     // for it, in which case product and docset are ignored. Bodies are not returned either way:
     // they run to megabytes and nothing in the browser reads them.
     std::string corpusDocuments(const std::string& product, const std::string& docset,
-                                const std::string& query, std::string& error);
+                                const std::string& query, const std::string& version, bool filterVersion,
+                                std::int32_t offset, std::int32_t limit, std::string& error);
+
+    // What a refresh did not collect, and why. `runId` 0 reads the most recent run; an empty
+    // `reason` returns every exception rather than one kind.
+    std::string corpusExceptions(std::int64_t runId, const std::string& reason,
+                                 std::int32_t offset, std::int32_t limit, std::string& error);
 
     // Runs the crawl, calling on_progress once per progress message. Blocks for as long as the
     // crawl takes, so callers run it on a worker thread. Returning early from on_progress is not
     // how this is cancelled — dropping the reader is, which the caller does by destroying it.
-    void refreshCorpus(const std::string& scope,
+    void refreshCorpus(const std::string& scope, bool dryRun,
                        const std::function<void(const std::string&)>& on_progress,
                        std::string& error);
 

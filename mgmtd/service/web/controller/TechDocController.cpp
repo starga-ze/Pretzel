@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdlib>
+#include <charconv>
 #include <string>
 
 namespace pz::mgmtd
@@ -52,6 +53,12 @@ std::string scopeOf(const pz::http::HttpRequest& req, bool& bad)
         return {};
     json input = json::parse(req.body, nullptr, false);
     if (input.is_discarded() || !input.is_object())
+    {
+        bad = true;
+        return {};
+    }
+    if ((input.contains("scope") && !input["scope"].is_string()) ||
+        (input.contains("dry_run") && !input["dry_run"].is_boolean()))
     {
         bad = true;
         return {};
@@ -97,9 +104,67 @@ void TechDocController::documents(MgmtdServiceManager& sm, const pz::http::HttpR
             return fill(resp, 400, R"({"error":"invalid docset"})");
     }
 
+    const std::string version = queryParam(req.target, "version");
+    if (version.size() > 128 || version.find_first_of("\r\n") != std::string::npos)
+        return fill(resp, 400, R"({"error":"invalid version"})");
+    auto number = [&](const char* name, int fallback, int maximum) {
+        const auto raw = queryParam(req.target, name);
+        if (raw.empty()) return fallback;
+        int value = 0;
+        const auto parsed = std::from_chars(raw.data(), raw.data() + raw.size(), value);
+        return parsed.ec == std::errc{} && parsed.ptr == raw.data() + raw.size()
+            && value >= 0 && value <= maximum ? value : -1;
+    };
+    const int offset = number("offset", 0, 1000000);
+    const int limit = number("limit", 100, 200);
+    if (offset < 0 || limit < 1)
+        return fill(resp, 400, R"({"error":"invalid pagination"})");
     const std::uint32_t ticket = sm.nextChatTicket();
-    sm.txRouter().handleGrpcMessage(
-        GrpcMessage::corpus(GrpcCmd::CorpusDocuments, ticket, product, docset, query));
+    auto message = GrpcMessage::corpus(GrpcCmd::CorpusDocuments, ticket, product, docset, query);
+    message.corpusVersion = version;
+    message.corpusVersionSet = req.target.find("?version=") != std::string::npos
+        || req.target.find("&version=") != std::string::npos;
+    message.offset = offset;
+    message.limit = limit;
+    sm.txRouter().handleGrpcMessage(std::move(message));
+    fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
+}
+
+void TechDocController::exceptions(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
+                                   pz::http::HttpResponse& resp)
+{
+    // A reason is one of the crawler's own enumerated names (navigation_only, http_404, …), so it
+    // is checked against that alphabet rather than trusted: it selects rows, and a name is all it
+    // is ever allowed to be.
+    const std::string reason = queryParam(req.target, "reason");
+    if (reason.size() > 64)
+        return fill(resp, 400, R"({"error":"invalid reason"})");
+    for (char c : reason)
+    {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+        if (!ok)
+            return fill(resp, 400, R"({"error":"invalid reason"})");
+    }
+
+    auto number = [&](const char* name, long long fallback, long long maximum) {
+        const auto raw = queryParam(req.target, name);
+        if (raw.empty())
+            return fallback;
+        long long value = 0;
+        const auto parsed = std::from_chars(raw.data(), raw.data() + raw.size(), value);
+        return parsed.ec == std::errc{} && parsed.ptr == raw.data() + raw.size()
+            && value >= 0 && value <= maximum ? value : -1LL;
+    };
+    // run 0 is not a run id, it is "whichever ran last" — the question a console asks by default.
+    const long long run = number("run", 0, 1000000000);
+    const long long offset = number("offset", 0, 1000000);
+    const long long limit = number("limit", 100, 500);
+    if (run < 0 || offset < 0 || limit < 1)
+        return fill(resp, 400, R"({"error":"invalid pagination"})");
+
+    const std::uint32_t ticket = sm.nextChatTicket();
+    sm.txRouter().handleGrpcMessage(GrpcMessage::corpusExceptions(
+        ticket, run, reason, static_cast<std::int32_t>(offset), static_cast<std::int32_t>(limit)));
     fill(resp, 202, json{{"ticket", ticket}, {"status", "pending"}}.dump());
 }
 
@@ -137,7 +202,10 @@ void TechDocController::refresh(MgmtdServiceManager& sm, const pz::http::HttpReq
     if (!sm.beginCorpusRefresh())
         return fill(resp, 409, R"({"error":"a refresh is already running"})");
 
-    sm.txRouter().handleGrpcMessage(GrpcMessage::corpus(GrpcCmd::CorpusRefresh, 0, scope));
+    auto message = GrpcMessage::corpus(GrpcCmd::CorpusRefresh, 0, scope);
+    if (!req.body.empty())
+        message.dryRun = json::parse(req.body).value("dry_run", false);
+    sm.txRouter().handleGrpcMessage(std::move(message));
 
     LOG_INFO("tech-doc refresh started (scope={})", scope.empty() ? "all" : scope);
     fill(resp, 202, json{{"started", true}}.dump());

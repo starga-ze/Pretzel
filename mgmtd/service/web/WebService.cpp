@@ -288,6 +288,8 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
 
         {"GET",  "/api/techdoc/documents",
             Match::Prefix, WebRoute::TechDocDocuments,  Access::Authenticated, false},
+        {"GET",  "/api/techdoc/exceptions",
+            Match::Prefix, WebRoute::TechDocExceptions, Access::Authenticated, false},
 
         // Logs.
         {"GET",  "/api/logs",
@@ -406,6 +408,7 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
     case WebRoute::TechDocProgress:    return m_techDocController.progress(sm, req, resp);
     case WebRoute::TechDocCancel:      return m_techDocController.cancel(sm, req, resp);
     case WebRoute::TechDocDocuments:   return m_techDocController.documents(sm, req, resp);
+    case WebRoute::TechDocExceptions:  return m_techDocController.exceptions(sm, req, resp);
 
     case WebRoute::BenchtestDatasets:  return m_benchtestController.datasets(sm, req, resp);
     case WebRoute::BenchtestUpload:    return m_benchtestController.upload(sm, req, resp);

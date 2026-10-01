@@ -235,6 +235,7 @@ std::string GrpcClient::listModels(std::string& error)
 std::string GrpcClient::corpusStatus(std::string& error)
 {
     grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(30));
     v1::CorpusStatusRequest request;
     v1::CorpusStatus reply;
     const grpc::Status status = m_impl->stub->GetCorpusStatus(&ctx, request, &reply);
@@ -249,16 +250,44 @@ std::string GrpcClient::corpusStatus(std::string& error)
 }
 
 std::string GrpcClient::corpusDocuments(const std::string& product, const std::string& docset,
-                                        const std::string& query, std::string& error)
+                                        const std::string& query, const std::string& version, bool filterVersion,
+                                        std::int32_t offset, std::int32_t limit, std::string& error)
 {
     v1::ListDocumentsRequest request;
     request.set_product(product);
     request.set_docset(docset);
     request.set_query(query);
+    if (filterVersion) request.set_version(version);
+    request.set_offset(offset);
+    request.set_limit(limit);
 
     grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(30));
     v1::DocumentList reply;
     const grpc::Status status = m_impl->stub->ListDocuments(&ctx, request, &reply);
+    if (!status.ok())
+    {
+        error = "gRPC transport error: " + status.error_message();
+        return {};
+    }
+    if (!reply.error().empty())
+        error = reply.error();
+    return toJson(reply);
+}
+
+std::string GrpcClient::corpusExceptions(std::int64_t runId, const std::string& reason,
+                                         std::int32_t offset, std::int32_t limit, std::string& error)
+{
+    v1::ListExceptionsRequest request;
+    request.set_run_id(runId);
+    request.set_reason(reason);
+    request.set_offset(offset);
+    request.set_limit(limit);
+
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(30));
+    v1::ExceptionList reply;
+    const grpc::Status status = m_impl->stub->ListCorpusExceptions(&ctx, request, &reply);
     if (!status.ok())
     {
         error = "gRPC transport error: " + status.error_message();
@@ -535,12 +564,13 @@ std::string GrpcClient::benchtestCase(std::int64_t runId, std::int32_t seq, std:
     return toJson(reply);
 }
 
-void GrpcClient::refreshCorpus(const std::string& scope,
+void GrpcClient::refreshCorpus(const std::string& scope, bool dryRun,
                                const std::function<void(const std::string&)>& on_progress,
                                std::string& error)
 {
     v1::RefreshCorpusRequest request;
     request.set_scope(scope);
+    request.set_dry_run(dryRun);
 
     grpc::ClientContext ctx;
     Impl::ActiveStream active(*m_impl, m_impl->activeRefresh, ctx);
@@ -558,7 +588,8 @@ void GrpcClient::refreshCorpus(const std::string& scope,
 
     const grpc::Status status = reader->Finish();
     if (!status.ok() && error.empty())
-        error = "gRPC transport error: " + status.error_message();
+        error = status.error_code() == grpc::StatusCode::CANCELLED
+            ? "CANCELLED" : "gRPC transport error: " + status.error_message();
 }
 
 void GrpcClient::cancelRefresh()

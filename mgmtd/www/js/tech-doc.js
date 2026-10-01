@@ -1,307 +1,119 @@
-/* tech-doc.js — the corpus browser, reached from the Tech Documentation card.
- *
- * What the assistant can answer out of, laid out so an operator can check it. The card upstairs
- * reports two numbers; this is where the documents themselves are.
- *
- * The tree is derived from URL paths rather than stored: docs.paloaltonetworks.com publishes one
- * flat sitemap with no hierarchy of its own, so product and book are read out of the path each
- * time. Every document links back to the page it was collected from — the corpus is a copy, and
- * the original is the thing to check it against.
- */
+/* Paginated product / manual / version browser and literal URL/title search. */
 (function () {
   'use strict';
-
-  window.NMS = window.NMS || {};
   const { esc } = window.NMS.utils;
-
-  const TICKET_MS = 400;
-  const TICKET_TRIES = 90;
-  const PAGE = 100;
-
-  // Short enough that the list feels like it is following the typing, long enough that a word
-  // typed at speed is one search rather than eight. The answer costs a ticket poll on top of
-  // this (see awaitTicket), so the floor on a result is roughly this plus TICKET_MS.
-  const DEBOUNCE_MS = 300;
-  // One or two characters match thousands of documents and say nothing about which. The search
-  // stays idle until the term is worth asking about.
-  const MIN_QUERY = 3;
-
-  let status = null;
-  let docs = null;          // loaded lazily, per product
-  let openProduct = null;
-  let shown = PAGE;
-
-  // The search box is a corpus-wide search, not a filter over what is drawn: matching on the
-  // product and book names alone (which is what this box used to do) could not find a document
-  // by its title, and the titles are what a reader knows. Searching URLs as well as titles is
-  // what keeps the old behaviour available — a product name is a path segment, so typing
-  // "globalprotect" still gathers that product.
-  let query = '';
-  let results = null;       // the last completed search: {query, items, total, error}
-  let searchSeq = 0;        // the answer to anything but the newest search is discarded
-  let searchTimer = null;
-
-  const num = (n) => {
-    if (n === null || n === undefined || n === '') return '—';
-    const v = typeof n === 'number' ? n : Number(n);
-    return Number.isFinite(v) ? v.toLocaleString() : '—';
-  };
-
-  const api = (url, opts) =>
-    fetch(url, Object.assign({ credentials: 'same-origin',
-                               headers: { Accept: 'application/json' } }, opts || {}))
-      .then(r => (r.status === 401 ? (location.href = '/', null) : r))
-      .catch(() => null);
-
-  async function awaitTicket(ticket) {
-    for (let i = 0; i < TICKET_TRIES; i++) {
-      await new Promise(r => setTimeout(r, TICKET_MS));
-      const r = await api('/api/techdoc/result?ticket=' + encodeURIComponent(ticket));
-      if (!r || !r.ok) return null;
-      const d = await r.json().catch(() => null);
-      if (d && d.status === 'done') return d;
+  const PAGE = 100, MIN_QUERY = 3;
+  let status = null, statusError = '', statusLoading = false;
+  let selected = null, query = '', items = [], total = 0, offset = 0;
+  let loading = false, error = '', sequence = 0, timer = null;
+  const expanded = new Set();
+  const num = n => Number(n || 0).toLocaleString();
+  const key = r => JSON.stringify([r.product, r.docset, r.version || '']);
+  const date = x => x ? new Date(x).toLocaleDateString() : '—';
+  async function api(url) {
+    const r = await fetch(url, {credentials:'same-origin', signal:AbortSignal.timeout(15000)});
+    if (r.status === 401) { location.href = '/'; throw Error('Session expired.'); }
+    const data = await r.json();
+    if (!r.ok || data.error) throw Error(data.error || `Request failed (${r.status}).`);
+    return data;
+  }
+  async function request(url) {
+    const {ticket} = await api(url);
+    if (!ticket) throw Error('Invalid response from the appliance.');
+    for (let i = 0; i < 90; i++) {
+      await new Promise(r => setTimeout(r, 400));
+      const d = await api('/api/techdoc/result?ticket=' + encodeURIComponent(ticket));
+      if (d.status === 'done') return d;
     }
-    return null;
+    throw Error('Request timed out. Please retry.');
   }
-
-  async function loadStatus() {
-    const r = await api('/api/techdoc/status');
-    if (!r || !r.ok) return;
-    const d = await r.json().catch(() => null);
-    if (!d || !d.ticket) return;
-    const out = await awaitTicket(d.ticket);
-    if (out && !out.error) status = out;
+  async function refresh() {
+    if (statusLoading) return;
+    statusLoading = true; statusError = ''; render();
+    try { status = await request('/api/techdoc/status'); }
+    catch (e) { statusError = e.message; }
+    finally { statusLoading = false; render(); }
   }
-
-  // ── Rendering ────────────────────────────────────────────────────────────────
-  function byProduct() {
+  function products() {
     const map = new Map();
-    (status.products || []).forEach((r) => {
-      if (!map.has(r.product)) map.set(r.product, { rows: [], documents: 0, bodies: 0, chars: 0 });
-      const p = map.get(r.product);
-      p.rows.push(r);
-      p.documents += Number(r.documents) || 0;
-      p.bodies += Number(r.bodies) || 0;
-      p.chars += Number(r.chars) || 0;
-    });
-    return [...map.entries()]
-      .map(([name, v]) => ({ name, ...v }))
-      .sort((a, b) => b.documents - a.documents);
-  }
-
-  function render() {
-    const el = document.getElementById('contentBody');
-    if (!el) return;
-
-    if (!status) {
-      el.innerHTML = `<div class="cfg-page"><div class="cm-loading">Loading the corpus…</div></div>`;
-      return;
+    for (const row of status?.products || []) {
+      if (!map.has(row.product)) map.set(row.product, []);
+      map.get(row.product).push(row);
     }
-
-    const products = byProduct();
-    const searchingNow = query.trim().length >= MIN_QUERY;
-
-    // The caret survives the redraw. This replaces #contentBody wholesale, and a search answer
-    // lands while the reader is still typing, so without this the box they are typing into is
-    // destroyed under them mid-word. Read before the write, restored after it.
-    const box = document.getElementById('tdpSearch');
-    const caret = box && document.activeElement === box
-      ? [box.selectionStart, box.selectionEnd] : null;
-
-    el.innerHTML = `
-      <div class="cfg-page">
-        <div class="cfg-toolbar">
-          <div class="cfg-toolbar-meta">
-            <span class="cfg-h">Tech Documentation</span>
-            <span class="cfg-h-sub">collected from docs.paloaltonetworks.com</span>
-          </div>
-          <div class="cfg-toolbar-actions">
-            <a class="btn-sm" href="settings?tab=operation">Back to Operation</a>
-          </div>
-        </div>
-
-        <div class="tdp-stats">
-          <div><span class="tdp-k">Documents</span><span class="tdp-v">${num(status.documents)}</span></div>
-          <div><span class="tdp-k">Distinct bodies</span><span class="tdp-v">${num(status.bodies)}</span></div>
-          <div><span class="tdp-k">Text</span><span class="tdp-v">${num(status.chars)} chars</span></div>
-          <div><span class="tdp-k">Products</span><span class="tdp-v">${num(products.length)}</span></div>
-          <div><span class="tdp-k">Collected</span><span class="tdp-v">${
-            status.last_run_at ? esc(String(status.last_run_at).slice(0, 19).replace('T', ' ')) : '—'}</span></div>
-        </div>
-
-        <input class="tdp-search" id="tdpSearch" type="search"
-               placeholder="Search documents by title or URL…"
-               value="${esc(query)}" autocomplete="off">
-
-        ${searchingNow
-          ? `<div class="tdp-tree">${searchPanel()}</div>`
-          : `<div class="tdp-tree">${products.map(productBlock).join('')
-              || '<div class="cm-loading">The corpus is empty. Run an update from the Operation page.</div>'}</div>`}
-      </div>`;
-
-    wire();
-    if (caret) {
-      const again = document.getElementById('tdpSearch');
-      if (again) { again.focus(); again.setSelectionRange(caret[0], caret[1]); }
-    }
+    return [...map].sort(([a],[b]) => a.localeCompare(b));
   }
-
-  function productBlock(p) {
-    // documents vs distinct bodies is the share of text repeated across manuals and versions; it
-    // varies enormously between products, which is why it is shown per product and not once.
-    const dedup = p.documents ? Math.round((1 - p.bodies / p.documents) * 100) : 0;
-    const open = openProduct === p.name;
-    const books = p.rows.slice().sort((a, b) => Number(b.documents) - Number(a.documents));
-    return `
-      <details class="tdp-prod" ${open ? 'open' : ''} data-product="${esc(p.name)}">
-        <summary>
-          <span class="tdp-name">${esc(p.name)}</span>
-          <span class="tdp-sum">${num(p.documents)} docs${dedup ? ` · ${dedup}% shared text` : ''}</span>
-        </summary>
-        <div class="tdp-books">
-          ${books.map(b => `
-            <button class="tdp-book" data-product="${esc(p.name)}" data-docset="${esc(b.docset || '')}">
-              <span class="tdp-book-name">${esc(b.docset || '(top level)')}</span>
-              <span class="tdp-book-n">${num(b.documents)}</span>
-            </button>`).join('')}
-        </div>
-        ${open && docs ? docList() : ''}
-      </details>`;
+  function tree() {
+    return products().map(([product, rows]) => `<details class="tdp-prod" data-product="${esc(product)}" ${expanded.has(product) ? 'open' : ''}>
+      <summary><span class="tdp-name">${esc(product)}</span><span class="tdp-sum">${num(rows.reduce((n,r) => n + Number(r.documents),0))} documents</span></summary>
+      <div class="tdp-books">${rows.sort((a,b) => a.docset.localeCompare(b.docset) || (b.version || '').localeCompare(a.version || '', undefined, {numeric:true})).map(r => `<button class="tdp-book${selected && key(r) === key(selected) ? ' active' : ''}" data-category="${esc(key(r))}" aria-pressed="${!!selected && key(r) === key(selected)}">
+        <span>${esc(r.docset || 'General')} · ${esc(r.version || 'Unversioned')}</span><span class="tdp-book-n">${num(r.documents)}</span></button>`).join('')}</div></details>`).join('') || '<p class="cm-loading">No documents yet. Run an update from Operation.</p>';
   }
-
-  function docRow(d) {
-    return `
-      <div class="tdp-doc">
-        <div class="tdp-doc-main">
-          <span class="tdp-doc-title">${esc(d.title)}</span>
-          <a class="tdp-doc-url" href="${esc(d.url)}" target="_blank" rel="noopener noreferrer"
-             title="Open on docs.paloaltonetworks.com">${esc(d.url.replace('https://docs.paloaltonetworks.com/', ''))}</a>
-        </div>
-        <span class="tdp-doc-n">${num(d.char_count)}</span>
-        <span class="tdp-doc-when">${d.lastmod ? esc(String(d.lastmod).slice(0, 10)) : '—'}</span>
-      </div>`;
+  function row(d) {
+    // Only published documentation links can become clickable, even for legacy DB rows.
+    let safe = false;
+    try { const u = new URL(d.url); safe = u.protocol === 'https:' && u.hostname === 'docs.paloaltonetworks.com'; } catch (_) {}
+    return `<div class="tdp-doc"><div class="tdp-doc-main">
+      ${safe ? `<a class="tdp-doc-title" href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">${esc(d.title)}</a>` : `<span class="tdp-doc-title">${esc(d.title)}</span>`}
+      <span class="tdp-doc-url" title="${esc(d.url)}">${esc(d.url.replace('https://docs.paloaltonetworks.com/',''))}</span>
+      <span class="tdp-doc-meta">${esc(d.version || 'Unversioned')}${d.information_type ? ' · ' + esc(d.information_type) : ''} · ${d.validated ? 'Verified technical topic' : 'Awaiting validation'} · Fetched ${esc(date(d.fetched_at))}</span></div>
+      <span class="tdp-doc-n">${num(d.char_count)}</span><span class="tdp-doc-when">${esc(date(d.lastmod))}</span></div>`;
   }
-
-  // The search's own result list. Flat rather than grouped under the tree: a match is a document,
-  // and the product it belongs to is already the first segment of the URL under every title.
-  function searchPanel() {
-    // Stale results are not shown under a term they do not answer, so the panel reads "Searching"
-    // for both the debounce window and the request itself — from here they are one wait.
-    if (!results || results.query !== query.trim()) {
-      return '<div class="cm-loading">Searching…</div>';
-    }
-    if (results.error) return `<div class="cm-loading">${esc(results.error)}</div>`;
-    if (!results.items.length) {
-      return `<div class="cm-loading">No document's title or URL contains
-              “${esc(results.query)}”.</div>`;
-    }
-    // Said whenever the server capped the answer, because the cap is not the count: a reader who
-    // is told "200 matches" when there are 1,432 refines nothing and trusts the wrong number.
-    const capped = results.total > results.items.length;
-    return `
-      <div class="tdp-docs">
-        <div class="tdp-doc-head">
-          <span>${capped ? `First ${num(results.items.length)} of ${num(results.total)} matches`
-                         : `${num(results.total)} match${results.total === 1 ? '' : 'es'}`}</span>
-          <span class="tdp-doc-cols"><span>chars</span><span>updated</span></span>
-        </div>
-        ${results.items.map(docRow).join('')}
-      </div>`;
-  }
-
-  function docList() {
-    const rows = docs.items.slice(0, shown).map(docRow).join('');
-    const more = docs.items.length > shown;
-    return `
-      <div class="tdp-docs">
-        <div class="tdp-doc-head">
-          <span>${esc(docs.label)} — ${num(docs.items.length)} documents</span>
-          <span class="tdp-doc-cols"><span>chars</span><span>updated</span></span>
-        </div>
-        ${rows || `<div class="cm-loading">${docs.error ? esc(docs.error) : 'Loading…'}</div>`}
-        ${more ? `<button class="btn-sm tdp-more" id="tdpMore">Show ${num(Math.min(PAGE, docs.items.length - shown))} more</button>` : ''}
-      </div>`;
-  }
-
-  function wire() {
-    const search = document.getElementById('tdpSearch');
-    if (search) {
-      // The caret is restored by render() itself, because an arriving search answer redraws
-      // this box just as a keystroke does and both have to leave the typing where it was.
-      search.addEventListener('input', (e) => {
-        query = e.target.value;
-        scheduleSearch();
-        render();
-      });
-    }
-    document.querySelectorAll('.tdp-book').forEach((b) => {
-      b.addEventListener('click', (e) => {
-        e.preventDefault();
-        openBook(b.dataset.product, b.dataset.docset);
-      });
-    });
-    document.querySelectorAll('.tdp-prod').forEach((d) => {
-      d.addEventListener('toggle', () => {
-        if (!d.open && openProduct === d.dataset.product) { openProduct = null; docs = null; }
-      });
-    });
-    document.getElementById('tdpMore')?.addEventListener('click', () => { shown += PAGE; render(); });
-  }
-
-  function scheduleSearch() {
-    clearTimeout(searchTimer);
+  function panel() {
     const term = query.trim();
-    if (term.length < MIN_QUERY) {
-      // Below the floor there is nothing to wait for, and an answer still in flight is no longer
-      // wanted: bumping the sequence is what makes it arrive into nothing.
-      searchSeq++;
-      results = null;
-      return;
-    }
-    searchTimer = setTimeout(() => runSearch(term), DEBOUNCE_MS);
+    if (term && term.length < MIN_QUERY) return '<p class="cm-loading">Enter at least 3 characters to search titles and URLs.</p>';
+    if (!term && !selected) return '<p class="cm-loading">Choose a product, manual and version to view documents.</p>';
+    const label = term ? `Search: ${term}` : [selected.product,selected.docset,selected.version || 'Unversioned'].filter(Boolean).join(' / ');
+    return `<section class="tdp-docs" aria-busy="${loading}">
+      <div class="tdp-doc-head"><span>${esc(label)}${loading ? '' : ' — ' + num(total) + ' documents'}</span><span>Characters · Published</span></div>
+      ${loading ? '<p class="cm-loading" role="status">Loading documents…</p>' : error ? `<p class="cm-loading" role="alert">${esc(error)} <button class="btn-sm" id="tdpRetry">Retry</button></p>` : items.map(row).join('') || '<p class="cm-loading">No matching documents.</p>'}
+      <div class="tdp-pagination"><button class="btn-sm" id="tdpPrev" ${loading || offset === 0 ? 'disabled' : ''}>Previous</button>
+      <span>${total && !loading ? `${num(offset + 1)}–${num(offset + items.length)} of ${num(total)}` : ''}</span>
+      <button class="btn-sm" id="tdpNext" ${loading || offset + items.length >= total ? 'disabled' : ''}>Next</button></div></section>`;
   }
-
-  async function runSearch(term) {
-    // Every answer carries the sequence it was asked under. Typing produces overlapping requests
-    // and they need not come back in order - the ticket poll makes a slow one slower - so an
-    // older answer landing last would otherwise replace the newest list with a stale one.
-    const mine = ++searchSeq;
-    const r = await api('/api/techdoc/documents?q=' + encodeURIComponent(term));
-    const d = r && r.ok ? await r.json().catch(() => null) : null;
-    const out = d && d.ticket ? await awaitTicket(d.ticket) : null;
-    if (mine !== searchSeq) return;
-
-    results = (!out || out.error)
-      ? { query: term, items: [], total: 0,
-          error: out ? out.error : 'pretzel-ai did not answer in time.' }
-      : { query: term, items: out.documents || [], total: Number(out.total) || 0, error: null };
-    render();
+  function render() {
+    const el = document.getElementById('contentBody'); if (!el) return;
+    const box = document.getElementById('tdpSearch');
+    const caret = box && document.activeElement === box ? [box.selectionStart,box.selectionEnd] : null;
+    el.innerHTML = `<div class="cfg-page"><div class="cfg-toolbar"><div class="cfg-toolbar-meta"><span class="cfg-h">PA Tech Docs</span><span class="cfg-h-sub">Technical documentation available to the assistant</span></div>
+      <div class="cfg-toolbar-actions"><button class="btn-sm" id="tdpRefresh" ${statusLoading ? 'disabled' : ''}>${statusLoading ? 'Refreshing…' : 'Refresh'}</button><a class="btn-sm" href="/settings?tab=operation">Update corpus</a></div></div>
+      ${statusError ? `<p class="op-msg err" role="alert">${esc(statusError)}</p>` : ''}
+      <div class="tdp-stats"><div><span class="tdp-k">Documents</span><span class="tdp-v">${status ? num(status.documents) : '—'}</span></div>
+        <div><span class="tdp-k">Distinct bodies</span><span class="tdp-v">${status ? num(status.bodies) : '—'}</span></div>
+        <div><span class="tdp-k">Last run</span><span class="tdp-v">${esc(status?.last_run_status || '—')}</span></div></div>
+      <label class="tdp-search-label" for="tdpSearch">Search document titles and URLs</label><input class="tdp-search" id="tdpSearch" type="search" maxlength="256" placeholder="Search all titles and URLs (3+ characters)…" value="${esc(query)}" autocomplete="off">
+      ${!query.trim() ? `<div class="tdp-tree">${status ? tree() : statusLoading ? '<p class="cm-loading">Loading categories…</p>' : ''}</div>` : ''}
+      ${panel()}</div>`;
+    document.getElementById('tdpRefresh').onclick = async () => { await refresh(); if (selected || query.trim().length >= MIN_QUERY) loadPage(0); };
+    document.getElementById('tdpSearch').oninput = e => {
+      query = e.target.value; ++sequence; clearTimeout(timer); offset = 0; items = []; total = 0; error = '';
+      loading = query.trim().length >= MIN_QUERY; render();
+      if (loading) timer = setTimeout(() => loadPage(0), 300);
+      else if (!query.trim() && selected) loadPage(0);
+    };
+    el.querySelectorAll('[data-category]').forEach(button => { button.onclick = () => {
+      const [product,docset,version] = JSON.parse(button.dataset.category);
+      selected = {product,docset,version}; expanded.add(product); loadPage(0);
+    }; });
+    el.querySelectorAll('.tdp-prod').forEach(d => d.addEventListener('toggle', () => {
+      if (!d.isConnected) return;
+      if (d.open) expanded.add(d.dataset.product); else expanded.delete(d.dataset.product);
+    }));
+    document.getElementById('tdpPrev')?.addEventListener('click', () => loadPage(Math.max(0,offset - PAGE)));
+    document.getElementById('tdpNext')?.addEventListener('click', () => loadPage(offset + PAGE));
+    document.getElementById('tdpRetry')?.addEventListener('click', () => loadPage(offset));
+    if (caret) { const input = document.getElementById('tdpSearch'); input.focus(); input.setSelectionRange(...caret); }
   }
-
-  async function openBook(product, docset) {
-    openProduct = product; shown = PAGE;
-    docs = { label: docset ? `${product} / ${docset}` : product, items: [], error: null };
-    render();
-    // The endpoint answers 202 with a ticket, not with the list: mgmtd hands the call to
-    // pretzel-ai and returns immediately, and the answer is collected on a later poll. Reading
-    // `documents` off the 202 finds nothing, which is exactly what an empty book looked like.
-    const qs = new URLSearchParams({ product, docset });
-    const r = await api('/api/techdoc/documents?' + qs.toString());
-    const d = r && r.ok ? await r.json().catch(() => null) : null;
-    const out = d && d.ticket ? await awaitTicket(d.ticket) : null;
-    if (!out || out.error) {
-      docs.error = out ? out.error : 'pretzel-ai did not answer in time.';
-      docs.items = [];
-    } else {
-      docs.error = null;
-      docs.items = out.documents || [];
-    }
-    render();
+  async function loadPage(nextOffset) {
+    const mine = ++sequence, term = query.trim();
+    offset = nextOffset; loading = true; error = ''; render();
+    const params = new URLSearchParams(Object.assign({}, selected || {}, {q:term,offset:String(nextOffset),limit:String(PAGE)}));
+    try {
+      const result = await request('/api/techdoc/documents?' + params);
+      if (mine !== sequence) return;
+      items = result.documents || []; total = Number(result.total) || 0;
+      if (!items.length && nextOffset > 0) { loadPage(0); return; }
+    } catch (e) { if (mine !== sequence) return; error = e.message; items = []; }
+    if (mine === sequence) { loading = false; render(); }
   }
-
-  document.addEventListener('DOMContentLoaded', async () => {
-    render();
-    await loadStatus();
-    render();
-  });
+  document.addEventListener('DOMContentLoaded', refresh);
 })();

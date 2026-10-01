@@ -43,6 +43,11 @@ public:
 
     // GET  /api/techdoc/documents?product=&docset=  → 202 {ticket}; the corpus browser's list
     void documents(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // GET  /api/techdoc/exceptions?run=&reason=&offset=&limit=  → 202 {ticket}
+    // What a refresh did not collect, named rather than counted, so an operator can open the page
+    // and judge for themselves whether the crawler was right about it.
+    void exceptions(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 };
 
 }

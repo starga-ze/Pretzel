@@ -34,6 +34,7 @@ enum class WebGrpcEventType : std::uint32_t
     // rather than resolving a ticket — the same shape a corpus refresh has.
     BenchtestRunProgress = 7,   // one run message             → BenchtestController
     ModelListResponse = 8,      // the picker's catalog        → ChatController
+    CorpusExceptionList = 9,    // what a run did not collect  → TechDocController
 };
 
 // Maps the call that was made to the answer it produces. Kept beside the enum so adding a call

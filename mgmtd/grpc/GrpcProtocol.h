@@ -37,6 +37,9 @@ enum class GrpcCmd : std::uint16_t
     // cancel would be the first thing to know a transport detail.
     CorpusCancel = 5,
     CorpusDocuments = 6,   // the documents under one product/book, for the corpus browser
+    // What a refresh did NOT collect, and why. Read from the run's stored observations rather
+    // than from the progress stream, so a finished run answers as readily as the one in flight.
+    CorpusExceptions = 21,
 
     // ── Benchtest sets ──
     // Reads and one write, all unary. The upload carries a whole file in `content`; everything
