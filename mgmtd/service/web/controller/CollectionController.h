@@ -44,6 +44,24 @@ public:
     // One sample WITH its raw response body — the only route that returns a payload, so the size of
     // an answer is always one body and never a page of them.
     void sample(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // POST /api/collection/run-now — {connector, endpoint}
+    //
+    // Brings one stream's next poll forward. Answers 202 and nothing else: the result of the poll
+    // arrives the way every poll's does — as a sample engined stores — so the caller learns it by
+    // re-reading, not by waiting here. A ticket would promise a correlation this has no way to keep.
+    void runNow(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
+
+    // GET /api/collection/endpoint-status
+    //
+    // The newest sample per endpoint, across every connector that collects it. Exists because the
+    // API Endpoint page's Status column was reading a per-browser-tab record of whether someone had
+    // pressed Endpoint Test — so an endpoint collected successfully every minute for a week read
+    // "never tested" in a fresh tab, and a colleague's test was invisible.
+    //
+    // Not scoped to a site, unlike overview: that page lists every site's endpoints at once, and
+    // what it needs is one fact per endpoint rather than a site's streams.
+    void endpointStatus(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 };
 
 }

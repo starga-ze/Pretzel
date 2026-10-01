@@ -274,10 +274,20 @@ TEST(SettingsSaseEndpoint, NeedsAHostBecauseTheDeviceIsOnlyATenant)
     EXPECT_FALSE(shapeOk("connector", json{{"endpoints", json::array({e})}}));
 }
 
+// "Actually implemented" is decided in TWO places, and this test can only see one of them.
+//
+// mgmtd (SettingsValidation) decides what may be COMMITTED; collectord (ApiService::loadEndpoints)
+// decides what is actually COLLECTED, and it drops an endpoint whose subtype it does not know. When
+// the two lists disagreed — pab accepted here, refused there — the console saved the endpoint, the
+// connector referenced it, and the only symptom was a once-per-interval
+// "collection skipped — unknown endpoint", pointing at the connector rather than at the subtype.
+//
+// So the list below must be kept in step with collectord's by hand. Nothing in the build enforces
+// it, which is the real gap: the honest fix is a shared table both daemons read.
 TEST(SettingsSaseEndpoint, ServesOnlyTheProductsThatAreActuallyImplemented)
 {
     json e = saseEndpoint();
-    for (const char* subtype : {"ztna", "scm"})
+    for (const char* subtype : {"ztna", "scm", "pab"})
     {
         e["subtype"] = subtype;
         EXPECT_TRUE(shapeOk("connector", json{{"endpoints", json::array({e})}})) << subtype;

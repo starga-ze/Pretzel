@@ -256,4 +256,82 @@ void SaseController::runEndpointTest(ApiService& api, CollectordServiceManager& 
     }
 }
 
+
+
+// ── A SASE call that acts ────────────────────────────────────────────────────────────────────────
+
+void SaseController::runCall(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
+                             const json& input)
+{
+    auto ctx = std::make_shared<ConnectorTest>();
+    ctx->sm = &sm;
+    ctx->seqNo = seqNo;
+    ctx->out["steps"] = json::object();
+
+    const std::string host = input.value("host", std::string());
+    const std::string path = input.value("path", std::string());
+    const std::string method = input.value("method", std::string("POST"));
+    if (host.empty() || path.empty() || path.front() != '/')
+        return rejectTest(ctx, "the call has no usable host or path");
+
+    const std::string token = api.issuedKey(input.value("api_key_oid", std::string()));
+    if (token.empty())
+        return rejectTest(ctx, "no token is issued for this credential yet — run its test once");
+
+    pz::http::ClientRequest req;
+    req.host = host;
+    req.port = 443;
+    req.target = path;
+    req.method = method;
+    req.verifyCa = true;   // a Palo Alto cloud host: verify the chain, nothing to pin
+    req.timeout = std::chrono::seconds(30);
+    req.headers.emplace_back("Authorization", "Bearer " + token);
+    req.headers.emplace_back("Accept", "application/json");
+
+    if (input.contains("body"))
+    {
+        req.body = input["body"].is_string() ? input["body"].get<std::string>() : input["body"].dump();
+        req.headers.emplace_back("Content-Type", "application/json");
+    }
+
+    // The endpoint's own headers ride along, minus any attempt to replace the token — the same rule
+    // the scheduled collection and the endpoint test apply.
+    for (const auto& h : input.value("headers", json::array()))
+    {
+        const std::string name = h.value("name", std::string());
+        if (name.empty() || ::strcasecmp(name.c_str(), "authorization") == 0)
+            continue;
+        req.headers.emplace_back(name, h.value("value", std::string()));
+    }
+
+    LOG_INFO("sase call (seq={}, {} https://{}{})", seqNo, method, host, path);
+
+    pz::http::requestAsync(sm.ioContext(), std::move(req),
+                           [ctx](pz::http::ClientResponse res)
+                           {
+                               if (!res.tlsOk || !res.requestSent)
+                                   return rejectTest(ctx, res.error.empty() ? "request was not sent"
+                                                                            : res.error);
+
+                               // 2xx, not 200: the vendor answers 200 here, but an operation that
+                               // succeeds with 202 or 204 must not be reported as a failure.
+                               const bool ok = res.status >= 200 && res.status < 300;
+                               const bool truncated = res.body.size() > kMaxBody;
+
+                               ctx->out["steps"]["call"] = stepJson(ok, "HTTP " + std::to_string(res.status));
+                               ctx->out["ok"] = ok;
+                               ctx->out["response"] = {{"status", res.status},
+                                                       {"body", res.body.substr(0, kMaxBody)},
+                                                       {"bytes", res.body.size()},
+                                                       {"truncated", truncated}};
+                               // The vendor's own words when it refuses, rather than a bare status:
+                               // "already acted on" and "not found" are different problems and the
+                               // operator can only tell them apart from the body.
+                               ctx->out["message"] = ok ? "the request was accepted"
+                                                        : ("HTTP " + std::to_string(res.status) + " — "
+                                                           + res.body.substr(0, 300));
+                               sendTestResponse(*ctx->sm, ctx->seqNo, ctx->out);
+                           });
+}
+
 }

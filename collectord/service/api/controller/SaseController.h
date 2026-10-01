@@ -37,6 +37,15 @@ class SaseController
 public:
     void runEndpointTest(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
                          const nlohmann::json& input);
+
+    // Call one SASE path with a method and a body, and answer on the seqNo.
+    //
+    // The sibling above only ever GETs: a test that could change something at the far end is not a
+    // test. This is the one that acts, and it is written as transport rather than as any product's
+    // operation — a host, a path, a method, a body. Approving a Prisma Browser request is mgmtd
+    // knowing that an id goes before "/action"; from here it is a POST like any other.
+    void runCall(ApiService& api, CollectordServiceManager& sm, std::uint32_t seqNo,
+                 const nlohmann::json& input);
 };
 
 }

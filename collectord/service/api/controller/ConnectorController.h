@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace pz::collectord
@@ -29,6 +30,14 @@ public:
     ~ConnectorController();
 
     void start(CollectordServiceManager& sm, ApiService& api);
+
+    // Bring one item's next poll forward to now. Both oids must match, because a connector may
+    // collect several endpoints and only the one the operator is looking at should be disturbed.
+    //
+    // Re-arms the existing timer rather than starting a second poll: the job owns the in-flight
+    // guard, and two overlapping reads of the same endpoint would land as two samples a moment
+    // apart with no way to tell which is newer.
+    void runNow(const std::string& connectorOid, const std::string& endpointOid);
 
 private:
     std::vector<std::shared_ptr<CollectorJob>> m_jobs;

@@ -228,6 +228,17 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
             Match::Prefix, WebRoute::CollectionSamples,  Access::Authenticated, false},
         {"GET",  "/api/collection/sample",
             Match::Prefix, WebRoute::CollectionSample,   Access::Authenticated, false},
+        {"POST", "/api/collection/run-now",
+            Match::Exact,  WebRoute::CollectionRunNow,   Access::Authenticated, false},
+        {"GET",  "/api/collection/endpoint-status",
+            Match::Exact,  WebRoute::CollectionEndpointStatus, Access::Authenticated, false},
+
+        // The POST is Exact and listed first; the GET is Prefix because it carries ?site= and the
+        // optional filters, and a prefix that matched first would swallow the action path.
+        {"POST", "/api/user-requests/action",
+            Match::Exact,  WebRoute::UserRequestAction,  Access::Authenticated, false},
+        {"GET",  "/api/user-requests",
+            Match::Prefix, WebRoute::UserRequests,       Access::Authenticated, false},
 
         // Assistant. The POST is Exact and the poll is Prefix (it carries ?ticket=); they differ
         // by method as well, so neither can shadow the other.
@@ -397,6 +408,12 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
     case WebRoute::CollectionOverview: return m_collectionController.overview(sm, req, resp);
     case WebRoute::CollectionSamples:  return m_collectionController.samples(sm, req, resp);
     case WebRoute::CollectionSample:   return m_collectionController.sample(sm, req, resp);
+    case WebRoute::CollectionRunNow:   return m_collectionController.runNow(sm, req, resp);
+    case WebRoute::CollectionEndpointStatus:
+        return m_collectionController.endpointStatus(sm, req, resp);
+
+    case WebRoute::UserRequests:       return m_userRequestController.list(sm, req, resp);
+    case WebRoute::UserRequestAction:  return m_userRequestController.action(sm, req, resp);
 
     case WebRoute::ChatSend:           return m_chatController.send(sm, req, resp);
     case WebRoute::ChatResult:         return m_chatController.result(sm, req, resp);

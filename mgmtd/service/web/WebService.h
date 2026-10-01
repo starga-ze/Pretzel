@@ -7,6 +7,7 @@
 #include "service/web/controller/BenchtestController.h"
 #include "service/web/controller/TechDocController.h"
 #include "service/web/controller/CollectionController.h"
+#include "service/web/controller/UserRequestController.h"
 #include "service/web/controller/LogsController.h"
 #include "service/web/controller/SettingsController.h"
 #include "service/web/controller/SsoController.h"
@@ -78,6 +79,12 @@ enum class WebRoute
     CollectionOverview,   // GET  /api/collection/overview?window=
     CollectionSamples,    // GET  /api/collection/samples?connector=&endpoint=&status=&before=&limit=
     CollectionSample,     // GET  /api/collection/sample?oid=
+    CollectionRunNow,     // POST /api/collection/run-now
+    CollectionEndpointStatus, // GET /api/collection/endpoint-status
+
+    // UserRequestController — the Prisma Browser queue, projected into pb_user_request.
+    UserRequests,         // GET  /api/user-requests?site=&status=&limit=
+    UserRequestAction,    // POST /api/user-requests/action
 
     // AiController — the assistant's vendor keys, which cannot ride a commit.
     AiCredentials,      // GET  /api/ai/credentials
@@ -208,6 +215,7 @@ private:
     TechDocController m_techDocController;
     BenchtestController m_benchtestController;
     CollectionController m_collectionController;
+    UserRequestController m_userRequestController;
     LogsController m_logsController;
 };
 

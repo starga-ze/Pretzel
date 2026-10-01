@@ -124,10 +124,20 @@ void ApiService::loadEndpoints(const nlohmann::json& cfg)
                 endpoint.subtype = ApiSubtype::Ztna;
             else if (subtype == "scm")
                 endpoint.subtype = ApiSubtype::Scm;
+            else if (subtype == "pab")
+                endpoint.subtype = ApiSubtype::Pab;
             else
             {
-                // Refused rather than defaulted: silently collecting a Prisma Access Browser endpoint
-                // as though it were ZTNA would send a request nobody asked for.
+                // Refused rather than defaulted: silently collecting one product's endpoint as
+                // though it were another would send a request nobody asked for.
+                //
+                // This list has to stay in step with mgmtd's SettingsValidation, which decides what
+                // may be committed in the first place. When it did not, the failure was quiet in the
+                // worst way: the console accepted the endpoint, the connector referenced it, and the
+                // only symptom was a once-per-interval "collection skipped — unknown endpoint" —
+                // because the endpoint had been dropped HERE, at config load, long before the
+                // connector ever looked for it. The log that would have explained it is a single
+                // line at daemon start, already scrolled away by the time anyone goes looking.
                 LOG_WARN("skipping SASE endpoint for a subtype that is not implemented yet (name={}, subtype={})",
                          endpoint.name, subtype);
                 continue;
@@ -392,6 +402,20 @@ void ApiService::route(CollectordServiceManager& sm, const ApiEvent& event)
             m_aiModelController.receiveKey(sm, seqNo, input);
         break;
 
+    // The same controller as the SASE endpoint test, because it is the same call shape — one
+    // published path on a Palo Alto cloud host with this tenant's bearer. What differs is the
+    // method and that this one is allowed to change something.
+    case ApiEventType::RunSaseCall:
+        if (decodeTest(event, seqNo, input))
+            m_saseController.runCall(*this, sm, seqNo, input);
+        break;
+
+    case ApiEventType::RunCollectionNow:
+        if (decodeTest(event, seqNo, input))
+            m_connectorController.runNow(input.value("connector", std::string()),
+                                         input.value("endpoint", std::string()));
+        break;
+
     // Repo + scheduling: these stay in the service (shared key cache; when-to-run timing).
     case ApiEventType::ReceiveKeyState:
         handleKeyState(sm, event);
@@ -480,8 +504,13 @@ void ApiService::handleKeyState(CollectordServiceManager& sm, const ApiEvent& ev
 void ApiService::handleSetup(CollectordServiceManager& sm, const ApiEvent& event)
 {
     (void)event;
-    // Fetch the issued keys (outbound IPC returned as an action), then arm periodic collection: each
-    // item first fires after its interval, by when the keys have arrived; a poll with no key skips.
+    // Fetch the issued keys (outbound IPC returned as an action), then arm periodic collection.
+    //
+    // Both halves of this race are handled in ConnectorController, not here: the first poll is armed
+    // at kInitialDelay (3s) rather than a full interval, so a commit — which restarts this daemon —
+    // produces a sample within seconds instead of after the operator's poll_interval_sec; and a poll
+    // that finds no key yet re-arms at kKeyWaitMin..Max (2–30s) rather than at the interval, so
+    // losing the race to engined's key response costs seconds rather than the whole period.
     sm.postAction(std::make_unique<ApiAction>(ApiActionType::RequestKeys));
     m_connectorController.start(sm, *this);
 }

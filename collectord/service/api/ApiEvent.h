@@ -25,6 +25,8 @@ enum class ApiEventType : std::uint32_t
     // store: the first asks for it, the second arrives with it and makes the vendor call.
     RefreshAiModels = 10,    // → AiModelController: fetch one vendor's model list
     ReceiveAiKeyState = 11,  // → AiModelController: the sealed vendor key the refresh was waiting on
+    RunSaseCall = 12,     // → SaseController: call a SASE path with a method and body
+    RunCollectionNow = 13,// → ConnectorController: poll one item ahead of its interval
     // Schedule-driven (injected by ApiService::schedule, not from the wire).
     Setup = 5,        // one-shot after bootstrap: fetch issued keys + arm periodic collection
     RunPeriodic = 6,  // recurring: SASE health probe + credential auto-refresh (each self-gated)

@@ -145,10 +145,14 @@ bool validApiEndpoint(const json& e)
 
     if (deviceType == "sase")
     {
-        // ZTNA and Strata Cloud Manager are served today. The other products are refused rather than
-        // accepted-and-ignored so a commit cannot leave an endpoint that looks configured and never
-        // collects.
-        if (subtype != "ztna" && subtype != "scm")
+        // ZTNA, Strata Cloud Manager and Prisma Browser are served today. A product not on this
+        // list is refused rather than accepted-and-ignored, so a commit cannot leave an endpoint
+        // that looks configured and never collects.
+        //
+        // All three speak JSON over the same OAuth bearer with the same tsg_id scope; the subtype
+        // decides only which host and path layout the operator is seeded with. So adding one here
+        // is the whole server-side change — the collector treats them identically.
+        if (subtype != "ztna" && subtype != "scm" && subtype != "pab")
             return false;
 
         // The host belongs to the endpoint, not the device: a SASE "device" is a tenant (the tsg_id

@@ -68,9 +68,46 @@
       headers: [],
       params: [],
     },
-    // Listed but not selectable, so the menu is honest about what exists rather than implying the
-    // list is complete.
-    pab: { device: 'sase', label: 'Prisma Access Browser', enabled: false },
+    // Prisma Browser — the managed browser's own management plane. Same host and same OAuth as
+    // ZTNA, and like Strata Cloud Manager it takes no region header: the tenant is the token's
+    // scope, so there is nothing left to disambiguate.
+    //
+    // Named "Prisma Browser", not "Prisma Access Browser". The vendor renamed it and its own SASE
+    // status page lists it the short way; the topology page already follows that spelling, and two
+    // names for one product in one console is a question the operator should never have to ask.
+    //
+    // The whole product sits under one host and one /seb-api/v1 prefix — user requests, users,
+    // devices, applications, policy. So the seed below is an EXAMPLE path, not the endpoint: any
+    // other Prisma Browser API is reached by editing the path on the form, with no code change
+    // here. That is also why the example carries the pagination quartet rather than anything
+    // specific to this one path — the query string survives a path edit and stays meaningful.
+    //
+    // Measured across the 36 GET endpoints in the vendor's spec: limit (12), cursor (8), order (6)
+    // and sort (4) are the shared vocabulary; everything else is a per-resource dotted filter —
+    // request.status, user.email, device.os_type. Those need no schema here because an endpoint's
+    // `params` is already a free name/value list, and a dot is an ordinary character in a query
+    // key. `cursor` is deliberately NOT seeded: it is a position handed back by the previous
+    // response, so a value pinned in configuration would re-read the same page for ever.
+    pab: {
+      device: 'sase', label: 'Prisma Browser', enabled: true,
+      url: 'https://api.sase.paloaltonetworks.com/seb-api/v1/user-requests?limit=1000&sort=request.created_at&order=desc',
+      headers: [],
+      // For SASE the query string IS the params list — splitSaseUrl() parses it off the URL the
+      // operator pastes, so an example carries its parameters here rather than in `params` below,
+      // which the SASE form never reads (ztna and scm declare it vestigially).
+      //
+      // limit is large because nothing follows the vendor's cursor: one poll is one GET and one
+      // page, and whatever did not fit never reaches the appliance at all. Ordering newest-first is
+      // what makes that survivable — rows are upserted and never deleted, so a request seen once
+      // stays, and the only thing a short page can lose is one nobody has seen yet. Oldest-first
+      // would lose exactly those.
+      //
+      // No request.type filter on purpose. The vendor documents the enum as WebAccess|AppLogin,
+      // but a live tenant answers with FileDownload for a download approval (measured 2026-10-01),
+      // and whether the filter accepts a value its own docs omit is untested. Collecting every
+      // type and selecting in the reader cannot lose a row to that; a filter can.
+      params: [],
+    },
   };
 
   const subtypesFor = (deviceType) =>
@@ -115,6 +152,12 @@
       window.NMS.draft.set(STATE_KEY, s);
     },
   };
+
+  // What the APPLIANCE knows about each endpoint, keyed by oid: the newest api_collection sample
+  // across every connector that collects it. Distinct from testState below, which is one browser
+  // tab's memory of pressing Endpoint Test — a scheduled collection answering 200 every minute is
+  // the stronger evidence and the one every operator shares.
+  let collected = {};
 
   const state = { endpoints: [] };
   let deployed = [];
@@ -244,6 +287,15 @@
       const api = ((d.scopes || {}).pretzel || {}).connector || {};
       deployed = (Array.isArray(api.endpoints) ? api.endpoints : []).map(normalize);
     } catch (_) { deployed = []; }
+
+    // Best-effort: an endpoint list that renders is worth more than one that fails because the
+    // Status column could not be filled. Without it every row falls back to its local test.
+    try {
+      const st = await window.NMS.utils.fetchJSON('/api/collection/endpoint-status');
+      collected = {};
+      (st && Array.isArray(st.rows) ? st.rows : []).forEach((r) => { collected[r.endpoint_oid] = r; });
+    } catch (_) { collected = {}; }
+
     const staged = window.NMS.draft.get(DRAFT_KEY, null);
     state.endpoints = Array.isArray(staged) ? staged.map(normalize) : JSON.parse(JSON.stringify(deployed));
     refreshPending();
@@ -285,9 +337,22 @@
   const subtypeBadge = (e) =>
     `<span class="api-badge ${esc(e.subtype)}">${esc(subtypeSpec(e.subtype).label)}</span>`;
 
+  // Collection first, the local test only as a fallback. An endpoint no connector collects has no
+  // other evidence, so the button is still worth having — but once it IS collected, what the
+  // schedule gets is the answer, and it outlives the tab that ran the test.
   function statusCell(e) {
+    const c = collected[e.oid];
+    if (c) {
+      const when = window.NMS.utils.fmtTs(c.at);
+      const age = window.NMS.utils.relAge(c.at);
+      return c.ok
+        ? `<span class="st-ok" title="HTTP ${esc(String(c.http_status || 200))} — collected ${esc(when)}">OK</span>`
+        : `<span class="st-fail" title="HTTP ${esc(String(c.http_status || '—'))} — collected ${esc(when)}">failed</span>`
+        ;
+    }
+
     const t = testState.for(e.oid);
-    if (!t) return `<span class="st-never">never tested</span>`;
+    if (!t) return `<span class="st-never">never collected</span>`;
     const when = window.NMS.utils.fmtTs(t.at);
     // Which key it was proven against matters: the same path can pass on one release and 404 on
     // another, so the tooltip names it.
@@ -300,12 +365,13 @@
   // The word the Status column reads as — and the word its filter offers. Ordered worst-first when
   // sorted descending is not what an operator wants; they want the untested and the failed together
   // at one end, so the rank is "how proven is this", not alphabetical.
+  const statusOf = (e) => collected[e.oid] || testState.for(e.oid);
   const statusText = (e) => {
-    const t = testState.for(e.oid);
-    return !t ? 'never tested' : (t.ok ? 'OK' : 'failed');
+    const t = statusOf(e);
+    return !t ? 'never collected' : (t.ok ? 'OK' : 'failed');
   };
   const statusRank = (e) => {
-    const t = testState.for(e.oid);
+    const t = statusOf(e);
     return !t ? 0 : (t.ok ? 2 : 1);
   };
 

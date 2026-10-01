@@ -197,6 +197,26 @@
     // above, and why they are the pages that will need a confirmation step.
     { type: 'section', label: 'Control' },
     {
+      // The one row here that acts on a person rather than on a box: an end user hit a rule set to
+      // adminApproval and is sitting in front of a dialog waiting on a yes or a no. It belongs with
+      // Remote Access and Power Control because it is the same kind of errand — you come here to DO
+      // something, and every row ends in a decision that takes effect the moment it is pressed.
+      //
+      // Named for the object, not for the errand, and deliberately without the word Access. "Access
+      // Requests" would have put a second Access directly above Remote Access — one meaning an
+      // operator reaching INTO a device, the other a user asking permission to send something OUT
+      // of one. Opposite directions, same word, adjacent rows. "Approvals" was the other candidate
+      // and, in a product that has a Publish button, reads as config-change approvals.
+      //
+      // "User Requests" is also what the vendor's own console and API call these, so an operator
+      // who knows that screen finds the same noun here rather than having to map ours onto theirs.
+      type: 'link', id: 'user-requests', label: 'User Requests', href: 'user-requests',
+      scoped: true, badgeId: 'navUserRequests',
+      icon: `<circle cx="9.5" cy="8" r="3.4"/>
+             <path d="M3.5 20c0-3.2 2.7-5.4 6-5.4 1 0 1.9.2 2.7.5"/>
+             <polyline points="14.4 17.4 16.7 19.7 21 15.4"/>`,
+    },
+    {
       type: 'link', id: 'remote-access', label: 'Remote Access', href: '#', soon: true,
       icon: `<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>`,
     },
@@ -324,6 +344,7 @@
     'settings':        { title: 'Configuration', groups: SETTINGS_GROUPS },
     'topology':        { title: 'Topology' },
     'collection':      { title: 'API Collection' },
+    'user-requests':   { title: 'User Requests' },
     'log-viewer':      { title: 'System Log' },
     'laboratory':      { title: 'Laboratory' },
     // Two ways in, for two errands: the sidebar's Knowledge Service entry for reading the corpus,
@@ -630,7 +651,7 @@
           ${buildSvg(item.icon)}
           <span class="nav-label">${item.label}</span>
           ${item.soon ? '<span class="nav-badge-soon">Coming soon</span>' : ''}
-          ${item.badgeId ? `<span class="nav-badge" id="${item.badgeId}">--</span>` : ''}
+          ${item.badgeId ? `<span class="nav-badge" id="${item.badgeId}"></span>` : ''}
         </a>`;
         continue;
       }
@@ -659,7 +680,7 @@
                   data-label="${item.label}" data-subitems="${dataSubs}" aria-haspopup="true" aria-expanded="false">
             ${buildSvg(item.icon)}
             <span class="nav-label">${item.label}</span>
-            ${item.badgeId ? `<span class="nav-badge" id="${item.badgeId}">--</span>` : ''}
+            ${item.badgeId ? `<span class="nav-badge" id="${item.badgeId}"></span>` : ''}
             <svg class="nav-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <polyline points="9 6 15 12 9 18"/>
@@ -1183,6 +1204,14 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     buildSidebar();
+    // Paints the remembered sidebar counts — straight after the markup that carries them, and
+    // NOT from buildTopbar(), which is where this first lived. That function bails early for a
+    // page with no topbar (`bareTopbar`, and any page absent from PAGES), so on the Assistant the
+    // badge was never painted at all: the sidebar is on every page, the topbar is not.
+    //
+    // A count as of the last visit, not a live one — which is why the badge disappears at zero
+    // rather than showing a confident "0", and why nothing paints until a page has counted.
+    window.NMS.navBadge.paintAll();
     buildTopbar();
     initSidebar();
     initTiers();
@@ -1229,6 +1258,38 @@
         sessionStorage.removeItem(PUBLISH_ON_LOAD_KEY);
         return v === '1';
       } catch (_) { return false; }
+    },
+  };
+
+  // Sidebar counts, keyed by the badgeId a SIDEBAR_NAV entry declares.
+  //
+  // The renderer has always emitted the span; until now nothing filled it, so an entry that asked
+  // for a badge wore a literal "--". Stored per browser tab next to the drafts and the publish
+  // flag, for the same reason they are: the count outlives the page that computed it.
+  const NAV_BADGE_KEY = 'pz.navBadge.';
+
+  window.NMS.navBadge = {
+    set(id, n) {
+      const v = Math.max(0, n | 0);
+      try {
+        if (v > 0) sessionStorage.setItem(NAV_BADGE_KEY + id, String(v));
+        else sessionStorage.removeItem(NAV_BADGE_KEY + id);
+      } catch (_) { /* quota/private mode — the badge just does not persist */ }
+      this.paint(id);
+    },
+    get(id) {
+      try { return parseInt(sessionStorage.getItem(NAV_BADGE_KEY + id), 10) || 0; } catch (_) { return 0; }
+    },
+    // Empty rather than "0": `.nav-badge:empty` is display:none, so a count of nothing leaves the
+    // row exactly as it would look without a badge at all.
+    paint(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const n = this.get(id);
+      el.textContent = n > 0 ? String(n) : '';
+    },
+    paintAll() {
+      document.querySelectorAll('.nav-badge[id]').forEach(el => this.paint(el.id));
     },
   };
 
@@ -1497,15 +1558,24 @@
     },
 
     // "just now" / "42s" / "7m" / "3h" / "2d" — the age of a timestamp, for a freshness stamp.
+    //
+    // Each unit hands over at exactly one of the next, not at one and a half. It used to run
+    // minutes to 90 and hours to 48, which produced "70m ago" and "36h ago" — readings this
+    // function's own examples never contemplated, and that a reader has to divide before they mean
+    // anything. Precision that costs arithmetic is not precision.
+    //
+    // Floored, not rounded, because that is what "ago" means: a thing 1h59m old happened "1h ago",
+    // not "2h ago" — it has not been two hours. Rounding also pushed the boundary values up a unit
+    // the moment they arrived there.
     relAge(s) {
       const t = this.parseTs(s);
       if (!t) return '—';
       const sec = Math.max(0, (Date.now() - t.getTime()) / 1000);
       if (sec < 5) return 'just now';
-      if (sec < 90) return Math.round(sec) + 's ago';
-      if (sec < 5400) return Math.round(sec / 60) + 'm ago';
-      if (sec < 172800) return Math.round(sec / 3600) + 'h ago';
-      return Math.round(sec / 86400) + 'd ago';
+      if (sec < 60) return Math.floor(sec) + 's ago';
+      if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+      if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+      return Math.floor(sec / 86400) + 'd ago';
     },
 
     // ── Invalid fields ────────────────────────────────────────────────────────────────────────
@@ -1719,7 +1789,7 @@
         document.removeEventListener('mousedown', onDocDown, true);
         document.removeEventListener('keydown', onKey, true);
         window.removeEventListener('resize', close, true);
-        window.removeEventListener('scroll', close, true);
+        window.removeEventListener('scroll', onScroll, true);
         if (csActiveClose === close) csActiveClose = null;
       };
 
@@ -1735,6 +1805,17 @@
 
       const onDocDown = (e) => {
         if (panel && !panel.contains(e.target) && !wrap.contains(e.target)) close();
+      };
+
+      // The panel is positioned once, against the trigger's box, so a page that scrolls underneath
+      // it leaves it floating somewhere it no longer belongs — hence closing on scroll. But the
+      // listener is on `window` in the CAPTURE phase, which sees scrolls of every element on the
+      // way down, including the panel's own: a list long enough to need a scrollbar closed itself
+      // the moment the operator dragged it. Scrolls that start inside the panel are its business,
+      // not the page's, so they are let through.
+      const onScroll = (e) => {
+        if (panel && e.target instanceof Node && panel.contains(e.target)) return;
+        close();
       };
 
       const onKey = (e) => {
@@ -1778,7 +1859,7 @@
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('keydown', onKey, true);
         window.addEventListener('resize', close, true);
-        window.addEventListener('scroll', close, true);
+        window.addEventListener('scroll', onScroll, true);
         csActiveClose = close;
       };
 

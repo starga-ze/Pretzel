@@ -15,6 +15,7 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, 
       m_probeService(std::make_unique<ProbeService>()), m_adminService(std::make_unique<AdminService>()),
       m_apiCredentialService(std::make_unique<ApiCredentialService>()),
       m_collectionService(std::make_unique<CollectionService>()),
+      m_pbUserRequestService(std::make_unique<PbUserRequestService>()),
       m_chatService(std::make_unique<ChatService>()),
       m_logTailService(std::make_unique<LogTailService>()),
       m_vendorResolver(std::make_unique<VendorResolver>())
@@ -131,6 +132,11 @@ AdminService& EnginedServiceManager::adminService()
 ApiCredentialService& EnginedServiceManager::apiCredentialService()
 {
     return *m_apiCredentialService;
+}
+
+PbUserRequestService& EnginedServiceManager::pbUserRequestService()
+{
+    return *m_pbUserRequestService;
 }
 
 CollectionService& EnginedServiceManager::collectionService()

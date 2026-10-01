@@ -292,6 +292,25 @@ void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::ti
 ConnectorController::ConnectorController() = default;
 ConnectorController::~ConnectorController() = default;
 
+void ConnectorController::runNow(const std::string& connectorOid, const std::string& endpointOid)
+{
+    for (const auto& job : m_jobs)
+    {
+        if (!job || job->connectorOid != connectorOid || job->endpointOid != endpointOid)
+            continue;
+
+        // No explicit cancel: armJob's expires_after already cancels the pending wait, which fires
+        // the old handler with operation_aborted and armJob returns on it. A manual refresh during
+        // an in-flight HTTP call is safe too — collectOnce's in-flight guard is what stops the two
+        // reads overlapping, and this only moves the timer.
+        armJob(job, std::chrono::seconds(0));
+        LOG_INFO("collection brought forward (connector={}, endpoint={})", connectorOid, endpointOid);
+        return;
+    }
+
+    LOG_WARN("collection run-now found no such job (connector={}, endpoint={})", connectorOid, endpointOid);
+}
+
 void ConnectorController::start(CollectordServiceManager& sm, ApiService& api)
 {
     int armed = 0;

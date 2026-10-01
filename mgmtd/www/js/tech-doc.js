@@ -74,6 +74,10 @@
     const el = document.getElementById('contentBody'); if (!el) return;
     const box = document.getElementById('tdpSearch');
     const caret = box && document.activeElement === box ? [box.selectionStart,box.selectionEnd] : null;
+    // The tree scrolls now, and render() rebuilds the page wholesale — so without this, choosing a
+    // manual sent the catalogue back to the top and the operator lost the place they were reading.
+    // Same reasoning as the caret above.
+    const treeTop = document.getElementById('tdpTree')?.scrollTop ?? null;
     el.innerHTML = `<div class="cfg-page"><div class="cfg-toolbar"><div class="cfg-toolbar-meta"><span class="cfg-h">PA Tech Docs</span><span class="cfg-h-sub">Technical documentation available to the assistant</span></div>
       <div class="cfg-toolbar-actions"><button class="btn-sm" id="tdpRefresh" ${statusLoading ? 'disabled' : ''}>${statusLoading ? 'Refreshing…' : 'Refresh'}</button><a class="btn-sm" href="/settings?tab=operation">Update corpus</a></div></div>
       ${statusError ? `<p class="op-msg err" role="alert">${esc(statusError)}</p>` : ''}
@@ -81,7 +85,7 @@
         <div><span class="tdp-k">Distinct bodies</span><span class="tdp-v">${status ? num(status.bodies) : '—'}</span></div>
         <div><span class="tdp-k">Last run</span><span class="tdp-v">${esc(status?.last_run_status || '—')}</span></div></div>
       <label class="tdp-search-label" for="tdpSearch">Search document titles and URLs</label><input class="tdp-search" id="tdpSearch" type="search" maxlength="256" placeholder="Search all titles and URLs (3+ characters)…" value="${esc(query)}" autocomplete="off">
-      ${!query.trim() ? `<div class="tdp-tree">${status ? tree() : statusLoading ? '<p class="cm-loading">Loading categories…</p>' : ''}</div>` : ''}
+      ${!query.trim() ? `<div class="tdp-tree" id="tdpTree">${status ? tree() : statusLoading ? '<p class="cm-loading">Loading categories…</p>' : ''}</div>` : ''}
       ${panel()}</div>`;
     document.getElementById('tdpRefresh').onclick = async () => { await refresh(); if (selected || query.trim().length >= MIN_QUERY) loadPage(0); };
     document.getElementById('tdpSearch').oninput = e => {
@@ -101,6 +105,7 @@
     document.getElementById('tdpPrev')?.addEventListener('click', () => loadPage(Math.max(0,offset - PAGE)));
     document.getElementById('tdpNext')?.addEventListener('click', () => loadPage(offset + PAGE));
     document.getElementById('tdpRetry')?.addEventListener('click', () => loadPage(offset));
+    if (treeTop != null) { const t = document.getElementById('tdpTree'); if (t) t.scrollTop = treeTop; }
     if (caret) { const input = document.getElementById('tdpSearch'); input.focus(); input.setSelectionRange(...caret); }
   }
   async function loadPage(nextOffset) {

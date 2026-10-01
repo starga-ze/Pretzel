@@ -131,6 +131,10 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "AiModelUpdateResponse";
     case IpcCmd::AiModelUpdate:
         return "AiModelUpdate";
+    case IpcCmd::ApiSaseCallRequest:
+        return "ApiSaseCallRequest";
+    case IpcCmd::ApiCollectionRunNow:
+        return "ApiCollectionRunNow";
     case IpcCmd::AiCredentialStateRequest:
         return "AiCredentialStateRequest";
     case IpcCmd::AiCredentialStateResponse:
@@ -212,6 +216,8 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::ApiConnectorTestResponse:
     case IpcCmd::AiModelUpdateRequest:
     case IpcCmd::AiModelUpdateResponse:
+    case IpcCmd::ApiSaseCallRequest:
+    case IpcCmd::ApiCollectionRunNow:
         return CmdCategory::DeviceOp;
 
     // Mutate engined's store — dst must be Engined.

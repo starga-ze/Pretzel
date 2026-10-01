@@ -1,0 +1,136 @@
+/* user-requests.css — Site ▸ Control ▸ User Requests
+ *
+ * Only what the shared table and main.css do not already carry: the two badge families and the
+ * staleness note. Everything structural — the page wrapper, the header line above the grid, the
+ * grid itself, its filter popovers and its empty state — is .cfg-page/.cfg-toolbar and NMS.table,
+ * styled in main.css with the Configuration tables. This page is one of them in every way except
+ * where it sits in the sidebar, so it should not carry a second set of sizes for the same jobs.
+ */
+
+/* Orange, not red: in every case this fires nothing is broken and nothing was lost — the list is
+   stale, or partial, or the endpoint is switched off. The same orange the rest of the console uses
+   for "still true, but not what you assumed".
+
+   11px is .cfg-card-hint's size: this says the same KIND of thing — a note about the thing on
+   screen rather than the thing itself — so it is set at the size the console gives that job. */
+.ur-warn {
+  margin: -10px 0 0; padding: 7px 11px;
+  background: var(--tint-orange); border: 1px solid var(--orange); border-radius: 8px;
+  color: var(--ink-orange); font-size: 11px; line-height: 1.55;
+}
+
+/* ── The grid ────────────────────────────────────────────────────────────────────────────────────
+ *
+ * Fixed layout, which no other table in the console asks for, and for a reason none of them have:
+ * one column here holds a URL. An unbreakable string in an auto-layout table sizes its column to
+ * the longest row and pushes the whole table past its container — which is what put the action
+ * button off the right edge. `is-sized` would do the same thing but it is only set once an operator
+ * has dragged a column, so it cannot be relied on for the first paint.
+ *
+ * With the layout fixed the widths below hold exactly, and the two long columns clip with an
+ * ellipsis instead of growing. Percentages rather than pixels, like every other table here, so the
+ * grid reflows with the window instead of scrolling at narrow widths.
+ */
+.cfg-table-ur { table-layout: fixed; }
+.cfg-table-ur th, .cfg-table-ur td { overflow: hidden; text-overflow: ellipsis; }
+
+.cfg-table-ur th { font-size: 9.5px; padding: 8px 12px; }
+.cfg-table-ur td { font-size: 11px; padding: 7px 12px; vertical-align: middle; }
+
+.cfg-table-ur .col-ur-type   { width: 9%; }
+.cfg-table-ur .col-ur-status { width: 8%; }
+.cfg-table-ur .col-ur-user   { width: 9%; }
+.cfg-table-ur .col-ur-url    { width: 23%; }
+.cfg-table-ur .col-ur-reason { width: 21%; }
+.cfg-table-ur .col-ur-time   { width: 11%; }
+.cfg-table-ur .col-act       { width: 8%; text-align: right; white-space: nowrap; }
+
+/* Clipped on the cell, not on a span inside it: the ellipsis belongs to whatever establishes the
+   overflow, and a span sized at 100% of a cell that already grew clips nothing. Both carry their
+   full value in a title attribute, so nothing is lost to the truncation. */
+.cfg-table-ur .col-ur-url,
+.cfg-table-ur .col-ur-reason { white-space: nowrap; }
+.ur-url { font-family: var(--font-mono); font-size: 10px; }
+.ur-mono { font-family: var(--font-mono); font-size: 10px; }
+
+/* The two timestamps stack, so this column is the one that must not inherit the nowrap above. */
+.cfg-table-ur .col-ur-time .cell-name,
+.cfg-table-ur .col-ur-time .cell-sub { white-space: nowrap; }
+
+/* Grey is the BASE, not a fallback rule further down: `type` and `status` are free strings on the
+   vendor's side — FileDownload is itself a value their own filter enum does not list — so a value
+   we have not met yet must still render as a badge rather than as nothing. The named ones below
+   override at equal specificity by coming later. */
+.ur-badge {
+  display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 7px;
+  border-radius: 20px; letter-spacing: .03em; white-space: nowrap;
+  background: var(--surface-2); color: var(--text-muted);
+}
+
+/* Request type. FileDownload is the one this page was built for, so it gets the accent rather than
+   being lost among its siblings. */
+.ur-t-filedownload { background: rgba(37,99,235,.12);  color: var(--blue); }
+.ur-t-webaccess    { background: rgba(147,51,234,.12); color: #7e22ce; }
+.ur-t-applogin     { background: rgba(22,163,74,.14);  color: var(--ink-green); }
+
+/* The Responded column when nobody has answered. Accent, not muted: these are the only rows on the
+   page that are asking for something, and greying them would file them with the ones that are
+   finished. Not a badge — it is the absence of an answer, not a state of its own; Status next to it
+   already carries that. */
+.ur-await { color: var(--accent); font-weight: 600; }
+
+/* Status. Pending is the only one that is work; the rest are history. */
+.ur-s-pending  { background: var(--tint-orange);       color: var(--ink-orange); }
+.ur-s-approved { background: rgba(22,163,74,.14);      color: var(--ink-green); }
+.ur-s-declined { background: rgba(220,38,38,.12);      color: var(--ink-red); }
+.ur-s-revoked  { background: var(--surface-2);         color: var(--text-muted); }
+
+/* Every field the request arrived with, field beside value. The panel reuses the grid's class for
+   its chrome, so it has to undo what the grid needs and it does not: values here are read in full,
+   so they wrap instead of clipping.
+
+   Fixed layout with the name column pinned. Left to size itself, a 36-character id in the value
+   column squeezed the names until "adminBypassTimeframe" broke after the nineteenth letter — a
+   field name split mid-word is a name the reader has to reassemble.
+
+   The two columns then break differently, because what is in them differs. A NAME is one word and
+   should only ever break when it genuinely cannot fit (overflow-wrap), while a VALUE is an id, a
+   URL or a JSON blob with no spaces to break at, so it breaks anywhere (word-break). Applying
+   either rule to both columns gets one of them wrong. */
+.ur-detail { table-layout: fixed; }
+.ur-detail th, .ur-detail td { overflow: visible; text-overflow: clip; white-space: normal; }
+.ur-detail th:first-child, .ur-detail td:first-child {
+  width: 172px; word-break: normal; overflow-wrap: break-word;
+}
+.ur-detail td:last-child { word-break: break-all; }
+
+/* What the tenant answered, at the TOP of the panel body rather than above the buttons. Down there
+   it pushed the controls further down the longer the message was, and a vendor error is a
+   paragraph; up here the foot stays the same height whatever comes back.
+
+   Green for accepted, and .ur-warn's orange for refused — red is for something broken, and a
+   refusal is the tenant answering correctly. */
+.ur-ok, .slideover-body > .ur-warn {
+  margin: 0 0 14px; padding: 8px 11px; border-radius: 8px;
+  font-size: 11px; line-height: 1.55; word-break: break-word;
+}
+.ur-ok { background: rgba(22,163,74,.12); border: 1px solid rgba(22,163,74,.4); color: var(--ink-green); }
+
+/* The action bar. slideover-foot lays its children in a row, so the form takes a column of its own
+   inside it; the comment uses the console's own .field-row so it matches every other editor. */
+#urDetailFoot { display: block; }
+.ur-act .field-row { margin-bottom: 10px; }
+.ur-act input { width: 100%; }
+
+/* One row of controls, each at its natural width. Stretching them edge to edge gave a destructive
+   action the same visual weight as the primary one and made three buttons look like a toolbar. */
+.ur-act-row { display: flex; align-items: center; gap: 8px; }
+.ur-act-sel { width: 96px; flex: 0 0 96px; }
+.ur-act-sel .cs, .ur-act-sel select { width: 100%; }
+
+/* Revoke is not a third choice beside approve and decline — it undoes a decision already made. The
+   gap says so without a label explaining it. */
+#urRevoke { margin-left: auto; }
+
+.btn-sm.danger { color: var(--ink-red); border-color: rgba(220,38,38,.4); }
+.btn-sm.danger:hover:not(:disabled) { background: rgba(220,38,38,.08); }

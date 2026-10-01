@@ -156,6 +156,18 @@
     // View state, restored from the store but validated against the columns as they are NOW: a
     // column that was renamed or dropped must not leave an invisible filter narrowing the table.
     const view = { q: '', sort: [], filters: {}, widths: {} };
+
+    // A tab may declare the order its rows are worth reading in: `defaultSort: { key, dir }`.
+    //
+    // Without it a table whose rows arrive already ordered looks unsorted — the order is right but
+    // no header says so, and the first thing an operator does is click one to find out. This only
+    // seeds the state; the moment they sort anything themselves their choice is saved and this is
+    // not applied again.
+    if (spec.defaultSort && canSort(colOf(spec.defaultSort.key))) {
+      view.sort = [{ key: spec.defaultSort.key,
+                     dir: spec.defaultSort.dir === 'desc' ? 'desc' : 'asc' }];
+    }
+
     (function restore() {
       const saved = loadView(id);
       if (!saved) return;

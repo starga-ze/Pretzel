@@ -1,6 +1,8 @@
 #include "service/collection/CollectionService.h"
 
 #include "db/Database.h"
+#include "service/EnginedServiceManager.h"
+#include "service/pbuserrequest/PbUserRequestService.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
@@ -33,7 +35,6 @@ constexpr auto kPruneInterval = std::chrono::hours(1);
 
 void CollectionService::handleEvent(EnginedServiceManager& serviceManager, const CollectionEvent& event)
 {
-    (void)serviceManager;
 
     if (event.type() != CollectionEventType::ReceiveSample)
         return;
@@ -46,10 +47,10 @@ void CollectionService::handleEvent(EnginedServiceManager& serviceManager, const
     }
 
     const auto& body = msg->getPayload();
-    storeSample(std::string(reinterpret_cast<const char*>(body.data()), body.size()));
+    storeSample(serviceManager, std::string(reinterpret_cast<const char*>(body.data()), body.size()));
 }
 
-void CollectionService::storeSample(const std::string& payloadJson)
+void CollectionService::storeSample(EnginedServiceManager& serviceManager, const std::string& payloadJson)
 {
     json root;
     try
@@ -98,6 +99,17 @@ void CollectionService::storeSample(const std::string& payloadJson)
                  endpointOid, ok, httpStatus.empty() ? "-" : httpStatus, bytes.empty() ? "-" : bytes);
     else
         LOG_WARN("api_collection write failed (connector={}, endpoint={})", connectorOid, endpointOid);
+
+    // Stored verbatim above, and only then offered to anything that can make more of it. The row in
+    // api_collection stays exactly what the endpoint answered — that is the whole contract of a
+    // sample — and a projection that wanted something different would have to keep its own copy,
+    // which is what pb_user_request is.
+    //
+    // This service does not know which endpoints that applies to and deliberately does not ask: it
+    // hands over every successful sample, and the projection decides in one field comparison whether
+    // the body is its business. Filtering here would put one product's subtype in the generic path.
+    if (wrote && ok)
+        serviceManager.pbUserRequestService().onCollectionSample(connectorOid, endpointOid, respBody);
 
     pruneIfDue();
 }

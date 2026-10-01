@@ -30,7 +30,9 @@ public:
     void handleEvent(EnginedServiceManager& serviceManager, const CollectionEvent& event);
 
 private:
-    void storeSample(const std::string& payloadJson);
+    // Takes the service manager only to hand the stored body on to the Prisma Browser
+    // projection; the storing itself needs nothing but the payload.
+    void storeSample(EnginedServiceManager& serviceManager, const std::string& payloadJson);
 
     // Retention, run from the sample path rather than a timer of its own: samples arriving IS the
     // signal that the table is growing, and a daemon collecting nothing needs no sweep. Rate-limited

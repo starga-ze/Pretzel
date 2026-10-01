@@ -305,6 +305,9 @@ html, body {
   transition: opacity var(--tr);
 }
 .sidebar.collapsed .nav-badge { opacity: 0; }
+/* A count of nothing is not a badge. Without this the span still drew its pill and its padding, so
+   a queue with no work read as a queue with something in it. */
+.nav-badge:empty { display: none; }
 
 /* ── Expandable nav groups (e.g. Settings → Daemon Settings) ── */
 .nav-group { display: flex; flex-direction: column; }
@@ -3517,8 +3520,7 @@ body.is-col-resizing .th-grip::after { opacity: 1; background: var(--accent); }
 /* SASE subtypes (the cloud products). */
 .api-badge.ztna { background: rgba(22,163,74,.14); color: var(--ink-green); }
 .api-badge.scm  { background: rgba(180,83,9,.14);  color: var(--ink-amber); }
-/* Not selectable yet — greyed so the badge reads as a placeholder if a legacy record shows one. */
-.api-badge.pab  { background: var(--surface-2); color: var(--text-muted); }
+.api-badge.pab  { background: rgba(37,99,235,.12); color: var(--blue); }
 
 /* Values derived from another field and shown read-only beside it — host and path, split out of the
    pasted URL. Presented as output, not as inputs an operator might try to correct. */
@@ -4384,6 +4386,19 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
   border: 1px solid var(--border); border-radius: 8px; background: var(--bg, var(--surface)); color: var(--text);
 }
 .tdp-search:focus { outline: none; border-color: var(--accent); }
+
+/* The tree scrolls inside itself instead of pushing the document list off the page.
+   Unbounded, a catalogue of several dozen products rendered taller than the viewport several times
+   over, and the panel that answers a click sat below ALL of it — so selecting a manual looked like
+   it did nothing. The list has to be reachable from where the click happens. */
+.tdp-tree {
+  max-height: 46vh; overflow-y: auto; margin-bottom: 14px;
+  border: 1px solid var(--border); border-radius: 8px; padding: 0 12px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+.tdp-tree::-webkit-scrollbar { width: 4px; }
+.tdp-tree::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.tdp-prod:last-child { border-bottom: none; }
 
 .tdp-prod { border-bottom: 1px solid var(--border); }
 .tdp-prod > summary {

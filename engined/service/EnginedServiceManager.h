@@ -13,6 +13,7 @@
 #include "service/commit/CommitService.h"
 #include "service/heartbeat/HeartbeatService.h"
 #include "service/logtail/LogTailService.h"
+#include "service/pbuserrequest/PbUserRequestService.h"
 #include "service/probe/ProbeService.h"
 
 #include "vendor/VendorResolver.h"
@@ -52,6 +53,7 @@ public:
     CollectionService& collectionService();
     ChatService& chatService();
     LogTailService& logTailService();
+    PbUserRequestService& pbUserRequestService();
     VendorResolver& vendorResolver();
 
     EnginedTxRouter& txRouter();
@@ -73,6 +75,7 @@ private:
     std::unique_ptr<AdminService> m_adminService;
     std::unique_ptr<ApiCredentialService> m_apiCredentialService;
     std::unique_ptr<CollectionService> m_collectionService;
+    std::unique_ptr<PbUserRequestService> m_pbUserRequestService;
     std::unique_ptr<ChatService> m_chatService;
     std::unique_ptr<LogTailService> m_logTailService;
     std::unique_ptr<VendorResolver> m_vendorResolver;

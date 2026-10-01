@@ -178,6 +178,29 @@ enum class IpcCmd : std::uint16_t
     // separate pair rather than a widened one: the two stores are different tables holding
     // different kinds of credential, and a response carrying both would hand every caller of
     // either one the other's key material.
+    // mgmtd → collectord: call one SASE path with a method and a body, and answer on the seqNo.
+    //
+    // Deliberately generic. ApiEndpointTestRequest next to it only ever GETs, because a test must
+    // not change anything at the far end; this is the edge for the calls that DO, and it is spelled
+    // as "a path, a method, a body" rather than as any one product's operation. The caller decides
+    // what the path means — approving a Prisma Browser request is mgmtd knowing that an id goes
+    // before "/action", not collectord knowing what an action is.
+    //
+    // The answer comes back as ApiConnectorTestResponse, correlated by seqNo, so the console polls
+    // it on the ticket route every other connector operation already uses.
+    ApiSaseCallRequest = 153,
+
+    // mgmtd → collectord: poll one connector item NOW, ahead of its interval.
+    //
+    // Fire and forget, and deliberately not a request/response pair: the answer is not owed to the
+    // caller. The poll it triggers produces an ordinary ApiCollectionSample, which engined stores
+    // and projects exactly as it does the scheduled ones — so the console learns the result by
+    // re-reading its own rows, the same way it would a minute later.
+    //
+    // It re-arms the existing job rather than running a parallel poll, so a manual refresh during
+    // an in-flight one cannot double up, and the interval restarts from the manual read.
+    ApiCollectionRunNow = 154,
+
     AiCredentialStateRequest = 151,
     AiCredentialStateResponse = 152,
 };

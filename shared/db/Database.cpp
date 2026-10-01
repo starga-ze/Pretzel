@@ -219,6 +219,59 @@ CREATE INDEX IF NOT EXISTS api_collection_endpoint_time ON api_collection (endpo
 CREATE INDEX IF NOT EXISTS api_collection_stream_time
     ON api_collection (connector_oid, endpoint_oid, collected_at DESC);
 
+-- Prisma Browser user requests, projected out of the collected list document.
+--
+-- Why a table rather than reading api_collection's body on demand: that body is a SAMPLE. It is
+-- capped at 64 KB, its payload is released once past the body-retention window (body_aged), and it
+-- holds whatever the last poll happened to return. None of that can answer "which approvals are
+-- more than 24 hours old", which has to look at requests that may have left the list entirely. So
+-- api_collection keeps the vendor's list response exactly as it arrived — it is the record of what
+-- the endpoint said — and this holds the requests themselves, which outlive any one sample.
+--
+-- Keyed on the vendor's request id, so a request seen in ten consecutive polls is one row that
+-- changes rather than ten rows that nearly agree.
+--
+-- Columns are promoted only where something queries or orders by them; everything else stays in the
+-- two JSONB documents. The vendor's `type` is a free string on their side — it answered
+-- "FileDownload" on 2026-10-01, a value absent from their own filter enum — so a schema that named
+-- the fields it expected would have to be migrated the next time they add one.
+--
+--   list_json    the row exactly as the list endpoint returned it, every field of it. There was a
+--                second document here — GET /user-requests/{id}, fetched once per row per poll —
+--                until it was measured on 2026-10-01 against the same request in both Pending and
+--                Approved states and found identical field for field, including the four that only
+--                exist after an admin responds. It was buying a copy of this column at one vendor
+--                call per row per cycle, so it was removed.
+CREATE TABLE IF NOT EXISTS pb_user_request (
+    id            TEXT        PRIMARY KEY,
+    site_oid      TEXT        NOT NULL,
+    connector_oid TEXT        NOT NULL,
+    endpoint_oid  TEXT        NOT NULL,
+    type          TEXT,
+    status        TEXT,
+    created_at    TIMESTAMPTZ,
+    -- The admin's response instant, and the anchor every "older than 24h" decision is measured
+    -- from. Absent while the request is Pending; the vendor omits the field rather than nulling it.
+    response_time TIMESTAMPTZ,
+    list_json     JSONB       NOT NULL,
+    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- The columns the removed single-record read filled. Dropped rather than left in place: they would
+-- read as "not fetched yet" for ever, and a nullable column nothing writes is a question every
+-- later reader has to answer for themselves.
+ALTER TABLE pb_user_request DROP COLUMN IF EXISTS detail_json;
+ALTER TABLE pb_user_request DROP COLUMN IF EXISTS detail_at;
+ALTER TABLE pb_user_request DROP COLUMN IF EXISTS detail_error;
+
+-- The console's read: one site's queue, newest first.
+CREATE INDEX IF NOT EXISTS pb_user_request_site_created
+    ON pb_user_request (site_oid, created_at DESC);
+-- The 24-hour sweep's read: approvals old enough to withdraw. Partial, because every other status
+-- is history and the sweep must never pay to skip it.
+CREATE INDEX IF NOT EXISTS pb_user_request_sweep
+    ON pb_user_request (response_time) WHERE status = 'Approved';
+
 -- The assistant's conversations.
 --
 -- They lived in the operator's browser until now (localStorage), which meant they were lost on

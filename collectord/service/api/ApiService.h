@@ -67,7 +67,9 @@ enum class ApiSubtype
     // NGFW.
     Rest,
     Xml,
-    // SASE. Only Ztna is served today; the others exist so the seam is named before it is needed.
+    // SASE — the cloud products. All three speak JSON over the same OAuth bearer and are collected
+    // by the identical path: the SASE/NGFW branch keys off `vendor`, not off this, so a subtype
+    // here only has to be ACCEPTED by loadEndpoints to be collectable.
     Ztna,
     Pab,
     Scm,

@@ -4,6 +4,9 @@
 
 #include "config/Config.h"
 #include "db/Database.h"
+#include "ipc/IpcMessage.h"
+#include "ipc/IpcProtocol.h"
+#include "service/MgmtdServiceManager.h"
 #include "http/HttpMessage.h"
 #include "util/Logger.h"
 
@@ -526,6 +529,75 @@ void CollectionController::sample(MgmtdServiceManager& sm, const pz::http::HttpR
         LOG_WARN("collection sample query failed: {}", e.what());
         fill(resp, 500, json{{"error", "sample unavailable"}}.dump());
     }
+}
+
+
+void CollectionController::runNow(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
+                                  pz::http::HttpResponse& resp)
+{
+    json input;
+    if (!parseBody(req, resp, input))
+        return;
+
+    const std::string connector = input.value("connector", std::string());
+    const std::string endpoint = input.value("endpoint", std::string());
+    if (connector.empty() || endpoint.empty())
+        return fill(resp, 400, json{{"error", "connector and endpoint are both required"}}.dump());
+
+    json payload;
+    payload["connector"] = connector;
+    payload["endpoint"] = endpoint;
+    const std::string body = payload.dump();
+
+    auto msg = std::make_unique<pz::ipc::IpcMessage>();
+    msg->setSrc(pz::ipc::IpcDaemon::Mgmtd);
+    msg->setDst(pz::ipc::IpcDaemon::Collectord);
+    msg->setCmd(pz::ipc::IpcCmd::ApiCollectionRunNow);
+    msg->setFlags(pz::ipc::IpcProtocol::toFlag(pz::ipc::IpcFlag::Request));
+    msg->setPayload(std::vector<std::uint8_t>(body.begin(), body.end()));
+
+    sm.txRouter().handleIpcMessage(std::move(msg));
+
+    LOG_INFO("collection run-now requested (connector={}, endpoint={})", connector, endpoint);
+    fill(resp, 202, json{{"status", "requested"}}.dump());
+}
+
+
+void CollectionController::endpointStatus(MgmtdServiceManager& sm, const pz::http::HttpRequest& req,
+                                          pz::http::HttpResponse& resp)
+{
+    (void)sm;
+    (void)req;
+
+    json body;
+    body["rows"] = json::array();
+
+    try
+    {
+        // DISTINCT ON rides the api_collection_endpoint_time index (endpoint_oid, collected_at
+        // DESC), so this is one ordered walk rather than a scan plus a sort per endpoint.
+        const auto rows = pz::db::Database::instance().queryRows(
+            std::string("SELECT DISTINCT ON (endpoint_oid) endpoint_oid, ok::int, "
+                        "COALESCE(http_status::text,''), to_char(collected_at, '")
+                + kTs + "') FROM api_collection ORDER BY endpoint_oid, collected_at DESC");
+
+        for (const auto& r : rows)
+        {
+            if (r.size() < 4)
+                continue;
+            body["rows"].push_back({{"endpoint_oid", r[0]},
+                                    {"ok", r[1] == "1"},
+                                    {"http_status", numOrNull(r[2])},
+                                    {"at", r[3]}});
+        }
+    }
+    catch (const std::exception& e)
+    {
+        LOG_WARN("endpoint status query failed: {}", e.what());
+        return fill(resp, 500, json{{"error", "endpoint status unavailable"}}.dump());
+    }
+
+    fill(resp, 200, body.dump());
 }
 
 }
