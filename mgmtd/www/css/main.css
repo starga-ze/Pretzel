@@ -4387,6 +4387,11 @@ input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1
 }
 .tdp-search:focus { outline: none; border-color: var(--accent); }
 
+/* The themed dropdown hides the <select> and draws a sibling trigger inside a .cs wrapper, so the
+   spacing .tdp-search carried as a visible control has to move to the wrapper — otherwise the
+   Product field in the update dialog collapses against its own label. */
+#tdConfirm .cs { margin: 14px 0 6px; }
+
 /* The tree scrolls inside itself instead of pushing the document list off the page.
    Unbounded, a catalogue of several dozen products rendered taller than the viewport several times
    over, and the panel that answers a click sat below ALL of it — so selecting a manual looked like

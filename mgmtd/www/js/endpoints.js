@@ -860,15 +860,20 @@
       return `<option value="${esc(k.oid)}">${esc(k.name)} — ${esc(where)}</option>`;
     }).join('');
 
-    window.NMS.modal.open('API Endpoint Test', `
+    const ov = window.NMS.modal.open('API Endpoint Test', `
       <p class="cm-lead">Runs <code>${esc(effectiveUrl(e))}</code> ${isSase(e)
         ? 'for the tenant the chosen credential belongs to.'
         : 'against the device the chosen key belongs to.'}</p>
-      <div class="field-row"><label class="req">API Credential</label>
+      <div class="field-row"><label class="req" for="epTestKey">API Credential</label>
         <select id="epTestKey">${opts}</select></div>`,
       `<button class="btn-sm" id="cmDone">Cancel</button>
        <span style="flex:1"></span>
        <button class="btn-primary btn-sm" id="epRunTest">Run test</button>`);
+
+    // The console's own dropdown, as the endpoint editor behind this modal already uses. A raw
+    // <select> here was the operating system drawing the option list — its own highlight colour and
+    // typography — in the one dialog that sits on top of the themed editor that opened it.
+    window.NMS.utils.enhanceSelects(ov.querySelector('#cmBody'));
 
     document.getElementById('epRunTest').onclick = () =>
       runEndpointTest(idx, document.getElementById('epTestKey').value);

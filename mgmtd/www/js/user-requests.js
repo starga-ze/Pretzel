@@ -39,8 +39,12 @@
   // The endpoint subtype this page reads, as the collection overview reports it.
   const SUBTYPE = 'pab';
 
+  // detail.comment / detail.bypass are the operator's two inputs, held in state rather than read
+  // off the DOM at the moment they are used. renderDetail() rebuilds the whole footer, so anything
+  // living only in the markup is gone the first time the panel re-renders — which is exactly what
+  // acting on a request does.
   const state = { site: '', loading: false, error: '', stream: null, rows: null, refreshing: false,
-                  detail: { open: false, row: null, busy: false, result: null } };
+                  detail: { open: false, row: null, busy: false, result: null, comment: '', bypass: '' } };
 
   // The vendor's own enum, in its order. Once is first and is the default: it is the only value
   // that makes an approval single-use, which is the whole point of approving one of these.
@@ -207,7 +211,10 @@
   });
 
   // ── detail + actions ─────────────────────────────────────────────────────────
-  function openDetail(row) { state.detail = { open: true, row, busy: false, result: null }; renderDetail(); }
+  function openDetail(row) {
+    state.detail = { open: true, row, busy: false, result: null, comment: '', bypass: '' };
+    renderDetail();
+  }
   function closeDetail() { state.detail.open = false; renderDetail(); }
 
   // Every field the vendor returned, in its own order rather than sorted: the order a tenant lists
@@ -245,29 +252,47 @@
     // Approve and decline are shown only while they apply. Disabling them instead left two dead
     // controls and a sentence explaining why they were dead, which is three things on screen to
     // say what their absence says by itself.
+    // Rendered with the stored choice selected, not with the first option winning by default:
+    // the footer is rebuilt while the call is in flight, and a dropdown that silently snapped back
+    // to Once would say the opposite of what was actually sent.
+    const sel = d.bypass || BYPASS[0];
     const decide = pending ? `
           <div class="ur-act-sel"><select id="urBypass">
-            ${BYPASS.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('')}
+            ${BYPASS.map(v => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(v)}</option>`).join('')}
           </select></div>
           <button class="btn-primary btn-sm" id="urApprove" ${d.busy ? 'disabled' : ''}>Approve</button>
           <button class="btn-sm" id="urDecline" ${d.busy ? 'disabled' : ''}>Decline</button>` : '';
 
     return `<div class="ur-act">
         <div class="field-row"><label for="urComment">Comment</label>
-          <input id="urComment"/></div>
+          <input id="urComment" value="${esc(d.comment)}"/></div>
         <div class="ur-act-row">${decide}
           <button class="btn-sm danger" id="urRevoke" ${d.busy ? 'disabled' : ''}>Revoke</button>
         </div>
       </div>`;
   }
 
+  // The live controls into state. Called before anything re-renders, because renderDetail()
+  // replaces the footer's innerHTML: a <select> rebuilt from BYPASS with no option marked selected
+  // comes back on its first entry, so reading .value afterwards returned "Once" whatever the
+  // operator had picked, and the comment came back empty.
+  function readForm() {
+    const d = state.detail;
+    const c = document.getElementById('urComment');
+    const b = document.getElementById('urBypass');
+    if (c) d.comment = c.value;
+    if (b) d.bypass = b.value;
+  }
+
   async function act(action) {
     const d = state.detail;
     if (!d.row || d.busy) return;
-    d.busy = true; d.result = null; renderDetail();
 
-    const comment = (document.getElementById('urComment') || {}).value || '';
-    const bypass = (document.getElementById('urBypass') || {}).value || '';
+    readForm();
+    const comment = d.comment;
+    const bypass = d.bypass;
+
+    d.busy = true; d.result = null; renderDetail();
 
     try {
       const res = await window.NMS.utils.runConnectorTest('/api/user-requests/action',
@@ -389,7 +414,7 @@
         </div>
         <button class="btn-sm" id="urCollectNow" ${state.refreshing ? 'disabled' : ''}
                 title="Poll the tenant now instead of waiting for the connector's next interval">
-          ${state.refreshing ? 'Collecting…' : 'Collect now'}</button>
+          ${state.refreshing ? 'Updating…' : 'Update Now'}</button>
       </div>`;
   }
 

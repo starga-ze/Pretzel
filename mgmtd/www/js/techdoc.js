@@ -128,6 +128,12 @@
       <p class="td-warning">Runs on the appliance. You can close this window and return later.</p>
       <div id="tdStartError" role="alert"></div></div>`,
       '<button class="btn-sm" id="tdDismiss">Close</button><button class="btn-sm btn-primary" id="tdStart">Start</button>');
+
+    // The console's own dropdown rather than the operating system's, as every other select in this
+    // product uses. The hidden <select> stays as the value store, so the .value read below is
+    // unchanged.
+    window.NMS.utils.enhanceSelects(ov.querySelector('#cmBody'));
+
     ov.querySelector('#tdDismiss').onclick = () => window.NMS.modal.close();
     ov.querySelector('#tdStart').onclick = async () => {
       if (starting) return;
