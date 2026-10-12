@@ -9,6 +9,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <string>
 
 namespace pz::engined
@@ -36,9 +37,21 @@ std::string str(const nlohmann::json& j, const char* key)
 void ChatService::handleEvent(EnginedServiceManager& serviceManager, const ChatEvent& event)
 {
     (void)serviceManager;
-    if (event.type() != ChatEventType::ReceiveTurn)
-        return;
 
+    switch (event.type())
+    {
+    case ChatEventType::ReceiveTurn:
+        onTurn(event);
+        break;
+
+    default:
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
+        break;
+    }
+}
+
+void ChatService::onTurn(const ChatEvent& event)
+{
     const auto* in = event.message();
     if (!in || in->getPayload().empty())
     {

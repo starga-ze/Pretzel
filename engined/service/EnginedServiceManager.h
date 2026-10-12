@@ -6,17 +6,15 @@
 #include "event/EnginedEvent.h"
 
 #include "service/admin/AdminService.h"
-#include "service/apicredential/ApiCredentialService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/chat/ChatService.h"
 #include "service/collection/CollectionService.h"
 #include "service/commit/CommitService.h"
+#include "service/credential/CredentialService.h"
 #include "service/heartbeat/HeartbeatService.h"
 #include "service/logtail/LogTailService.h"
-#include "service/pbuserrequest/PbUserRequestService.h"
 #include "service/probe/ProbeService.h"
 
-#include "vendor/VendorResolver.h"
 
 #include "router/EnginedTxRouter.h"
 
@@ -49,12 +47,10 @@ public:
     HeartbeatService& heartbeatService();
     ProbeService& probeService();
     AdminService& adminService();
-    ApiCredentialService& apiCredentialService();
+    CredentialService& credentialService();
     CollectionService& collectionService();
     ChatService& chatService();
     LogTailService& logTailService();
-    PbUserRequestService& pbUserRequestService();
-    VendorResolver& vendorResolver();
 
     EnginedTxRouter& txRouter();
     EnginedEventFactory* eventFactory();
@@ -73,12 +69,10 @@ private:
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ProbeService> m_probeService;
     std::unique_ptr<AdminService> m_adminService;
-    std::unique_ptr<ApiCredentialService> m_apiCredentialService;
+    std::unique_ptr<CredentialService> m_credentialService;
     std::unique_ptr<CollectionService> m_collectionService;
-    std::unique_ptr<PbUserRequestService> m_pbUserRequestService;
     std::unique_ptr<ChatService> m_chatService;
     std::unique_ptr<LogTailService> m_logTailService;
-    std::unique_ptr<VendorResolver> m_vendorResolver;
 
     std::vector<std::string> m_aliveIps;
 

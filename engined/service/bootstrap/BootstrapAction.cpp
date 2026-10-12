@@ -8,14 +8,14 @@ BootstrapAction::BootstrapAction(BootstrapActionType type) : EnginedAction(Engin
 {
 }
 
-BootstrapActionType BootstrapAction::type() const
-{
-    return m_type;
-}
-
 void BootstrapAction::dispatch(EnginedServiceManager& serviceManager)
 {
     serviceManager.bootstrapService().handleAction(serviceManager, *this);
+}
+
+BootstrapActionType BootstrapAction::type() const
+{
+    return m_type;
 }
 
 }

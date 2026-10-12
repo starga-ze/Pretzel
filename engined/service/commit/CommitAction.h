@@ -18,9 +18,9 @@ class CommitAction final : public EnginedAction
 public:
     explicit CommitAction(CommitActionType type);
 
-    CommitActionType type() const;
-
     void dispatch(EnginedServiceManager& serviceManager) override;
+
+    CommitActionType type() const;
 
 private:
     CommitActionType m_type{CommitActionType::Unknown};

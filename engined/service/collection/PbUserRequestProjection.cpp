@@ -1,4 +1,4 @@
-#include "service/pbuserrequest/PbUserRequestService.h"
+#include "service/collection/PbUserRequestProjection.h"
 
 #include "config/Config.h"
 #include "db/Database.h"
@@ -8,7 +8,7 @@
 
 #include <string>
 
-namespace pz::engined
+namespace pz::engined::pbuserrequest
 {
 
 using json = nlohmann::json;
@@ -16,8 +16,8 @@ using json = nlohmann::json;
 namespace
 {
 
-// The endpoint subtype this service answers to, spelled the way the console and collectord spell
-// it. An endpoint of any other product is not ours and is not parsed.
+// The endpoint subtype this projection answers to, spelled the way the console and collectord
+// spell it. An endpoint of any other product is not ours and is not parsed.
 constexpr const char* kSubtype = "pab";
 
 const json& connectorSection()
@@ -57,8 +57,7 @@ std::string textOf(const json& o, const char* key)
 
 }
 
-void PbUserRequestService::onCollectionSample(const std::string& connectorOid,
-                                              const std::string& endpointOid, const std::string& body)
+void projectSample(const std::string& connectorOid, const std::string& endpointOid, const std::string& body)
 {
     if (body.empty())
         return;

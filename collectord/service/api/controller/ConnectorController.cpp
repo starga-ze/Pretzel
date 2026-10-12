@@ -45,6 +45,16 @@ struct CollectorJob
     std::chrono::seconds keyWait{0};
     boost::asio::steady_timer timer;
 
+    // A request of this job's endpoint is on the wire. The periodic chain cannot set this twice —
+    // it only re-arms once a response has landed — so the only caller that can meet it is runNow,
+    // which does not wait for anything.
+    bool inFlight{false};
+    // A manual run-now that arrived while inFlight. Kept rather than dropped: the operator pressed
+    // the button because the answer now in flight may predate what they just did, so the poll owes
+    // them a read that STARTS after the press. Collapsed to one bit — ten presses during one call
+    // are still one re-read.
+    bool runNowPending{false};
+
     explicit CollectorJob(boost::asio::io_context& ioc) : timer(ioc) {}
 };
 
@@ -153,6 +163,19 @@ void armJob(std::shared_ptr<CollectorJob> job, std::chrono::seconds delay)
 
 void collectOnce(std::shared_ptr<CollectorJob> job)
 {
+    // Two reads of one endpoint must not overlap: they would land as two samples a moment apart,
+    // and the SLOWER one wins the projection's upsert however much older its body is — a request
+    // acted on a second ago would read back as it was before. So this defers instead of sending,
+    // and arms nothing: the in-flight call's own completion is what re-arms the timer, and it will
+    // honour runNowPending by coming straight back here.
+    if (job->inFlight)
+    {
+        job->runNowPending = true;
+        LOG_DEBUG("collection deferred — a read of this endpoint is already in flight (connector={}, endpoint={})",
+                  job->connectorOid, job->endpointOid);
+        return;
+    }
+
     ApiService& api = *job->api;
 
     const ApiEndpoint* ep = api.findEndpoint(job->endpointOid);
@@ -224,6 +247,12 @@ void collectOnce(std::shared_ptr<CollectorJob> job)
     }
     req.target = path;
 
+    // Committed to the call: this read is the one a pending run-now was asking for, so the flag is
+    // consumed here rather than on completion — the early returns above send nothing and must not
+    // swallow it.
+    job->runNowPending = false;
+    job->inFlight = true;
+
     const auto startedAt = std::chrono::steady_clock::now();
     pz::http::requestAsync(job->sm->ioContext(), std::move(req),
                            [job, startedAt](pz::http::ClientResponse res)
@@ -262,6 +291,12 @@ void collectSaseOnce(std::shared_ptr<CollectorJob> job, const ApiEndpoint& ep, c
 
     LOG_TRACE("SASE collection request (connector={}, GET https://{}{})", job->connectorOid, ep.host, path);
 
+    // Committed to the call: this read is the one a pending run-now was asking for, so the flag is
+    // consumed here rather than on completion — the early returns above send nothing and must not
+    // swallow it.
+    job->runNowPending = false;
+    job->inFlight = true;
+
     const auto startedAt = std::chrono::steady_clock::now();
     pz::http::requestAsync(job->sm->ioContext(), std::move(req),
                            [job, startedAt](pz::http::ClientResponse res)
@@ -284,6 +319,19 @@ void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::ti
                  job->endpointOid, sample.value("error", std::string()));
 
     sendSample(*job->sm, sample);
+
+    // Released before the re-arm, so the poll this may schedule immediately is free to send.
+    job->inFlight = false;
+
+    // A run-now that arrived mid-call is served now rather than at the next interval — it was
+    // deferred, not refused, and the operator is still looking at the page.
+    if (job->runNowPending)
+    {
+        LOG_INFO("collection run-now deferred during a read — running it now (connector={}, endpoint={})",
+                 job->connectorOid, job->endpointOid);
+        return armJob(job, std::chrono::seconds(0));
+    }
+
     armJob(job, job->interval);
 }
 
@@ -300,9 +348,12 @@ void ConnectorController::runNow(const std::string& connectorOid, const std::str
             continue;
 
         // No explicit cancel: armJob's expires_after already cancels the pending wait, which fires
-        // the old handler with operation_aborted and armJob returns on it. A manual refresh during
-        // an in-flight HTTP call is safe too — collectOnce's in-flight guard is what stops the two
-        // reads overlapping, and this only moves the timer.
+        // the old handler with operation_aborted and armJob returns on it.
+        //
+        // This only moves the timer, and deliberately does not look at whether a read is already on
+        // the wire — collectOnce holds that judgement, because it is the one place every caller
+        // passes through. Pressed mid-call, the poll lands there, is deferred, and runs the moment
+        // the in-flight read completes. The press is never lost and the two never overlap.
         armJob(job, std::chrono::seconds(0));
         LOG_INFO("collection brought forward (connector={}, endpoint={})", connectorOid, endpointOid);
         return;

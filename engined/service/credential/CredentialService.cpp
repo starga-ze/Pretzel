@@ -1,4 +1,4 @@
-#include "service/apicredential/ApiCredentialService.h"
+#include "service/credential/CredentialService.h"
 
 #include "service/EnginedServiceManager.h"
 
@@ -8,6 +8,9 @@
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
+
+#include <cstdint>
+#include <string>
 
 namespace pz::engined
 {
@@ -21,78 +24,80 @@ namespace
 constexpr const char* kAirsCredentialId = "airs";
 constexpr const char* kGatewayCredentialId = "portkey";
 
+// An IPC payload as the JSON text the store/send paths below take, empty when the message carries
+// none. Every type this service handles reads its payload the same way, so the cast lives here
+// once rather than in each branch of handleEvent.
+std::string payloadOf(const pz::ipc::IpcMessage* msg)
+{
+    if (!msg || msg->getPayload().empty())
+        return {};
+
+    const auto& pl = msg->getPayload();
+    return std::string(reinterpret_cast<const char*>(pl.data()), pl.size());
 }
 
-void ApiCredentialService::handleEvent(EnginedServiceManager& serviceManager, const ApiCredentialEvent& event)
+}
+
+void CredentialService::handleEvent(EnginedServiceManager& serviceManager, const CredentialEvent& event)
 {
     const pz::ipc::IpcMessage* in = event.message();
+    const std::string payload = payloadOf(in);
 
-    if (event.type() == ApiCredentialEventType::ReceiveStateRequest)
+    // A request is answered to whoever asked, not to a hard-coded daemon: both probed (credential
+    // lifecycle) and collectord (collection, model catalogue) ask. seqNo is the asker's correlation
+    // value and is echoed back with the answer.
+    const pz::ipc::IpcDaemon requester = in ? in->getSrc() : pz::ipc::IpcDaemon::Collectord;
+    const std::uint32_t seqNo = in ? in->getSeqNo() : 0;
+
+    switch (event.type())
     {
-        // Both probed (credential lifecycle) and collectord (collection) request the issued keys, so
-        // the response goes back to whoever asked, not a hard-coded daemon.
-        const pz::ipc::IpcDaemon requester = in ? in->getSrc() : pz::ipc::IpcDaemon::Collectord;
-        return sendState(serviceManager, requester, in ? in->getSeqNo() : 0);
-    }
+    case CredentialEventType::ReceiveStateUpdate:
+        if (payload.empty())
+            LOG_WARN("empty ApiCredentialStateUpdate — dropping");
+        else
+            storeState(payload);
+        break;
 
-    if (event.type() == ApiCredentialEventType::ReceiveAiCredentialRequest)
-    {
-        // Answered to whoever asked, like sendState above. collectord is the only asker today; it
-        // is read off the message rather than assumed for the same reason.
-        const pz::ipc::IpcDaemon requester = in ? in->getSrc() : pz::ipc::IpcDaemon::Collectord;
-        const auto& pl = in ? in->getPayload() : std::vector<std::uint8_t>{};
-        return sendAiCredential(serviceManager, requester, in ? in->getSeqNo() : 0,
-                                std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
-    }
+    case CredentialEventType::ReceiveStateRequest:
+        sendState(serviceManager, requester, seqNo);
+        break;
 
-    if (event.type() == ApiCredentialEventType::ReceiveAiModels)
-    {
-        if (in && !in->getPayload().empty())
-        {
-            const auto& pl = in->getPayload();
-            storeAiModels(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
-        }
-        return;
-    }
+    case CredentialEventType::ReceiveSaseApiKey:
+        if (payload.empty())
+            LOG_WARN("empty SaseApiKeyUpdate — dropping");
+        else
+            storeSaseApiKey(payload);
+        break;
 
-    if (event.type() == ApiCredentialEventType::ReceiveSaseApiKey)
-    {
-        if (in && !in->getPayload().empty())
-        {
-            const auto& pl = in->getPayload();
-            storeSaseApiKey(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
-        }
-        return;
-    }
+    case CredentialEventType::ReceiveAiCredential:
+        if (payload.empty())
+            LOG_WARN("empty AiCredentialStateUpdate — dropping");
+        else
+            storeAiCredential(payload);
+        break;
 
-    if (event.type() == ApiCredentialEventType::ReceiveAiCredential)
-    {
-        if (in && !in->getPayload().empty())
-        {
-            const auto& pl = in->getPayload();
-            storeAiCredential(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
-        }
-        return;
-    }
+    case CredentialEventType::ReceiveAiCredentialRequest:
+        // Distinct from ReceiveStateRequest: the payload names the ONE vendor being asked for, and
+        // an empty one is left to sendAiCredential to report — it knows what it could not find.
+        sendAiCredential(serviceManager, requester, seqNo, payload);
+        break;
 
-    if (event.type() != ApiCredentialEventType::ReceiveStateUpdate)
-    {
-        return;
-    }
+    case CredentialEventType::ReceiveAiModels:
+        if (payload.empty())
+            LOG_WARN("empty AiModelUpdate — dropping");
+        else
+            storeAiModels(payload);
+        break;
 
-    if (!in || in->getPayload().empty())
-    {
-        LOG_WARN("empty ApiCredentialStateUpdate — dropping");
-        return;
+    default:
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
+        break;
     }
-
-    const auto& pl = in->getPayload();
-    storeState(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
 }
 
 // probed validated a SASE device's health api-key (a getPrismaAccessIP read succeeded) and sealed it;
 // store it on the device. Kept out of running_config, exactly like api_credential_state.
-void ApiCredentialService::storeSaseApiKey(const std::string& payloadJson)
+void CredentialService::storeSaseApiKey(const std::string& payloadJson)
 {
     nlohmann::json root;
     try
@@ -126,7 +131,7 @@ void ApiCredentialService::storeSaseApiKey(const std::string& payloadJson)
         LOG_WARN("sase device api-key write failed (oid={})", oid);
 }
 
-void ApiCredentialService::storeState(const std::string& payloadJson)
+void CredentialService::storeState(const std::string& payloadJson)
 {
     nlohmann::json root;
     try
@@ -180,8 +185,9 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
         {oid, idEnc, pwEnc, secretEnc, expiresAt, ok ? "true" : "false", note, hasTest ? "true" : "false"});
 
     if (wrote)
-        LOG_INFO("api key state stored (oid={}, test={}, key={}, cred={})", oid, hasTest ? (ok ? "ok" : "failed") : "none",
-                 secretEnc.empty() ? "unchanged" : "new", (idEnc.empty() && pwEnc.empty()) ? "unchanged" : "new");
+        LOG_INFO("api key state stored (oid={}, test={}, key={}, cred={})", oid,
+                 hasTest ? (ok ? "ok" : "failed") : "none", secretEnc.empty() ? "unchanged" : "new",
+                 (idEnc.empty() && pwEnc.empty()) ? "unchanged" : "new");
     else
         LOG_WARN("api_credential_state write failed (oid={})", oid);
 }
@@ -206,7 +212,7 @@ void ApiCredentialService::storeState(const std::string& payloadJson)
 // and an appliance that drifted for any other reason (an interrupted publish, a hand-edited
 // document, a restore) is brought back into line by the next commit rather than staying wrong until
 // somebody happens to edit the right page.
-void ApiCredentialService::pruneAiCredentials()
+void CredentialService::pruneAiCredentials()
 {
     const auto& ai = pz::config::Config::scopeConfig(pz::config::scope::kPretzelAi);
     auto& db = pz::db::Database::instance();
@@ -275,7 +281,7 @@ void ApiCredentialService::pruneAiCredentials()
 //
 // An unknown scope is dropped rather than defaulted. Defaulting would write a scan-service key into
 // the vendor table on a typo, where the next push would hand it to a model provider.
-void ApiCredentialService::storeAiCredential(const std::string& payloadJson)
+void CredentialService::storeAiCredential(const std::string& payloadJson)
 {
     nlohmann::json root;
     try
@@ -352,8 +358,8 @@ void ApiCredentialService::storeAiCredential(const std::string& payloadJson)
         LOG_WARN("{} write failed (id={})", table, id);
 }
 
-void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
-                                     std::uint32_t seqNo)
+void CredentialService::sendState(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
+                                  std::uint32_t seqNo)
 {
     // key_enc leaves as it was stored. engined has no credentials.key and could not open it
     // anyway; the requester does that, so a plaintext key exists in exactly one process.
@@ -407,8 +413,8 @@ void ApiCredentialService::sendState(EnginedServiceManager& serviceManager, pz::
 // A row with no key is answered as an empty `key_enc` rather than as an error: "this vendor has no
 // key stored" is a state the asker has to render either way, and making it a transport failure
 // would leave the operator's ticket to time out instead of saying so.
-void ApiCredentialService::sendAiCredential(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
-                                            std::uint32_t seqNo, const std::string& payloadJson)
+void CredentialService::sendAiCredential(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
+                                         std::uint32_t seqNo, const std::string& payloadJson)
 {
     std::string id;
     try
@@ -456,7 +462,7 @@ void ApiCredentialService::sendAiCredential(EnginedServiceManager& serviceManage
 // delete has to happen — a model the vendor retired must stop being selectable — but it must not
 // be able to land without the insert that follows it, or an operator's picker empties on a write
 // that half-succeeded. collectord already refuses to send an empty list for the same reason.
-void ApiCredentialService::storeAiModels(const std::string& payloadJson)
+void CredentialService::storeAiModels(const std::string& payloadJson)
 {
     nlohmann::json root;
     try

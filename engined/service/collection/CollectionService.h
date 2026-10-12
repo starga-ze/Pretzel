@@ -11,8 +11,8 @@ namespace pz::engined
 class EnginedServiceManager;
 
 // Persists API collection samples that collectord's scheduler ships over IPC. engined is the sole
-// database writer (the same reason keygen results come here via ApiCredentialService), so collectord collects
-// and hands the row over; this only validates the payload and appends it to api_collection.
+// database writer (the same reason keygen results come here via CredentialService), so collectord
+// collects and hands the row over; this only validates the payload and appends it to api_collection.
 //
 // Pure state, append-only: every poll is one row, never an update — the point is the time series.
 //
@@ -30,9 +30,8 @@ public:
     void handleEvent(EnginedServiceManager& serviceManager, const CollectionEvent& event);
 
 private:
-    // Takes the service manager only to hand the stored body on to the Prisma Browser
-    // projection; the storing itself needs nothing but the payload.
-    void storeSample(EnginedServiceManager& serviceManager, const std::string& payloadJson);
+    void onSample(const CollectionEvent& event);
+    void storeSample(const std::string& payloadJson);
 
     // Retention, run from the sample path rather than a timer of its own: samples arriving IS the
     // signal that the table is growing, and a daemon collecting nothing needs no sweep. Rate-limited

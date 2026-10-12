@@ -1,13 +1,13 @@
 #include "service/collection/CollectionService.h"
 
 #include "db/Database.h"
-#include "service/EnginedServiceManager.h"
-#include "service/pbuserrequest/PbUserRequestService.h"
+#include "service/collection/PbUserRequestProjection.h"
 #include "util/Logger.h"
 
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 
 namespace pz::engined
@@ -35,10 +35,22 @@ constexpr auto kPruneInterval = std::chrono::hours(1);
 
 void CollectionService::handleEvent(EnginedServiceManager& serviceManager, const CollectionEvent& event)
 {
+    (void)serviceManager;
 
-    if (event.type() != CollectionEventType::ReceiveSample)
-        return;
+    switch (event.type())
+    {
+    case CollectionEventType::ReceiveSample:
+        onSample(event);
+        break;
 
+    default:
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
+        break;
+    }
+}
+
+void CollectionService::onSample(const CollectionEvent& event)
+{
     const pz::ipc::IpcMessage* msg = event.message();
     if (!msg || msg->getPayload().empty())
     {
@@ -46,11 +58,11 @@ void CollectionService::handleEvent(EnginedServiceManager& serviceManager, const
         return;
     }
 
-    const auto& body = msg->getPayload();
-    storeSample(serviceManager, std::string(reinterpret_cast<const char*>(body.data()), body.size()));
+    const auto& pl = msg->getPayload();
+    storeSample(std::string(reinterpret_cast<const char*>(pl.data()), pl.size()));
 }
 
-void CollectionService::storeSample(EnginedServiceManager& serviceManager, const std::string& payloadJson)
+void CollectionService::storeSample(const std::string& payloadJson)
 {
     json root;
     try
@@ -109,7 +121,7 @@ void CollectionService::storeSample(EnginedServiceManager& serviceManager, const
     // hands over every successful sample, and the projection decides in one field comparison whether
     // the body is its business. Filtering here would put one product's subtype in the generic path.
     if (wrote && ok)
-        serviceManager.pbUserRequestService().onCollectionSample(connectorOid, endpointOid, respBody);
+        pbuserrequest::projectSample(connectorOid, endpointOid, respBody);
 
     pruneIfDue();
 }

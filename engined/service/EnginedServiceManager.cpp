@@ -13,18 +13,14 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, 
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
       m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>()),
       m_probeService(std::make_unique<ProbeService>()), m_adminService(std::make_unique<AdminService>()),
-      m_apiCredentialService(std::make_unique<ApiCredentialService>()),
-      m_collectionService(std::make_unique<CollectionService>()),
-      m_pbUserRequestService(std::make_unique<PbUserRequestService>()),
-      m_chatService(std::make_unique<ChatService>()),
-      m_logTailService(std::make_unique<LogTailService>()),
-      m_vendorResolver(std::make_unique<VendorResolver>())
+      m_credentialService(std::make_unique<CredentialService>()),
+      m_collectionService(std::make_unique<CollectionService>()), m_chatService(std::make_unique<ChatService>()),
+      m_logTailService(std::make_unique<LogTailService>())
 {
 }
 
 void EnginedServiceManager::start()
 {
-    m_vendorResolver->loadOui();
     m_bootstrapService->start();
     m_heartbeatService->start();
     m_probeService->start();
@@ -109,11 +105,6 @@ ProbeService& EnginedServiceManager::probeService()
     return *m_probeService;
 }
 
-VendorResolver& EnginedServiceManager::vendorResolver()
-{
-    return *m_vendorResolver;
-}
-
 const std::vector<std::string>& EnginedServiceManager::aliveIps() const
 {
     return m_aliveIps;
@@ -129,14 +120,9 @@ AdminService& EnginedServiceManager::adminService()
     return *m_adminService;
 }
 
-ApiCredentialService& EnginedServiceManager::apiCredentialService()
+CredentialService& EnginedServiceManager::credentialService()
 {
-    return *m_apiCredentialService;
-}
-
-PbUserRequestService& EnginedServiceManager::pbUserRequestService()
-{
-    return *m_pbUserRequestService;
+    return *m_credentialService;
 }
 
 CollectionService& EnginedServiceManager::collectionService()

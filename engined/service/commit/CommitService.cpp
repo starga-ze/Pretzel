@@ -1,9 +1,9 @@
 #include "service/commit/CommitService.h"
 
 #include "service/EnginedServiceManager.h"
-#include "service/apicredential/ApiCredentialService.h"
 #include "service/commit/CommitAction.h"
 #include "service/commit/CommitEvent.h"
+#include "service/credential/CredentialService.h"
 
 #include "action/EnginedActionFactory.h"
 #include "config/Config.h"
@@ -284,7 +284,7 @@ void CommitService::handleAction(EnginedServiceManager& serviceManager, const Co
         // Here rather than in each editor's own path because engined is the sole database writer
         // and this is where a version becomes real. A console that deleted the row and the key in
         // two steps would leave the second one undone whenever a publish half-failed.
-        serviceManager.apiCredentialService().pruneAiCredentials();
+        serviceManager.credentialService().pruneAiCredentials();
 
         serviceManager.bootstrapService().scheduleServiceReload();
         break;

@@ -8,14 +8,14 @@ CommitAction::CommitAction(CommitActionType type) : EnginedAction(EnginedActionD
 {
 }
 
-CommitActionType CommitAction::type() const
-{
-    return m_type;
-}
-
 void CommitAction::dispatch(EnginedServiceManager& serviceManager)
 {
     serviceManager.commitService().handleAction(serviceManager, *this);
+}
+
+CommitActionType CommitAction::type() const
+{
+    return m_type;
 }
 
 }

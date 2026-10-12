@@ -1,11 +1,11 @@
 #include "event/EnginedEventFactory.h"
 
 #include "service/admin/AdminEvent.h"
-#include "service/apicredential/ApiCredentialEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/chat/ChatEvent.h"
 #include "service/collection/CollectionEvent.h"
 #include "service/commit/CommitEvent.h"
+#include "service/credential/CredentialEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/probe/ProbeEvent.h"
 
@@ -79,10 +79,10 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
         return std::make_unique<AdminEvent>(AdminEventType::ReceivePasswordUpdate, std::move(msg));
 
     case pz::ipc::IpcCmd::ApiCredentialStateUpdate:
-        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveStateUpdate, std::move(msg));
+        return std::make_unique<CredentialEvent>(CredentialEventType::ReceiveStateUpdate, std::move(msg));
 
     case pz::ipc::IpcCmd::ApiCredentialStateRequest:
-        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveStateRequest, std::move(msg));
+        return std::make_unique<CredentialEvent>(CredentialEventType::ReceiveStateRequest, std::move(msg));
 
     case pz::ipc::IpcCmd::ApiCollectionSample:
         return std::make_unique<CollectionEvent>(CollectionEventType::ReceiveSample, std::move(msg));
@@ -91,16 +91,16 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
         return std::make_unique<ChatEvent>(ChatEventType::ReceiveTurn, std::move(msg));
 
     case pz::ipc::IpcCmd::SaseApiKeyUpdate:
-        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveSaseApiKey, std::move(msg));
+        return std::make_unique<CredentialEvent>(CredentialEventType::ReceiveSaseApiKey, std::move(msg));
 
     case pz::ipc::IpcCmd::AiCredentialStateUpdate:
-        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveAiCredential, std::move(msg));
+        return std::make_unique<CredentialEvent>(CredentialEventType::ReceiveAiCredential, std::move(msg));
 
     case pz::ipc::IpcCmd::AiCredentialStateRequest:
-        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveAiCredentialRequest, std::move(msg));
+        return std::make_unique<CredentialEvent>(CredentialEventType::ReceiveAiCredentialRequest, std::move(msg));
 
     case pz::ipc::IpcCmd::AiModelUpdate:
-        return std::make_unique<ApiCredentialEvent>(ApiCredentialEventType::ReceiveAiModels, std::move(msg));
+        return std::make_unique<CredentialEvent>(CredentialEventType::ReceiveAiModels, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

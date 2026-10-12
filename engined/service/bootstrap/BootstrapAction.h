@@ -13,7 +13,7 @@ enum class BootstrapActionType : std::uint32_t
     SendClientHello = 1,
     SendSyncRequest = 2,
     SendRuntimeStart = 3,
-    SendReloadFailed = 4
+    SendReloadFailed = 4,
 };
 
 class BootstrapAction final : public EnginedAction
@@ -21,9 +21,9 @@ class BootstrapAction final : public EnginedAction
 public:
     explicit BootstrapAction(BootstrapActionType type);
 
-    BootstrapActionType type() const;
-
     void dispatch(EnginedServiceManager& serviceManager) override;
+
+    BootstrapActionType type() const;
 
 private:
     BootstrapActionType m_type{BootstrapActionType::Unknown};

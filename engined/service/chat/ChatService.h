@@ -24,6 +24,10 @@ public:
     void handleEvent(EnginedServiceManager& serviceManager, const ChatEvent& event);
 
 private:
+    // Which of the three things a turn message can mean — store, patch or delete — read off the
+    // payload rather than carried in the event type: mgmtd posts all three as ChatTurnStore.
+    void onTurn(const ChatEvent& event);
+
     // One completed turn: the session's own fields, and both halves of the exchange. Written
     // together because a turn is one thing — a pair that could half-land would leave a question on
     // screen with no answer under it.

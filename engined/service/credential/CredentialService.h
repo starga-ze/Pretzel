@@ -1,6 +1,6 @@
 #pragma once
 
-#include "service/apicredential/ApiCredentialEvent.h"
+#include "service/credential/CredentialEvent.h"
 
 #include <cstdint>
 #include <string>
@@ -26,13 +26,13 @@ class EnginedServiceManager;
 // The way back out is sendState(): collectord asks for the issued keys and gets them back STILL
 // SEALED, then opens them with credentials.key. engined never holds a plaintext key and the
 // socket never carries one — the same contract as the inbound direction.
-class ApiCredentialService
+class CredentialService
 {
 public:
-    ApiCredentialService() = default;
-    ~ApiCredentialService() = default;
+    CredentialService() = default;
+    ~CredentialService() = default;
 
-    void handleEvent(EnginedServiceManager& serviceManager, const ApiCredentialEvent& event);
+    void handleEvent(EnginedServiceManager& serviceManager, const CredentialEvent& event);
 
     // Drops sealed AI keys the committed running_config no longer references. Called by
     // CommitService once a new version is live — see the definition for why it lives here and why
@@ -57,8 +57,8 @@ private:
     // Answers AiCredentialStateRequest with ONE vendor's key, still sealed. The asker opens it with
     // credentials.key, so this side never holds a plaintext vendor key either — the same contract
     // sendState() keeps for the device keys.
-    void sendAiCredential(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester,
-                          std::uint32_t seqNo, const std::string& payloadJson);
+    void sendAiCredential(EnginedServiceManager& serviceManager, pz::ipc::IpcDaemon requester, std::uint32_t seqNo,
+                          const std::string& payloadJson);
 
     // Replaces one vendor's rows in ai_provider_model with what the vendor last listed. Whole-vendor
     // rather than per-model: the list IS the vendor's answer, so a model that has gone must go with

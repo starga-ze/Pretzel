@@ -18,14 +18,13 @@ enum class BootstrapEventType : std::uint32_t
     ReceiveSyncResponse = 4,
     SendRuntimeStart = 5,
     ReceiveRuntimeStart = 6,
-    ReloadFailed = 7
+    ReloadFailed = 7,
 };
 
 class BootstrapEvent final : public EnginedEvent
 {
 public:
     explicit BootstrapEvent(BootstrapEventType type);
-
     BootstrapEvent(BootstrapEventType type, std::unique_ptr<pz::ipc::IpcMessage> message);
 
     void dispatch(EnginedServiceManager& serviceManager) override;

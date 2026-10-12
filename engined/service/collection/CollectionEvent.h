@@ -15,9 +15,9 @@ enum class CollectionEventType : std::uint32_t
     ReceiveSample = 1,
 };
 
-// An api_collection sample arriving from collectord — one connector's scheduled endpoint poll result,
-// to be persisted. Same shape as ApiCredentialEvent: engined is the sole DB writer, collectord hands the row
-// over by IPC.
+// An api_collection sample arriving from collectord — one connector's scheduled endpoint poll
+// result, to be persisted. Same shape as CredentialEvent: engined is the sole DB writer, collectord
+// hands the row over by IPC.
 class CollectionEvent final : public EnginedEvent
 {
 public:

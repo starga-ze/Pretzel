@@ -8,18 +8,30 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <string>
 
 namespace pz::engined
 {
 
-void AdminService::handleEvent(EnginedServiceManager&, const AdminEvent& event)
+void AdminService::handleEvent(EnginedServiceManager& serviceManager, const AdminEvent& event)
 {
-    if (event.type() != AdminEventType::ReceivePasswordUpdate)
-    {
-        return;
-    }
+    (void)serviceManager;
 
+    switch (event.type())
+    {
+    case AdminEventType::ReceivePasswordUpdate:
+        onPasswordUpdate(event);
+        break;
+
+    default:
+        LOG_WARN("unhandled event (type={})", static_cast<std::uint32_t>(event.type()));
+        break;
+    }
+}
+
+void AdminService::onPasswordUpdate(const AdminEvent& event)
+{
     const pz::ipc::IpcMessage* in = event.message();
     if (!in || in->getPayload().empty())
     {
@@ -89,7 +101,6 @@ void AdminService::updatePassword(const std::string& payloadJson)
     // console does not, and a caller that tried would be claiming an appliance is unconfigured.
     const std::string oid = root.value("oid", "");
     const bool mustChange = false;
-    (void)root.value("must_change", false);
 
     const bool ok = pz::db::Database::instance().exec(
         "INSERT INTO local_users (username, password_hash, salt, must_change, oid) "

@@ -16,12 +16,11 @@ enum class EnginedEventDomain : std::uint32_t
     Bootstrap = 1,
     Heartbeat = 2,
     Commit = 3,
-    Scan = 4,
-    Admin = 5,
-    Probe = 6,
-    ApiCredential = 7,
-    Collection = 8,
-    Chat = 9,
+    Admin = 4,
+    Probe = 5,
+    Credential = 6,
+    Collection = 7,
+    Chat = 8,
 };
 
 class EnginedEvent : public pz::event::Event

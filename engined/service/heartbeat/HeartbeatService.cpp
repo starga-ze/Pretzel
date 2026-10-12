@@ -36,7 +36,7 @@ const std::vector<pz::ipc::IpcDaemon>& HeartbeatService::targets()
 {
     static const std::vector<pz::ipc::IpcDaemon> kTargets = {
         pz::ipc::IpcDaemon::Authd,     pz::ipc::IpcDaemon::Probed, pz::ipc::IpcDaemon::Collectord,
-        pz::ipc::IpcDaemon::Topologyd, pz::ipc::IpcDaemon::Mgmtd, pz::ipc::IpcDaemon::Apid,
+        pz::ipc::IpcDaemon::Topologyd, pz::ipc::IpcDaemon::Mgmtd,  pz::ipc::IpcDaemon::Apid,
     };
     return kTargets;
 }
@@ -243,8 +243,9 @@ std::string HeartbeatService::buildResultJson() const
     root["daemons"] = json::array();
 
     static const std::vector<pz::ipc::IpcDaemon> kOrder = {
-        pz::ipc::IpcDaemon::Ipcd,  pz::ipc::IpcDaemon::Engined,   pz::ipc::IpcDaemon::Authd, pz::ipc::IpcDaemon::Probed,
-        pz::ipc::IpcDaemon::Collectord, pz::ipc::IpcDaemon::Topologyd, pz::ipc::IpcDaemon::Mgmtd, pz::ipc::IpcDaemon::Apid,
+        pz::ipc::IpcDaemon::Ipcd,   pz::ipc::IpcDaemon::Engined,    pz::ipc::IpcDaemon::Authd,
+        pz::ipc::IpcDaemon::Probed, pz::ipc::IpcDaemon::Collectord, pz::ipc::IpcDaemon::Topologyd,
+        pz::ipc::IpcDaemon::Mgmtd,  pz::ipc::IpcDaemon::Apid,
     };
 
     const auto& self = selfReported();

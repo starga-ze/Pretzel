@@ -40,7 +40,8 @@ constexpr std::size_t kInsertBatch = 200;
 // Groups: 1=timestamp 2=level 3=source-location 4=message.
 const std::regex& headerRe()
 {
-    static const std::regex re(R"(^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{1,6})\]\[([A-Za-z]+)\]\[([^\]]*)\]\s?(.*)$)");
+    static const std::regex re(
+        R"(^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{1,6})\]\[([A-Za-z]+)\]\[([^\]]*)\]\s?(.*)$)");
     return re;
 }
 
@@ -296,7 +297,8 @@ bool LogTailService::flushBatch(const std::string& daemon, const std::vector<Ent
     }
 
     if (!db.exec("INSERT INTO system_log_offset (daemon, inode, offset_b) VALUES ($1,$2,$3) "
-                 "ON CONFLICT (daemon) DO UPDATE SET inode=EXCLUDED.inode, offset_b=EXCLUDED.offset_b, updated_at=now()",
+                 "ON CONFLICT (daemon) DO UPDATE SET inode=EXCLUDED.inode, offset_b=EXCLUDED.offset_b, "
+                 "updated_at=now()",
                  {daemon, std::to_string(inode), std::to_string(newOffset)}))
     {
         db.exec("ROLLBACK");

@@ -13,16 +13,14 @@ enum class HeartbeatActionType : std::uint32_t
 {
     Unknown = 0,
     SendHeartbeatRequest = 1,
-    SendHeartbeatResult = 2
+    SendHeartbeatResult = 2,
 };
 
 class HeartbeatAction final : public EnginedAction
 {
 public:
     explicit HeartbeatAction(HeartbeatActionType type);
-
     HeartbeatAction(HeartbeatActionType type, pz::ipc::IpcDaemon dst);
-
     HeartbeatAction(HeartbeatActionType type, std::string resultJson);
 
     void dispatch(EnginedServiceManager& serviceManager) override;

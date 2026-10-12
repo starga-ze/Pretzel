@@ -2,6 +2,8 @@
 
 #include "service/admin/AdminEvent.h"
 
+#include <string>
+
 namespace pz::engined
 {
 
@@ -16,6 +18,7 @@ public:
     void handleEvent(EnginedServiceManager& serviceManager, const AdminEvent& event);
 
 private:
+    void onPasswordUpdate(const AdminEvent& event);
     void updatePassword(const std::string& payloadJson);
 };
 
