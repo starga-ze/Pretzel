@@ -1,6 +1,7 @@
 #include "service/web/controller/ChatController.h"
 
 #include "service/MgmtdServiceManager.h"
+#include "service/web/WebEvent.h"
 
 #include "algorithm/Hex.h"
 #include "service/web/WebUtil.h"
@@ -440,6 +441,24 @@ void ChatController::sessionPatch(MgmtdServiceManager& sm, const pz::http::HttpR
     sm.txRouter().handleIpcMessage(std::move(msg));
 
     fill(resp, 202, json{{"oid", oid}, {"status", "pending"}}.dump());
+}
+
+
+void ChatController::onGrpcResponse(MgmtdServiceManager& sm, WebEvent& event)
+{
+    // The model list and a finished turn are the same shape here — one document, collected once by
+    // whoever is holding the ticket — so only the partial needs telling apart.
+    if (event.grpcType() == WebGrpcEventType::ChatResponse)
+    {
+        const nlohmann::json body = nlohmann::json::parse(event.json(), nullptr, false);
+        if (!body.is_discarded() && body.value("partial", false))
+        {
+            sm.appendChatPartial(event.ticket(), body.value("text", std::string()));
+            return;
+        }
+    }
+
+    sm.setChatResult(event.ticket(), event.takeJson());
 }
 
 }

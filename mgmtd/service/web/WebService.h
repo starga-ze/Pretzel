@@ -24,7 +24,6 @@ namespace pz::mgmtd
 
 class MgmtdServiceManager;
 class WebEvent;
-class WebIpcEvent;
 class WebAction;
 
 // Every URL this service answers, as one enum value — the switch key WebService::route() dispatches
@@ -149,11 +148,11 @@ class WebService
 public:
     WebService() = default;
 
-    void handleEvent(MgmtdServiceManager& serviceManager, const WebEvent& event);
-
-    // An answer from another daemon, forwarded to the controller that owns the route serving it.
-    // WebService routes it the same way it routes an HTTP request: it knows the map, not the domain.
-    void handleIpcEvent(MgmtdServiceManager& serviceManager, const WebIpcEvent& event);
+    // The one way in. Every inbound the web domain has — a browser request, a daemon's answer, an
+    // answer from pretzel-ai — arrives as one WebEvent and leaves through the controller that owns
+    // the route concerned. Which of the three it is, is read off the event's payload here rather
+    // than spelled as a separate entry point per transport.
+    void handleEvent(MgmtdServiceManager& serviceManager, WebEvent& event);
 
     void handleAction(MgmtdServiceManager& serviceManager, WebAction& action);
 
@@ -189,6 +188,16 @@ private:
 
     // Match, gate, dispatch. The one place the auth and must-change gates live.
     void route(MgmtdServiceManager& sm, const Request& req, Response& resp);
+
+    // One per inbound kind, called from handleEvent once the payload says which arrived, and each
+    // one a switch to the owning controller — the same job for three transports, so the same name.
+    //
+    // The HTTP one is the odd member and unavoidably so: a browser names a route by URL, so its
+    // switch key has to be matched out of (method, target) first. The other two arrive already
+    // naming what they answer, decided in MgmtdEventFactory where the wire command is read.
+    void routeHttpEvent(MgmtdServiceManager& sm, WebEvent& event);
+    void routeIpcEvent(MgmtdServiceManager& sm, WebEvent& event);
+    void routeGrpcEvent(MgmtdServiceManager& sm, WebEvent& event);
 
     // WebService's own routes; every other domain lives in a controller below.
     void metric(MgmtdServiceManager& sm, const Request& req, Response& resp);

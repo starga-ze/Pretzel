@@ -1,6 +1,7 @@
 #include "service/web/controller/TechDocController.h"
 
 #include "service/MgmtdServiceManager.h"
+#include "service/web/WebEvent.h"
 #include "service/web/WebUtil.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -238,6 +239,35 @@ void TechDocController::progress(MgmtdServiceManager& sm, const pz::http::HttpRe
     body["running"] = running;
     body["idle"] = false;
     fill(resp, 200, body.dump());
+}
+
+
+void TechDocController::onGrpcResponse(MgmtdServiceManager& sm, WebEvent& event)
+{
+    // Unary answers resolve the ticket the browser is polling. These share the chat ticket store:
+    // both are "one JSON document, collected once by whoever asked".
+    if (event.grpcType() != WebGrpcEventType::CorpusRefreshProgress)
+    {
+        sm.setChatResult(event.ticket(), event.takeJson());
+        return;
+    }
+
+    // A refresh reports many times and is read by any number of polls, so it overwrites one live
+    // slot rather than resolving a ticket.
+    //
+    // A message that will not parse is treated as terminal: a stream that ends without `final` —
+    // the process died mid-crawl — would otherwise leave the run marked running forever, and a
+    // refresh nobody can describe is over.
+    std::string json = event.takeJson();
+    const nlohmann::json body = nlohmann::json::parse(json, nullptr, false);
+    const bool finished = body.is_discarded() || body.value("final", false);
+    if (body.is_discarded())
+    {
+        LOG_WARN("unparseable refresh progress from pretzel-ai; ending the run");
+    }
+
+    LOG_DEBUG("tech-doc progress event (final={}): {}", finished, json.substr(0, 120));
+    sm.setCorpusProgress(std::move(json), finished);
 }
 
 }

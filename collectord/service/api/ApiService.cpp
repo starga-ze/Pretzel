@@ -1,5 +1,7 @@
 #include "service/api/ApiService.h"
 
+#include "event/CollectordEventFactory.h"
+
 #include "service/CollectordServiceManager.h"
 #include "service/api/ApiAction.h"
 #include "service/api/ApiEvent.h"
@@ -34,7 +36,8 @@ const json& apiConfig()
 
 }
 
-ApiService::ApiService(boost::asio::io_context& ioc) : m_statusController(ioc)
+ApiService::ApiService(boost::asio::io_context& ioc, CollectordEventFactory* eventFactory)
+    : m_eventFactory(eventFactory), m_statusController(ioc)
 {
 }
 
@@ -443,7 +446,8 @@ std::unique_ptr<CollectordEvent> ApiService::schedule(std::chrono::steady_clock:
     if (!m_setupDone)
     {
         m_setupDone = true;
-        return std::make_unique<ApiEvent>(ApiEventType::Setup);
+        return m_eventFactory->create(CollectordEventDomain::Api,
+                                      static_cast<std::uint32_t>(ApiEventType::Setup));
     }
 
     // Recurring housekeeping. Coarsely gated here (>=1s); the probe and auto-refresh keep their own
@@ -451,7 +455,8 @@ std::unique_ptr<CollectordEvent> ApiService::schedule(std::chrono::steady_clock:
     if (m_lastPeriodicAt.time_since_epoch().count() == 0 || now - m_lastPeriodicAt >= seconds(1))
     {
         m_lastPeriodicAt = now;
-        return std::make_unique<ApiEvent>(ApiEventType::RunPeriodic);
+        return m_eventFactory->create(CollectordEventDomain::Api,
+                                      static_cast<std::uint32_t>(ApiEventType::RunPeriodic));
     }
 
     return nullptr;

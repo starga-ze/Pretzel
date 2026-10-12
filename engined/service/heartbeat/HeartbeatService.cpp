@@ -1,5 +1,7 @@
 #include "service/heartbeat/HeartbeatService.h"
 
+#include "event/EnginedEventFactory.h"
+
 #include "router/EnginedTxRouter.h"
 #include "service/EnginedServiceManager.h"
 
@@ -50,6 +52,10 @@ const std::vector<pz::ipc::IpcDaemon>& HeartbeatService::selfReported()
     return kSelfReported;
 }
 
+HeartbeatService::HeartbeatService(EnginedEventFactory* eventFactory) : m_eventFactory(eventFactory)
+{
+}
+
 void HeartbeatService::start()
 {
     for (const auto daemon : targets())
@@ -70,7 +76,8 @@ std::unique_ptr<EnginedEvent> HeartbeatService::schedule(std::chrono::steady_clo
             markTimeoutsAsDead();
             m_roundActive = false;
             m_pendingCount = 0;
-            return std::make_unique<HeartbeatEvent>(HeartbeatEventType::SendHeartbeatResult);
+            return m_eventFactory->create(EnginedEventDomain::Heartbeat,
+                                      static_cast<std::uint32_t>(HeartbeatEventType::SendHeartbeatResult));
         }
         return nullptr;
     }
@@ -78,7 +85,8 @@ std::unique_ptr<EnginedEvent> HeartbeatService::schedule(std::chrono::steady_clo
     if (m_lastPollAt.time_since_epoch().count() == 0 || now - m_lastPollAt >= pollInterval())
     {
         m_lastPollAt = now;
-        return std::make_unique<HeartbeatEvent>(HeartbeatEventType::SendHeartbeatRequests);
+        return m_eventFactory->create(EnginedEventDomain::Heartbeat,
+                                      static_cast<std::uint32_t>(HeartbeatEventType::SendHeartbeatRequests));
     }
 
     return nullptr;
@@ -212,7 +220,8 @@ void HeartbeatService::onHeartbeatResponse(EnginedServiceManager& serviceManager
     {
         m_roundActive = false;
         m_pendingCount = 0;
-        serviceManager.postEvent(std::make_unique<HeartbeatEvent>(HeartbeatEventType::SendHeartbeatResult));
+        serviceManager.postEvent(m_eventFactory->create(
+            EnginedEventDomain::Heartbeat, static_cast<std::uint32_t>(HeartbeatEventType::SendHeartbeatResult)));
     }
 }
 

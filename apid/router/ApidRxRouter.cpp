@@ -1,6 +1,5 @@
 #include "router/ApidRxRouter.h"
 
-#include "service/ingest/IngestEvent.h"
 
 #include "ipc/IpcProtocol.h"
 #include "util/Logger.h"
@@ -39,7 +38,7 @@ void ApidRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
 
 void ApidRxRouter::handleHttpMessage(pz::http::HttpRequest req, pz::http::SessionId id)
 {
-    m_serviceManager->postEvent(std::make_unique<IngestEvent>(std::move(req), id));
+    m_serviceManager->postEvent(m_eventFactory->create(std::move(req), id));
 }
 
 }

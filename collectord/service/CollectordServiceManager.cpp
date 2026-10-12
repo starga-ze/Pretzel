@@ -15,7 +15,7 @@ CollectordServiceManager::CollectordServiceManager(CollectordEventFactory* event
     m_actionFactory(actionFactory), 
     m_txRouter(txRouter), 
     m_ioContext(ioContext),
-    m_apiService(std::make_unique<ApiService>(*ioContext)),
+    m_apiService(std::make_unique<ApiService>(*ioContext, eventFactory)),
     m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
     m_heartbeatService(std::make_unique<HeartbeatService>()), 
         m_reloadService(std::make_unique<ReloadService>())

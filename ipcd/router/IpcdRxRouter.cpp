@@ -42,6 +42,12 @@ void IpcdRxRouter::handleIpcMessage(std::unique_ptr<pz::ipc::IpcMessage> msg)
         break;
     }
 
+    // Everything else is somebody else's mail, and forwarding it is this daemon's whole job. The
+    // deliberate exception to the rule the other seven daemons keep: an inbound message does NOT
+    // become an event here, because a relay that put every message through its own service loop
+    // would add a queue round trip to every IPC in the appliance. Nothing is read out of the
+    // message to decide this — only that no case above claimed it — so no domain logic can settle
+    // in the branch.
     default:
         LOG_TRACE("bypass routing (cmd={})", pz::ipc::IpcProtocol::cmdToStr(cmd));
         m_txRouter->handleIpcMessage(std::move(msg));

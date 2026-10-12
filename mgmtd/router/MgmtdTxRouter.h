@@ -27,7 +27,7 @@ public:
 
     // The gRPC egress, alongside IPC and HTTP: one call on its way to the pretzel-ai service.
     // Fire-and-forget like handleIpcMessage — it returns immediately and the answer arrives later
-    // as a WebGrpcEvent (GrpcClientHandler::drain -> MgmtdRxRouter, on the main loop). Not an
+    // as a WebEvent (GrpcClientHandler::drain -> MgmtdRxRouter, on the main loop). Not an
     // override: gRPC is mgmtd's transport, not part of the shared TxRouter base.
     //
     // One method, not one per call: the command travels inside the message. A router with a method

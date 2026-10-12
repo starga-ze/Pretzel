@@ -1,6 +1,7 @@
 #include "service/web/controller/BenchtestController.h"
 
 #include "service/MgmtdServiceManager.h"
+#include "service/web/WebEvent.h"
 #include "service/web/WebUtil.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -422,6 +423,35 @@ void BenchtestController::result(MgmtdServiceManager& sm, const pz::http::HttpRe
 
     body["status"] = "done";
     fill(resp, 200, body.dump());
+}
+
+
+void BenchtestController::onGrpcResponse(MgmtdServiceManager& sm, WebEvent& event)
+{
+    // Every benchtest read answers once and is collected once, so they all resolve their ticket.
+    if (event.grpcType() != WebGrpcEventType::BenchtestRunProgress)
+    {
+        sm.setChatResult(event.ticket(), event.takeJson());
+        return;
+    }
+
+    // A run reports many times on its own slot. Same terminal-on-unparseable rule as a corpus
+    // refresh, and for the same reason: a run nobody can describe is over.
+    std::string json = event.takeJson();
+    const nlohmann::json body = nlohmann::json::parse(json, nullptr, false);
+    const bool finished = body.is_discarded() || body.value("final", false);
+    if (body.is_discarded())
+    {
+        LOG_WARN("unparseable benchtest progress from pretzel-ai; ending the run");
+    }
+
+    // A per-case message queues; everything else is run-level state and overwrites the slot. Both,
+    // for a case message: the slot carries the running totals the header reads.
+    if (!body.is_discarded() && body.value("stage", std::string()) == "case")
+    {
+        sm.queueBenchtestCase(json);
+    }
+    sm.setBenchtestProgress(std::move(json), finished);
 }
 
 }

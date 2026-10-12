@@ -9,11 +9,14 @@ namespace pz::engined
 {
 
 class EnginedServiceManager;
+class EnginedEventFactory;
 
 class ProbeService
 {
 public:
-    ProbeService() = default;
+    // See HeartbeatService: the probe-due event this raises for itself is made through the
+    // factory, not with make_unique, so every event in the daemon is born in one place.
+    explicit ProbeService(EnginedEventFactory* eventFactory);
     ~ProbeService() = default;
 
     void start();
@@ -23,6 +26,8 @@ public:
     void handleEvent(EnginedServiceManager& serviceManager, const ProbeEvent& event);
 
 private:
+    EnginedEventFactory* m_eventFactory{nullptr};
+
     void sendProbeRequest(EnginedServiceManager& serviceManager);
     void onProbeResult(EnginedServiceManager& serviceManager, const ProbeEvent& event);
 

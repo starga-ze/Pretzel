@@ -24,7 +24,7 @@ public:
     void handleHttpMessage(pz::http::HttpRequest req, pz::http::SessionId id) override;
 
     // An answer from pretzel-ai, arriving on the main loop from GrpcClientHandler::drain(). Turned
-    // into a WebGrpcEvent and posted, exactly as an inbound IPC message is: the transport reports
+    // into a WebEvent by the factory and posted, exactly as an inbound IPC message is: the transport reports
     // what came back, and the controller that asked for it decides what it means. Not an override —
     // gRPC is mgmtd's transport, not part of the shared RxRouter base.
     void handleGrpcMessage(GrpcCmd cmd, std::uint32_t ticket, std::string json);

@@ -1,6 +1,7 @@
 #include "event/ApidEventFactory.h"
 
 #include "service/bootstrap/BootstrapEvent.h"
+#include "service/ingest/IngestEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
 #include "service/reload/ReloadEvent.h"
 
@@ -56,6 +57,11 @@ std::unique_ptr<ApidEvent> ApidEventFactory::create(std::unique_ptr<pz::ipc::Ipc
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));
         return nullptr;
     }
+}
+
+std::unique_ptr<ApidEvent> ApidEventFactory::create(pz::http::HttpRequest request, pz::http::SessionId id)
+{
+    return std::make_unique<IngestEvent>(std::move(request), id);
 }
 
 }

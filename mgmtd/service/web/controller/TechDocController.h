@@ -6,6 +6,7 @@ namespace pz::mgmtd
 {
 
 class MgmtdServiceManager;
+class WebEvent;
 
 // System Management ▸ Operation ▸ Tech Documentation, the server half of it.
 //
@@ -27,6 +28,14 @@ class TechDocController
 {
 public:
     // GET  /api/techdoc/status            → 202 {ticket, status:"pending"}
+    // pretzel-ai answered a corpus read, or reported one step of a refresh. Called from
+    // WebService's gRPC overload.
+    //
+    // A unary answer resolves the ticket the browser is polling. A refresh reports many times and
+    // is read by any number of polls, so it overwrites one live slot instead — and reading `final`
+    // off it is this controller's job, because it owns the run the flag ends.
+    void onGrpcResponse(MgmtdServiceManager& sm, WebEvent& event);
+
     void status(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 
     // GET  /api/techdoc/result?ticket=<n> → {status:"pending"} until pretzel-ai answers.

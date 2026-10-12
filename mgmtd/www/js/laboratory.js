@@ -23,6 +23,44 @@
     // '#2  Karrot User 1001  010-1001-7919  CI=...',
   ];
 
+  // localStorage key for the "fire on every page load" external-app-launch switch, and how
+  // long after load the stored launch fires.
+  const AUTO_LAUNCH_KEY = 'labExternalAutoLaunch';
+  const AUTO_LAUNCH_DELAY_MS = 1000;
+
+  // Scheme scan list for "which app owns which scheme". Secure-browser vendors do not
+  // document their private schemes, so these are candidates to be confirmed by the probe —
+  // the unregistered control at the end shows what "nothing is registered" looks like.
+  // google-chrome: is deliberately absent: it opens Chrome on most desktops.
+  const CANDIDATE_SCHEMES = [
+    { scheme: 'prisma-access-browser', note: 'Prisma Access Browser — candidate' },
+    { scheme: 'prismaaccessbrowser',   note: 'Prisma Access Browser — candidate' },
+    { scheme: 'prisma-access',         note: 'Prisma Access — candidate' },
+    { scheme: 'pab',                   note: 'Prisma Access Browser — candidate' },
+    { scheme: 'talon',                 note: 'Talon (pre-acquisition name) — candidate' },
+    { scheme: 'com-okta-authenticator', note: 'Okta Verify — known app scheme' },
+    { scheme: 'msteams',               note: 'Microsoft Teams — known app scheme' },
+    { scheme: 'pretzel-lab-noapp',     note: 'control — intentionally unregistered' },
+  ];
+
+  // Repro matrix — one controlled attempt per hypothesis, each with a scheme that makes its
+  // console row unmistakable. Only one variable changes between neighbouring cases, so the
+  // verdict column alone tells you which condition produced it. The case that opens a dialog
+  // goes last: a tab-modal dialog would swallow whatever is fired behind it.
+  const REPRO_MATRIX = [
+    { id: 'A', scheme: 'pretzel-fresh', shape: 'bare', unique: true,
+      expect: 'never-seen scheme, no registered app — expect permissionRequested with NO dialog ' +
+              '(this is the customer case: External Application = None)' },
+    { id: 'B', scheme: 'google-chrome', shape: 'bare',
+      expect: 'the exact customer URL — expect allowed if a decision is remembered for this origin, ' +
+              'permissionRequested if not' },
+    { id: 'C', scheme: 'google-chrome', shape: 'current',
+      expect: 'same scheme but WITH a path — shows whether ruleLogLevel truncates externalApp.url' },
+    { id: 'D', scheme: 'msteams', shape: 'bare',
+      expect: 'a scheme with a real registered app and (probably) no remembered decision — ' +
+              'expect permissionRequested WITH a visible dialog' },
+  ];
+
   // ── Shared helpers ──────────────────────────────────────────────────────────
   function escHtml(s) {
     return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -58,10 +96,11 @@
       this.el.scrollTop = this.el.scrollHeight;
     }
 
-    info(msg)  { this.log('INFO', msg); }
-    up(msg)    { this.log('UPLOAD', msg, 'up'); }
-    down(msg)  { this.log('DOWNLOAD', msg, 'down'); }
-    error(msg) { this.log('ERROR', msg, 'error'); }
+    info(msg)   { this.log('INFO', msg); }
+    up(msg)     { this.log('UPLOAD', msg, 'up'); }
+    down(msg)   { this.log('DOWNLOAD', msg, 'down'); }
+    launch(msg) { this.log('LAUNCH', msg, 'launch'); }
+    error(msg)  { this.log('ERROR', msg, 'error'); }
 
     clear() { if (this.el) this.el.innerHTML = ''; }
   }
@@ -572,6 +611,256 @@
   }
 
   // ════════════════════════════════════════════════════════════════════════════
+  // BrowserIdentity — what a page can tell about the browser it runs in.
+  //
+  // The common "open in Chrome" redirect pattern keys off navigator.userAgentData.brands,
+  // which is exactly where a Chromium-based secure browser differs from Google Chrome:
+  // the UA string still says Chrome/<n>, but "Google Chrome" is missing from brands, so
+  // such sniffing code decides "not Chrome" and fires a google-chrome: navigation.
+  // ════════════════════════════════════════════════════════════════════════════
+  class BrowserIdentity {
+    brands() {
+      const uad = navigator.userAgentData;
+      return (uad && Array.isArray(uad.brands)) ? uad.brands : [];
+    }
+
+    brandNames() { return this.brands().map(b => b.brand); }
+
+    isGoogleChrome() { return this.brandNames().some(b => b === 'Google Chrome'); }
+    isChromium()     { return this.brandNames().some(b => /chromium/i.test(b)); }
+
+    lines() {
+      const uad = navigator.userAgentData;
+      const names = this.brandNames();
+      return [
+        `userAgent                  : ${navigator.userAgent}`,
+        `userAgentData.brands       : ${names.length ? names.join(' | ') : '(unavailable — non-Chromium or insecure context)'}`,
+        `brands has "Google Chrome" : ${this.isGoogleChrome() ? 'yes' : 'no'}`,
+        `brands has "Chromium"      : ${this.isChromium() ? 'yes' : 'no'}`,
+        `platform                   : ${(uad && uad.platform) || navigator.platform || '--'}`,
+        `vendor                     : ${navigator.vendor || '--'}`,
+      ];
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // LaunchProbe — after a scheme navigation, watch for the side effects that mean an
+  // external handler actually took over: the page loses focus, or goes hidden. Nothing
+  // firing inside the window means the browser dropped the navigation silently — either
+  // no app is registered for the scheme, or it was blocked without a prompt.
+  // ════════════════════════════════════════════════════════════════════════════
+  class LaunchProbe {
+    constructor(windowMs = 1500) { this.windowMs = windowMs; }
+
+    watch(label, onVerdict) {
+      const events = [];
+      let settled = false;
+
+      const mark = (name) => { events.push(name); if (!settled) { settled = true; finish(); } };
+      const onBlur = () => mark('blur');
+      const onVis  = () => mark(`visibilitychange→${document.visibilityState}`);
+      const onHide = () => mark('pagehide');
+
+      const finish = () => {
+        clearTimeout(timer);
+        window.removeEventListener('blur', onBlur);
+        document.removeEventListener('visibilitychange', onVis);
+        window.removeEventListener('pagehide', onHide);
+        onVerdict(events.length
+          ? `probe [${label}] — ${events.join(', ')} → a handler most likely opened`
+          : `probe [${label}] — no blur/visibility change in ${this.windowMs} ms → nothing reacted ` +
+            '(no registered handler, or dropped without a prompt)');
+      };
+
+      const timer = setTimeout(finish, this.windowMs);
+      window.addEventListener('blur', onBlur);
+      document.addEventListener('visibilitychange', onVis);
+      window.addEventListener('pagehide', onHide);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ExternalAppLauncher — navigate to a non-http(s) scheme so the browser enters its
+  // external-protocol handling path. Each trigger differs in how the navigation is
+  // initiated, which is what decides whether the browser shows its "Open <app>?" dialog
+  // or drops the attempt silently (user activation, iframe origin, repeat throttling).
+  // ════════════════════════════════════════════════════════════════════════════
+  class ExternalAppLauncher {
+    constructor({ log, probe }) {
+      this.log = log;
+      this.probe = probe || (() => {});     // probe(tag) — no-op when probing is off
+    }
+
+    // scheme + shape → the exact string handed to the navigation.
+    buildUrl({ scheme, shape, target }) {
+      const s = String(scheme || '').trim().replace(/:+$/, '').replace(/\/+$/, '') || 'google-chrome';
+      const strip = (u) => String(u || '').replace(/^[a-z0-9+.-]+:\/\//i, '');
+      if (shape === 'slashes') return `${s}://`;
+      if (shape === 'current') return `${s}://${strip(location.href)}`;
+      if (shape === 'custom')  return `${s}://${strip(target)}`;
+      return `${s}:`;                        // bare scheme — what the field logs showed
+    }
+
+    // A scheme nobody has seen before. Two things key off the exact scheme string: the
+    // browser's remembered "always allow <origin> to open this" decision, which is stored per
+    // (origin, scheme) pair and silences the prompt once set, and console-side de-duplication
+    // of identical events. A fresh scheme per attempt sidesteps both, so every attempt is
+    // judged from scratch and lands in the event log as its own row.
+    uniqueScheme(base) {
+      return `${String(base || 'pretzel-lab').replace(/:+$/, '')}-${this._token()}`;
+    }
+
+    // Same scheme, new URL: appended after the colon for an opaque scheme-only URL, as a path
+    // segment otherwise. Keeps a scheme that really has a registered handler — the only kind
+    // that can raise a dialog — while still making every attempt a distinct event.
+    withPathToken(url) {
+      const t = `lab-${this._token()}`;
+      if (/:$/.test(url))   return `${url}${t}`;
+      if (/\/\/$/.test(url)) return `${url}${t}`;
+      return `${url.replace(/\/+$/, '')}/${t}`;
+    }
+
+    _token() { return Math.random().toString(36).slice(2, 7); }
+
+    // Fire `times` attempts, `interval` ms apart. `uniq` decides whether each attempt reuses
+    // the prebuilt URL, gets a path token, or gets a brand-new scheme.
+    launch({ method, url, delay, times, interval, uniq, scheme, shape, target }) {
+      const n = Math.max(1, parseInt(times, 10) || 1);
+      const gap = Math.max(0, parseInt(interval, 10) || 0);
+      for (let i = 0; i < n; i++) {
+        const suffix = n > 1 ? ` ${i + 1}/${n}` : '';
+        setTimeout(() => this.attempt(method, this.freshUrl(url, { uniq, scheme, shape, target }),
+          delay, suffix), i * gap);
+      }
+    }
+
+    freshUrl(url, { uniq, scheme, shape, target }) {
+      if (uniq === 'scheme') return this.buildUrl({ scheme: this.uniqueScheme(scheme), shape, target });
+      if (uniq === 'path')   return this.withPathToken(url);
+      return url;
+    }
+
+    attempt(method, url, delay, suffix = '', probeFn = null) {
+      const tag = `${method}${suffix}`;
+      const probe = probeFn || this.probe;
+      const wait = Math.max(0, parseInt(delay, 10) || 0);
+      try {
+        switch (method) {
+          case 'gesture':
+            this.log.launch(`${tag} → location.href = "${url}" (inside the click handler)`);
+            probe(tag);
+            location.href = url;
+            break;
+
+          case 'anchor':
+            this.log.launch(`${tag} → <a href="${url}"> .click() (inside the click handler)`);
+            probe(tag);
+            this._clickAnchor(url);
+            break;
+
+          case 'synth-anchor':
+            this.log.launch(`${tag} → a.click() deferred to setTimeout(0) — not a user-initiated task`);
+            setTimeout(() => { probe(tag); this._clickAnchor(url); }, 0);
+            break;
+
+          case 'timer':
+            this.log.launch(`${tag} → location.href after ${wait} ms (transient activation expires at ~5000 ms)`);
+            setTimeout(() => { probe(tag); location.href = url; }, wait);
+            break;
+
+          case 'iframe':
+            this.log.launch(`${tag} → hidden iframe src = "${url}"`);
+            probe(tag);
+            this._iframe(url);
+            break;
+
+          case 'window-open': {
+            this.log.launch(`${tag} → window.open("${url}", "_blank")`);
+            probe(tag);
+            const w = window.open(url, '_blank');
+            this.log.info(`window.open returned ${w ? 'a window handle' : 'null — blocked, or consumed by the handler'}`);
+            break;
+          }
+
+          case 'replace':
+            this.log.launch(`${tag} → location.replace("${url}")`);
+            probe(tag);
+            location.replace(url);
+            break;
+
+          default:
+            this.log.error(`unknown trigger "${method}"`);
+        }
+      } catch (err) {
+        this.log.error(`${tag} threw: ${err && err.message ? err.message : err}`);
+      }
+    }
+
+    // Walk the repro matrix, one case at a time, far enough apart that each case's verdict is
+    // unambiguously its own. Every case is a real in-handler navigation.
+    repro(cases, { intervalMs = 3000, probe } = {}) {
+      cases.forEach((c, i) => {
+        setTimeout(() => {
+          const scheme = c.unique ? this.uniqueScheme(c.scheme) : c.scheme;
+          const url = this.buildUrl({ scheme, shape: c.shape, target: c.target });
+          this.log.launch(`repro ${c.id} — ${url}`);
+          this.log.info(`repro ${c.id} — ${c.expect}`);
+          this.attempt('gesture', url, 0, ` repro:${c.id}`, probe);
+        }, i * intervalMs);
+      });
+      this.log.info(`repro matrix queued — ${cases.length} cases, ${intervalMs} ms apart; ` +
+        'match each console row to a case by its scheme, then compare the Action column');
+    }
+
+    // Which app answers a scheme is the OS's call, not the page's — so the only way to find
+    // the scheme a given browser/app owns is to try them and watch for a reaction. Walks the
+    // candidates one at a time, spaced so each probe window closes before the next attempt.
+    scan(candidates, { intervalMs = 2500, probe } = {}) {
+      candidates.forEach((cand, i) => {
+        setTimeout(() => {
+          const url = this.buildUrl({ scheme: cand.scheme, shape: cand.shape || 'bare' });
+          this.log.launch(`scan ${i + 1}/${candidates.length} — ${url}${cand.note ? `  (${cand.note})` : ''}`);
+          this.attempt('gesture', url, 0, ` scan:${cand.scheme}`, probe);
+        }, i * intervalMs);
+      });
+      this.log.info(`scheme scan queued — ${candidates.length} schemes, ${intervalMs} ms apart; ` +
+        'a "handler most likely opened" verdict names the scheme that owns the app');
+    }
+
+    // The browser-sniffing redirect: "not Chrome by brands → bounce through google-chrome:".
+    chromeRedirect(identity) {
+      const names = identity.brandNames();
+      this.log.launch(`chrome-redirect pattern — brands = [${names.join(' | ') || 'unavailable'}]`);
+      if (identity.isGoogleChrome()) {
+        this.log.info('isChrome() === true → redirect branch skipped (brands include "Google Chrome")');
+        return null;
+      }
+      const url = 'google-chrome://' + location.href.replace(/^https?:\/\//i, '');
+      this.log.info('isChrome() === false → taking the "open in Chrome" branch');
+      this.attempt('gesture', url, 0);
+      return url;
+    }
+
+    _clickAnchor(url) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.rel = 'noopener';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    _iframe(url) {
+      const f = document.createElement('iframe');
+      f.style.display = 'none';
+      f.src = url;
+      document.body.appendChild(f);
+      setTimeout(() => f.remove(), 2000);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
   // LaboratoryPage — controller.
   // ════════════════════════════════════════════════════════════════════════════
   class LaboratoryPage {
@@ -593,6 +882,15 @@
         input:    this.$('fileInput'),
         onAdd:    (added) => this._onFilesAdded(added),
       });
+      this.identity    = new BrowserIdentity();
+      this.launchProbe = new LaunchProbe(1500);
+      this.launcher    = new ExternalAppLauncher({
+        log:   this.activity,
+        probe: (tag) => {
+          if (!this.$('exProbe')?.checked) return;
+          this.launchProbe.watch(tag, (verdict) => this.activity.info(verdict));
+        },
+      });
     }
 
     init() {
@@ -608,7 +906,122 @@
         const btn = e.target.closest('[data-download]');
         if (btn) this._onReDownload(btn.getAttribute('data-download'));
       });
+      this._initExternalLaunch();
       this.activity.info('Laboratory ready');
+    }
+
+    // ── External app launch (custom scheme navigation) ──
+    _initExternalLaunch() {
+      const ids = ['exScheme', 'exCustom', 'exPath', 'exTarget',
+                   'exTrigger', 'exDelay', 'exRepeat', 'exInterval'];
+      ids.forEach(id => this.$(id)?.addEventListener('input', () => this._syncLaunchForm()));
+      ids.forEach(id => this.$(id)?.addEventListener('change', () => this._syncLaunchForm()));
+
+      this.$('exLaunchBtn')?.addEventListener('click', () => this._onLaunch());
+      this.$('exRedirectBtn')?.addEventListener('click', () => this.launcher.chromeRedirect(this.identity));
+      this.$('exIdentBtn')?.addEventListener('click', () => this._onShowIdentity());
+      this.$('exReproBtn')?.addEventListener('click', () => this.launcher.repro(REPRO_MATRIX, {
+        probe: (tag) => this.launchProbe.watch(tag, (verdict) => this.activity.info(verdict)),
+      }));
+      this.$('exScanBtn')?.addEventListener('click', () => this.launcher.scan(CANDIDATE_SCHEMES, {
+        // The scan is the one place probing is not optional — the verdict IS the result.
+        probe: (tag) => this.launchProbe.watch(tag, (verdict) => this.activity.info(verdict)),
+      }));
+      this.$('exOnLoad')?.addEventListener('change', () => this._persistAutoLaunch());
+      this.$('exUniq')?.addEventListener('change', () => this._syncLaunchForm());
+
+      this._syncLaunchForm();
+      this._restoreAutoLaunch();
+    }
+
+    // Enable the free-text fields only for the options that use them, and keep the
+    // "Navigation target" preview showing exactly what will be navigated to.
+    _syncLaunchForm() {
+      const custom = this.$('exCustom');
+      const target = this.$('exTarget');
+      if (custom) custom.disabled = this.$('exScheme')?.value !== 'custom';
+      if (target) target.disabled = this.$('exPath')?.value !== 'custom';
+
+      const cfg = this._launchConfig();
+      const text = this.$('exUrlText');
+      if (text) {
+        const base = this.launcher.buildUrl(cfg);
+        text.textContent =
+          cfg.uniq === 'scheme' ? this.launcher.buildUrl({ ...cfg, scheme: `${cfg.scheme}-<new>` }) :
+          cfg.uniq === 'path'   ? this.launcher.withPathToken(base).replace(/lab-\w+$/, 'lab-<new>') :
+                                  base;
+      }
+      if (this.$('exOnLoad')?.checked) this._persistAutoLaunch();
+    }
+
+    _launchConfig() {
+      const sel = this.$('exScheme')?.value || 'google-chrome';
+      return {
+        schemeSel: sel,
+        scheme:   sel === 'custom' ? (this.$('exCustom')?.value || '') : sel,
+        shape:    this.$('exPath')?.value || 'bare',
+        target:   this.$('exTarget')?.value || '',
+        uniq:     this.$('exUniq')?.value || 'off',
+        method:   this.$('exTrigger')?.value || 'gesture',
+        delay:    this.$('exDelay')?.value || 0,
+        times:    this.$('exRepeat')?.value || 1,
+        interval: this.$('exInterval')?.value || 0,
+      };
+    }
+
+    _onLaunch() {
+      const cfg = this._launchConfig();
+      const url = this.launcher.buildUrl(cfg);
+      this.launcher.launch({ ...cfg, url });
+    }
+
+    _onShowIdentity() {
+      const host = this.$('exIdent');
+      if (!host) return;
+      if (host.style.display !== 'none') { host.style.display = 'none'; return; }
+      host.textContent = this.identity.lines().join('\n');
+      host.style.display = '';
+      this.activity.info(`browser identity — brands: [${this.identity.brandNames().join(' | ') || 'unavailable'}]`);
+    }
+
+    // "Fire on every page load" — a site script that runs per navigation is what turns one
+    // launch into a stream of events minutes apart, so the config survives a reload.
+    _persistAutoLaunch() {
+      try {
+        if (this.$('exOnLoad')?.checked)
+          localStorage.setItem(AUTO_LAUNCH_KEY, JSON.stringify(this._launchConfig()));
+        else
+          localStorage.removeItem(AUTO_LAUNCH_KEY);
+      } catch (e) { /* storage disabled — the checkbox then applies to this load only */ }
+    }
+
+    _restoreAutoLaunch() {
+      let cfg = null;
+      try {
+        const raw = localStorage.getItem(AUTO_LAUNCH_KEY);
+        if (raw) cfg = JSON.parse(raw);
+      } catch (e) { cfg = null; }
+      if (!cfg) return;
+
+      const box = this.$('exOnLoad');
+      if (box) box.checked = true;
+      if (this.$('exScheme'))   this.$('exScheme').value = cfg.schemeSel || cfg.scheme || 'google-chrome';
+      if (this.$('exCustom') && cfg.schemeSel === 'custom') this.$('exCustom').value = cfg.scheme || '';
+      if (this.$('exPath'))     this.$('exPath').value = cfg.shape || 'bare';
+      if (this.$('exTarget'))   this.$('exTarget').value = cfg.target || '';
+      if (this.$('exUniq'))     this.$('exUniq').value = cfg.uniq || 'off';
+      if (this.$('exTrigger'))  this.$('exTrigger').value = cfg.method || 'gesture';
+      if (this.$('exDelay'))    this.$('exDelay').value = cfg.delay ?? 0;
+      if (this.$('exRepeat'))   this.$('exRepeat').value = String(cfg.times || 1);
+      if (this.$('exInterval')) this.$('exInterval').value = cfg.interval ?? 0;
+      this._syncLaunchForm();
+
+      // Page-load fire: no user gesture is involved at all, whatever the chosen trigger.
+      const url = this.launcher.buildUrl(cfg);
+      setTimeout(() => {
+        this.activity.launch(`page-load auto fire (no user gesture) — ${url}`);
+        this.launcher.launch({ ...cfg, url });
+      }, AUTO_LAUNCH_DELAY_MS);
     }
 
     // ── Download: canvas render → client-side PDF (no dialog) ──

@@ -107,9 +107,10 @@
     }
     .lab-log-line:last-child { border-bottom: none; }
     .lab-log-time { color: var(--text-muted); flex-shrink: 0; }
-    .lab-log-line.evt-up    .lab-log-tag { color: var(--accent); }
-    .lab-log-line.evt-down  .lab-log-tag { color: var(--green); }
-    .lab-log-line.evt-error .lab-log-tag { color: var(--red); }
+    .lab-log-line.evt-up     .lab-log-tag { color: var(--accent); }
+    .lab-log-line.evt-down   .lab-log-tag { color: var(--green); }
+    .lab-log-line.evt-error  .lab-log-tag { color: var(--red); }
+    .lab-log-line.evt-launch .lab-log-tag { color: var(--blue); }
     .lab-log-tag { flex-shrink: 0; font-weight: 700; width: 68px; }
     .lab-log-msg { color: var(--text); word-break: break-word; }
 
@@ -126,6 +127,29 @@
       display: block; width: 100%;
       border: 1px solid var(--border); border-radius: 8px; background: #fff;
     }
+
+    /* External app launch (custom scheme) */
+    .lab-launch-url {
+      margin-top: 12px; padding: 9px 12px;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);
+      font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px;
+      color: var(--text); word-break: break-all;
+    }
+    .lab-launch-url .lab-launch-url-label {
+      display: block; margin-bottom: 3px;
+      font-family: var(--font-ui); font-size: 10.5px; font-weight: 600;
+      letter-spacing: .02em; text-transform: uppercase; color: var(--text-muted);
+    }
+    .lab-ident {
+      margin-top: 12px; padding: 10px 12px;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);
+      font-family: var(--font-mono, ui-monospace, monospace); font-size: 11.5px;
+      line-height: 1.6; color: var(--text); white-space: pre-wrap; word-break: break-all;
+    }
+    .lab-note {
+      margin-top: 12px; font-size: 11.5px; line-height: 1.6; color: var(--text-muted);
+    }
+    .lab-note code { font-size: 11px; }
 
     /* Canvas-rendered confirm dialog (UI drawn on <canvas>, not DOM) */
     .lab-cdlg-overlay {
@@ -251,6 +275,148 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- ── External application launch (custom URL scheme) ── -->
+      <div class="section-card" style="margin-top:16px">
+        <div class="section-header">
+          <span class="section-title">External App Launch</span>
+          <span class="muted" style="font-size:11px">reproduces <code>google-chrome:</code> / <code>com-okta-authenticator:</code> style scheme navigation</span>
+        </div>
+        <div style="padding:16px">
+          <p class="lab-empty" style="padding-top:0">
+            Navigates to a non-http(s) scheme so the browser enters its external-protocol
+            handling path (the step a secure browser logs as an external application launch).
+            Pick how the navigation is started — a real click, a script with no user gesture, a
+            hidden iframe, or a repeating burst — and watch the activity log.
+          </p>
+
+          <div class="lab-row">
+            <div class="lab-field">
+              <label class="lab-field-label" for="exScheme">Scheme</label>
+              <select class="lab-select" id="exScheme">
+                <option value="google-chrome" selected>google-chrome:</option>
+                <option value="googlechrome">googlechrome:</option>
+                <option value="prisma-access-browser">prisma-access-browser: (PAB candidate)</option>
+                <option value="prismaaccessbrowser">prismaaccessbrowser: (PAB candidate)</option>
+                <option value="pab">pab: (PAB candidate)</option>
+                <option value="com-okta-authenticator">com-okta-authenticator:</option>
+                <option value="msteams">msteams:</option>
+                <option value="ms-word">ms-word:</option>
+                <option value="pretzel-lab-noapp">pretzel-lab-noapp: (no handler)</option>
+                <option value="custom">Custom…</option>
+              </select>
+            </div>
+            <div class="lab-field">
+              <label class="lab-field-label" for="exCustom">Custom scheme</label>
+              <input class="lab-input" id="exCustom" type="text" placeholder="my-app" disabled />
+            </div>
+            <div class="lab-field">
+              <label class="lab-field-label" for="exPath">URL shape</label>
+              <select class="lab-select" id="exPath">
+                <option value="bare" selected>scheme only (google-chrome:)</option>
+                <option value="slashes">scheme:// (no host)</option>
+                <option value="current">scheme://&lt;this page, http(s) stripped&gt;</option>
+                <option value="custom">scheme://&lt;custom target&gt;</option>
+              </select>
+            </div>
+            <div class="lab-field">
+              <label class="lab-field-label" for="exTarget">Custom target</label>
+              <input class="lab-input" id="exTarget" type="text" placeholder="cs.example.net/tickets/1" disabled />
+            </div>
+          </div>
+
+          <div class="lab-row">
+            <div class="lab-field">
+              <label class="lab-field-label" for="exTrigger">Trigger</label>
+              <select class="lab-select" id="exTrigger">
+                <option value="gesture" selected>Click — location.href (user gesture)</option>
+                <option value="anchor">Click — &lt;a href&gt; a.click() in handler</option>
+                <option value="synth-anchor">a.click() from setTimeout(0)</option>
+                <option value="timer">location.href after delay (activation expired)</option>
+                <option value="iframe">Hidden iframe navigation</option>
+                <option value="window-open">window.open()</option>
+                <option value="replace">location.replace()</option>
+              </select>
+            </div>
+            <div class="lab-field">
+              <label class="lab-field-label" for="exDelay">Delay (ms)</label>
+              <input class="lab-input" id="exDelay" type="number" min="0" step="100" value="6000" style="min-width:110px" />
+            </div>
+            <div class="lab-field">
+              <label class="lab-field-label" for="exRepeat">Repeat</label>
+              <select class="lab-select" id="exRepeat">
+                <option value="1" selected>1×</option>
+                <option value="3">3×</option>
+                <option value="5">5×</option>
+                <option value="10">10×</option>
+              </select>
+            </div>
+            <div class="lab-field">
+              <label class="lab-field-label" for="exInterval">Interval (ms)</label>
+              <input class="lab-input" id="exInterval" type="number" min="0" step="50" value="400" style="min-width:110px" />
+            </div>
+            <button class="btn btn-primary" id="exLaunchBtn" style="align-self:flex-end">Launch…</button>
+            <button class="btn" id="exRedirectBtn" style="align-self:flex-end" title="Runs the “open in Chrome” browser-sniffing redirect pattern">Chrome redirect pattern</button>
+            <button class="btn" id="exIdentBtn" style="align-self:flex-end">Browser identity</button>
+            <button class="btn btn-primary" id="exReproBtn" style="align-self:flex-end" title="Fire one controlled attempt per hypothesis, 3 s apart">Repro matrix</button>
+            <button class="btn" id="exScanBtn" style="align-self:flex-end" title="Try candidate schemes one at a time and see which one opens an app">Scan schemes</button>
+          </div>
+
+          <div class="lab-row">
+            <div class="lab-field">
+              <label class="lab-field-label" for="exUniq">Uniqueness</label>
+              <select class="lab-select" id="exUniq" style="min-width:300px">
+                <option value="off" selected>Off — reuse the exact same URL every time</option>
+                <option value="path">Token in the path — same scheme, new URL (keeps the real handler)</option>
+                <option value="scheme">New scheme each time — fresh verdict, but never a dialog</option>
+              </select>
+            </div>
+            <p class="lab-note" style="margin:0;max-width:460px;align-self:flex-end">
+              A remembered “always allow” is stored per <em>(origin, scheme)</em>, so only a new
+              <strong>scheme</strong> escapes it — but a scheme no app registered can never raise a
+              dialog. A <strong>path</strong> token keeps a scheme that really has a handler while
+              still making each event distinct.
+            </p>
+          </div>
+          <div class="lab-row">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer">
+              <input type="checkbox" id="exProbe" checked /> Probe whether a handler opened (watch blur / visibilitychange after launch)
+            </label>
+          </div>
+          <div class="lab-row">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer">
+              <input type="checkbox" id="exOnLoad" /> Fire again on every page load (reproduces a site script that runs per navigation)
+            </label>
+          </div>
+
+          <div class="lab-launch-url" id="exUrlPreview">
+            <span class="lab-launch-url-label">Navigation target</span>
+            <span id="exUrlText">google-chrome:</span>
+          </div>
+
+          <div class="lab-ident" id="exIdent" style="display:none"></div>
+
+          <p class="lab-note">
+            <strong>Which app opens is the OS's decision, not this page's.</strong> The page only
+            picks the scheme string; the desktop's scheme-handler registration picks the binary.
+            <code>google-chrome:</code> is registered by Google Chrome on a normal desktop, so it
+            opens Chrome. To make a secure browser answer instead, either navigate to the scheme
+            <em>it</em> registers (<strong>Scan schemes</strong> tries candidates and reports which
+            one reacts), or repoint the registration for <code>x-scheme-handler/google-chrome</code>
+            at it — Linux: <code>xdg-mime default &lt;app&gt;.desktop x-scheme-handler/google-chrome</code>;
+            Windows: the <code>HKCU\Software\Classes\google-chrome\shell\open\command</code> key;
+            macOS: the app's <code>CFBundleURLSchemes</code> plus a default-handler reset. Pick
+            <code>pretzel-lab-noapp:</code> to generate the launch attempt with no app at all —
+            that is the "External Application: None" case.
+          </p>
+          <p class="lab-note">
+            A browser-generated block (“Not allowed to launch … because a user gesture is required”,
+            “… scheme does not have a registered handler”) is written to the DevTools console by the
+            browser itself and cannot be caught from page script — the log below only records what
+            this page attempted. Open DevTools to see the browser's own verdict next to it.
+          </p>
+        </div>
       </div>
 
       <!-- ── Activity log ── -->

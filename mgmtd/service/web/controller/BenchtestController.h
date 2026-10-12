@@ -6,6 +6,7 @@ namespace pz::mgmtd
 {
 
 class MgmtdServiceManager;
+class WebEvent;
 
 // AI ▸ Benchtest, and Operation ▸ Benchtest Data — the server half of both.
 //
@@ -30,6 +31,10 @@ class BenchtestController
 {
 public:
     // GET  /api/benchtest/datasets?q=      → 202 {ticket}; every stored set, newest first
+    // pretzel-ai answered a benchtest read, or reported one step of a run. Called from
+    // WebService's gRPC overload.
+    void onGrpcResponse(MgmtdServiceManager& sm, WebEvent& event);
+
     void datasets(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 
     // POST /api/benchtest/datasets         → 202 {ticket}; body is the .jsonl,

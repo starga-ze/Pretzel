@@ -6,6 +6,7 @@ namespace pz::mgmtd
 {
 
 class MgmtdServiceManager;
+class WebEvent;
 
 // AI ▸ Assistant, the server half of it.
 //
@@ -20,6 +21,16 @@ class ChatController
 {
 public:
     // POST /api/chat  {model, message} → 202 {ticket, status:"pending"}
+    // pretzel-ai answered a turn or listed the models. Called from WebService's gRPC overload,
+    // the same way onTestResponse is called for an IPC answer.
+    //
+    // A turn reports TWICE on one ticket: the answer as it is being written, then the turn
+    // document. A partial must never resolve the ticket — a poll that collected one would end the
+    // turn on a fragment, and the real answer would arrive with nobody waiting for it. The
+    // transport marks which is which rather than this guessing from shape: the payload contains a
+    // model's own words, and any field name is something it could have written.
+    void onGrpcResponse(MgmtdServiceManager& sm, WebEvent& event);
+
     void send(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 
     // GET /api/chat/result?ticket=<n> → {status:"pending"} until pretzel-ai answers, then the turn.

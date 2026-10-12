@@ -57,7 +57,7 @@ public:
     // GET /api/ai/models/update-result?ticket= — what that refresh found, once it lands.
     void modelsUpdateResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp);
 
-    // collectord's answer, filed under the ticket the browser is holding. Called from the WebIpcEvent
+    // collectord's answer, filed under the ticket the browser is holding. Called from WebService's IPC-answer
     // handler on AiModelUpdateResponse.
     void onModelsUpdateResponse(MgmtdServiceManager& sm, const pz::ipc::IpcMessage& msg);
 };

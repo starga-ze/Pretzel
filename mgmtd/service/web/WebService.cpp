@@ -4,7 +4,6 @@
 
 #include "service/web/WebAction.h"
 #include "service/web/WebEvent.h"
-#include "service/web/WebIpcEvent.h"
 #include "service/web/WebUtil.h"
 
 #include "router/MgmtdTxRouter.h"
@@ -27,7 +26,26 @@ constexpr const char* kPublicPages[] = {
 
 }
 
-void WebService::handleEvent(MgmtdServiceManager& sm, const WebEvent& event)
+void WebService::handleEvent(MgmtdServiceManager& sm, WebEvent& event)
+{
+    switch (event.type())
+    {
+    case WebEventType::Http:
+        return routeHttpEvent(sm, event);
+
+    case WebEventType::Ipc:
+        return routeIpcEvent(sm, event);
+
+    case WebEventType::Grpc:
+        return routeGrpcEvent(sm, event);
+
+    default:
+        LOG_WARN("web event of no transport — dropping (type={})", static_cast<std::uint32_t>(event.type()));
+        return;
+    }
+}
+
+void WebService::routeHttpEvent(MgmtdServiceManager& sm, WebEvent& event)
 {
     Response resp;
     route(sm, event.request(), resp);
@@ -35,9 +53,9 @@ void WebService::handleEvent(MgmtdServiceManager& sm, const WebEvent& event)
     sm.postAction(std::make_unique<WebAction>(std::move(resp), event.sessionId()));
 }
 
-// The IPC counterpart of route(). Same shape, same reason: WebService knows which controller owns
-// which conversation, and the controller knows what the answer means.
-void WebService::handleIpcEvent(MgmtdServiceManager& sm, const WebIpcEvent& event)
+// An answer from another daemon, forwarded to the controller that owns the route serving it.
+// WebService routes it the same way it routes an HTTP request: it knows the map, not the domain.
+void WebService::routeIpcEvent(MgmtdServiceManager& sm, WebEvent& event)
 {
     const pz::ipc::IpcMessage* msg = event.message();
     if (!msg)
@@ -46,7 +64,7 @@ void WebService::handleIpcEvent(MgmtdServiceManager& sm, const WebIpcEvent& even
         return;
     }
 
-    switch (event.type())
+    switch (event.ipcType())
     {
     case WebIpcEventType::TopologyResponse:
         return m_topologyController.onTopologyResponse(sm, *msg);
@@ -61,7 +79,35 @@ void WebService::handleIpcEvent(MgmtdServiceManager& sm, const WebIpcEvent& even
         return m_aiController.onModelsUpdateResponse(sm, *msg);
 
     default:
-        LOG_WARN("unhandled web IPC event (type={})", static_cast<std::uint32_t>(event.type()));
+        LOG_WARN("unhandled web IPC event (type={})", static_cast<std::uint32_t>(event.ipcType()));
+        return;
+    }
+}
+
+// The gRPC counterpart. Same shape and for the same reason: pretzel-ai's answers are answers to
+// routes this service serves, so they end in the controller that asked — which is where reading
+// `partial`, `final` or `stage` out of a vendor-shaped body belongs.
+void WebService::routeGrpcEvent(MgmtdServiceManager& sm, WebEvent& event)
+{
+    switch (event.grpcType())
+    {
+    case WebGrpcEventType::ChatResponse:
+    case WebGrpcEventType::ModelListResponse:
+        return m_chatController.onGrpcResponse(sm, event);
+
+    case WebGrpcEventType::CorpusStatusResponse:
+    case WebGrpcEventType::CorpusDocumentList:
+    case WebGrpcEventType::CorpusExceptionList:
+    case WebGrpcEventType::CorpusRefreshProgress:
+        return m_techDocController.onGrpcResponse(sm, event);
+
+    case WebGrpcEventType::BenchtestResponse:
+    case WebGrpcEventType::BenchtestRunProgress:
+        return m_benchtestController.onGrpcResponse(sm, event);
+
+    default:
+        LOG_WARN("dropping pretzel-ai answer with no handler (type={}, ticket={})",
+                 static_cast<std::uint32_t>(event.grpcType()), event.ticket());
         return;
     }
 }

@@ -11,8 +11,8 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, 
                                              EnginedTxRouter* txRouter)
     : m_eventFactory(eventFactory), m_actionFactory(actionFactory), m_txRouter(txRouter),
       m_bootstrapService(std::make_unique<BootstrapService>(m_eventFactory, m_actionFactory)),
-      m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>()),
-      m_probeService(std::make_unique<ProbeService>()), m_adminService(std::make_unique<AdminService>()),
+      m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>(m_eventFactory)),
+      m_probeService(std::make_unique<ProbeService>(m_eventFactory)), m_adminService(std::make_unique<AdminService>()),
       m_credentialService(std::make_unique<CredentialService>()),
       m_collectionService(std::make_unique<CollectionService>()), m_chatService(std::make_unique<ChatService>()),
       m_logTailService(std::make_unique<LogTailService>())

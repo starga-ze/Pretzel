@@ -1,5 +1,7 @@
 #include "service/probe/ProbeService.h"
 
+#include "event/EnginedEventFactory.h"
+
 #include "service/probe/InventoryProjection.h"
 
 #include "router/EnginedTxRouter.h"
@@ -38,6 +40,10 @@ std::chrono::milliseconds responseTimeout()
 
 }
 
+ProbeService::ProbeService(EnginedEventFactory* eventFactory) : m_eventFactory(eventFactory)
+{
+}
+
 void ProbeService::start()
 {
     m_pending = false;
@@ -60,7 +66,8 @@ std::unique_ptr<EnginedEvent> ProbeService::schedule(std::chrono::steady_clock::
     if (m_lastPollAt.time_since_epoch().count() == 0 || now - m_lastPollAt >= pollInterval())
     {
         m_lastPollAt = now;
-        return std::make_unique<ProbeEvent>(ProbeEventType::TriggerProbe);
+        return m_eventFactory->create(EnginedEventDomain::Probe,
+                                  static_cast<std::uint32_t>(ProbeEventType::TriggerProbe));
     }
 
     return nullptr;

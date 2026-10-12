@@ -14,11 +14,15 @@ namespace pz::engined
 {
 
 class EnginedServiceManager;
+class EnginedEventFactory;
 
 class HeartbeatService
 {
 public:
-    HeartbeatService() = default;
+    // Takes the event factory for the same reason BootstrapService does: the events this service
+    // raises for itself — a poll is due, a round is over — are made the way every other event is
+    // made, so there is one place that knows which class an event type becomes.
+    explicit HeartbeatService(EnginedEventFactory* eventFactory);
     ~HeartbeatService() = default;
 
     void start();
@@ -30,6 +34,8 @@ public:
     void handleAction(EnginedServiceManager& serviceManager, const HeartbeatAction& action);
 
 private:
+    EnginedEventFactory* m_eventFactory{nullptr};
+
     struct DaemonEntry
     {
         bool pending{false};

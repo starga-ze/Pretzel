@@ -25,6 +25,7 @@ class ApiEvent;
 class ApiAction;
 class CollectordEvent;
 class CollectordServiceManager;
+class CollectordEventFactory;
 struct ConnectorTest;
 
 // One reusable set of vendor API credentials, published from the mgmtd UI into
@@ -149,9 +150,10 @@ struct IssuedCredential
 class ApiService
 {
 public:
-    // The io_context is needed by the controllers this service owns (the collection timers and the
-    // SASE probe's async calls), so it is a construction dependency rather than passed per call.
-    explicit ApiService(boost::asio::io_context& ioc);
+    // The io_context is needed by the controllers this service owns; the event factory is needed
+    // for the same reason BootstrapService takes one — the Setup and RunPeriodic events this
+    // service raises for itself are made where every other event is made.
+    ApiService(boost::asio::io_context& ioc, CollectordEventFactory* eventFactory);
     ~ApiService() = default;
 
     void start();
@@ -216,6 +218,7 @@ private:
     // Re-issue key/token for auto-refresh credentials whose interval has elapsed (RunPeriodic).
     void autoRefreshTick(CollectordServiceManager& sm, std::chrono::steady_clock::time_point now);
 
+    CollectordEventFactory* m_eventFactory{nullptr};
     bool m_setupDone{false};
     std::chrono::steady_clock::time_point m_lastPeriodicAt{};
     // authProfileOid -> when it was last re-issued, for the auto-refresh interval.

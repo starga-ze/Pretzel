@@ -89,7 +89,7 @@ public:
     std::optional<std::string> takeAiModelResult(std::uint32_t ticket);
 
     // The same arrangement for one assistant turn: pretzel-ai calls the vendor, which takes
-    // seconds, and answers on the ticket the browser is polling. Filed by the WebIpcEvent handler,
+    // seconds, and answers on the ticket the browser is polling. Filed by WebService's IPC-answer handler,
     // drained by the poll route — both on the main loop, so no lock.
     void setChatResult(std::uint32_t ticket, std::string resultJson);
     std::optional<std::string> takeChatResult(std::uint32_t ticket);
