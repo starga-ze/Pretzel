@@ -54,8 +54,11 @@
     { id: 'B', scheme: 'google-chrome', shape: 'bare',
       expect: 'the exact customer URL — expect allowed if a decision is remembered for this origin, ' +
               'permissionRequested if not' },
-    { id: 'C', scheme: 'google-chrome', shape: 'current',
-      expect: 'same scheme but WITH a path — shows whether ruleLogLevel truncates externalApp.url' },
+    { id: 'C', scheme: 'google-chrome', shape: 'custom', pathProbe: true,
+      expect: 'host + path + query — shows exactly where the log truncates externalApp.url' },
+    { id: 'E', scheme: 'google-chrome', shape: 'opaque', pathProbe: true,
+      expect: 'payload after the colon with NO "//" — if the log still shows a plain ' +
+              '"google-chrome:", then a bare-looking customer log cannot prove the call was bare' },
     { id: 'D', scheme: 'msteams', shape: 'bare',
       expect: 'a scheme with a real registered app and (probably) no remembered decision — ' +
               'expect permissionRequested WITH a visible dialog' },
@@ -695,6 +698,7 @@
     buildUrl({ scheme, shape, target }) {
       const s = String(scheme || '').trim().replace(/:+$/, '').replace(/\/+$/, '') || 'google-chrome';
       const strip = (u) => String(u || '').replace(/^[a-z0-9+.-]+:\/\//i, '');
+      if (shape === 'opaque')  return `${s}:${strip(target).replace(/^\/+/, '') || 'probe'}`;
       if (shape === 'slashes') return `${s}://`;
       if (shape === 'current') return `${s}://${strip(location.href)}`;
       if (shape === 'custom')  return `${s}://${strip(target)}`;
@@ -796,13 +800,28 @@
       }
     }
 
+    // The customer event, field for field: a bare `google-chrome:` with no `//`, no host, no
+    // path. Forced here rather than read off the form, because picking any URL shape other than
+    // "scheme only" produces `google-chrome://…` and no longer matches what is being reproduced.
+    customerRepro(probe) {
+      const url = this.buildUrl({ scheme: 'google-chrome', shape: 'bare' });
+      this.log.launch(`customer repro — ${url}`);
+      this.log.info('customer repro — expect externalApp.scheme === "google-chrome:" and ' +
+        'externalApp.url === "google-chrome:" (no "//", no host); compare policy.action and ' +
+        'whether a launchBehavior field is present');
+      this.attempt('gesture', url, 0, ' customer', probe);
+    }
+
     // Walk the repro matrix, one case at a time, far enough apart that each case's verdict is
     // unambiguously its own. Every case is a real in-handler navigation.
     repro(cases, { intervalMs = 3000, probe } = {}) {
       cases.forEach((c, i) => {
         setTimeout(() => {
           const scheme = c.unique ? this.uniqueScheme(c.scheme) : c.scheme;
-          const url = this.buildUrl({ scheme, shape: c.shape, target: c.target });
+          const target = !c.pathProbe ? c.target
+            : c.shape === 'opaque' ? `payload-${this._token()}`
+            : `${location.host}/p-${this._token()}?q=${this._token()}`;
+          const url = this.buildUrl({ scheme, shape: c.shape, target });
           this.log.launch(`repro ${c.id} — ${url}`);
           this.log.info(`repro ${c.id} — ${c.expect}`);
           this.attempt('gesture', url, 0, ` repro:${c.id}`, probe);
@@ -920,6 +939,8 @@
       this.$('exLaunchBtn')?.addEventListener('click', () => this._onLaunch());
       this.$('exRedirectBtn')?.addEventListener('click', () => this.launcher.chromeRedirect(this.identity));
       this.$('exIdentBtn')?.addEventListener('click', () => this._onShowIdentity());
+      this.$('exCustomerBtn')?.addEventListener('click', () => this.launcher.customerRepro(
+        (tag) => this.launchProbe.watch(tag, (verdict) => this.activity.info(verdict))));
       this.$('exReproBtn')?.addEventListener('click', () => this.launcher.repro(REPRO_MATRIX, {
         probe: (tag) => this.launchProbe.watch(tag, (verdict) => this.activity.info(verdict)),
       }));
@@ -940,7 +961,8 @@
       const custom = this.$('exCustom');
       const target = this.$('exTarget');
       if (custom) custom.disabled = this.$('exScheme')?.value !== 'custom';
-      if (target) target.disabled = this.$('exPath')?.value !== 'custom';
+      const shape = this.$('exPath')?.value;
+      if (target) target.disabled = !(shape === 'custom' || shape === 'opaque');
 
       const cfg = this._launchConfig();
       const text = this.$('exUrlText');

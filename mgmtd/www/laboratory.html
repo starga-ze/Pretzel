@@ -315,6 +315,7 @@
               <label class="lab-field-label" for="exPath">URL shape</label>
               <select class="lab-select" id="exPath">
                 <option value="bare" selected>scheme only (google-chrome:)</option>
+                <option value="opaque">scheme:&lt;payload&gt; (no slashes, no host)</option>
                 <option value="slashes">scheme:// (no host)</option>
                 <option value="current">scheme://&lt;this page, http(s) stripped&gt;</option>
                 <option value="custom">scheme://&lt;custom target&gt;</option>
@@ -359,6 +360,7 @@
             <button class="btn btn-primary" id="exLaunchBtn" style="align-self:flex-end">Launch…</button>
             <button class="btn" id="exRedirectBtn" style="align-self:flex-end" title="Runs the “open in Chrome” browser-sniffing redirect pattern">Chrome redirect pattern</button>
             <button class="btn" id="exIdentBtn" style="align-self:flex-end">Browser identity</button>
+            <button class="btn btn-primary" id="exCustomerBtn" style="align-self:flex-end" title="Fire exactly the customer event: bare google-chrome: with no host and no path">Customer repro — google-chrome:</button>
             <button class="btn btn-primary" id="exReproBtn" style="align-self:flex-end" title="Fire one controlled attempt per hypothesis, 3 s apart">Repro matrix</button>
             <button class="btn" id="exScanBtn" style="align-self:flex-end" title="Try candidate schemes one at a time and see which one opens an app">Scan schemes</button>
           </div>

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pretzel-status": {
+      "command": "node",
+      "args": ["/home/jinho/pretzel/tools/mcp/pretzel-status.mjs"]
+    }
+  }
+}
