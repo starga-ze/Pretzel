@@ -12,7 +12,7 @@
 
   window.NMS = window.NMS || {};
 
-  // Read live (not once): settings tabs switch client-side without a page load (see main.js).
+  // Read live (not once): settings tabs switch client-side without a page load (see core/topbar.js).
   const activeTab = () => new URLSearchParams(location.search).get('tab') || window.NMS.settingsDefaultTab;
   const DRAFT_KEY = 'sites';
 
@@ -72,6 +72,14 @@
     after: () => ({ sites: state.sites }),
     onPublished() {
       deployed = JSON.parse(JSON.stringify(state.sites));
+      window.NMS.draft.clear(DRAFT_KEY);
+    },
+    // The mirror of onPublished: that one adopts the staged copy as committed, this one puts the
+    // committed copy back. The in-memory state is reset here and not left to load(), because a
+    // tab the operator is not looking at never re-loads — it would keep its staged list, report
+    // dirty on the next refresh(), and turn Publish back on.
+    revert() {
+      state.sites = JSON.parse(JSON.stringify(deployed));
       window.NMS.draft.clear(DRAFT_KEY);
     },
   });

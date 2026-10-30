@@ -198,13 +198,25 @@
   gap: 34px; align-items: stretch; align-content: stretch; grid-template-rows: minmax(0, 1fr);
   flex: 1 1 auto; min-height: 0; }
 
-.topo-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
+/* 20px, not 12px. The seam between the Prisma Access band and the two cards under it is the most
+   meaningful boundary on the deck — one side is a service Palo Alto runs, the other is the
+   customer's own racks — and at 12px it was TIGHTER than the 18px of padding sitting unused
+   inside the band just above it. A page that separates its two halves less than it pads one of
+   them is telling the reader the wrong thing about which boundary matters.
+   `space-between` on top of that gap: the gap is the floor, and any room the column has over its
+   content is added to these two seams rather than pooling inside the band, where it had nothing
+   to do but look like a hole. */
+.topo-col { display: flex; flex-direction: column; gap: 20px; min-width: 0; min-height: 0;
+  justify-content: space-between; }
 
-/* Collapsed, the regions frame is a fixed thing and nothing in the middle column takes the slack, so
-   the column spreads it — across EVERY gap, not just the ones below the hand-offs. That was the old
-   arrangement's fault: the private cards lived in a nested stack with its own justify-content, so
-   four cards sat 40px apart while the two above them sat 6px apart, in one column. */
-.topo-col:has(.topo-plane.is-closed) { justify-content: space-between; }
+/* The middle column's slack belongs to Prisma Access, not to the seams.
+   It used to be spread with `justify-content: space-between`, which is the obvious reading of "the
+   column is taller than its content" and the wrong one here: the gaps are not neutral space, they
+   are where the hand-off wires run, and widening them by eighty pixels each pushed the customer's
+   own boxes — the NGFW and the private estate — to the bottom of the deck with two empty bands
+   above them. The slack now falls inside the Prisma Access band (see .topo-pa-zone), so the part
+   of the picture that scales with the estate is the part that grows, and the two private cards
+   keep the height their contents ask for. */
 
 
 /* ── Endpoint / destination cards (the two outer columns) ───────────────────── */
@@ -359,6 +371,13 @@
      the page fits until the day it matters. The rows are also the three same-sized slots the region
      is offering, which is what makes "this one is empty" read at a glance. */
   min-height: 64px;
+  /* A fixed slot, and deliberately NOT a flex item that grows. Letting the lanes absorb the
+     frame's spare room made a lane's height mean something it must not mean: collapsed, one
+     region had the whole frame to itself and its lanes stood tall; expanded, six regions split
+     the same frame and the same lanes shrank — so "view all regions" appeared to resize the
+     fabric. A GlobalProtect lane is the same object either way, so it is the same height either
+     way, and what grows instead is the frame around it (.topo-plane-b). */
+  flex: 0 0 auto;
 }
 .topo-svc.tone-gw     { --topo-tone: var(--tc-gw); }
 .topo-svc.tone-swg    { --topo-tone: var(--tc-swg); }
@@ -686,8 +705,11 @@
      11px padding already puts more than this between it and the cards below, so widening here also
      brings the two distances closer together rather than further apart. */
   display: flex; flex-direction: column; gap: 16px;
-  /* Top pads for the label; the rest is the band's own inset from the cards it holds. */
-  padding: 24px 11px 11px;
+  /* Top pads for the label; the rest is the band's own inset from the cards it holds. The foot is
+     tighter than the sides on purpose: the Data Plane card already carries 7px of its own below
+     the hand-offs, so an equal 11px here stacked into 18px of nothing under the last row — more
+     space than separated the whole band from the NGFW beneath it. */
+  padding: 24px 11px 7px;
   border-radius: 17px;
   border: 1px solid color-mix(in srgb, var(--tc-gw) 15%, transparent);
   /* An even ground, with a small lift at the top-left ON TOP of it rather than instead of it. The
@@ -697,12 +719,14 @@
   background:
     radial-gradient(120% 50% at 0% 0%, color-mix(in srgb, var(--tc-gw) 6%, transparent), transparent 70%),
     color-mix(in srgb, var(--tc-gw) 6%, transparent);
-  /* Content height by default; it takes the column's slack only when the regions frame inside it is
-     open and has something to do with the room. Closed, the slack falls to the gaps below the band —
-     which is where the Service Connection's link runs, and the one seam worth widening. */
+  /* Content height. The band held the column's slack for one revision, pooled under the Data
+     Plane card, and a band with a hand's width of empty wash at the foot reads as something
+     failing to load rather than as room. The slack goes to the column's two seams instead —
+     see .topo-col — which is the one place on this deck where more space means more of what it
+     already means. The cards below are the customer's own racks and stay as tall as what they
+     hold, either way. */
   flex: 0 1 auto; min-height: 0;
 }
-.topo-pa-zone:has(.topo-plane:not(.is-closed)) { flex: 1 1 auto; }
 
 .topo-pa-zone-t {
   position: absolute; top: 8px; left: 14px;
@@ -816,10 +840,17 @@
 .topo-plane {
   --topo-tone: var(--tc-gw);
   display: flex; flex-direction: column; min-height: 0;
-  flex: 1 1 auto;   /* the one thing on the stage allowed to take the slack */
+  /* As tall as the regions it holds, and no taller. It used to take the band's spare room, and
+     the room landed between the last region and .topo-plane-f — which draws a hairline across
+     the top of the hand-offs. That hairline is a separator: it means "the regions end here and
+     the egress begins". Floated off the regions with empty space on both sides it stopped
+     separating anything and just read as the card being torn in half. */
+  flex: 0 1 auto;
 }
-/* Collapsed it is a header and one region — a fixed thing, not the part that stretches. */
-.topo-plane.is-closed { flex: 0 0 auto; }
+/* Collapsed it shows one region instead of six, but it is still the part of the band that grows:
+   the room has to end up somewhere, and a taller Data Plane is the honest place for it — the band
+   exists to hold the regions. Were this `0 0 auto` the band would simply pad itself, which is the
+   same empty space one level further in. */
 /* The header band is as tall as the detail mark that floats over its right end, so the mark sits
    inside the band instead of hanging into the first region below it. */
 /* The shared heading block on the left, the regions control at the end of the same line. No padding
@@ -856,8 +887,17 @@
    so the pointer resting anywhere over the regions meant the page simply would not move. */
 .topo-plane-b {
   display: flex; flex-direction: column; gap: 6px; margin-top: 5px;
-  flex: 1 1 auto; min-height: 0;
+  /* Content height. Growing it is what pushed the hand-off footer away from the regions it is
+     supposed to sit under — see .topo-plane. */
+  flex: 0 1 auto; min-height: 0;
 }
+/* A region is as tall as the lanes it holds, in every state. The spare room stays in the frame,
+   below the regions and above the hand-off footer — which is the one place in this picture where
+   empty space is honest: it is the room the regions this frame is not currently showing would
+   occupy, and opening them fills it. Handing that room to the regions instead made the lanes
+   change size with the toggle; handing it to the gaps outside pushed the private cards down the
+   deck. Inside the frame it belongs to the thing it is about. */
+.topo-plane-b > * { flex: 0 0 auto; min-height: 0; }
 
 /* The regions the collapsed frame is not showing. Clicking it is the same as opening the frame. */
 .topo-more {

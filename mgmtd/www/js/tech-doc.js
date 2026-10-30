@@ -2,10 +2,16 @@
 (function () {
   'use strict';
   const { esc } = window.NMS.utils;
-  const PAGE = 100, MIN_QUERY = 3;
+  // Ten. The documents open inline now, inside the product that holds them, so a page of a hundred
+  // pushed every product below it off the screen — the catalogue is the thing being browsed, and a
+  // list opened inside it has to stay the size of an entry in it rather than replacing it.
+  const PAGE = 10, MIN_QUERY = 3;
   let status = null, statusError = '', statusLoading = false;
   let selected = null, query = '', items = [], total = 0, offset = 0;
   let loading = false, error = '', sequence = 0, timer = null;
+  // Which manual's documents are currently rendered inline, so a re-render can tell "just opened"
+  // from "still open".
+  let shownInline = null;
   const expanded = new Set();
   const num = n => Number(n || 0).toLocaleString();
   const key = r => JSON.stringify([r.product, r.docset, r.version || '']);
@@ -42,11 +48,18 @@
     }
     return [...map].sort(([a],[b]) => a.localeCompare(b));
   }
+  // The documents open where the manual was clicked, inside the product that holds it — not in a
+  // panel below the whole catalogue. They used to render after the tree, which is why the tree was
+  // capped at 46vh: anywhere taller and the answer to a click was off the bottom of the page. With
+  // the list inline the cap has nothing to prevent, so the catalogue runs its full length and the
+  // page scrolls, which is what a catalogue is supposed to do.
   function tree() {
     return products().map(([product, rows]) => `<details class="tdp-prod" data-product="${esc(product)}" ${expanded.has(product) ? 'open' : ''}>
       <summary><span class="tdp-name">${esc(product)}</span><span class="tdp-sum">${num(rows.reduce((n,r) => n + Number(r.documents),0))} documents</span></summary>
       <div class="tdp-books">${rows.sort((a,b) => a.docset.localeCompare(b.docset) || (b.version || '').localeCompare(a.version || '', undefined, {numeric:true})).map(r => `<button class="tdp-book${selected && key(r) === key(selected) ? ' active' : ''}" data-category="${esc(key(r))}" aria-pressed="${!!selected && key(r) === key(selected)}">
-        <span>${esc(r.docset || 'General')} · ${esc(r.version || 'Unversioned')}</span><span class="tdp-book-n">${num(r.documents)}</span></button>`).join('')}</div></details>`).join('') || '<p class="cm-loading">No documents yet. Run an update from Operation.</p>';
+        <span>${esc(r.docset || 'General')} · ${esc(r.version || 'Unversioned')}</span><span class="tdp-book-n">${num(r.documents)}</span></button>`).join('')}</div>${
+      selected && selected.product === product ? `<div class="tdp-inline" id="tdpInline">${panel()}</div>` : ''
+      }</details>`).join('') || '<p class="cm-loading">No documents yet. Run an update from Operation.</p>';
   }
   function row(d) {
     // Only published documentation links can become clickable, even for legacy DB rows.
@@ -61,7 +74,10 @@
   function panel() {
     const term = query.trim();
     if (term && term.length < MIN_QUERY) return '<p class="cm-loading">Enter at least 3 characters to search titles and URLs.</p>';
-    if (!term && !selected) return '<p class="cm-loading">Choose a product, manual and version to view documents.</p>';
+    // Nothing chosen and nothing searched: the catalogue IS the page, and a line under it telling
+    // the operator to choose a product was standing where the products they had not scrolled to
+    // yet should have been.
+    if (!term && !selected) return '';
     const label = term ? `Search: ${term}` : [selected.product,selected.docset,selected.version || 'Unversioned'].filter(Boolean).join(' / ');
     return `<section class="tdp-docs" aria-busy="${loading}">
       <div class="tdp-doc-head"><span>${esc(label)}${loading ? '' : ' — ' + num(total) + ' documents'}</span><span>Characters · Published</span></div>
@@ -74,10 +90,16 @@
     const el = document.getElementById('contentBody'); if (!el) return;
     const box = document.getElementById('tdpSearch');
     const caret = box && document.activeElement === box ? [box.selectionStart,box.selectionEnd] : null;
-    // The tree scrolls now, and render() rebuilds the page wholesale — so without this, choosing a
-    // manual sent the catalogue back to the top and the operator lost the place they were reading.
-    // Same reasoning as the caret above.
-    const treeTop = document.getElementById('tdpTree')?.scrollTop ?? null;
+    // render() rebuilds the page wholesale, and writing innerHTML puts the scroller back to the
+    // top — so without this, choosing a manual sent the catalogue to the top and the operator lost
+    // the place they were reading. Same reasoning as the caret above. It is the PAGE that scrolls
+    // now rather than the tree, so it is the page's position that has to survive the rebuild.
+    const pageTop = el.scrollTop;
+    // A manual the operator just picked, as opposed to one already open and merely re-rendering
+    // (loadPage renders twice: once to show it is loading, once with the rows). Only the first of
+    // those should move the page.
+    const openedNow = selected && key(selected) !== shownInline;
+    shownInline = selected ? key(selected) : null;
     el.innerHTML = `<div class="cfg-page"><div class="cfg-toolbar"><div class="cfg-toolbar-meta"><span class="cfg-h">PA Tech Docs</span><span class="cfg-h-sub">Technical documentation available to the assistant</span></div>
       <div class="cfg-toolbar-actions"><button class="btn-sm" id="tdpRefresh" ${statusLoading ? 'disabled' : ''}>${statusLoading ? 'Refreshing…' : 'Refresh'}</button><a class="btn-sm" href="/settings?tab=operation">Update corpus</a></div></div>
       ${statusError ? `<p class="op-msg err" role="alert">${esc(statusError)}</p>` : ''}
@@ -85,8 +107,9 @@
         <div><span class="tdp-k">Distinct bodies</span><span class="tdp-v">${status ? num(status.bodies) : '—'}</span></div>
         <div><span class="tdp-k">Last run</span><span class="tdp-v">${esc(status?.last_run_status || '—')}</span></div></div>
       <label class="tdp-search-label" for="tdpSearch">Search document titles and URLs</label><input class="tdp-search" id="tdpSearch" type="search" maxlength="256" placeholder="Search all titles and URLs (3+ characters)…" value="${esc(query)}" autocomplete="off">
-      ${!query.trim() ? `<div class="tdp-tree" id="tdpTree">${status ? tree() : statusLoading ? '<p class="cm-loading">Loading categories…</p>' : ''}</div>` : ''}
-      ${panel()}</div>`;
+      ${!query.trim()
+        ? `<div class="tdp-tree" id="tdpTree">${status ? tree() : statusLoading ? '<p class="cm-loading">Loading categories…</p>' : ''}</div>`
+        : panel()}</div>`;
     document.getElementById('tdpRefresh').onclick = async () => { await refresh(); if (selected || query.trim().length >= MIN_QUERY) loadPage(0); };
     document.getElementById('tdpSearch').oninput = e => {
       query = e.target.value; ++sequence; clearTimeout(timer); offset = 0; items = []; total = 0; error = '';
@@ -105,7 +128,10 @@
     document.getElementById('tdpPrev')?.addEventListener('click', () => loadPage(Math.max(0,offset - PAGE)));
     document.getElementById('tdpNext')?.addEventListener('click', () => loadPage(offset + PAGE));
     document.getElementById('tdpRetry')?.addEventListener('click', () => loadPage(offset));
-    if (treeTop != null) { const t = document.getElementById('tdpTree'); if (t) t.scrollTop = treeTop; }
+    el.scrollTop = pageTop;
+    // `nearest`, so a list that is already on screen is left exactly where it is — only one that
+    // opened below the fold moves, and only as far as it has to.
+    if (openedNow) document.getElementById('tdpInline')?.scrollIntoView({ block: 'nearest' });
     if (caret) { const input = document.getElementById('tdpSearch'); input.focus(); input.setSelectionRange(...caret); }
   }
   async function loadPage(nextOffset) {

@@ -22,7 +22,7 @@
 
   window.NMS = window.NMS || {};
 
-  // Read live (not once): settings tabs switch client-side without a page load (see main.js).
+  // Read live (not once): settings tabs switch client-side without a page load (see core/topbar.js).
   const activeTab = () => new URLSearchParams(location.search).get('tab') || window.NMS.settingsDefaultTab;
   const DRAFT_KEY = 'api_credentials';
   const SECRET_KEY = 'api_key_secrets';
@@ -155,15 +155,24 @@
   const refreshPending = () => window.NMS.staging.refresh();
 
   // ── Data load ────────────────────────────────────────────────────────────────
+  // `deployed` is published in the same breath as `state.keys`, never before it.
+  //
+  // staging.refresh() asks EVERY registered provider whether it is dirty, and the other seven
+  // modules call it whenever their own load finishes — so anything this one leaves half-assigned
+  // is read by somebody. With `deployed` set before the await below and `state.keys` only after
+  // it, this provider spent that await claiming every credential had been deleted: the Config
+  // Review button lit up with a count on arrival and went out again a moment later.
   async function load() {
+    let next = [];
     try {
       const d = await window.NMS.utils.loadSettings();
       if (!d) return;
       const api = ((d.scopes || {}).pretzel || {}).connector || {};
-      deployed = (Array.isArray(api.api_credentials) ? api.api_credentials : []).map(normalize);
-    } catch (_) { deployed = []; }
+      next = (Array.isArray(api.api_credentials) ? api.api_credentials : []).map(normalize);
+    } catch (_) { next = []; }
     await loadKeyState();   // shared per-key runtime state (stored/expiry/last test)
     const staged = window.NMS.draft.get(DRAFT_KEY, null);
+    deployed = next;
     state.keys = Array.isArray(staged) ? staged.map(normalize) : JSON.parse(JSON.stringify(deployed));
     refreshPending();
   }
@@ -179,6 +188,15 @@
     onPublished() {
       deployed = JSON.parse(JSON.stringify(state.keys));
       window.NMS.draft.clear(DRAFT_KEY);
+    },
+    // The typed passwords go with the credentials they belong to. They are not part of dirty()
+    // — a password alone never enabled Publish, because it rides its own path — but they are
+    // part of the candidate, and a revert that left them behind would hand the next edit a
+    // password the operator believes they discarded.
+    revert() {
+      state.keys = JSON.parse(JSON.stringify(deployed));
+      window.NMS.draft.clear(DRAFT_KEY);
+      window.NMS.draft.clear(SECRET_KEY);
     },
     problems() {
       const devices = (window.NMS.devices && window.NMS.devices.list()) || [];
@@ -674,20 +692,18 @@
     };
   }
 
-  function usedByCount(oid) {
-    const conns = (window.NMS.apiConnectors && window.NMS.apiConnectors()) || [];
-    return conns.filter(c => c.api_key === oid).length;
-  }
+  const usedBy = (oid) =>
+    (window.NMS.apiConnectors ? window.NMS.apiConnectors.usingCredential(oid) : []);
 
   async function removeKey(idx) {
     const k = state.keys[idx];
-    const used = usedByCount(k.oid);
-    if (used)
+    const used = usedBy(k.oid);
+    if (used.length)
     {
       const ok = await window.NMS.confirm({
         title: 'Remove API credential',
-        message: `${used} connector${used > 1 ? 's' : ''} still reference this credential.`,
-        detail: 'They will show as missing until you point them somewhere else.',
+        message: `${used.length} connector${used.length > 1 ? 's' : ''} still reference this credential.`,
+        detail: `${used.join(', ')} — they will show as missing until you point them somewhere else.`,
         confirmLabel: 'Remove anyway',
       });
       if (!ok)

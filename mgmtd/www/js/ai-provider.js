@@ -239,10 +239,10 @@
     payload: commitPayload,
     // The staged keys appear in the diff as words, never as values.
     //
-    // Not cosmetic: commitFlow returns early when `before` and `after` serialise the same, so a
-    // Publish that changed ONLY a key used to enable the button, open nothing, and store nothing.
-    // The key state has to be part of the diff for the flow to run at all — and putting it there
-    // is the honest thing anyway, because sealing a key is a change the review should show.
+    // Not cosmetic: the review dialog lists the entities that MOVED, pairing before() against
+    // after(). A key is not one of those rows unless it is in this view — so a Publish that
+    // changed only a key used to enable the button, open on an empty list and store nothing.
+    // Putting it here is the honest thing anyway: sealing a key is a change the review should show.
     //
     // "replaced" rather than "sealed" when one was already stored, so overwriting a key is a
     // visible difference and not two identical lines.
@@ -252,6 +252,15 @@
       deployed = clone(state.list);
       window.NMS.draft.clear(DRAFT_KEY);
       applyPendingKeys();
+    },
+    // Where onPublished SENDS the staged keys (applyPendingKeys), this drops them. They are part
+    // of dirty() here, so leaving them would put Publish straight back on; and they never left
+    // the browser, so nothing on the appliance has to be undone — what is sealed there stays
+    // sealed, which is what reverting to the running configuration means for a key.
+    revert() {
+      state.list = clone(deployed);
+      window.NMS.draft.clear(DRAFT_KEY);
+      pending.clear();
     },
     problems() {
       const out = [];

@@ -1,0 +1,104 @@
+{
+  "_onCommit": [
+    "main.js"
+  ],
+  "_onRefresh": [
+    "main.js"
+  ],
+  "_userStoreKeys": [
+    "main.js"
+  ],
+  "aiModelCard": [
+    "ai-model-card.js"
+  ],
+  "apiConnectors": [
+    "api-connectors.js"
+  ],
+  "apiEndpoints": [
+    "endpoints.js"
+  ],
+  "apiKeySecrets": [
+    "api-keys.js"
+  ],
+  "apiKeys": [
+    "api-keys.js"
+  ],
+  "benchtestCard": [
+    "benchtest-card.js"
+  ],
+  "benchtestRun": [
+    "benchtest-run.js"
+  ],
+  "clearOnLogout": [
+    "main.js"
+  ],
+  "collectChanges": [
+    "commit.js"
+  ],
+  "confirm": [
+    "commit.js"
+  ],
+  "currentUser": [
+    "main.js"
+  ],
+  "devices": [
+    "config.js"
+  ],
+  "draft": [
+    "commit.js"
+  ],
+  "gotoSettingsTab": [
+    "main.js"
+  ],
+  "modal": [
+    "commit.js"
+  ],
+  "navBadge": [
+    "main.js"
+  ],
+  "notice": [
+    "commit.js"
+  ],
+  "onCommit": [
+    "main.js"
+  ],
+  "onRefresh": [
+    "main.js"
+  ],
+  "revertFlow": [
+    "commit.js"
+  ],
+  "reviewFlow": [
+    "commit.js"
+  ],
+  "setPendingChanges": [
+    "main.js"
+  ],
+  "settingsDefaultTab": [
+    "main.js"
+  ],
+  "sites": [
+    "sites.js"
+  ],
+  "staging": [
+    "commit.js"
+  ],
+  "syncTiers": [
+    "main.js"
+  ],
+  "table": [
+    "table-tools.js"
+  ],
+  "techdoc": [
+    "techdoc.js"
+  ],
+  "testPanel": [
+    "commit.js"
+  ],
+  "utils": [
+    "main.js"
+  ],
+  "viewRunningConfig": [
+    "commit.js"
+  ]
+}

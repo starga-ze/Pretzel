@@ -290,8 +290,9 @@
 
   // Every key that matters to these rows, as a word. Never a value.
   //
-  // Not cosmetic: commitFlow returns early when `before` and `after` serialise the same, so a
-  // Publish that changed ONLY a key would enable the button, open nothing, and store nothing.
+  // Not cosmetic: the review dialog lists the entities that MOVED, pairing before() against
+  // after(). A key is not one of those rows unless it is in this view — so a Publish that
+  // changed only a key would enable the button, open on an empty list and store nothing.
   // "replaced" rather than "sealed" when one was already stored, so overwriting is a visible
   // difference and not two identical lines.
   const keyStateView = (staged) => {
@@ -318,6 +319,11 @@
       deployed = clone(state.list);
       window.NMS.draft.clear(DRAFT_KEY);
       applyPendingKeys();
+    },
+    revert() {
+      state.list = clone(deployed);
+      window.NMS.draft.clear(DRAFT_KEY);
+      pending.clear();
     },
     // Only what would publish BROKEN, which is the heading this list is rendered under. A
     // checkpoint switched off and fail-open are deliberate choices made on this page; listing them

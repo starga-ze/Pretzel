@@ -129,8 +129,9 @@
 
   // The staged passwords as words, never as values.
   //
-  // Not cosmetic: commitFlow returns early when `before` and `after` serialise the same, so a
-  // Publish that changed ONLY a password would enable the button, open nothing, and store nothing.
+  // Not cosmetic: the review dialog lists the entities that MOVED, pairing before() against
+  // after(). A password is not one of those rows unless it is in this view — so a Publish that
+  // changed only a password would enable the button, open on an empty list and store nothing.
   // Setting one is also a change the review should show.
   const pwStateView = (staged) => {
     const out = {};
@@ -155,6 +156,15 @@
       deployed = clone(state.list);
       window.NMS.draft.clear(DRAFT_KEY);
       applyPending();
+    },
+    // Where onPublished SENDS the staged passwords (applyPending), this drops them. They are part
+    // of dirty() here, so leaving them would put Publish straight back on; and they never left the
+    // browser, so no account on the appliance changes — an operator who staged a password reset
+    // and reverted has an account whose password is still the one it had.
+    revert() {
+      state.list = clone(deployed);
+      window.NMS.draft.clear(DRAFT_KEY);
+      pending.clear();
     },
     problems() {
       const out = [];

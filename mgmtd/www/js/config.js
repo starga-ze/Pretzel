@@ -18,7 +18,7 @@
 
   window.NMS = window.NMS || {};
 
-  // Read live (not once): settings tabs switch client-side without a page load (see main.js).
+  // Read live (not once): settings tabs switch client-side without a page load (see core/topbar.js).
   const activeTab = () => new URLSearchParams(location.search).get('tab') || window.NMS.settingsDefaultTab;
   const DRAFT_KEY = 'devices';
 
@@ -688,6 +688,10 @@
     after: () => splitForConfig(state.devices),
     onPublished() {
       deployed = JSON.parse(JSON.stringify(state.devices));
+      window.NMS.draft.clear(DRAFT_KEY);
+    },
+    revert() {
+      state.devices = JSON.parse(JSON.stringify(deployed));
       window.NMS.draft.clear(DRAFT_KEY);
     },
     problems() {

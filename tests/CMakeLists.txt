@@ -15,6 +15,24 @@
 # having nothing to run.
 add_custom_target(build-tests)
 
+# The browser-side staging registry, run under Node. Declared ABOVE the GoogleTest guard on
+# purpose: it compiles nothing and needs neither GoogleTest nor jsdom, so a tree without the C++
+# test framework can still run it.
+#
+# It is the one suite here that is not a unit test, and it exists because the bug it covers could
+# not have been caught by one. Each Configuration tab module is correct read on its own; what was
+# wrong was what the others could observe about it halfway through its load. So this loads all
+# eight into a stubbed context and asserts on the single cross-module answer they produce — the
+# count behind the Config Review button.
+find_program(NODE_EXECUTABLE NAMES node nodejs)
+if(NODE_EXECUTABLE)
+    add_test(NAME settings-staging
+             COMMAND ${NODE_EXECUTABLE} --test
+                     ${CMAKE_CURRENT_SOURCE_DIR}/test_settings_staging.cjs)
+else()
+    message(STATUS "node not found — skipping the settings-staging suite")
+endif()
+
 if(NOT GTest_FOUND)
     message(STATUS "GoogleTest not found — skipping tests/ (run ./pretzel install to enable)")
     return()

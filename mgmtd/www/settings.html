@@ -12,7 +12,7 @@
 <body>
 <div class="app-shell" id="appShell">
 
-  <aside class="sidebar" id="sidebar"><!-- populated by main.js --></aside>
+  <aside class="sidebar" id="sidebar"><!-- populated by core/nav.js --></aside>
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <div class="rail-toggle" id="railToggle">
     <button class="rail-toggle-btn" id="railToggleBtn" aria-label="Open sidebar">
@@ -23,22 +23,42 @@
   </div>
 
   <div class="content-wrap">
-    <header class="page-topbar" id="pageTopbar"><!-- populated by main.js --></header>
+    <header class="page-topbar" id="pageTopbar"><!-- populated by core/topbar.js --></header>
     <main class="content-body" id="contentBody"></main>
   </div>
 
 </div>
-<script src="js/main.js"></script>
+<!-- Core, in dependency order: the session guard runs first because a page that renders
+     before it knows the session is valid has already shown the previous person's data; utils
+     before nav because nav draws on it; topbar after nav because the console's shape is nav's
+     to define; boot last, because boot is the only file that runs anything. -->
+<script src="js/core/session.js"></script>
+<script src="js/core/utils.js"></script>
+<script src="js/core/nav.js"></script>
+<script src="js/core/topbar.js"></script>
+<script src="js/core/chrome.js"></script>
+<script src="js/core/boot.js"></script>
 <!-- Column sort, per-column filters and search for every table below. Loads before the tab modules
      because each one builds its table from it at module scope. -->
 <script src="js/table-tools.js"></script>
-<!-- Configuration is one page with two levels of tabs (see PAGES.settings in main.js). Every tab
+<!-- Shared dialog surfaces. Nothing below builds its own overlay: one modal element carries the
+     review diff, the running-config viewer, every confirmation and every device test. -->
+<script src="js/ui/modal.js"></script>
+<script src="js/ui/diff.js"></script>
+<script src="js/ui/device-test.js"></script>
+<!-- The staging layer, in dependency order: the draft store, the registry that reads it, then the
+     two flows that end a candidate. Loaded before the tab modules because each one registers a
+     provider at module scope. -->
+<script src="js/settings/draft.js"></script>
+<script src="js/settings/staging.js"></script>
+<script src="js/settings/review.js"></script>
+<script src="js/settings/revert.js"></script>
+<!-- Configuration is one page with two levels of tabs (see PAGES.settings in core/nav.js). Every tab
      module loads here: each renders into #contentBody only when its own tab is active, but keeps
      its data + staged state resident so cross-references (site names, profile labels, endpoint
-     and object pickers) resolve from any tab and the Publish pending state spans all
-     domains — commit.js owns that registry, so it loads first. users/operation are read-only
-     tabs with no staging provider. Splitting these across pages would break the shared registry. -->
-<script src="js/commit.js"></script>
+     and object pickers) resolve from any tab and the Config Review count spans all domains.
+     operation/techdoc are read-only tabs with no staging provider. Splitting these across pages
+     would break the shared registry. -->
 <script src="js/ai-provider.js"></script>
 <script src="js/ai-route.js"></script>
 <script src="js/sites.js"></script>

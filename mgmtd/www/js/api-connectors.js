@@ -17,7 +17,7 @@
 
   window.NMS = window.NMS || {};
 
-  // Read live (not once): settings tabs switch client-side without a page load (see main.js).
+  // Read live (not once): settings tabs switch client-side without a page load (see core/topbar.js).
   const activeTab = () => new URLSearchParams(location.search).get('tab') || window.NMS.settingsDefaultTab;
   const DRAFT_KEY = 'api_connectors';
   const DEFAULT_INTERVAL_SEC = 60;
@@ -56,6 +56,25 @@
 
   const blank = () => normalize({});
 
+  // ── Cross-module surface ─────────────────────────────────────────────────────
+  // The only one of the five inventory modules that published nothing, which is why the
+  // "N connectors still reference this" confirmation never appeared: api-keys.js and
+  // endpoints.js both guarded on `window.NMS.apiConnectors` and it has never existed, so
+  // `usedByCount()` was a constant zero and a credential could be deleted out from under the
+  // connector collecting with it, silently.
+  //
+  // It answers the question rather than handing out rows to be filtered. The two callers were
+  // also matching on `api_key` / `api_endpoint` / `endpoints`, field names this module stopped
+  // using when a connector gained its `items` list — so even once the object existed they would
+  // have gone on counting zero. A reference question belongs to the module that owns the
+  // reference; it is the only one that cannot get the field name wrong.
+  window.NMS.apiConnectors = {
+    list: () => state.connectors.map(c => ({ oid: c.oid, name: c.name })),
+    usingCredential: (oid) => state.connectors.filter(c => c.auth_profile === oid).map(c => c.name),
+    usingEndpoint: (oid) =>
+      state.connectors.filter(c => c.items.some(i => i.endpoint === oid)).map(c => c.name),
+  };
+
   // ── Staging ──────────────────────────────────────────────────────────────────
   const stage = () => { window.NMS.draft.set(DRAFT_KEY, state.connectors); refreshPending(); };
   const refreshPending = () => window.NMS.staging.refresh();
@@ -82,6 +101,10 @@
     after: () => ({ connectors: state.connectors }),
     onPublished() {
       deployed = JSON.parse(JSON.stringify(state.connectors));
+      window.NMS.draft.clear(DRAFT_KEY);
+    },
+    revert() {
+      state.connectors = JSON.parse(JSON.stringify(deployed));
       window.NMS.draft.clear(DRAFT_KEY);
     },
   });

@@ -22,7 +22,7 @@
 
   window.NMS = window.NMS || {};
 
-  // Read live (not once): settings tabs switch client-side without a page load (see main.js).
+  // Read live (not once): settings tabs switch client-side without a page load (see core/topbar.js).
   const activeTab = () => new URLSearchParams(location.search).get('tab') || window.NMS.settingsDefaultTab;
   const DRAFT_KEY = 'api_endpoints';
 
@@ -280,13 +280,19 @@
   const refreshPending = () => window.NMS.staging.refresh();
 
   // ── Data load ────────────────────────────────────────────────────────────────
+  // `deployed` is published in the same breath as `state.endpoints`, never before it — see the
+  // same note in api-keys.js. The status fetch below is an await in the middle of this function,
+  // and during it the other seven modules' refresh() calls read this provider: with `deployed`
+  // already set and `state.endpoints` still empty, it reported every endpoint as deleted, which
+  // is what lit the Config Review button up on arrival and switched it off again.
   async function load() {
+    let next = [];
     try {
       const d = await window.NMS.utils.loadSettings();
       if (!d) return;
       const api = ((d.scopes || {}).pretzel || {}).connector || {};
-      deployed = (Array.isArray(api.endpoints) ? api.endpoints : []).map(normalize);
-    } catch (_) { deployed = []; }
+      next = (Array.isArray(api.endpoints) ? api.endpoints : []).map(normalize);
+    } catch (_) { next = []; }
 
     // Best-effort: an endpoint list that renders is worth more than one that fails because the
     // Status column could not be filled. Without it every row falls back to its local test.
@@ -297,6 +303,7 @@
     } catch (_) { collected = {}; }
 
     const staged = window.NMS.draft.get(DRAFT_KEY, null);
+    deployed = next;
     state.endpoints = Array.isArray(staged) ? staged.map(normalize) : JSON.parse(JSON.stringify(deployed));
     refreshPending();
   }
@@ -311,6 +318,10 @@
     after: () => ({ endpoints: state.endpoints }),
     onPublished() {
       deployed = JSON.parse(JSON.stringify(state.endpoints));
+      window.NMS.draft.clear(DRAFT_KEY);
+    },
+    revert() {
+      state.endpoints = JSON.parse(JSON.stringify(deployed));
       window.NMS.draft.clear(DRAFT_KEY);
     },
   });
@@ -671,20 +682,18 @@
     document.getElementById('epPanel').classList.remove('open');
   };
 
-  function usedByCount(oid) {
-    const conns = (window.NMS.apiConnectors && window.NMS.apiConnectors()) || [];
-    return conns.filter(c => c.api_endpoint === oid || (c.endpoints || []).some(x => x.endpoint === oid)).length;
-  }
+  const usedBy = (oid) =>
+    (window.NMS.apiConnectors ? window.NMS.apiConnectors.usingEndpoint(oid) : []);
 
   async function removeEndpoint(idx) {
     const e = state.endpoints[idx];
-    const used = usedByCount(e.oid);
-    if (used)
+    const used = usedBy(e.oid);
+    if (used.length)
     {
       const ok = await window.NMS.confirm({
         title: 'Remove endpoint',
-        message: `${used} connector${used > 1 ? 's' : ''} still reference this endpoint.`,
-        detail: 'They will show as missing until you point them somewhere else.',
+        message: `${used.length} connector${used.length > 1 ? 's' : ''} still reference this endpoint.`,
+        detail: `${used.join(', ')} — they will show as missing until you point them somewhere else.`,
         confirmLabel: 'Remove anyway',
       });
       if (!ok)

@@ -13,7 +13,7 @@
 <body class="page-chatbot">
 <div class="app-shell" id="appShell">
 
-  <aside class="sidebar" id="sidebar"><!-- populated by main.js --></aside>
+  <aside class="sidebar" id="sidebar"><!-- populated by core/nav.js --></aside>
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
   <div class="rail-toggle" id="railToggle">
     <button class="rail-toggle-btn" id="railToggleBtn" aria-label="Open sidebar">
@@ -24,12 +24,21 @@
   </div>
 
   <div class="content-wrap">
-    <header class="page-topbar" id="pageTopbar"><!-- populated by main.js --></header>
+    <header class="page-topbar" id="pageTopbar"><!-- populated by core/topbar.js --></header>
     <main class="content-body" id="contentBody"></main>
   </div>
 
 </div>
-<script src="js/main.js"></script>
+<!-- Core, in dependency order: the session guard runs first because a page that renders
+     before it knows the session is valid has already shown the previous person's data; utils
+     before nav because nav draws on it; topbar after nav because the console's shape is nav's
+     to define; boot last, because boot is the only file that runs anything. -->
+<script src="js/core/session.js"></script>
+<script src="js/core/utils.js"></script>
+<script src="js/core/nav.js"></script>
+<script src="js/core/topbar.js"></script>
+<script src="js/core/chrome.js"></script>
+<script src="js/core/boot.js"></script>
 <script src="js/chatbot.js"></script>
 </body>
 </html>
