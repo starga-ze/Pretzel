@@ -37,6 +37,32 @@
   };
 
 
+  // The Operation page's card icons, in one place.
+  //
+  // They were three places: operation.js, benchtest-card.js and ai-model-card.js each carried the
+  // same `svg()` wrapper and an overlapping slice of this set, and techdoc.js carried none — so its
+  // two buttons sat unlabelled beside four cards' worth of labelled ones. A shared set is what
+  // makes "the same action looks the same everywhere" a property of the code rather than of
+  // whoever wrote the card last.
+  //
+  // One stroke weight, one 24-grid, currentColor throughout, so a button decides its own colour.
+  const opIcon = (inner) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" `
+    + `stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+
+  const OP_ICONS = {
+    view: opIcon('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'),
+    save: opIcon('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>'),
+    // One circular arrow: putting a stored document back. Deliberately not the same glyph as
+    // `update` — restoring what this appliance already holds and fetching what someone else holds
+    // are different acts, and two buttons a click apart should not claim to be the same one.
+    load: opIcon('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'),
+    // Two arrows round: going out to a source and bringing back what it says now.
+    update: opIcon('<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>'),
+    imp: opIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>'),
+    exp: opIcon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'),
+    search: opIcon('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'),
+  };
+
   window.NMS.utils = {
     // The Operation cards' icon set. Read it as `window.NMS.utils.icons.view`; a card that needs a
     // glyph nobody else has adds it here rather than starting a fourth private copy.

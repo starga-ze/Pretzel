@@ -3809,7 +3809,11 @@ body.is-col-resizing .th-grip::after { opacity: 1; background: var(--accent); }
    .nav-group-toggle is a full-width 12px/500 row, both of which are right for Configuration and
    wrong for a name on a heading line. */
 .nav-site {
-  flex: 1 1 auto; min-width: 0;
+  /* 0 1 auto, not 1 1 auto: this div is invisible but it is still a .nav-group, and the tier
+     handler steps over anything inside one. Grown to fill the row it swallowed every click on
+     the SITE heading that was not on the word itself, so the heading could not be folded. It
+     takes the switcher's own width and is pushed right by the margin instead. */
+  flex: 0 1 auto; min-width: 0; margin-left: auto;
   flex-direction: row; justify-content: flex-end;   /* .nav-group says column */
 }
 .nav-site-toggle {
