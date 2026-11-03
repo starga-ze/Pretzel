@@ -197,12 +197,22 @@
       // The corpus as a reader sees it. Collecting it is an action on the appliance and stays
       // under Administrator ▸ System Operation; this is where an operator comes to check what the
       // assistant can actually answer out of, which is a different errand.
-      type: 'link', id: 'pa-tech-docs', label: 'PA Tech Docs', href: 'tech-doc',
+      type: 'link', id: 'pa-tech-docs', label: 'Tech Documentation', href: 'tech-doc',
       icon: `<path d="M12 6.6C10.4 5.1 8.4 4.6 6 4.6a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1
                       c2.4 0 4.4.5 6 2"/>
              <path d="M12 6.6c1.6-1.5 3.6-2 6-2a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1
                       c-2.4 0-4.4.5-6 2"/>
              <path d="M12 6.6v13"/>`,
+    },
+    {
+      // Beside Tech Documentation because both are the vendor's published material rather than
+      // the customer's estate — but the errand is the opposite one. Documentation is looked up
+      // when you already have a question; this is read when the vendor has one for you, so it is a
+      // queue and not a catalogue (see advisories.css for why the two pages look nothing alike).
+      type: 'link', id: 'pa-advisories', label: 'Security Advisories', href: 'advisories',
+      icon: `<path d="M12 3.2l7.2 2.7v5.3c0 4.2-2.9 7.9-7.2 9.3-4.3-1.4-7.2-5.1-7.2-9.3V5.9z"/>
+             <line x1="12" y1="8.8" x2="12" y2="13"/>
+             <line x1="12" y1="15.8" x2="12.01" y2="15.8"/>`,
     },
 
     { type: 'section', label: 'Administrator' },
@@ -289,7 +299,10 @@
     // Two ways in, for two errands: the sidebar's Knowledge Service entry for reading the corpus,
     // and the Tech Documentation card under System Operation for collecting it. The title matches
     // the sidebar label, because that is what the operator clicked to get here.
-    'tech-doc':        { title: 'PA Tech Docs' },
+    'tech-doc':        { title: 'Tech Documentation' },
+    // One way in, unlike Tech Documentation: there is nothing for an operator to launch here. The
+    // feed is collected on a schedule and this page is only ever the reading of it.
+    'advisories':      { title: 'Security Advisories' },
   };
 
   // The flyout is rebuilt from the toggle's data-subitems each time it opens, so marking the

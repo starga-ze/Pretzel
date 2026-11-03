@@ -3,6 +3,7 @@
 #include "service/admin/AdminEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/chat/ChatEvent.h"
+#include "service/advisory/AdvisoryEvent.h"
 #include "service/collection/CollectionEvent.h"
 #include "service/commit/CommitEvent.h"
 #include "service/credential/CredentialEvent.h"
@@ -86,6 +87,9 @@ std::unique_ptr<EnginedEvent> EnginedEventFactory::create(std::unique_ptr<pz::ip
 
     case pz::ipc::IpcCmd::ApiCollectionSample:
         return std::make_unique<CollectionEvent>(CollectionEventType::ReceiveSample, std::move(msg));
+
+    case pz::ipc::IpcCmd::AdvisoryUpdate:
+        return std::make_unique<AdvisoryEvent>(AdvisoryEventType::ReceiveUpdate, std::move(msg));
 
     case pz::ipc::IpcCmd::ChatTurnStore:
         return std::make_unique<ChatEvent>(ChatEventType::ReceiveTurn, std::move(msg));

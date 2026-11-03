@@ -139,8 +139,5 @@
     if (key && !window.NMS._userStoreKeys.includes(key)) window.NMS._userStoreKeys.push(key);
   };
 
-  // Only one custom-select dropdown is open at a time; opening a second closes the first.
-  let csActiveClose = null;
-
   window.NMS.session = { initUserFooter };
 })();

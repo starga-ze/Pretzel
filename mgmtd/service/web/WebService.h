@@ -5,6 +5,7 @@
 #include "service/web/controller/AuthController.h"
 #include "service/web/controller/ChatController.h"
 #include "service/web/controller/BenchtestController.h"
+#include "service/web/controller/AdvisoryController.h"
 #include "service/web/controller/TechDocController.h"
 #include "service/web/controller/CollectionController.h"
 #include "service/web/controller/UserRequestController.h"
@@ -114,6 +115,12 @@ enum class WebRoute
     TechDocDocuments, // GET  /api/techdoc/documents?product=&docset=
     TechDocExceptions,// GET  /api/techdoc/exceptions?run=&reason=&offset=&limit=
 
+    // AdvisoryController — the vendor's published vulnerability feed, read side.
+    AdvisoryOverview, // GET  /api/advisory/overview
+    AdvisoryList,     // GET  /api/advisory/list?severity=&product=&q=&window=&sort=&offset=&limit=
+    AdvisoryDetail,   // GET  /api/advisory/detail?id=
+    AdvisoryRefresh,  // POST /api/advisory/refresh
+
     // BenchtestController — the benchtest sets, read here and written from Operation.
     BenchtestDatasets,   // GET    /api/benchtest/datasets?q=
     BenchtestUpload,     // POST   /api/benchtest/datasets?filename=  (body is the .jsonl)
@@ -222,6 +229,7 @@ private:
     AiController m_aiController;
     ChatController m_chatController;
     TechDocController m_techDocController;
+    AdvisoryController m_advisoryController;
     BenchtestController m_benchtestController;
     CollectionController m_collectionController;
     UserRequestController m_userRequestController;

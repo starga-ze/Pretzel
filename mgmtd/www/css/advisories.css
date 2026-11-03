@@ -1,0 +1,602 @@
+/* ============================================================
+   advisories.css — Knowledge › Security Advisories
+   ------------------------------------------------------------
+   Built on Site Infrastructure's surface, not on the admin table the rest of Knowledge uses, and
+   for the same reason topology gave itself one: this is a page you WATCH. The light configuration
+   pages are where the estate is described; a canvas is where something happening TO you is read.
+   An advisory feed is the second kind of page, so it gets the dark deck, the radial glow, the glass
+   cards and — like .topo-canvas — its own scoped token set, tuned for ink and glow on that backdrop
+   rather than for contrast on a white form.
+
+   Severity is the one new vocabulary. Five bands where main.css provides three, so they live here
+   as canvas tokens (--ac-*) and are redefined wholesale for light, where the hues have to darken to
+   hold their meaning on near-white.
+
+   The ramp, worst to least:
+
+       critical  red       ┐
+       high      orange    ┤ warm — act
+       medium    yellow    ┘
+       low       blue        cool — triage
+       unscored  grey        no judgement available
+
+   The first attempt at this was red / orange / AMBER / blue and it failed, which is worth recording
+   because the fix is not obvious. Amber darkened enough to be read on a white page is a
+   brown-orange: it measured 0.088 from the orange above it in OKLab, so the top three bands were
+   one warm smear and critical — the band an operator most needs to pick out of a scrolling list —
+   was competing with 261 mediums for the same corner of the spectrum.
+
+   What makes a real yellow work is splitting the colour's two jobs. A mark that is only DRAWN has
+   to be told apart from its neighbour; ink that is READ has to be legible, and yellow cannot be
+   both on white (#facc15 as text measures 1.40:1). So each band carries --ac-*-mark and
+   --ac-*-ink. On the dark canvas they are the same value. In light they part company for medium,
+   and for high, which needs a brighter mark than its own readable ink.
+
+   Measured, light: adjacent marks are 0.148 / 0.204 / 0.452 / 0.244 apart in OKLab, and no ink
+   reads below 3.98:1 on its own tint.
+
+   --ac-ok (a listed fix, the sync dot) is green — free to be green again now that low is blue.
+   ============================================================ */
+
+.adv-page { display: flex; flex-direction: column; min-height: 0; }
+
+/* ── Canvas ─────────────────────────────────────────────────────────────────
+   The glows are the page's temperature: a cool wash at the top where the headline sits, a warm one
+   bleeding up from the bottom right. Borrowed from .topo-canvas deliberately — the two pages should
+   read as the same kind of surface — but turned toward red, because this deck is about exposure. */
+.adv-canvas {
+  position: relative;
+  display: flex; flex-direction: column; gap: 16px;
+  border-radius: 16px;
+  border: 1px solid #232838;
+  background:
+    radial-gradient(1200px 520px at 15% -15%, rgba(244,63,94,.10), transparent 62%),
+    radial-gradient(760px 460px at 105% 108%, rgba(249,115,22,.09), transparent 60%),
+    #12151f;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  padding: 22px 22px 16px;
+  overflow: clip;
+
+  --ac-ink:    #e8ecf7;
+  --ac-dim:    #8b93ab;
+  --ac-faint:  #5a6379;
+  --ac-line:   rgba(255,255,255,.10);
+  --ac-card:   rgba(255,255,255,.045);
+  --ac-card-hi:rgba(255,255,255,.085);
+  --ac-well:   rgba(0,0,0,.20);
+  --ac-track:  rgba(255,255,255,.10);
+
+  /* Two tokens per band, because a colour has two jobs here and they do not have the same floor.
+     The MARK is drawn — ring, bar segment, dot, row edge — and only has to be told apart from its
+     neighbour. The INK is read — the score, the band's word — and has to be legible. On this dark
+     canvas every mark is also legible, so the pairs are identical; see the light block for where
+     they come apart. */
+  --ac-critical: #f85d78;  --ac-critical-ink: #f85d78;   /* red    */
+  --ac-high:     #fb923c;  --ac-high-ink:     #fb923c;   /* orange */
+  --ac-medium:   #facc15;  --ac-medium-ink:   #facc15;   /* yellow */
+  --ac-low:      #60a5fa;  --ac-low-ink:      #60a5fa;   /* blue   */
+  --ac-none:     #6b7489;  --ac-none-ink:     #6b7489;   /* grey   */
+  --ac-ok:       #4ade80;  /* green — a listed fix, the sync dot. Free again now that low is blue */
+}
+
+:root[data-theme="light"] .adv-canvas {
+  border-color: var(--border);
+  background:
+    radial-gradient(1200px 520px at 15% -15%, rgba(225,29,72,.07), transparent 62%),
+    radial-gradient(760px 460px at 105% 108%, rgba(249,115,22,.06), transparent 60%),
+    #fbfcfe;
+  box-shadow: inset 0 1px 0 rgba(15,23,42,.02);
+
+  --ac-ink:    #111827;
+  --ac-dim:    #566072;
+  --ac-faint:  #8a93a6;
+  --ac-line:   rgba(15,23,42,.11);
+  --ac-card:   rgba(255,255,255,.72);
+  --ac-card-hi:#ffffff;
+  --ac-well:   rgba(15,23,42,.04);
+  --ac-track:  rgba(15,23,42,.09);
+
+  /* Here the two jobs part company, and yellow is why. A true yellow is a near-white colour: #facc15
+     as text on this canvas measures 1.40:1, which is not readable at any size — and the yellow dark
+     enough to read (#a16207) is an olive that sits 0.088 from the orange above it, which is the
+     collision this ramp exists to avoid. So the mark stays yellow and the ink goes dark: the ring
+     and the bar are unmistakably yellow, the words on top of them are legible, and the band is
+     still the brightest thing in the list. */
+  --ac-critical: #b91c1c;  --ac-critical-ink: #b91c1c;
+  --ac-high:     #ea580c;  --ac-high-ink:     #c2410c;
+  --ac-medium:   #eab308;  --ac-medium-ink:   #a16207;
+  --ac-low:      #2563eb;  --ac-low-ink:      #1d4ed8;
+  --ac-none:     #94a3b8;  --ac-none-ink:     #5b6475;
+  --ac-ok:       #15803d;
+}
+
+/* One hue per band, set once and inherited by the gauge, the tag, the bar segment and the legend
+   dot — so a colour can never mean critical in one place and high in another. */
+.sev-critical { --ac-sev: var(--ac-critical); --ac-sev-ink: var(--ac-critical-ink); }
+.sev-high     { --ac-sev: var(--ac-high);     --ac-sev-ink: var(--ac-high-ink); }
+.sev-medium   { --ac-sev: var(--ac-medium);   --ac-sev-ink: var(--ac-medium-ink); }
+.sev-low      { --ac-sev: var(--ac-low);      --ac-sev-ink: var(--ac-low-ink); }
+.sev-none     { --ac-sev: var(--ac-none);     --ac-sev-ink: var(--ac-none-ink); }
+
+/* ── Head ───────────────────────────────────────────────────────────────── */
+.adv-head { display: flex; flex-direction: column; gap: 18px; }
+.adv-head-top { display: flex; align-items: flex-start; gap: 16px; }
+.adv-head-title { min-width: 0; flex: 1 1 auto; }
+
+.adv-h1 {
+  margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.025em; color: var(--ac-ink);
+  line-height: 1.2;
+}
+.adv-h1-sub { margin: 4px 0 0; font-size: 12px; color: var(--ac-dim); line-height: 1.45; }
+
+.adv-head-side { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+
+.adv-sync {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  font-size: 10.5px; font-weight: 600; color: var(--ac-dim);
+  background: var(--ac-card); border: 1px solid var(--ac-line); border-radius: 999px;
+  padding: 4px 11px;
+}
+.adv-sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ac-ok); flex: 0 0 auto; }
+.adv-sync-k {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ac-faint);
+}
+.adv-sync-v { color: var(--ac-ink); font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+.adv-sync .adv-sync-dot { animation: advPulse 2.4s infinite; }
+.adv-sync.warn { color: var(--ac-high); border-color: color-mix(in srgb, var(--ac-high) 40%, var(--ac-line)); }
+.adv-sync.warn .adv-sync-dot { background: var(--ac-high); animation: none; }
+@keyframes advPulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ac-ok) 55%, transparent); }
+  70%  { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.adv-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; flex: 0 0 auto; cursor: pointer;
+  color: var(--ac-dim); background: var(--ac-card);
+  border: 1px solid var(--ac-line); border-radius: 9px;
+  transition: color var(--tr), background var(--tr), border-color var(--tr);
+}
+.adv-icon-btn svg { width: 15px; height: 15px; }
+.adv-icon-btn:hover:not(:disabled) { color: var(--ac-ink); background: var(--ac-card-hi); }
+.adv-icon-btn:active:not(:disabled) svg { transform: rotate(-90deg); transition: transform .25s; }
+.adv-icon-btn:disabled { cursor: default; }
+/* A walk of the feed is a dozen throttled fetches, so the control has to keep saying it is working
+   for ten-odd seconds — long enough that a button which merely greyed out would read as stuck. */
+.adv-icon-btn.spin svg { animation: advSpin 1.1s linear infinite; }
+@keyframes advSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .adv-icon-btn.spin svg { animation: none; } }
+
+/* Collecting: the same chip, amber and without the heartbeat — the dot means "last sync was fine"
+   and that is not a claim this moment can make. */
+/* Blue, not the severity yellow it used to borrow: "collecting" is information, not a warning. */
+.adv-sync.busy { color: var(--ac-low-ink); border-color: color-mix(in srgb, var(--ac-low) 40%, var(--ac-line)); }
+.adv-sync.busy .adv-sync-dot { background: var(--ac-low); animation: advSyncBlink 1.1s ease-in-out infinite; }
+@keyframes advSyncBlink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .adv-sync.busy .adv-sync-dot { animation: none; } }
+
+/* ── Readout: count · distribution · revised ────────────────────────────────
+   Three readings on one line, and the middle one is the page's thesis. The bar is the picture of
+   the week; the legend under it carries the same numbers and IS the severity filter, so the control
+   and the readout are one object rather than two that have to be kept in agreement. */
+.adv-readout {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 26px;
+  background: var(--ac-well); border: 1px solid var(--ac-line); border-radius: 13px;
+  padding: 15px 18px;
+}
+
+.adv-total { display: flex; flex-direction: column; gap: 1px; }
+.adv-total-n {
+  font-size: 32px; font-weight: 800; letter-spacing: -.04em; color: var(--ac-ink);
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.adv-total-k {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ac-faint);
+}
+
+.adv-dist { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.adv-bar {
+  display: flex; gap: 2px; height: 8px; border-radius: 999px; overflow: hidden;
+  background: var(--ac-track);
+}
+.adv-seg {
+  background: var(--ac-sev);
+  /* The glow is what makes a 3-of-588 sliver read as a warning rather than as a rendering artefact. */
+  box-shadow: 0 0 10px -1px color-mix(in srgb, var(--ac-sev) 65%, transparent);
+  transition: flex var(--tr);
+}
+.adv-seg.empty { background: var(--ac-track); box-shadow: none; }
+
+.adv-legend { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.adv-leg {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap;
+  font: inherit; font-size: 10.5px; font-weight: 600; color: var(--ac-dim);
+  background: transparent; border: 1px solid transparent; border-radius: 999px;
+  padding: 3px 9px;
+  transition: color var(--tr), background var(--tr), border-color var(--tr);
+}
+.adv-leg:hover:not(:disabled) { color: var(--ac-ink); background: var(--ac-card); }
+.adv-leg:focus-visible { outline: 2px solid var(--ac-sev); outline-offset: 1px; }
+.adv-leg:disabled { opacity: .38; cursor: default; }
+/* Only the chosen band wears its hue. Tinted all the time, the legend would read as five standing
+   warnings above a list that may be empty. */
+.adv-leg.on {
+  color: var(--ac-sev-ink);
+  background: color-mix(in srgb, var(--ac-sev) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ac-sev) 42%, transparent);
+}
+.adv-leg-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ac-sev); flex: 0 0 auto; }
+.adv-leg-k { white-space: nowrap; }
+.adv-leg-n { font-variant-numeric: tabular-nums; opacity: .72; }
+.adv-leg.on .adv-leg-n { opacity: 1; }
+
+.adv-revised { display: flex; flex-direction: column; gap: 1px; text-align: right; }
+.adv-revised-n {
+  font-size: 22px; font-weight: 700; letter-spacing: -.03em; color: var(--ac-faint);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.adv-revised.on .adv-revised-n { color: var(--ac-high); }
+.adv-revised-k {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ac-faint);
+}
+
+/* ── Filter strip ───────────────────────────────────────────────────────── */
+.adv-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.adv-search-wrap { position: relative; display: flex; align-items: center; }
+.adv-search-ic {
+  position: absolute; left: 11px; width: 14px; height: 14px; color: var(--ac-faint);
+  pointer-events: none;
+}
+.adv-search {
+  font-family: inherit; font-size: 12px; color: var(--ac-ink);
+  background: var(--ac-card); border: 1px solid var(--ac-line); border-radius: 10px;
+  padding: 7px 12px 7px 32px; width: 280px;
+  transition: border-color var(--tr), background var(--tr);
+}
+.adv-search::placeholder { color: var(--ac-faint); }
+.adv-search:focus {
+  outline: none; background: var(--ac-card-hi);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--ac-line));
+}
+.adv-filters-spacer { flex: 1 1 auto; }
+
+.adv-select {
+  font-family: inherit; font-size: 11.5px; color: var(--ac-ink);
+  background: var(--ac-card); border: 1px solid var(--ac-line); border-radius: 10px;
+  padding: 7px 10px; max-width: 220px; cursor: pointer;
+}
+.adv-select.narrow { max-width: 150px; }
+.adv-select:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--ac-line)); }
+/* The options render on the OS surface, not on the canvas, so they need the page's own ink or they
+   come out white-on-white in light mode. */
+.adv-select option { background: var(--surface); color: var(--text); }
+
+/* ── List ───────────────────────────────────────────────────────────────── */
+.adv-list { display: flex; flex-direction: column; gap: 8px; }
+
+.adv-row {
+  position: relative;
+  display: grid; grid-template-columns: 50px minmax(0, 1fr) auto 14px;
+  align-items: center; gap: 15px; width: 100%; text-align: left;
+  font: inherit; color: var(--ac-ink); cursor: pointer;
+  background: var(--ac-card); border: 1px solid var(--ac-line); border-radius: 13px;
+  padding: 13px 15px;
+  transition: transform var(--tr), background var(--tr), border-color var(--tr), box-shadow var(--tr);
+}
+/* The severity edge. A 2px bar inside the left border rather than a tinted row: the band has to be
+   findable while scrolling without washing the card it is on. */
+.adv-row::before {
+  content: ''; position: absolute; left: 0; top: 11px; bottom: 11px; width: 2px;
+  border-radius: 0 2px 2px 0; background: var(--ac-sev); opacity: .85;
+}
+.adv-row:hover {
+  background: var(--ac-card-hi); transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--ac-sev) 36%, var(--ac-line));
+  box-shadow: 0 6px 20px -12px rgba(0,0,0,.55);
+}
+.adv-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.adv-row.open {
+  background: var(--ac-card-hi);
+  border-color: color-mix(in srgb, var(--ac-sev) 60%, var(--ac-line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ac-sev) 26%, transparent);
+}
+@media (prefers-reduced-motion: reduce) { .adv-row:hover { transform: none; } }
+
+/* The gauge. A CVSS score is a 0–10 magnitude and a bare number throws that away — 9.2 and 4.1 are
+   the same four pixels of ink. The ring draws the magnitude, the hue carries the band, so a row's
+   severity is legible before any of its text is. */
+.adv-gauge {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 50px; height: 50px; flex: 0 0 auto;
+}
+.adv-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(var(--ac-sev) calc(var(--pct, 0) * 3.6deg), var(--ac-track) 0);
+  -webkit-mask: radial-gradient(farthest-side, #0000 calc(100% - 3.5px), #000 calc(100% - 3.5px));
+          mask: radial-gradient(farthest-side, #0000 calc(100% - 3.5px), #000 calc(100% - 3.5px));
+}
+.adv-gauge-n {
+  font-size: 14px; font-weight: 800; letter-spacing: -.035em; color: var(--ac-sev-ink);
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.adv-gauge.big { width: 56px; height: 56px; }
+.adv-gauge.big .adv-gauge-n { font-size: 16px; }
+.adv-gauge-slot { flex: 0 0 auto; }
+
+.adv-row-main { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.adv-row-top  { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.adv-cve {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--ac-ink);
+  letter-spacing: -.01em;
+}
+.adv-sev-tag {
+  font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--ac-sev-ink); border-radius: 5px; padding: 2px 7px; white-space: nowrap;
+  background: color-mix(in srgb, var(--ac-sev) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ac-sev) 34%, transparent);
+}
+.adv-tag {
+  font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  border-radius: 5px; padding: 2px 7px; white-space: nowrap; border: 1px solid transparent;
+}
+/* Two marks saying opposite things on purpose: one is work arriving, the other is work that can
+   now be finished. */
+.adv-tag.revised {
+  color: var(--ac-high);
+  background: color-mix(in srgb, var(--ac-high) 13%, transparent);
+  border-color: color-mix(in srgb, var(--ac-high) 30%, transparent);
+}
+.adv-tag.fix {
+  color: var(--ac-ok);
+  background: color-mix(in srgb, var(--ac-ok) 13%, transparent);
+  border-color: color-mix(in srgb, var(--ac-ok) 30%, transparent);
+}
+
+.adv-title {
+  font-size: 13px; color: var(--ac-ink); line-height: 1.45; opacity: .9;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.adv-row-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.adv-prod {
+  font-size: 10px; color: var(--ac-dim); white-space: nowrap;
+  background: var(--ac-well); border: 1px solid var(--ac-line); border-radius: 6px;
+  padding: 2px 7px;
+}
+.adv-prod.more { border-style: dashed; }
+
+/* Two dated facts, so a label column rather than a caption under a number: published and updated
+   are different questions and a row that showed only the later one made the operator guess which
+   they were looking at. Right-aligned and tabular so the dates form a column the eye can run down. */
+.adv-row-when {
+  display: grid; grid-template-columns: auto auto; align-items: baseline;
+  gap: 3px 10px; justify-items: end; flex: 0 0 auto;
+}
+.adv-when-v {
+  font-size: 11.5px; color: var(--ac-ink); white-space: nowrap;
+  font-variant-numeric: tabular-nums; font-feature-settings: 'tnum';
+}
+/* A revised date is the one worth noticing — it is the reason to read the row again. */
+.adv-when-v.upd  { color: var(--ac-high); font-weight: 600; }
+.adv-when-v.none { color: var(--ac-faint); }
+.adv-when-k {
+  font-size: 8.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ac-faint); white-space: nowrap;
+}
+.adv-row-go {
+  width: 14px; height: 14px; color: var(--ac-faint); flex: 0 0 auto;
+  transition: transform var(--tr), color var(--tr);
+}
+.adv-row:hover .adv-row-go { color: var(--ac-sev); transform: translateX(2px); }
+
+/* Placeholders at the real row height, so the pager does not jump up and back down while the first
+   page loads. */
+.adv-skel {
+  height: 78px; border-radius: 13px; border: 1px solid var(--ac-line);
+  background: linear-gradient(100deg, var(--ac-card) 30%, var(--ac-card-hi) 50%, var(--ac-card) 70%);
+  background-size: 220% 100%;
+  animation: advShimmer 1.4s ease-in-out infinite;
+}
+@keyframes advShimmer { from { background-position: 180% 0; } to { background-position: -80% 0; } }
+@media (prefers-reduced-motion: reduce) { .adv-skel { animation: none; } }
+
+.adv-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 11px;
+  border: 1px dashed var(--ac-line); border-radius: 13px; background: var(--ac-well);
+  padding: 52px 24px; text-align: center;
+}
+.adv-empty-t { margin: 0; font-size: 14px; font-weight: 600; color: var(--ac-ink); }
+.adv-empty-s { margin: 0; font-size: 12px; color: var(--ac-dim); max-width: 440px; line-height: 1.6; }
+.adv-hint { margin: 0; padding: 34px; text-align: center; font-size: 12.5px; color: var(--ac-dim); }
+
+.adv-notice {
+  margin: 0; font-size: 11.5px; color: var(--ac-high);
+  background: color-mix(in srgb, var(--ac-high) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ac-high) 28%, transparent);
+  border-radius: 10px; padding: 9px 13px;
+}
+#advNotice:empty { display: none; }
+
+.adv-btn {
+  font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ac-ink); cursor: pointer;
+  background: var(--ac-card); border: 1px solid var(--ac-line); border-radius: 9px;
+  padding: 6px 13px;
+  transition: background var(--tr), border-color var(--tr), color var(--tr);
+}
+.adv-btn:hover:not(:disabled) { background: var(--ac-card-hi); border-color: color-mix(in srgb, var(--accent) 40%, var(--ac-line)); }
+.adv-btn:disabled { opacity: .38; cursor: default; }
+
+.adv-pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 4px 0 2px; }
+.adv-pager:empty { display: none; }
+.adv-pager-n { font-size: 11.5px; color: var(--ac-dim); font-variant-numeric: tabular-nums; }
+
+/* ── Drawer ─────────────────────────────────────────────────────────────────
+   The canvas's own surface carried off the page edge, so opening an advisory reads as the row
+   enlarging rather than as a different kind of window appearing over it. */
+.adv-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(780px, 94vw);
+  display: flex; flex-direction: column; z-index: 60;
+  border-left: 1px solid #232838;
+  background:
+    radial-gradient(620px 320px at 100% -8%, rgba(244,63,94,.10), transparent 62%),
+    #12151f;
+  box-shadow: -16px 0 44px -20px rgba(0,0,0,.72);
+  transform: translateX(101%); transition: transform var(--tr); visibility: hidden;
+
+  --ac-ink: #e8ecf7; --ac-dim: #8b93ab; --ac-faint: #5a6379;
+  --ac-line: rgba(255,255,255,.10); --ac-card: rgba(255,255,255,.045);
+  --ac-card-hi: rgba(255,255,255,.085); --ac-well: rgba(0,0,0,.20);
+  --ac-track: rgba(255,255,255,.10);
+  --ac-critical: #f85d78; --ac-high: #fb923c; --ac-medium: #facc15;
+  --ac-low: #60a5fa; --ac-none: #6b7489; --ac-ok: #4ade80;
+  --ac-critical-ink: #f85d78; --ac-high-ink: #fb923c; --ac-medium-ink: #facc15;
+  --ac-low-ink: #60a5fa; --ac-none-ink: #6b7489;
+}
+:root[data-theme="light"] .adv-drawer {
+  border-left-color: var(--border);
+  background:
+    radial-gradient(620px 320px at 100% -8%, rgba(225,29,72,.06), transparent 62%),
+    #fbfcfe;
+  box-shadow: -16px 0 40px -22px rgba(15,23,42,.42);
+
+  --ac-ink: #111827; --ac-dim: #566072; --ac-faint: #8a93a6;
+  --ac-line: rgba(15,23,42,.11); --ac-card: rgba(255,255,255,.72);
+  --ac-card-hi: #ffffff; --ac-well: rgba(15,23,42,.04);
+  --ac-track: rgba(15,23,42,.09);
+  --ac-critical: #b91c1c; --ac-high: #ea580c; --ac-medium: #eab308;
+  --ac-low: #2563eb; --ac-none: #94a3b8; --ac-ok: #15803d;
+  --ac-critical-ink: #b91c1c; --ac-high-ink: #c2410c; --ac-medium-ink: #a16207;
+  --ac-low-ink: #1d4ed8; --ac-none-ink: #5b6475;
+}
+.adv-drawer.open { transform: none; visibility: visible; }
+.adv-drawer:focus { outline: none; }
+
+.adv-drawer-overlay {
+  position: fixed; inset: 0; z-index: 59; opacity: 0; pointer-events: none;
+  background: rgba(9,12,20,.44); backdrop-filter: blur(2px);
+  transition: opacity var(--tr);
+}
+.adv-drawer-overlay.open { opacity: 1; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .adv-drawer, .adv-drawer-overlay { transition: none; }
+}
+
+.adv-drawer-h {
+  display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px 15px;
+  border-bottom: 1px solid var(--ac-line);
+}
+.adv-drawer-id { min-width: 0; flex: 1 1 auto; }
+.adv-drawer-t {
+  font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--ac-ink);
+  letter-spacing: -.015em;
+}
+.adv-drawer-sub { font-size: 12px; color: var(--ac-dim); margin-top: 4px; line-height: 1.5; }
+.adv-drawer-x {
+  background: none; border: 0; color: var(--ac-faint); flex: 0 0 auto;
+  font-size: 24px; line-height: 1; cursor: pointer; padding: 0 2px;
+  transition: color var(--tr);
+}
+.adv-drawer-x:hover { color: var(--ac-ink); }
+
+.adv-tabs { display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--ac-line); }
+.adv-tabs:empty { display: none; }
+.adv-tab {
+  font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ac-dim);
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 10px 12px; cursor: pointer; margin-bottom: -1px;
+  transition: color var(--tr), border-color var(--tr);
+}
+.adv-tab:hover { color: var(--ac-ink); }
+.adv-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+
+.adv-drawer-b { flex: 1 1 auto; overflow: auto; padding: 18px 20px 30px; min-height: 0; }
+
+.adv-sec {
+  font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ac-faint); margin: 22px 0 10px;
+}
+.adv-drawer-b > .adv-sec:first-child { margin-top: 2px; }
+
+.adv-kvs {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 13px 20px;
+  background: var(--ac-well); border: 1px solid var(--ac-line); border-radius: 12px;
+  padding: 15px 17px;
+}
+.adv-kv { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.adv-kv-k {
+  font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ac-faint);
+}
+.adv-kv-v { font-size: 13px; color: var(--ac-ink); word-break: break-word; }
+.adv-kv-v.mono { font-family: var(--font-mono); font-size: 11.5px; }
+.adv-dim { color: var(--ac-dim); }
+
+.adv-vecs { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.adv-vec {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--ac-card); border: 1px solid var(--ac-line); border-radius: 10px;
+  padding: 9px 11px;
+}
+.adv-vec-k { font-size: 8.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ac-faint); }
+.adv-vec-v { font-size: 12px; color: var(--ac-ink); }
+
+.adv-p { margin: 0 0 10px; font-size: 13px; line-height: 1.65; color: var(--ac-ink); opacity: .88; }
+.adv-p:last-child { margin-bottom: 0; }
+.adv-none { margin: 0; font-size: 12.5px; color: var(--ac-dim); font-style: italic; }
+
+.adv-link { margin-top: 20px; }
+.adv-link a {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none;
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 9px; padding: 8px 13px;
+  transition: background var(--tr);
+}
+.adv-link a:hover { background: color-mix(in srgb, var(--accent) 19%, transparent); }
+.adv-link svg { width: 13px; height: 13px; }
+
+.adv-vtable { width: 100%; border-collapse: collapse; font-size: 12px; }
+.adv-vtable th {
+  text-align: left; padding: 8px 11px; border-bottom: 1px solid var(--ac-line);
+  font-size: 8.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ac-faint); white-space: nowrap;
+}
+.adv-vtable td {
+  padding: 9px 11px; border-bottom: 1px solid var(--ac-line);
+  color: var(--ac-ink); opacity: .9; vertical-align: top; word-break: break-word;
+}
+.adv-vtable tr:last-child td { border-bottom: 0; }
+.adv-vtable td.mono { font-family: var(--font-mono); font-size: 11px; }
+/* A listed fix is the actionable cell in this table — it is the version the operator is going to go
+   and install — so it is the only one that carries colour. */
+.adv-vtable td.mono.fixed { color: var(--ac-ok); opacity: 1; }
+
+/* ── Narrow ─────────────────────────────────────────────────────────────── */
+@media (max-width: 1040px) {
+  .adv-readout { grid-template-columns: auto minmax(0, 1fr); row-gap: 16px; }
+  .adv-revised { grid-column: 2; flex-direction: row; align-items: baseline; gap: 7px; text-align: left; }
+  .adv-search { width: 100%; }
+  .adv-search-wrap { flex: 1 1 220px; }
+  .adv-filters-spacer { display: none; }
+}
+@media (max-width: 680px) {
+  .adv-canvas { padding: 17px 14px 13px; border-radius: 13px; }
+  .adv-readout { grid-template-columns: minmax(0, 1fr); padding: 13px 14px; }
+  .adv-revised { grid-column: 1; }
+  .adv-row { grid-template-columns: 44px minmax(0, 1fr); row-gap: 9px; }
+  /* The dates drop under the title rather than off the row: when an advisory was last revised is
+     why half the visits to this page happen. */
+  .adv-row-when { grid-column: 2; justify-items: start; gap: 2px 8px; }
+  .adv-row-go { display: none; }
+  .adv-gauge { width: 44px; height: 44px; }
+  .adv-gauge-n { font-size: 12.5px; }
+  /* Five bands with their words wrap to three lines here. The dot already carries the band and the
+     bar above is the legend for it, so the word is what goes. */
+  .adv-leg-k { display: none; }
+  .adv-leg { padding: 3px 7px; }
+}

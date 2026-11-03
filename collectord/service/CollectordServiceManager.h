@@ -2,6 +2,7 @@
 
 #include "service/ServiceManager.h"
 
+#include "service/advisory/AdvisoryService.h"
 #include "service/api/ApiService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/heartbeat/HeartbeatService.h"
@@ -37,6 +38,7 @@ public:
     void execute() override;
 
     ApiService& apiService();
+    AdvisoryService& advisoryService();
     BootstrapService& bootstrapService();
     HeartbeatService& heartbeatService();
     ReloadService& reloadService();
@@ -53,6 +55,7 @@ private:
     boost::asio::io_context* m_ioContext;
 
     std::unique_ptr<ApiService> m_apiService;
+    std::unique_ptr<AdvisoryService> m_advisoryService;
     std::unique_ptr<BootstrapService> m_bootstrapService;
     std::unique_ptr<HeartbeatService> m_heartbeatService;
     std::unique_ptr<ReloadService> m_reloadService;

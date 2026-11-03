@@ -100,7 +100,7 @@
     // those should move the page.
     const openedNow = selected && key(selected) !== shownInline;
     shownInline = selected ? key(selected) : null;
-    el.innerHTML = `<div class="cfg-page"><div class="cfg-toolbar"><div class="cfg-toolbar-meta"><span class="cfg-h">PA Tech Docs</span><span class="cfg-h-sub">Technical documentation available to the assistant</span></div>
+    el.innerHTML = `<div class="cfg-page"><div class="cfg-toolbar"><div class="cfg-toolbar-meta"><span class="cfg-h">Tech Documentation</span><span class="cfg-h-sub">Technical documentation available to the assistant</span></div>
       <div class="cfg-toolbar-actions"><button class="btn-sm" id="tdpRefresh" ${statusLoading ? 'disabled' : ''}>${statusLoading ? 'Refreshing…' : 'Refresh'}</button><a class="btn-sm" href="/settings?tab=operation">Update corpus</a></div></div>
       ${statusError ? `<p class="op-msg err" role="alert">${esc(statusError)}</p>` : ''}
       <div class="tdp-stats"><div><span class="tdp-k">Documents</span><span class="tdp-v">${status ? num(status.documents) : '—'}</span></div>

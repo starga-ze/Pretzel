@@ -63,6 +63,12 @@
     search: opIcon('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'),
   };
 
+  // Only one custom-select dropdown is open at a time; opening a second closes the first.
+  // Module scope, not session.js: enhanceSelect below is the only thing that reads it, and a
+  // `let` inside that file's IIFE is invisible here — open() threw a ReferenceError on the
+  // first click instead of opening the panel, which took out every themed select in the app.
+  let csActiveClose = null;
+
   window.NMS.utils = {
     // The Operation cards' icon set. Read it as `window.NMS.utils.icons.view`; a card that needs a
     // glyph nobody else has adds it here rather than starting a fourth private copy.

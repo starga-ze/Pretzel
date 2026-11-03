@@ -279,6 +279,15 @@ WebService::Resolved WebService::resolve(const std::string& method, const std::s
         {"GET",  "/api/collection/endpoint-status",
             Match::Exact,  WebRoute::CollectionEndpointStatus, Access::Authenticated, false},
 
+        {"GET",  "/api/advisory/overview",
+            Match::Exact,  WebRoute::AdvisoryOverview, Access::Authenticated, false},
+        {"GET",  "/api/advisory/list",
+            Match::Prefix, WebRoute::AdvisoryList,     Access::Authenticated, false},
+        {"GET",  "/api/advisory/detail",
+            Match::Prefix, WebRoute::AdvisoryDetail,   Access::Authenticated, false},
+        {"POST", "/api/advisory/refresh",
+            Match::Exact,  WebRoute::AdvisoryRefresh,  Access::Authenticated, false},
+
         // The POST is Exact and listed first; the GET is Prefix because it carries ?site= and the
         // optional filters, and a prefix that matched first would swallow the action path.
         {"POST", "/api/user-requests/action",
@@ -455,6 +464,11 @@ void WebService::route(MgmtdServiceManager& sm, const Request& req, Response& re
     case WebRoute::CollectionSamples:  return m_collectionController.samples(sm, req, resp);
     case WebRoute::CollectionSample:   return m_collectionController.sample(sm, req, resp);
     case WebRoute::CollectionRunNow:   return m_collectionController.runNow(sm, req, resp);
+
+    case WebRoute::AdvisoryOverview: return m_advisoryController.overview(sm, req, resp);
+    case WebRoute::AdvisoryList:     return m_advisoryController.list(sm, req, resp);
+    case WebRoute::AdvisoryDetail:   return m_advisoryController.detail(sm, req, resp);
+    case WebRoute::AdvisoryRefresh:  return m_advisoryController.refresh(sm, req, resp);
     case WebRoute::CollectionEndpointStatus:
         return m_collectionController.endpointStatus(sm, req, resp);
 

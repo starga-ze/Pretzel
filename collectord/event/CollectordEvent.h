@@ -18,6 +18,7 @@ enum class CollectordEventDomain : std::uint32_t
     Scan = 3,
     Reload = 4,
     Api = 5,
+    Advisory = 6,
 };
 
 class CollectordEvent : public pz::event::Event

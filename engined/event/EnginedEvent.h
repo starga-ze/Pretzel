@@ -21,6 +21,7 @@ enum class EnginedEventDomain : std::uint32_t
     Credential = 6,
     Collection = 7,
     Chat = 8,
+    Advisory = 9,
 };
 
 class EnginedEvent : public pz::event::Event

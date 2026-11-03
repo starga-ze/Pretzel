@@ -14,22 +14,22 @@ enum class ApiEventType : std::uint32_t
     Unknown = 0,
     // Inbound IPC — one per connector-test operation, so route() dispatches straight to the owning
     // controller (no in-payload mode branch).
-    RunKeygenTest = 1,    // → CredentialController: issue/validate a credential
-    RunEndpointTest = 2,  // → EndpointController: call an endpoint (keygen first if no key)
-    RunSaseTest = 3,      // → StatusController: SASE device health + store api-key
-    ReceiveKeyState = 4,  // issued-key cache update (repo, stays in ApiService)
-    RunTlsProbe = 7,      // → CredentialController: TLS-only handshake, return the cert fingerprint
-    StoreSaseKey = 8,     // → StatusController: seal a SASE health api-key and hand it to engined
-    StoreCredential = 9,  // → CredentialController: seal an account credential and hand it to engined
+    RunKeygenTest = 1,   // → CredentialController: issue/validate a credential
+    RunEndpointTest = 2, // → EndpointController: call an endpoint (keygen first if no key)
+    RunSaseTest = 3,     // → StatusController: SASE device health + store api-key
+    ReceiveKeyState = 4, // issued-key cache update (repo, stays in ApiService)
+    Setup = 5,           // one-shot after bootstrap: fetch issued keys + arm periodic collection
+    RunPeriodic = 6,     // recurring: SASE health probe + credential auto-refresh (each self-gated)
+    RunTlsProbe = 7,     // → CredentialController: TLS-only handshake, return the cert fingerprint
+    StoreSaseKey = 8,    // → StatusController: seal a SASE health api-key and hand it to engined
+    StoreCredential = 9, // → CredentialController: seal an account credential and hand it to engined
     // AI model catalog. Two events for one operation because the key it needs lives in engined's
     // store: the first asks for it, the second arrives with it and makes the vendor call.
-    RefreshAiModels = 10,    // → AiModelController: fetch one vendor's model list
-    ReceiveAiKeyState = 11,  // → AiModelController: the sealed vendor key the refresh was waiting on
-    RunSaseCall = 12,     // → SaseController: call a SASE path with a method and body
-    RunCollectionNow = 13,// → ConnectorController: poll one item ahead of its interval
+    RefreshAiModels = 10,   // → AiModelController: fetch one vendor's model list
+    ReceiveAiKeyState = 11, // → AiModelController: the sealed vendor key the refresh was waiting on
+    RunSaseCall = 12,       // → SaseController: call a SASE path with a method and body
+    RunCollectionNow = 13,  // → ConnectorController: poll one item ahead of its interval
     // Schedule-driven (injected by ApiService::schedule, not from the wire).
-    Setup = 5,        // one-shot after bootstrap: fetch issued keys + arm periodic collection
-    RunPeriodic = 6,  // recurring: SASE health probe + credential auto-refresh (each self-gated)
 };
 
 class ApiEvent final : public CollectordEvent

@@ -1,5 +1,6 @@
 #include "event/CollectordEventFactory.h"
 
+#include "service/advisory/AdvisoryEvent.h"
 #include "service/api/ApiEvent.h"
 #include "service/bootstrap/BootstrapEvent.h"
 #include "service/heartbeat/HeartbeatEvent.h"
@@ -30,6 +31,9 @@ std::unique_ptr<CollectordEvent> CollectordEventFactory::create(CollectordEventD
 
     case CollectordEventDomain::Api:
         return std::make_unique<ApiEvent>(static_cast<ApiEventType>(type));
+
+    case CollectordEventDomain::Advisory:
+        return std::make_unique<AdvisoryEvent>(static_cast<AdvisoryEventType>(type));
 
     default:
         LOG_WARN("unhandled domain (domain={})", static_cast<std::uint32_t>(domain));
@@ -91,6 +95,9 @@ std::unique_ptr<CollectordEvent> CollectordEventFactory::create(std::unique_ptr<
 
     case pz::ipc::IpcCmd::ApiCollectionRunNow:
         return std::make_unique<ApiEvent>(ApiEventType::RunCollectionNow, std::move(msg));
+
+    case pz::ipc::IpcCmd::AdvisoryRefreshRequest:
+        return std::make_unique<AdvisoryEvent>(AdvisoryEventType::RunRefresh, std::move(msg));
 
     default:
         LOG_WARN("unhandled cmd (cmd={})", static_cast<int>(msg->getCmd()));

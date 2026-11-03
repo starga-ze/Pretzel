@@ -203,6 +203,26 @@ enum class IpcCmd : std::uint16_t
 
     AiCredentialStateRequest = 151,
     AiCredentialStateResponse = 152,
+
+    // ── Security advisories (the vendor's published vulnerability feed) ──
+    //
+    // The same three-daemon shape as the AI model catalog above, minus the response leg: collectord
+    // owns every outbound vendor HTTP call and engined owns every table, so collectord fetches and
+    // hands the rows over. No credential is involved — the feed is public — which is why this does
+    // not go anywhere near the api_credential machinery.
+    //
+    // One message carries one BATCH of advisories plus the run's outcome, not one advisory. The
+    // whole feed is 588 records and a page of it is well under the frame limit, but the batching is
+    // not about size: a run either reconciled the feed or it did not, and engined has to be able to
+    // write the sync row knowing which. `final` marks the last batch of a run.
+    AdvisoryUpdate = 155,          // collectord → engined: a batch of collected advisories
+    // mgmtd → collectord: collect NOW, ahead of the interval.
+    //
+    // Fire and forget, like ApiCollectionRunNow and for the same reason: the answer is not owed to
+    // the caller. The run it triggers produces ordinary AdvisoryUpdate batches, which engined
+    // stores exactly as it does the scheduled ones, so the console learns the result by re-reading
+    // its own rows.
+    AdvisoryRefreshRequest = 156,
 };
 
 // Coarse role of a command, orthogonal to its domain. Feeds IpcProtocol::isRoutingAllowed, which

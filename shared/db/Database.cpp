@@ -272,6 +272,89 @@ CREATE INDEX IF NOT EXISTS pb_user_request_site_created
 CREATE INDEX IF NOT EXISTS pb_user_request_sweep
     ON pb_user_request (response_time) WHERE status = 'Approved';
 
+-- ── Security advisories ─────────────────────────────────────────────────────────
+-- The vendor's published vulnerability feed, collected by collectord and written here.
+--
+-- Keyed on the vendor's advisory id, so an advisory seen in a hundred consecutive polls is one row
+-- that changes rather than a hundred rows that nearly agree. That is not a space optimisation: an
+-- advisory is a LIVING document. Measured against the upstream feed on 2026-11-02, 149 of 587
+-- published advisories had been revised after publication — median 22 days later, with a tail out
+-- past four years — as a score is re-scored, a fixed release ships, or the affected range widens.
+-- A row per observation would make "has this changed since the operator read it" a question you
+-- answer by diffing two samples; one row with a revision mark answers it by reading a column.
+--
+-- Not in api_collection, for the same reason pb_user_request is not: that table holds a SAMPLE of
+-- what an endpoint said, capped and aged out. These outlive any one sample and are read by id.
+--
+--   severity        normalised to critical|high|medium|low|none at collection, because the console
+--                   filters and sorts on it and the feed's own casing is not a contract.
+--   products        promoted out of record_json into an array so the product filter is an index
+--                   lookup rather than a JSON scan over every row.
+--   record_json     the feed entry exactly as it arrived, every field of it. Columns are promoted
+--                   only where something queries or orders by them; the vendor adds fields without
+--                   notice and a schema that named them all would need migrating each time.
+--   content_sha     what the revision mark is decided by. The feed's own `updated` moves for
+--                   reasons that are not content (it is also the RSS sort key), so "did this
+--                   change" is answered by hashing what we store, not by trusting a timestamp.
+--   revised_at      when WE first saw the content differ, which is the honest basis for "revised
+--                   in the last 30 days" — the vendor's timestamp says when they changed it, not
+--                   when this appliance could have known.
+--   notified_at     the alert mail's watermark. Null means nobody has been told about this row in
+--                   its current form; a revision clears it so the next sweep picks the row up.
+CREATE TABLE IF NOT EXISTS security_advisory (
+    id             TEXT        PRIMARY KEY,
+    title          TEXT        NOT NULL DEFAULT '',
+    severity       TEXT        NOT NULL DEFAULT 'none'
+        CONSTRAINT security_advisory_severity_check
+        CHECK (severity IN ('critical','high','medium','low','none')),
+    base_score     NUMERIC(3,1),
+    threat_score   NUMERIC(3,1),
+    published_at   TIMESTAMPTZ,
+    source_updated TIMESTAMPTZ,
+    products       TEXT[]      NOT NULL DEFAULT '{}',
+    has_fix        BOOLEAN     NOT NULL DEFAULT false,
+    record_json    JSONB       NOT NULL,
+    content_sha    TEXT        NOT NULL DEFAULT '',
+    first_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    revised_at     TIMESTAMPTZ,
+    notified_at    TIMESTAMPTZ,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- The console's default read: newest activity first, whether that activity was publication or a
+-- revision. coalesce rather than two indexes, because the list never orders by one without the
+-- other as its fallback.
+CREATE INDEX IF NOT EXISTS security_advisory_activity
+    ON security_advisory ((coalesce(source_updated, published_at)) DESC);
+CREATE INDEX IF NOT EXISTS security_advisory_severity
+    ON security_advisory (severity, published_at DESC);
+-- The product filter is a containment test on an array, which only a GIN index serves.
+CREATE INDEX IF NOT EXISTS security_advisory_products
+    ON security_advisory USING GIN (products);
+-- The alert sweep's read: rows nobody has been told about. Partial, because once an advisory has
+-- been notified it is history to this query and the sweep must never pay to skip it.
+CREATE INDEX IF NOT EXISTS security_advisory_unnotified
+    ON security_advisory (severity, revised_at) WHERE notified_at IS NULL;
+
+-- No alias table yet, deliberately. The vendor's sitemap lists 122 retired PAN-SA ids that now
+-- redirect to a CVE, and mapping them would let an operator look up a number from a 2018 runbook —
+-- but the redirect target is only in a Location header, and the shared HTTP client reports a
+-- status and a body, not headers. A table nothing can populate is worse than no table (see the
+-- DROP COLUMN note on pb_user_request above), so this waits for the client to grow redirects.
+
+-- One row, holding the last collection run. Single-row like startup_config: the console shows
+-- "synced 2h ago", not a history of syncs, and a run table nobody paginates is a table that only
+-- grows. A failed run leaves the previous advisories standing and says so here.
+CREATE TABLE IF NOT EXISTS security_advisory_sync (
+    oid         INT         PRIMARY KEY DEFAULT 1 CHECK (oid = 1),
+    started_at  TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    status      TEXT        NOT NULL DEFAULT '',
+    listed      INT         NOT NULL DEFAULT 0,
+    stored      INT         NOT NULL DEFAULT 0,
+    revised     INT         NOT NULL DEFAULT 0,
+    error       TEXT        NOT NULL DEFAULT ''
+);
+
 -- The assistant's conversations.
 --
 -- They lived in the operator's browser until now (localStorage), which meant they were lost on

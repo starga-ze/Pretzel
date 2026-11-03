@@ -127,14 +127,6 @@ bool resolveDevice(const std::string& objectOid, std::string& host, std::uint16_
     return false;
 }
 
-// The stages call one another across the timer and the async device call; forward-declared so the
-// definitions read in run order.
-void armJob(std::shared_ptr<CollectorJob> job, std::chrono::seconds delay);
-void collectOnce(std::shared_ptr<CollectorJob> job);
-void collectSaseOnce(std::shared_ptr<CollectorJob> job, const ApiEndpoint& ep, const std::string& token);
-void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::time_point startedAt,
-                pz::http::ClientResponse res);
-
 void sendSample(CollectordServiceManager& sm, const json& sample)
 {
     const std::string payload = sample.dump();
@@ -149,11 +141,15 @@ void sendSample(CollectordServiceManager& sm, const json& sample)
     sm.txRouter().handleIpcMessage(std::move(msg));
 }
 
-void armJob(std::shared_ptr<CollectorJob> job, std::chrono::seconds delay)
+}
+
+// The four stages below are members, so they read in run order without being declared twice.
+
+void ConnectorController::armJob(std::shared_ptr<CollectorJob> job, std::chrono::seconds delay)
 {
     job->timer.expires_after(delay);
     job->timer.async_wait(
-        [job](const boost::system::error_code& ec)
+        [this, job](const boost::system::error_code& ec)
         {
             if (ec)   // cancelled — the daemon is shutting down
                 return;
@@ -161,7 +157,7 @@ void armJob(std::shared_ptr<CollectorJob> job, std::chrono::seconds delay)
         });
 }
 
-void collectOnce(std::shared_ptr<CollectorJob> job)
+void ConnectorController::collectOnce(std::shared_ptr<CollectorJob> job)
 {
     // Two reads of one endpoint must not overlap: they would land as two samples a moment apart,
     // and the SLOWER one wins the projection's upsert however much older its body is — a request
@@ -255,14 +251,15 @@ void collectOnce(std::shared_ptr<CollectorJob> job)
 
     const auto startedAt = std::chrono::steady_clock::now();
     pz::http::requestAsync(job->sm->ioContext(), std::move(req),
-                           [job, startedAt](pz::http::ClientResponse res)
-                           { onResponse(job, startedAt, std::move(res)); });
+                           [this, job, startedAt](pz::http::ClientResponse res)
+                           { onResponse(job, startedAt, res); });
 }
 
 // One scheduled poll of a SASE endpoint. Deliberately converges on the same onResponse as the NGFW
 // path: what a sample records — did it answer, how fast, how big, what came back — is a fact about
 // the exchange, not about the vendor, so there is nothing here for the sample shape to branch on.
-void collectSaseOnce(std::shared_ptr<CollectorJob> job, const ApiEndpoint& ep, const std::string& token)
+void ConnectorController::collectSaseOnce(std::shared_ptr<CollectorJob> job, const ApiEndpoint& ep,
+                                          const std::string& token)
 {
     std::string path = ep.path;
     for (const auto& p : ep.params)
@@ -299,12 +296,13 @@ void collectSaseOnce(std::shared_ptr<CollectorJob> job, const ApiEndpoint& ep, c
 
     const auto startedAt = std::chrono::steady_clock::now();
     pz::http::requestAsync(job->sm->ioContext(), std::move(req),
-                           [job, startedAt](pz::http::ClientResponse res)
-                           { onResponse(job, startedAt, std::move(res)); });
+                           [this, job, startedAt](pz::http::ClientResponse res)
+                           { onResponse(job, startedAt, res); });
 }
 
-void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::time_point startedAt,
-                pz::http::ClientResponse res)
+void ConnectorController::onResponse(std::shared_ptr<CollectorJob> job,
+                                     std::chrono::steady_clock::time_point startedAt,
+                                     const pz::http::ClientResponse& res)
 {
     const auto latencyMs =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startedAt).count();
@@ -333,8 +331,6 @@ void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::ti
     }
 
     armJob(job, job->interval);
-}
-
 }
 
 ConnectorController::ConnectorController() = default;

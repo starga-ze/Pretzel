@@ -1,11 +1,19 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 
+namespace pz::http
+{
+struct ClientResponse;
+}
+
 namespace pz::collectord
 {
+
+struct ApiEndpoint;
 
 class ApiService;
 class CollectordServiceManager;
@@ -40,6 +48,19 @@ public:
     void runNow(const std::string& connectorOid, const std::string& endpointOid);
 
 private:
+    // One job's cycle: arm the timer, poll when it fires, and re-arm from the response. Declared
+    // here and defined in the .cpp like any other member — as members the four call one another
+    // whatever order they are defined in, so the cycle needs no forward declarations.
+    //
+    // Each still carries its job: unlike the advisory collector, which walks one feed, this runs
+    // one job per connector item and the shared_ptr is what tells a completion which it belongs to
+    // — and what keeps that job alive across the wait and the call.
+    void armJob(std::shared_ptr<CollectorJob> job, std::chrono::seconds delay);
+    void collectOnce(std::shared_ptr<CollectorJob> job);
+    void collectSaseOnce(std::shared_ptr<CollectorJob> job, const ApiEndpoint& ep, const std::string& token);
+    void onResponse(std::shared_ptr<CollectorJob> job, std::chrono::steady_clock::time_point startedAt,
+                    const pz::http::ClientResponse& res);
+
     std::vector<std::shared_ptr<CollectorJob>> m_jobs;
 };
 

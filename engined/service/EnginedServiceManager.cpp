@@ -14,7 +14,8 @@ EnginedServiceManager::EnginedServiceManager(EnginedEventFactory* eventFactory, 
       m_commitService(std::make_unique<CommitService>()), m_heartbeatService(std::make_unique<HeartbeatService>(m_eventFactory)),
       m_probeService(std::make_unique<ProbeService>(m_eventFactory)), m_adminService(std::make_unique<AdminService>()),
       m_credentialService(std::make_unique<CredentialService>()),
-      m_collectionService(std::make_unique<CollectionService>()), m_chatService(std::make_unique<ChatService>()),
+      m_collectionService(std::make_unique<CollectionService>()),
+      m_advisoryService(std::make_unique<AdvisoryService>()), m_chatService(std::make_unique<ChatService>()),
       m_logTailService(std::make_unique<LogTailService>())
 {
 }
@@ -128,6 +129,11 @@ CredentialService& EnginedServiceManager::credentialService()
 CollectionService& EnginedServiceManager::collectionService()
 {
     return *m_collectionService;
+}
+
+AdvisoryService& EnginedServiceManager::advisoryService()
+{
+    return *m_advisoryService;
 }
 
 ChatService& EnginedServiceManager::chatService()

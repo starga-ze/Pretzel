@@ -135,6 +135,10 @@ const char* IpcProtocol::cmdToStr(IpcCmd cmd) noexcept
         return "ApiSaseCallRequest";
     case IpcCmd::ApiCollectionRunNow:
         return "ApiCollectionRunNow";
+    case IpcCmd::AdvisoryUpdate:
+        return "AdvisoryUpdate";
+    case IpcCmd::AdvisoryRefreshRequest:
+        return "AdvisoryRefreshRequest";
     case IpcCmd::AiCredentialStateRequest:
         return "AiCredentialStateRequest";
     case IpcCmd::AiCredentialStateResponse:
@@ -218,6 +222,7 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::AiModelUpdateResponse:
     case IpcCmd::ApiSaseCallRequest:
     case IpcCmd::ApiCollectionRunNow:
+    case IpcCmd::AdvisoryRefreshRequest:
         return CmdCategory::DeviceOp;
 
     // Mutate engined's store — dst must be Engined.
@@ -232,6 +237,7 @@ CmdCategory IpcProtocol::classify(IpcCmd cmd) noexcept
     case IpcCmd::SaseApiKeyUpdate:
     case IpcCmd::SaseHealthResult:
     case IpcCmd::AiModelUpdate:
+    case IpcCmd::AdvisoryUpdate:
         return CmdCategory::Write;
 
     // Query another daemon's store or derived view.

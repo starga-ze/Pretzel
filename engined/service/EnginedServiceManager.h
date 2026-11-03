@@ -6,6 +6,7 @@
 #include "event/EnginedEvent.h"
 
 #include "service/admin/AdminService.h"
+#include "service/advisory/AdvisoryService.h"
 #include "service/bootstrap/BootstrapService.h"
 #include "service/chat/ChatService.h"
 #include "service/collection/CollectionService.h"
@@ -49,6 +50,7 @@ public:
     AdminService& adminService();
     CredentialService& credentialService();
     CollectionService& collectionService();
+    AdvisoryService& advisoryService();
     ChatService& chatService();
     LogTailService& logTailService();
 
@@ -71,6 +73,7 @@ private:
     std::unique_ptr<AdminService> m_adminService;
     std::unique_ptr<CredentialService> m_credentialService;
     std::unique_ptr<CollectionService> m_collectionService;
+    std::unique_ptr<AdvisoryService> m_advisoryService;
     std::unique_ptr<ChatService> m_chatService;
     std::unique_ptr<LogTailService> m_logTailService;
 

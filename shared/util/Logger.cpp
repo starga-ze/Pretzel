@@ -118,7 +118,7 @@ void Logger::Init(const std::string& logger_name, const std::string& log_filepat
     file_fmt->set_pattern("[%Y-%m-%d %H:%M:%S.%e][%!][%s:%#] %v");
     file_sink->set_formatter(std::move(file_fmt));
 
-    s_logger->flush_on(spdlog::level::debug);
+    s_logger->flush_on(spdlog::level::info);
 
     spdlog::cfg::load_env_levels();
 }
