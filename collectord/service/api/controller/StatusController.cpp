@@ -200,7 +200,8 @@ void StatusController::tick(std::chrono::steady_clock::time_point now, const Api
 
         // `sm` outlives every probe — the service manager is owned by the core for the life of the
         // process, the same lifetime the collector jobs rely on for their back-pointers.
-        pz::http::requestAsync(m_ioc, std::move(req), [this, target, sm = &sm](pz::http::ClientResponse res) {
+        CollectordServiceManager* const manager = &sm;
+        pz::http::requestAsync(m_ioc, std::move(req), [this, target, manager](pz::http::ClientResponse res) {
             m_inFlight[target] = false;
             bool ok = false;
             if (res.status == 200)
@@ -222,7 +223,7 @@ void StatusController::tick(std::chrono::steady_clock::time_point now, const Api
             for (const auto& [t, running] : m_inFlight)
                 if (running)
                     return;   // siblings still out; the last one home does the reporting
-            report(*sm);
+            report(*manager);
         });
     }
 

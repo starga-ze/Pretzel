@@ -19,6 +19,38 @@
 namespace pz::collectord
 {
 
+namespace
+{
+
+// Seal one plaintext field into the state document, or say why it could not be.
+//
+// Empty is not a failure — nothing to store for a field the caller did not have. `sealedAny`, when
+// given, is set once anything actually went in, which is how the caller below tells "stored
+// nothing because there was nothing" from "stored nothing because sealing is unavailable".
+//
+// This was two `[&]` closures, one per function, differing only in their return type. The capture
+// hid that both wrote to `state` and read `keyOid`; as parameters that is on the line.
+bool sealInto(nlohmann::json& state, const char* field, const std::string& plain, const std::string& keyOid,
+              bool* sealedAny = nullptr)
+{
+    if (plain.empty())
+        return true;
+
+    const auto sealed = pz::util::secret::encrypt(plain);
+    if (!sealed)
+    {
+        LOG_WARN("credential store unavailable — {} not persisted (oid={})", field, keyOid);
+        return false;
+    }
+
+    state[field] = *sealed;
+    if (sealedAny)
+        *sealedAny = true;
+    return true;
+}
+
+}
+
 using json = nlohmann::json;
 
 // ── Palo Alto cloud ───────────────────────────────────────────────────────────────────────
@@ -258,17 +290,9 @@ void sendApiCredentialState(CollectordServiceManager& sm, const std::string& key
 
     // The account (id/pw) is the durable credential — for sase the bearer token expires, so the
     // credential is what lets a later session re-issue without re-prompting the operator.
-    const auto seal = [&](const char* field, const std::string& plain) {
-        if (plain.empty())
-            return;
-        if (auto sealed = pz::util::secret::encrypt(plain))
-            state[field] = *sealed;
-        else
-            LOG_WARN("credential store unavailable — {} not persisted (oid={})", field, keyOid);
-    };
-    seal("id_enc", id);
-    seal("pw_enc", pw);
-    seal("key_enc", key);
+    sealInto(state, "id_enc", id, keyOid);
+    sealInto(state, "pw_enc", pw, keyOid);
+    sealInto(state, "key_enc", key, keyOid);
 
     const std::string payload = state.dump();
 
@@ -291,20 +315,9 @@ bool sendApiCredentialStore(CollectordServiceManager& sm, const std::string& key
     // last_test_* columns as they were.
 
     bool sealedAny = false;
-    const auto seal = [&](const char* field, const std::string& plain) {
-        if (plain.empty())
-            return true;   // nothing to store for this field is not a failure
-        if (auto sealed = pz::util::secret::encrypt(plain))
-        {
-            state[field] = *sealed;
-            sealedAny = true;
-            return true;
-        }
-        LOG_WARN("credential store unavailable — {} not persisted (oid={})", field, keyOid);
-        return false;
-    };
 
-    if (!seal("id_enc", id) || !seal("pw_enc", pw))
+    if (!sealInto(state, "id_enc", id, keyOid, &sealedAny)
+        || !sealInto(state, "pw_enc", pw, keyOid, &sealedAny))
         return false;
     if (!sealedAny)
         return false;   // caller asked to store nothing

@@ -397,8 +397,7 @@ void IcmpService::completeProbeSession()
             aliveIps.push_back(target.ip);
     }
 
-    std::sort(aliveIps.begin(), aliveIps.end(),
-              [](const std::string& lhs, const std::string& rhs) { return ipv4ToHostU32(lhs) < ipv4ToHostU32(rhs); });
+    std::sort(aliveIps.begin(), aliveIps.end(), IcmpService::byNumericAddress);
 
     const auto now = std::chrono::steady_clock::now();
 
@@ -497,6 +496,11 @@ std::uint32_t IcmpService::ipv4ToHostU32(const std::string& ip)
         throw std::invalid_argument("invalid ipv4: " + ip);
 
     return ntohl(addr.s_addr);
+}
+
+bool IcmpService::byNumericAddress(const std::string& lhs, const std::string& rhs)
+{
+    return ipv4ToHostU32(lhs) < ipv4ToHostU32(rhs);
 }
 
 }

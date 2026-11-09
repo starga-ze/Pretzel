@@ -63,6 +63,11 @@ private:
 
     static std::uint32_t ipv4ToHostU32(const std::string& ip);
 
+    // Sort order for the alive set: numeric, so 10.0.0.9 comes before 10.0.0.10. A named
+    // comparator rather than a lambda at the std::sort call — the direction of a comparator is
+    // the whole meaning of the sort, and it is the easiest thing in one to read backwards.
+    static bool byNumericAddress(const std::string& lhs, const std::string& rhs);
+
 private:
     ProbedEventFactory* m_eventFactory = nullptr;
     ProbedActionFactory* m_actionFactory = nullptr;

@@ -99,9 +99,13 @@ std::string sha256Hex(const std::string& in)
     return out.str();
 }
 
+// ASCII lower-case. A plain loop rather than std::transform with a lambda: the cast to unsigned
+// char is what makes it correct for bytes above 0x7F, and it is easier to see here than inside a
+// callable passed as the fourth argument of an algorithm.
 std::string lower(std::string s)
 {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+    for (char& c : s)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return s;
 }
 

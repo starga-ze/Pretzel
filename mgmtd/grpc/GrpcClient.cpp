@@ -77,6 +77,25 @@ GrpcClient::~GrpcClient() = default;
 
 namespace
 {
+
+// One value as the dump prints it: its byte count, then the value, cut at a ceiling.
+//
+// Values are capped; fields are not. A 32 KiB turn would otherwise bury the surrounding log, and
+// the cut is marked so nobody reads a truncated value as the whole of it.
+//
+// Bytes, and labelled as such: std::string::size() counts them, and pretzel-ai's dump sizes the
+// same way, so the two blocks line up on a Korean turn as well as an ASCII one.
+std::string cappedValue(const std::string& v)
+{
+    constexpr std::size_t kCap = 2048;
+
+    if (v.empty())
+        return "\"\" (empty)";
+
+    std::string out = "(" + std::to_string(v.size()) + " bytes) \"";
+    out += v.size() > kCap ? v.substr(0, kCap) + "\" …truncated" : v + "\"";
+    return out;
+}
 // The ChatRequest exactly as it goes on the wire, for lining this end up with what pretzel-ai
 // logs on receipt. Every field appears, including the empty ones — an absent line and an empty
 // value are different facts, and the whole reason to read this dump is to find out which one you
@@ -87,27 +106,14 @@ namespace
 // employee text, so it should take a decision.
 std::string dumpChatRequest(const v1::ChatRequest& r)
 {
-    // Values are capped; fields are not. A 32 KiB turn would otherwise bury the surrounding log,
-    // and the cut is marked so nobody reads a truncated value as the whole of it.
-    constexpr std::size_t kCap = 2048;
-    auto val = [](const std::string& v)
-    {
-        if (v.empty())
-            return std::string("\"\" (empty)");
-        // Bytes, and labelled as such: std::string::size() counts them, and pretzel-ai's dump
-        // sizes the same way so the two blocks line up on a Korean turn as well as an ASCII one.
-        std::string out = "(" + std::to_string(v.size()) + " bytes) \"";
-        out += v.size() > kCap ? v.substr(0, kCap) + "\" …truncated" : v + "\"";
-        return out;
-    };
 
     std::string d = "\n"
          "  ┌─ ChatRequest → pretzel-ai ─────────────────────────────────────────\n";
-    d += "  │ model           " + val(r.model())          + "\n";
-    d += "  │ message         " + val(r.message())        + "\n";
-    d += "  │ system_prompt   " + val(r.system_prompt())  + "\n";
-    d += "  │ session_id      " + val(r.session_id())     + "\n";
-    d += "  │ transaction_id  " + val(r.transaction_id()) + "\n";
+    d += "  │ model           " + cappedValue(r.model())          + "\n";
+    d += "  │ message         " + cappedValue(r.message())        + "\n";
+    d += "  │ system_prompt   " + cappedValue(r.system_prompt())  + "\n";
+    d += "  │ session_id      " + cappedValue(r.session_id())     + "\n";
+    d += "  │ transaction_id  " + cappedValue(r.transaction_id()) + "\n";
     d += "  │ history         " + std::to_string(r.history_size()) + " turn(s)\n";
     d += "  └────────────────────────────────────────────────────────────────────\n";
     return d;

@@ -46,22 +46,24 @@ std::string subjectLine(X509* cert)
 
 // Compare fingerprints ignoring case and separators, so a pin pasted as "aabb..." still matches
 // one captured as "AA:BB:..".
+// A fingerprint reduced to its hex digits, upper-cased: "aa:bb:cc" and "AABBCC" become one string.
+std::string canonicalFingerprint(const std::string& s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s)
+    {
+        if (std::isxdigit(static_cast<unsigned char>(c)))
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
 bool sameFingerprint(const std::string& a, const std::string& b)
 {
-    auto canon = [](const std::string& s)
-    {
-        std::string out;
-        out.reserve(s.size());
-        for (char c : s)
-        {
-            if (std::isxdigit(static_cast<unsigned char>(c)))
-                out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-        }
-        return out;
-    };
-    const std::string ca = canon(a);
-    const std::string cb = canon(b);
-    return !ca.empty() && ca == cb;
+    const std::string lhs = canonicalFingerprint(a);
+    const std::string rhs = canonicalFingerprint(b);
+    return !lhs.empty() && lhs == rhs;
 }
 
 }

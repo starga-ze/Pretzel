@@ -79,9 +79,9 @@ bool MgmtdCore::onInit()
     // Invoked only from GrpcClientHandler::drain(), on this loop thread, so the ServiceManager
     // stays single-threaded — and every write to it now happens inside an event handler rather
     // than in a lambda wired up here.
-    m_grpcClientHandler->setResultSink(
-        [rx = m_rxRouter.get()](GrpcCmd cmd, std::uint32_t ticket, std::string json)
-        { rx->handleGrpcMessage(cmd, ticket, std::move(json)); });
+    MgmtdRxRouter* const rxRouter = m_rxRouter.get();
+    m_grpcClientHandler->setResultSink([rxRouter](GrpcCmd cmd, std::uint32_t ticket, std::string json)
+                                       { rxRouter->handleGrpcMessage(cmd, ticket, std::move(json)); });
 
     // pretzel-ai came back. It caches what it was last pushed, so a restarted one usually
     // returns on the configuration it had — but a fresh install, or one whose cache was lost,

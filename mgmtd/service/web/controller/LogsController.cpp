@@ -22,7 +22,33 @@ using json = nlohmann::json;
 namespace
 {
 
+// Every character is a digit, and there is at least one. The cast matters: std::isdigit takes an
+// int that must be representable as unsigned char, and passing a negative char is undefined.
+bool allDigits(const std::string& s)
+{
+    if (s.empty())
+        return false;
+    for (char c : s)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(c)))
+            return false;
+    }
+    return true;
+}
+
 const std::array<const char*, 7> kKnownDaemons = {"ipcd", "engined", "mgmtd", "authd", "probed", "collectord", "topologyd"};
+
+// A daemon this appliance actually runs. An unknown name is refused rather than returning an
+// empty result set, so a typo in a filter reads as a mistake and not as a quiet log.
+bool isKnownDaemon(const std::string& daemon)
+{
+    for (const char* known : kKnownDaemons)
+    {
+        if (daemon == known)
+            return true;
+    }
+    return false;
+}
 
 // Severity threshold: a level filter of "warn" returns warn and worse. Accepts a name or a raw digit;
 // returns -1 for "no filter" / unrecognised.
@@ -30,7 +56,7 @@ int levelNameToNum(const std::string& s)
 {
     if (s.empty())
         return -1;
-    if (std::all_of(s.begin(), s.end(), [](unsigned char c) { return std::isdigit(c); }))
+    if (allDigits(s))
         return std::stoi(s);
     std::string u;
     for (char c : s)
@@ -87,8 +113,7 @@ void LogsController::list(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
     const std::string& target = req.target;
 
     const std::string daemon = queryParam(target, "daemon");
-    if (!daemon.empty() &&
-        std::none_of(kKnownDaemons.begin(), kKnownDaemons.end(), [&](const char* d) { return daemon == d; }))
+    if (!daemon.empty() && !isKnownDaemon(daemon))
         return fill(resp, 400, json{{"error", "unknown daemon"}}.dump());
 
     const int levelNum = levelNameToNum(queryParam(target, "level"));

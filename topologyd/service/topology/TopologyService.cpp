@@ -24,6 +24,16 @@ using json = nlohmann::json;
 namespace
 {
 
+// A lane's view is as old as its oldest contributing sample, so a lane fed by two reads carries
+// the earlier instant. `at` is a parameter rather than a capture: the two things this compares
+// are the lane and the sample, and both belong on the line.
+void ageLane(nlohmann::json& lane, const std::string& at)
+{
+    const std::string current = lane["collected_at"].get<std::string>();
+    if (current.empty() || (!at.empty() && at < current))
+        lane["collected_at"] = at;
+}
+
 constexpr const char* kTs = "YYYY-MM-DD\"T\"HH24:MI:SSOF";
 
 // What a collected sample is FOR. The classifier is deliberately the only place that maps an
@@ -437,12 +447,6 @@ nlohmann::json TopologyService::composeSase(const std::string& siteOid, const Sa
             const json rows = dataOf(parseBody(it->second));
             const std::string at = it->second.at;
 
-            // A lane's view is as old as its oldest contributing sample.
-            const auto age = [&at](json& lane) {
-                const std::string cur = lane["collected_at"].get<std::string>();
-                if (cur.empty() || (!at.empty() && at < cur))
-                    lane["collected_at"] = at;
-            };
 
             if (role == Role::SaseIpsec || role == Role::SaseIke)
             {
@@ -451,7 +455,7 @@ nlohmann::json TopologyService::composeSase(const std::string& siteOid, const Sa
                 json& into = (role == Role::SaseIpsec) ? scmTunnels : scmGateways;
                 if (rows.size() >= into.size())
                     into = rows;
-                age(sc);
+                ageLane(sc, at);
                 continue;
             }
 
@@ -464,7 +468,7 @@ nlohmann::json TopologyService::composeSase(const std::string& siteOid, const Sa
                 // the lane to the one connection it asked about.
                 if (rows.size() >= sc["connections"].size())
                     sc["connections"] = rows;
-                age(sc);
+                ageLane(sc, at);
                 continue;
             }
 
@@ -473,7 +477,7 @@ nlohmann::json TopologyService::composeSase(const std::string& siteOid, const Sa
                 ztna["groups"] = rows;
             else
                 ztna["connectors"] = rows;
-            age(ztna);
+            ageLane(ztna, at);
         }
 
         // ── The peer address, resolved ────────────────────────────────────────────────────────

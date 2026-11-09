@@ -296,30 +296,27 @@ std::string IpcProtocol::flagsToStr(std::uint8_t flags)
     if (flags == static_cast<std::uint8_t>(IpcFlag::None))
         return "None";
 
-    std::string out;
-
-    auto append = [&](const char* s)
+    // A table and one loop, rather than four ifs each calling a closure that appends with a
+    // separator. The separator rule — only between names, never leading — lives in one place.
+    static const struct
     {
-        if (!out.empty())
-            out += "|";
-        out += s;
+        IpcFlag flag;
+        const char* name;
+    } kNames[] = {
+        {IpcFlag::Request, "Request"},
+        {IpcFlag::Response, "Response"},
+        {IpcFlag::Error, "Error"},
+        {IpcFlag::Broadcast, "Broadcast"},
     };
 
-    if (hasFlag(flags, IpcFlag::Request))
+    std::string out;
+    for (const auto& entry : kNames)
     {
-        append("Request");
-    }
-    if (hasFlag(flags, IpcFlag::Response))
-    {
-        append("Response");
-    }
-    if (hasFlag(flags, IpcFlag::Error))
-    {
-        append("Error");
-    }
-    if (hasFlag(flags, IpcFlag::Broadcast))
-    {
-        append("Broadcast");
+        if (!hasFlag(flags, entry.flag))
+            continue;
+        if (!out.empty())
+            out += "|";
+        out += entry.name;
     }
 
     return out;

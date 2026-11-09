@@ -38,6 +38,62 @@ namespace pz::mgmtd
 
 using json = nlohmann::json;
 
+namespace
+{
+// 400 with a JSON body, which is what every malformed-request branch in this file answers with.
+// A free function rather than a `[&]` closure over `resp`: a closure that captures everything can
+// be moved next to code it then silently reaches into, and this only ever needed the response.
+void badRequestJson(pz::http::HttpResponse& resp, const char* error)
+{
+    fill(resp, 400, json{{"error", error}}.dump());
+}
+
+// Is this one of the scopes a commit may address? Written as a loop rather than std::any_of with
+// a predicate, because the loop says the same thing without the reader having to hold a callable
+// in their head while they read the range.
+// Domains the editors are never shown: compiled-in tuning, and the one with its own endpoint that
+// knows which of its fields may be revealed at all.
+bool isHiddenDomain(const std::string& domain)
+{
+    for (const char* hidden : settings::kHiddenDomains)
+    {
+        if (domain == hidden)
+            return true;
+    }
+    return false;
+}
+
+bool isKnownScope(const std::string& scopeName)
+{
+    for (const char* known : settings::kSettingsScopes)
+    {
+        if (scopeName == known)
+            return true;
+    }
+    return false;
+}
+
+// Newest save first. Named because the comparator's direction is the whole meaning of the sort,
+// and `>` buried in an argument list is the easiest thing in a sort to read backwards.
+bool newestSavedFirst(const json& lhs, const json& rhs)
+{
+    return lhs.value("saved_at", 0ull) > rhs.value("saved_at", 0ull);
+}
+
+// One per-change rejection: logged, so the reason survives in mgmtd.log, and returned to the
+// browser. The two things it writes are parameters rather than captures — a `[&]` closure made
+// them invisible at the call site, and "what does this touch" is the first question anyone reading
+// a loop body asks.
+void recordRejection(json& results, int& failed, const std::string& scopeName, const std::string& domain,
+                     const std::string& why)
+{
+    LOG_WARN("settings-commit rejected (scope={}, domain={}, reason={})", scopeName, domain, why);
+    results.push_back({{"scope", scopeName}, {"domain", domain}, {"ok", false}, {"error", why}});
+    ++failed;
+}
+
+}
+
 
 void SettingsController::get(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
@@ -55,9 +111,7 @@ void SettingsController::get(MgmtdServiceManager& sm, const pz::http::HttpReques
             if (domain.rfind("//", 0) == 0)
                 continue;
 
-            const bool hidden = std::any_of(std::begin(settings::kHiddenDomains), std::end(settings::kHiddenDomains),
-                                            [&](const char* d) { return domain == d; });
-            if (hidden)
+            if (isHiddenDomain(domain))
                 continue;
 
             json v = values;
@@ -129,8 +183,6 @@ void SettingsController::runningConfig(MgmtdServiceManager& sm, const pz::http::
 
 void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
-    auto badRequest = [&](const char* error) { fill(resp, 400, json{{"error", error}}.dump()); };
-
     json input;
     if (!parseBody(req, resp, input))
         return;
@@ -159,7 +211,7 @@ void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpReq
     }
 
     if (!input.contains("changes") || !input["changes"].is_array())
-        return badRequest("expected {changes: [{scope, domain, values}]}");
+        return badRequestJson(resp, "expected {changes: [{scope, domain, values}]}");
 
     const json& changes = input["changes"];
 
@@ -169,17 +221,13 @@ void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpReq
     int failed = 0;
 
     // Record a per-change rejection: logged (so the reason survives in mgmtd.log) and returned.
-    auto reject = [&](const std::string& scopeName, const std::string& domain, const std::string& why) {
-        LOG_WARN("settings-commit rejected (scope={}, domain={}, reason={})", scopeName, domain, why);
-        results.push_back({{"scope", scopeName}, {"domain", domain}, {"ok", false}, {"error", why}});
-        failed++;
-    };
 
     for (const auto& change : changes)
     {
         if (!change.contains("scope") || !change.contains("domain") || !change.contains("values"))
         {
-            reject(change.value("scope", ""), change.value("domain", ""), "entry is missing scope/domain/values");
+            recordRejection(results, failed, change.value("scope", ""), change.value("domain", ""),
+                            "entry is missing scope/domain/values");
             continue;
         }
 
@@ -189,23 +237,20 @@ void SettingsController::commit(MgmtdServiceManager& sm, const pz::http::HttpReq
 
         if (!values.is_object())
         {
-            reject(scopeName, domain, "values is not an object");
+            recordRejection(results, failed, scopeName, domain, "values is not an object");
             continue;
         }
 
-        const bool knownScope = std::any_of(std::begin(settings::kSettingsScopes), std::end(settings::kSettingsScopes),
-                                            [&](const char* s) { return scopeName == s; });
-
-        if (!knownScope)
+        if (!isKnownScope(scopeName))
         {
-            reject(scopeName, domain, "unknown scope");
+            recordRejection(results, failed, scopeName, domain, "unknown scope");
             continue;
         }
 
         std::string schemaError;
         if (!settings::validateCommitShape(scopeName, domain, values, schemaError))
         {
-            reject(scopeName, domain, schemaError.empty() ? "schema validation failed" : schemaError);
+            recordRejection(results, failed, scopeName, domain, schemaError.empty() ? "schema validation failed" : schemaError);
             continue;
         }
 
@@ -334,6 +379,7 @@ void SettingsController::commitQueue(MgmtdServiceManager& sm, const pz::http::Ht
 namespace
 {
 
+
 // ── Saved configurations (named running-config snapshots on the appliance) ─────────────────
 // Plain files under <config-dir>/saved-configs. They survive `pretzel reset` (which only drops DB
 // tables) and a redeploy (which rewrites only startup-config.json), so they are the durable on-box
@@ -449,8 +495,7 @@ void SettingsController::savedConfigs(MgmtdServiceManager& sm, const pz::http::H
         }
         out.push_back({{"name", p.stem().string()}, {"saved_at", mtime}, {"bytes", bytes}});
     }
-    std::sort(out.begin(), out.end(),
-              [](const json& a, const json& b) { return a.value("saved_at", 0ull) > b.value("saved_at", 0ull); });
+    std::sort(out.begin(), out.end(), newestSavedFirst);
 
     fill(resp, 200, out.dump());
 }

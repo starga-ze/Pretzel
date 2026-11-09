@@ -18,6 +18,16 @@ using json = nlohmann::json;
 namespace
 {
 
+// An integer field as the text libpq wants. Absent or non-numeric gives "", which the statement
+// turns into NULL (NULLIF plus a cast) rather than a bogus 0 — "the call reported no latency" and
+// "the call took no time" are different facts and the column has to keep them apart.
+std::string intFieldAsText(const nlohmann::json& root, const char* key)
+{
+    if (!root.contains(key) || !root[key].is_number())
+        return {};
+    return std::to_string(root[key].get<std::int64_t>());
+}
+
 // How long a sample's call metadata is kept. This is what the Insight ▸ API Collection page trends
 // over, and one row is tiny, so it is generous.
 constexpr int kRetentionDays = 14;
@@ -83,18 +93,11 @@ void CollectionService::storeSample(const std::string& payloadJson)
         return;
     }
 
-    // Integers arrive as JSON numbers but travel to libpq as text; an absent one becomes '' and is
-    // stored NULL (NULLIF + cast below) rather than a bogus 0.
-    auto intField = [&](const char* key) -> std::string {
-        return root.contains(key) && root[key].is_number() ? std::to_string(root[key].get<std::int64_t>())
-                                                           : std::string();
-    };
-
     const bool ok = root.value("ok", false);
     const bool truncated = root.value("truncated", false);
-    const std::string httpStatus = intField("http_status");
-    const std::string latencyMs = intField("latency_ms");
-    const std::string bytes = intField("bytes");
+    const std::string httpStatus = intFieldAsText(root, "http_status");
+    const std::string latencyMs = intFieldAsText(root, "latency_ms");
+    const std::string bytes = intFieldAsText(root, "bytes");
     const std::string respBody = root.value("body", std::string());
     const std::string error = root.value("error", std::string());
 

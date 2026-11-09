@@ -94,8 +94,15 @@ void CommitService::handleEvent(EnginedServiceManager& serviceManager, const Com
         LOG_INFO("task enqueued (id={}, queue_size={})", m_queue.back().id, m_queue.size());
         sendQueueStatus(serviceManager);
 
-        const bool anyRunning =
-            std::any_of(m_queue.begin(), m_queue.end(), [](const Task& t) { return t.status == TaskStatus::Running; });
+        bool anyRunning = false;
+        for (const Task& task : m_queue)
+        {
+            if (task.status == TaskStatus::Running)
+            {
+                anyRunning = true;
+                break;
+            }
+        }
 
         if (!anyRunning)
             startNext(serviceManager);

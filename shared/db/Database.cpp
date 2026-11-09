@@ -9,6 +9,12 @@ namespace pz::db
 namespace
 {
 
+// libpq's notice processor, installed to throw the notices away. Its signature is libpq's, which
+// is why both parameters are unnamed — there is nothing to do with either.
+void discardNotice(void*, const char*)
+{
+}
+
 constexpr const char* kSchemaDDL = R"SQL(
 CREATE TABLE IF NOT EXISTS startup_config (
     oid         INT PRIMARY KEY DEFAULT 1 CHECK (oid = 1),
@@ -541,8 +547,10 @@ bool Database::ensureLive()
         return false;
     }
 
-    PQsetNoticeProcessor(
-        m_conn, [](void*, const char*) {}, nullptr);
+    // libpq prints every NOTICE to stderr unless a processor is installed. ensureSchema raises
+    // a crowd of "relation already exists, skipping" on every boot, which is normal and is not
+    // worth a line of output; discardNotice is what silences them.
+    PQsetNoticeProcessor(m_conn, discardNotice, nullptr);
 
     return true;
 }

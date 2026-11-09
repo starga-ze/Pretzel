@@ -24,6 +24,25 @@ using json = nlohmann::json;
 namespace
 {
 
+// A whole number from the query string, inside a range. Absent gives the fallback; present and
+// unparseable, negative or over the ceiling gives -1, which every caller checks for.
+//
+// There were two of these, one closure per handler, differing only in int vs long long — so an
+// `int` handler silently accepted a bound the `long long` one rejected. One function, one type.
+long long boundedNumber(const std::string& target, const char* name, long long fallback, long long maximum)
+{
+    const std::string raw = queryParam(target, name);
+    if (raw.empty())
+        return fallback;
+
+    long long value = 0;
+    const auto parsed = std::from_chars(raw.data(), raw.data() + raw.size(), value);
+    const bool whole = parsed.ec == std::errc{} && parsed.ptr == raw.data() + raw.size();
+    if (!whole || value < 0 || value > maximum)
+        return -1;
+    return value;
+}
+
 // A scope is one product slug from the sitemap ("ngfw", "pan-os"), or empty for the whole corpus.
 // Bounded and character-checked here rather than trusted downstream: it is interpolated into the
 // crawler's filter, and a slug is all it is ever allowed to be.
@@ -108,16 +127,8 @@ void TechDocController::documents(MgmtdServiceManager& sm, const pz::http::HttpR
     const std::string version = queryParam(req.target, "version");
     if (version.size() > 128 || version.find_first_of("\r\n") != std::string::npos)
         return fill(resp, 400, R"({"error":"invalid version"})");
-    auto number = [&](const char* name, int fallback, int maximum) {
-        const auto raw = queryParam(req.target, name);
-        if (raw.empty()) return fallback;
-        int value = 0;
-        const auto parsed = std::from_chars(raw.data(), raw.data() + raw.size(), value);
-        return parsed.ec == std::errc{} && parsed.ptr == raw.data() + raw.size()
-            && value >= 0 && value <= maximum ? value : -1;
-    };
-    const int offset = number("offset", 0, 1000000);
-    const int limit = number("limit", 100, 200);
+    const long long offset = boundedNumber(req.target, "offset", 0, 1000000);
+    const long long limit = boundedNumber(req.target, "limit", 100, 200);
     if (offset < 0 || limit < 1)
         return fill(resp, 400, R"({"error":"invalid pagination"})");
     const std::uint32_t ticket = sm.nextChatTicket();
@@ -147,19 +158,10 @@ void TechDocController::exceptions(MgmtdServiceManager& sm, const pz::http::Http
             return fill(resp, 400, R"({"error":"invalid reason"})");
     }
 
-    auto number = [&](const char* name, long long fallback, long long maximum) {
-        const auto raw = queryParam(req.target, name);
-        if (raw.empty())
-            return fallback;
-        long long value = 0;
-        const auto parsed = std::from_chars(raw.data(), raw.data() + raw.size(), value);
-        return parsed.ec == std::errc{} && parsed.ptr == raw.data() + raw.size()
-            && value >= 0 && value <= maximum ? value : -1LL;
-    };
     // run 0 is not a run id, it is "whichever ran last" — the question a console asks by default.
-    const long long run = number("run", 0, 1000000000);
-    const long long offset = number("offset", 0, 1000000);
-    const long long limit = number("limit", 100, 500);
+    const long long run = boundedNumber(req.target, "run", 0, 1000000000);
+    const long long offset = boundedNumber(req.target, "offset", 0, 1000000);
+    const long long limit = boundedNumber(req.target, "limit", 100, 500);
     if (run < 0 || offset < 0 || limit < 1)
         return fill(resp, 400, R"({"error":"invalid pagination"})");
 

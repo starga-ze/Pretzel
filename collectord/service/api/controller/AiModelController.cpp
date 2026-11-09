@@ -297,13 +297,14 @@ void AiModelController::receiveKey(CollectordServiceManager& sm, std::uint32_t s
 
     LOG_DEBUG("ai model fetch (seq={}, provider={}, host={})", seqNo, provider, v->host);
 
+    CollectordServiceManager* const manager = &sm;
     pz::http::requestAsync(sm.ioContext(), std::move(req),
-                           [smp = &sm, seqNo, provider, v](pz::http::ClientResponse res) {
+                           [manager, seqNo, provider, v](pz::http::ClientResponse res) {
         if (!res.error.empty())
-            return fail(*smp, seqNo, provider, "could not reach the vendor: " + res.error);
+            return fail(*manager, seqNo, provider, "could not reach the vendor: " + res.error);
 
         if (res.status != 200)
-            return fail(*smp, seqNo, provider,
+            return fail(*manager, seqNo, provider,
                         "the vendor answered " + std::to_string(res.status) +
                         (res.status == 401 || res.status == 403 ? " — check the stored API key" : ""));
 
@@ -314,7 +315,7 @@ void AiModelController::receiveKey(CollectordServiceManager& sm, std::uint32_t s
         }
         catch (const std::exception& e)
         {
-            return fail(*smp, seqNo, provider, std::string("the vendor's answer was not JSON: ") + e.what());
+            return fail(*manager, seqNo, provider, std::string("the vendor's answer was not JSON: ") + e.what());
         }
 
         json models = json::array();
@@ -329,12 +330,12 @@ void AiModelController::receiveKey(CollectordServiceManager& sm, std::uint32_t s
         // working menu with an empty one because a vendor changed their response shape is the failure
         // this whole path exists to avoid.
         if (models.empty())
-            return fail(*smp, seqNo, provider, "the vendor listed no usable models — the stored list is unchanged");
+            return fail(*manager, seqNo, provider, "the vendor listed no usable models — the stored list is unchanged");
 
         LOG_INFO("ai model refresh ok (seq={}, provider={}, models={})", seqNo, provider, models.size());
 
-        sendModelUpdate(*smp, provider, models);
-        sendUpdateResponse(*smp, seqNo, json{{"ok", true},
+        sendModelUpdate(*manager, provider, models);
+        sendUpdateResponse(*manager, seqNo, json{{"ok", true},
                                            {"provider", provider},
                                            {"count", models.size()},
                                            {"message", "fetched " + std::to_string(models.size()) + " models"}});

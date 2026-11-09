@@ -8,6 +8,8 @@
 
 #include "service/web/WebUtil.h"
 
+#include "http/UrlEncode.h"
+
 #include "router/MgmtdTxRouter.h"
 
 #include "config/Config.h"
@@ -32,6 +34,15 @@ using json = nlohmann::json;
 namespace
 {
 
+// Back to the sign-in page carrying what went wrong, which is the only way an SSO failure can be
+// reported: the browser is mid-redirect from the identity provider and there is nobody holding a
+// response open to read a JSON body. Two handlers did this with an identical `[&]` closure each.
+void redirectToLoginError(pz::http::HttpResponse& resp, const std::string& code)
+{
+    fill(resp, 302, "", "text/plain");
+    resp.location = "/index.html?sso_error=" + code;
+}
+
 
 
 
@@ -48,17 +59,8 @@ std::string ssoUrlDecode(const std::string& s)
         }
         else if (c == '%' && i + 2 < s.size())
         {
-            auto hexv = [](char h) -> int
-            {
-                if (h >= '0' && h <= '9')
-                    return h - '0';
-                if (h >= 'a' && h <= 'f')
-                    return h - 'a' + 10;
-                if (h >= 'A' && h <= 'F')
-                    return h - 'A' + 10;
-                return -1;
-            };
-            int hi = hexv(s[i + 1]), lo = hexv(s[i + 2]);
+            const int hi = pz::http::hexDigit(static_cast<unsigned char>(s[i + 1]));
+            const int lo = pz::http::hexDigit(static_cast<unsigned char>(s[i + 2]));
             if (hi >= 0 && lo >= 0)
             {
                 out.push_back(static_cast<char>((hi << 4) | lo));
@@ -148,28 +150,22 @@ void SsoController::info(MgmtdServiceManager& sm, const pz::http::HttpRequest& r
 void SsoController::login(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
     (void)req;
-    auto redirectErr = [&](const std::string& code)
-    {
-        fill(resp, 302, "", "text/plain");
-        resp.location = "/index.html?sso_error=" + code;
-    };
-
     if (sm.authService().adminSetupPending())
-        return redirectErr("setup_required");
+        return redirectToLoginError(resp, "setup_required");
 
     const auto auth = ssoAuthConfig();
     if (auth.value("method", std::string("oidc")) != "saml")
-        return redirectErr("not_configured");
+        return redirectToLoginError(resp, "not_configured");
 
     const auto saml = auth.value("saml", json::object());
     if (!saml.value("enabled", false))
-        return redirectErr("disabled");
+        return redirectToLoginError(resp, "disabled");
 
     const std::string idp = saml.value("idp_sso_url", "");
     const std::string sp = saml.value("sp_entity_id", "");
     const std::string acs = saml.value("acs_url", "");
     if (idp.empty() || acs.empty())
-        return redirectErr("misconfigured");
+        return redirectToLoginError(resp, "misconfigured");
 
     const std::string id = "_" + pz::algorithm::randomHex(16);
     const std::string xml = "<samlp:AuthnRequest xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\""
@@ -203,15 +199,9 @@ void SsoController::login(MgmtdServiceManager& sm, const pz::http::HttpRequest& 
 
 void SsoController::samlAcs(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
-    auto redirectErr = [&](const std::string& code)
-    {
-        fill(resp, 302, "", "text/plain");
-        resp.location = "/index.html?sso_error=" + code;
-    };
-
     const std::string samlResponse = ssoFormField(req.body, "SAMLResponse");
     if (samlResponse.empty())
-        return redirectErr("no_saml_response");
+        return redirectToLoginError(resp, "no_saml_response");
 
     const std::uint32_t ticket = sm.nextSsoTicket();
     const json payload = {{"saml_response", samlResponse}};
@@ -248,19 +238,17 @@ void SsoController::samlAcs(MgmtdServiceManager& sm, const pz::http::HttpRequest
 
 void SsoController::samlResult(MgmtdServiceManager& sm, const pz::http::HttpRequest& req, pz::http::HttpResponse& resp)
 {
-    auto jsonResp = [&](const json& j) { fill(resp, 200, j.dump()); };
-
     const std::string& target = req.target;
     std::uint32_t ticket = 0;
     if (auto pos = target.find("ticket="); pos != std::string::npos)
         ticket = static_cast<std::uint32_t>(std::strtoul(target.c_str() + pos + 7, nullptr, 10));
 
     if (ticket == 0)
-        return jsonResp({{"status", "error"}, {"error", "bad ticket"}});
+        return fill(resp, 200, json({{"status", "error"}, {"error", "bad ticket"}}).dump());
 
     auto result = sm.takeSsoResult(ticket);
     if (!result)
-        return jsonResp({{"status", "pending"}});
+        return fill(resp, 200, json({{"status", "pending"}}).dump());
 
     try
     {
@@ -270,19 +258,21 @@ void SsoController::samlResult(MgmtdServiceManager& sm, const pz::http::HttpRequ
             const std::string user = verdict.value("username", "");
             const std::string sid = sm.authService().createSsoSession(user);
             if (sid.empty())
-                return jsonResp({{"status", "error"}, {"error", "session error"}});
+                return fill(resp, 200, json({{"status", "error"}, {"error", "session error"}}).dump());
 
             fill(resp, 200, json({{"status", "ok"}, {"redirect", "/home"}}).dump());
             resp.setCookie = "session=" + sid + "; HttpOnly; Path=/; SameSite=Strict";
             LOG_INFO("sso login ok (user={})", user);
             return;
         }
-        return jsonResp({{"status", "error"}, {"error", verdict.value("error", std::string("verification failed"))}});
+        return fill(resp, 200,
+                    json({{"status", "error"},
+                          {"error", verdict.value("error", std::string("verification failed"))}}).dump());
     }
     catch (const std::exception& e)
     {
         LOG_WARN("sso result parse error: {}", e.what());
-        return jsonResp({{"status", "error"}, {"error", "bad result"}});
+        return fill(resp, 200, json({{"status", "error"}, {"error", "bad result"}}).dump());
     }
 }
 

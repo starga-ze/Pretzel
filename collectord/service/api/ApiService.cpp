@@ -29,6 +29,26 @@ using json = nlohmann::json;
 namespace
 {
 
+// A name/value pair list off one endpoint object — query parameters, or a SASE request's headers.
+// `owner` is a parameter rather than a capture so the call site says which object is being read.
+void readNameValuePairs(const nlohmann::json& owner, const char* key, std::vector<ApiParam>& out)
+{
+    const auto it = owner.find(key);
+    if (it == owner.end() || !it->is_array())
+        return;
+
+    for (const auto& entry : *it)
+    {
+        if (!entry.is_object())
+            continue;
+        ApiParam pair;
+        pair.name = entry.value("name", std::string());
+        pair.value = entry.value("value", std::string());
+        if (!pair.name.empty())
+            out.push_back(std::move(pair));
+    }
+}
+
 const json& apiConfig()
 {
     return pz::config::Config::section(pz::config::scope::kPretzel, "connector");
@@ -86,28 +106,12 @@ void ApiService::loadEndpoints(const nlohmann::json& cfg)
         if (!e.is_object())
             continue;
 
-        // name/value pair lists — query parameters and (SASE) request headers share the shape.
-        auto readPairs = [&e](const char* key, std::vector<ApiParam>& out) {
-            const auto it2 = e.find(key);
-            if (it2 == e.end() || !it2->is_array())
-                return;
-            for (const auto& p : *it2)
-            {
-                if (!p.is_object())
-                    continue;
-                ApiParam pair;
-                pair.name = p.value("name", std::string());
-                pair.value = p.value("value", std::string());
-                if (!pair.name.empty())
-                    out.push_back(std::move(pair));
-            }
-        };
 
         ApiEndpoint endpoint;
         endpoint.oid = e.value("oid", e.value("uuid", std::string()));   // `uuid` = legacy key
         endpoint.name = e.value("name", std::string());
         endpoint.path = e.value("path", std::string());
-        readPairs("params", endpoint.params);
+        readNameValuePairs(e, "params", endpoint.params);
 
         // Absent on every endpoint written before SASE support, which were all NGFW.
         endpoint.vendor = (e.value("device_type", std::string("ngfw")) == "sase") ? ApiVendor::Sase : ApiVendor::Ngfw;
@@ -147,7 +151,7 @@ void ApiService::loadEndpoints(const nlohmann::json& cfg)
             }
 
             endpoint.host = e.value("host", std::string());
-            readPairs("headers", endpoint.headers);
+            readNameValuePairs(e, "headers", endpoint.headers);
 
             if (endpoint.host.empty())
             {

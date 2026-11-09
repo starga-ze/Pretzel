@@ -19,4 +19,8 @@ std::string urlEncode(const std::string& raw);
 // dropped, so a value the operator can see in the address bar is the value the handler receives.
 std::string urlDecode(const std::string& encoded);
 
+// One hex digit's value, or -1. Exported because percent-decoding is not the only place that
+// reads one: SsoController decodes a SAMLResponse's form encoding and had its own copy of this.
+int hexDigit(unsigned char c);
+
 }

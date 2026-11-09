@@ -176,6 +176,12 @@ struct GrpcClientHandler::Impl
     std::thread streamThread;
     std::atomic<bool> streaming{false};
 
+    // Chat deltas waiting to be reported. Only runChat and flushDeltas touch it, and only from the
+    // one worker running that turn — a member rather than a local because the callback that fills
+    // it and the function that drains it are now two named functions instead of two closures over
+    // the same stack slot.
+    std::string m_deltaBatch;
+
     void report(GrpcCmd cmd, std::uint32_t ticket, std::string json)
     {
         done.push(cmd, ticket, std::move(json));
@@ -194,22 +200,33 @@ struct GrpcClientHandler::Impl
     // has already been scanned and cleared, and this streams a decided answer rather than raw
     // tokens. A turn the guardrail blocks produces no deltas at all, which is the correct
     // behaviour — a blocked answer must never appear on screen even briefly.
+    // Deltas are batched before they are reported, so a turn does not become one event per token.
+    // `force` is the end of the stream, where whatever is left goes out however short it is.
+    void flushDeltas(std::uint32_t ticket, bool force)
+    {
+        if (m_deltaBatch.empty() || (!force && m_deltaBatch.size() < kDeltaBatchChars))
+            return;
+
+        report(GrpcCmd::Chat, ticket, nlohmann::json{{"partial", true}, {"text", m_deltaBatch}}.dump());
+        m_deltaBatch.clear();
+    }
+
     std::string runChat(const GrpcMessage& task, std::string& error)
     {
-        std::string pending;
-        auto flush = [&](bool force)
+        m_deltaBatch.clear();
+
+        // The one lambda left here, and it has to be one: client.chat takes a callback and this is
+        // the body of it. It does nothing but hand the delta to the member function above.
+        const std::uint32_t ticket = task.ticket;
+        auto onDelta = [this, ticket](const std::string& delta)
         {
-            if (pending.empty() || (!force && pending.size() < kDeltaBatchChars))
-                return;
-            report(GrpcCmd::Chat, task.ticket,
-                   nlohmann::json{{"partial", true}, {"text", pending}}.dump());
-            pending.clear();
+            m_deltaBatch += delta;
+            flushDeltas(ticket, false);
         };
 
         auto outcome = client.chat(task.model, task.message, task.systemPrompt, task.history,
-                                   task.sessionId, task.transactionId,
-                                   [&](const std::string& delta) { pending += delta; flush(false); });
-        flush(true);
+                                   task.sessionId, task.transactionId, onDelta);
+        flushDeltas(task.ticket, true);
         error = std::move(outcome.error);
         return std::move(outcome.resultJson);
     }
@@ -340,6 +357,20 @@ struct GrpcClientHandler::Impl
         }
     }
 
+    // One progress message from a stream: noted if it is the final one, logged, and reported.
+    //
+    // The serializer puts a space after the colon ("final": true), so a pattern without one never
+    // matches and every completed stream reported itself as one that died.
+    void reportStreamProgress(const GrpcMessage& task, const char* what, bool& sawFinal, const std::string& json)
+    {
+        const auto finalKey = json.find("\"final\"");
+        if (finalKey != std::string::npos && json.find("true", finalKey) != std::string::npos)
+            sawFinal = true;
+
+        LOG_DEBUG("{} progress: {}", what, json.substr(0, 160));
+        report(task.cmd, task.ticket, json);
+    }
+
     void runStream(GrpcMessage task)
     {
         // Cleared however this function leaves, not on the way past the last line. It is the flag
@@ -356,16 +387,10 @@ struct GrpcClientHandler::Impl
         bool sawFinal = false;
         const char* what = task.cmd == GrpcCmd::BenchtestRun ? "benchtest run" : "tech-doc refresh";
 
-        // The serializer puts a space after the colon ("final": true), so a pattern without one
-        // never matches and every completed stream reported itself as one that died.
+        // A one-line forward to the member below. The streaming call takes a callback, so something
+        // callable has to exist here; what it does lives in a named function with a signature.
         auto onProgress = [this, &task, &sawFinal, what](const std::string& json)
-        {
-            if (json.find("\"final\"") != std::string::npos
-                && json.find("true", json.find("\"final\"")) != std::string::npos)
-                sawFinal = true;
-            LOG_DEBUG("{} progress: {}", what, json.substr(0, 160));
-            report(task.cmd, task.ticket, json);
-        };
+        { reportStreamProgress(task, what, sawFinal, json); };
 
         if (task.cmd == GrpcCmd::BenchtestRun)
             client.benchtestRun(task.datasetId, task.category, task.verdict, task.language,
@@ -587,9 +612,11 @@ void GrpcClientHandler::egress(GrpcMessage message)
         // Reached only after the CAS above succeeded, so it is never a join on a live stream.
         if (m_impl->streamThread.joinable())
             m_impl->streamThread.join();
-        m_impl->streamThread =
-            std::thread([this, message = std::move(message)]() mutable
-                        { m_impl->runStreamGuarded(std::move(message)); });
+        // `&Impl::runStreamGuarded, m_impl.get(), std::move(message)` rather than a lambda that
+        // move-captures and is marked `mutable`. std::thread moves its arguments into the new
+        // thread itself, which is the same ownership transfer the capture was spelling out — and
+        // the `mutable` that made it compile said nothing about what it was for.
+        m_impl->streamThread = std::thread(&Impl::runStreamGuarded, m_impl.get(), std::move(message));
         return;
     }
 

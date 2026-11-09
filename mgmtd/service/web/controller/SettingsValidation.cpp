@@ -19,6 +19,64 @@ using json = nlohmann::json;
 namespace
 {
 
+// ASCII lower-case, for the comparisons that must not care about it — a header named
+// "Authorization" and one named "authorization" are the same header. Spelled as a named function
+// rather than std::transform with a lambda at each site: the lambda has to cast twice to be
+// correct about char signedness, and three copies of that is three chances to get it wrong.
+// A name/value list — an endpoint's query parameters, a SASE request's headers. Absent is fine;
+// present and malformed is not.
+bool validNameValueList(const json& owner, const char* key)
+{
+    if (!owner.contains(key))
+        return true;
+    if (!owner[key].is_array())
+        return false;
+    for (const auto& pair : owner[key])
+    {
+        if (!pair.is_object() || pair.value("name", std::string()).empty())
+            return false;
+    }
+    return true;
+}
+
+// Every entry of one array passes its own check, and the first that does not names itself in
+// `error`. `values` and `error` are parameters rather than captures: this writes to `error`, and a
+// `[&]` closure that writes to an out-parameter of its enclosing function is the kind of thing a
+// reader only discovers by reading the body.
+bool validateEntries(const json& values, std::string& error, const char* key,
+                     bool (*validEntry)(const json&))
+{
+    if (!values.contains(key))
+        return true;
+    if (!values[key].is_array())
+    {
+        error = std::string(key) + " must be an array";
+        return false;
+    }
+
+    std::size_t idx = 0;
+    for (const auto& entry : values[key])
+    {
+        if (!validEntry(entry))
+        {
+            const std::string name = entry.is_object() ? entry.value("name", std::string()) : std::string();
+            error = "invalid " + std::string(key) + " entry #" + std::to_string(idx)
+                  + (name.empty() ? "" : " (\"" + name + "\")");
+            return false;
+        }
+        ++idx;
+    }
+    return true;
+}
+
+std::string lowered(std::string s)
+{
+    for (char& c : s)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+
 
 // The scopes a commit may address, and the ones GET /api/settings projects for the editors.
 // `global` is deliberately absent: it is infrastructure (the IPC socket, where logs go), not
@@ -112,21 +170,7 @@ bool validApiEndpoint(const json& e)
     if (path.empty() || path.front() != '/')
         return false;
 
-    // name/value lists — query parameters and (SASE) request headers share the shape.
-    auto validPairs = [&e](const char* key) {
-        if (!e.contains(key))
-            return true;
-        if (!e[key].is_array())
-            return false;
-        for (const auto& p : e[key])
-        {
-            if (!p.is_object() || p.value("name", std::string()).empty())
-                return false;
-        }
-        return true;
-    };
-
-    if (!validPairs("params"))
+    if (!validNameValueList(e, "params"))
         return false;
 
     // The device type an endpoint was written for. Everything below it is disjoint: an NGFW endpoint
@@ -161,16 +205,13 @@ bool validApiEndpoint(const json& e)
         if (host.empty() || host.find('/') != std::string::npos)
             return false;
 
-        if (!validPairs("headers"))
+        if (!validNameValueList(e, "headers"))
             return false;
 
         // The bearer token is minted per call and must never be configuration.
         for (const auto& h : e.value("headers", json::array()))
         {
-            std::string name = h.value("name", std::string());
-            std::transform(name.begin(), name.end(), name.begin(),
-                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (name == "authorization")
+            if (lowered(h.value("name", std::string())) == "authorization")
                 return false;
         }
         return true;
@@ -650,12 +691,15 @@ bool validateUsers(const json& values, std::string& error)
         return false;
     }
 
-    const bool anyAdmin = std::any_of(values["list"].begin(), values["list"].end(),
-                                      [](const json& u)
-                                      {
-                                          return u.is_object()
-                                              && u.value("role", std::string()) == "admin";
-                                      });
+    bool anyAdmin = false;
+    for (const auto& u : values["list"])
+    {
+        if (u.is_object() && u.value("role", std::string()) == "admin")
+        {
+            anyAdmin = true;
+            break;
+        }
+    }
     if (!anyAdmin)
     {
         error = "at least one account must be an admin — nobody could manage accounts otherwise";
@@ -705,37 +749,13 @@ const char* const kHiddenDomains[2] = {
 bool validateCommitShape(const std::string& scopeName, const std::string& domain, const json& values,
                          std::string& error)
 {
-    auto validateArray = [&](const char* key, bool (*validEntry)(const json&))
-    {
-        if (!values.contains(key))
-            return true;
-        if (!values[key].is_array())
-        {
-            error = std::string(key) + " must be an array";
-            return false;
-        }
-        std::size_t idx = 0;
-        for (const auto& entry : values[key])
-        {
-            if (!validEntry(entry))
-            {
-                const std::string name = entry.is_object() ? entry.value("name", std::string()) : std::string();
-                error = "invalid " + std::string(key) + " entry #" + std::to_string(idx) +
-                        (name.empty() ? "" : " (\"" + name + "\")");
-                return false;
-            }
-            ++idx;
-        }
-        return true;
-    };
-
     if (scopeName == pz::config::scope::kPretzel && domain == "site")
-        return validateArray("sites", validSite) && validateArray("ngfw_devices", validDevice) &&
-               validateArray("sase_devices", validDevice);
+        return validateEntries(values, error, "sites", validSite) && validateEntries(values, error, "ngfw_devices", validDevice) &&
+               validateEntries(values, error, "sase_devices", validDevice);
 
     if (scopeName == pz::config::scope::kPretzel && domain == "connector")
-        return validateArray("api_credentials", validApiKey) && validateArray("endpoints", validApiEndpoint) &&
-               validateArray("connectors", validApiConnector);
+        return validateEntries(values, error, "api_credentials", validApiKey) && validateEntries(values, error, "endpoints", validApiEndpoint) &&
+               validateEntries(values, error, "connectors", validApiConnector);
 
     if (scopeName == pz::config::scope::kPretzelAi && domain == "providers")
         return validateAiProviders(values, error);

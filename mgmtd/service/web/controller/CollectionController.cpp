@@ -28,6 +28,19 @@ using json = nlohmann::json;
 namespace
 {
 
+// A positive integer as text, which is what an oid arrives as. Empty is not one.
+bool allDigits(const std::string& s)
+{
+    if (s.empty())
+        return false;
+    for (char c : s)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(c)))
+            return false;
+    }
+    return true;
+}
+
 // The one timestamp format the whole web surface emits. Postgres prints a whole-hour zone as `+09`,
 // which is not what ISO 8601 asks for — the frontend pads it back before parsing (NMS.utils.parseTs).
 constexpr const char* kTs = "YYYY-MM-DD\"T\"HH24:MI:SSOF";
@@ -491,7 +504,7 @@ void CollectionController::sample(MgmtdServiceManager& sm, const pz::http::HttpR
     (void)sm;
 
     const std::string oid = queryParam(req.target, "oid");
-    if (oid.empty() || !std::all_of(oid.begin(), oid.end(), [](unsigned char c) { return std::isdigit(c); }))
+    if (!allDigits(oid))
         return fill(resp, 400, json{{"error", "oid required"}}.dump());
 
     try
